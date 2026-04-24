@@ -82,6 +82,29 @@ export interface OcGoModelInfo {
   fixedTemperature?: number;
 }
 
+export interface NvidiaModelCapabilities {
+  chat?: boolean;
+  vision?: boolean;
+  tool_calling?: boolean;
+}
+
+export interface NvidiaModelMetadata {
+  context_window?: number;
+  max_output_tokens?: number;
+  max_tokens?: number;
+}
+
+export interface NvidiaModelSummary {
+  id: string;
+  name?: string;
+  capabilities?: NvidiaModelCapabilities;
+  metadata?: NvidiaModelMetadata;
+}
+
+export interface NvidiaModelListResponse {
+  data?: NvidiaModelSummary[];
+}
+
 export const FALLBACK_MODELS: OcGoModelInfo[] = [
   {
     id: "glm-5",
