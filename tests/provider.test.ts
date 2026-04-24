@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import { fetchModels, streamChatCompletion } from "../src/api";
 import { OcGoChatModelProvider } from "../src/provider";
 
-
 jest.mock("../src/api", () => ({
   fetchModels: jest.fn(),
   streamChatCompletion: jest.fn(),

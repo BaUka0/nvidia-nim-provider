@@ -20,11 +20,7 @@ import {
   PROVIDER_VENDOR,
   SECRET_STORAGE_KEY,
 } from "./constants";
-import {
-  getFallbackModels,
-  isNormalizedNvidiaModel,
-  NormalizedNvidiaModel,
-} from "./model-catalog";
+import { getFallbackModels, isNormalizedNvidiaModel, NormalizedNvidiaModel } from "./model-catalog";
 import { debugLog } from "./output-channel";
 import {
   applyReasoningContentWorkaround,
@@ -460,7 +456,9 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     return this._mapToChatInformation(this.getAvailableModels());
   }
 
-  private _mapToChatInformation(models: readonly NormalizedNvidiaModel[]): LanguageModelChatInformation[] {
+  private _mapToChatInformation(
+    models: readonly NormalizedNvidiaModel[],
+  ): LanguageModelChatInformation[] {
     return models.map((info) => {
       return {
         id: info.id,

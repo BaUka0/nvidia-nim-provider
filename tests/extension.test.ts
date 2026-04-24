@@ -180,10 +180,7 @@ describe("activate", () => {
     (fetchModels as jest.Mock).mockResolvedValue(rawModels);
 
     const secrets = {
-      get: jest
-        .fn()
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce("test-key"),
+      get: jest.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce("test-key"),
       store: jest.fn(),
       delete: jest.fn(),
       onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
@@ -294,10 +291,7 @@ describe("activate", () => {
       .mockRejectedValueOnce(new Error("persist normalized failed"))
       .mockResolvedValueOnce(undefined);
     const secrets = {
-      get: jest
-        .fn()
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce("test-key"),
+      get: jest.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce("test-key"),
       store: jest.fn(),
       delete: jest.fn(),
       onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
@@ -445,10 +439,7 @@ describe("activate", () => {
     const normalizedWriteError = new Error("persist normalized failed");
     const rollbackWriteError = new Error("rollback failed");
     const secrets = {
-      get: jest
-        .fn()
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce("test-key"),
+      get: jest.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce("test-key"),
       store: jest.fn(),
       delete: jest.fn(),
       onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
