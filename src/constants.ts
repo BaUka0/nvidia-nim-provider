@@ -1,6 +1,15 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pkg = require("../package.json") as { version: string };
 
+export const PROVIDER_VENDOR = "nvidia-nim";
+export const PROVIDER_DISPLAY_NAME = "NVIDIA NIM";
+export const SECRET_STORAGE_KEY = "nvidia-nim.apiKey";
+export const LEGACY_SECRET_STORAGE_KEY = "opencode-go.apiKey";
+export const MANAGE_COMMAND_ID = "nvidia-nim.manage";
+export const REFRESH_MODELS_COMMAND_ID = "nvidia-nim.refreshModels";
+export const TOGGLE_DEBUG_LOGGING_COMMAND_ID = "nvidia-nim.toggleDebugLogging";
+export const OPEN_DEBUG_LOG_COMMAND_ID = "nvidia-nim.openDebugLog";
+
 export const BASE_URL = "https://opencode.ai/zen/go/v1";
 export const EXTENSION_VERSION: string = pkg.version;
 

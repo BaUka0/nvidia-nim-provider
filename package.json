@@ -1,13 +1,13 @@
 {
-  "name": "opencode-go-provider",
+  "name": "nvidia-nim-provider",
   "publisher": "HidenobuNagai",
-  "displayName": "OpenCode Go Provider",
-  "description": "OpenCode Go Chat Provider for VS Code Copilot Chat",
+  "displayName": "NVIDIA NIM Provider",
+  "description": "NVIDIA NIM Chat Provider for VS Code Copilot Chat",
   "version": "0.1.3",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hidenobunagai/opencode-go-provider"
+    "url": "https://github.com/hidenobunagai/nvidia-nim-provider"
   },
   "icon": "images/icon.png",
   "galleryBanner": {
@@ -16,7 +16,8 @@
   },
   "keywords": [
     "copilot",
-    "opencode",
+    "nvidia",
+    "nim",
     "chat",
     "kimi",
     "glm",
@@ -37,31 +38,31 @@
   "contributes": {
     "languageModelChatProviders": [
       {
-        "vendor": "opencode-go",
-        "displayName": "OpenCode Go",
-        "managementCommand": "opencode-go.manage"
+        "vendor": "nvidia-nim",
+        "displayName": "NVIDIA NIM",
+        "managementCommand": "nvidia-nim.manage"
       }
     ],
     "commands": [
       {
-        "command": "opencode-go.manage",
-        "title": "Manage OpenCode Go API Key",
-        "category": "OpenCode Go"
+        "command": "nvidia-nim.manage",
+        "title": "Manage NVIDIA NIM API Key",
+        "category": "NVIDIA NIM"
       },
       {
-        "command": "opencode-go.refreshModels",
+        "command": "nvidia-nim.refreshModels",
         "title": "Refresh Models",
-        "category": "OpenCode Go"
+        "category": "NVIDIA NIM"
       },
       {
-        "command": "opencode-go.toggleDebugLogging",
+        "command": "nvidia-nim.toggleDebugLogging",
         "title": "Toggle Debug Logging",
-        "category": "OpenCode Go"
+        "category": "NVIDIA NIM"
       },
       {
-        "command": "opencode-go.openDebugLog",
+        "command": "nvidia-nim.openDebugLog",
         "title": "Open Debug Log",
-        "category": "OpenCode Go"
+        "category": "NVIDIA NIM"
       }
     ]
   },

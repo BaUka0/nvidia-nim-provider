@@ -1,6 +1,16 @@
 import * as vscode from "vscode";
 import { fetchModels } from "./api";
-import { EXTENSION_VERSION } from "./constants";
+import {
+  EXTENSION_VERSION,
+  LEGACY_SECRET_STORAGE_KEY,
+  MANAGE_COMMAND_ID,
+  OPEN_DEBUG_LOG_COMMAND_ID,
+  PROVIDER_DISPLAY_NAME,
+  PROVIDER_VENDOR,
+  REFRESH_MODELS_COMMAND_ID,
+  SECRET_STORAGE_KEY,
+  TOGGLE_DEBUG_LOGGING_COMMAND_ID,
+} from "./constants";
 import { debugLog, getOutputChannel } from "./output-channel";
 import { OcGoChatModelProvider } from "./provider";
 import { registerOcGoTools } from "./tools";
@@ -12,10 +22,12 @@ async function refreshModelsFromApi(
   ua: string,
   options: { showMessages: boolean },
 ): Promise<void> {
-  const apiKey = await context.secrets.get("opencode-go.apiKey");
+  const apiKey =
+    (await context.secrets.get(SECRET_STORAGE_KEY)) ??
+    (await context.secrets.get(LEGACY_SECRET_STORAGE_KEY));
   if (!apiKey) {
     if (options.showMessages) {
-      vscode.window.showWarningMessage("No OpenCode Go API key configured.");
+      vscode.window.showWarningMessage(`No ${PROVIDER_DISPLAY_NAME} API key configured.`);
     }
     return;
   }
@@ -25,16 +37,23 @@ async function refreshModelsFromApi(
     if (models && models.length > 0) {
       await context.globalState.update("opencode-go.models", models);
       _provider?.fireModelInfoChanged();
-      debugLog("refreshModels", `Refreshed ${models.length} models from OpenCode Go API.`);
+      debugLog(
+        "refreshModels",
+        `Refreshed ${models.length} models from ${PROVIDER_DISPLAY_NAME} API.`,
+      );
       if (options.showMessages) {
-        vscode.window.showInformationMessage(`Refreshed ${models.length} OpenCode Go models.`);
+        vscode.window.showInformationMessage(
+          `Refreshed ${models.length} ${PROVIDER_DISPLAY_NAME} models.`,
+        );
       }
       return;
     }
 
     debugLog("refreshModels", "Model refresh returned no models.");
     if (options.showMessages) {
-      vscode.window.showWarningMessage("Failed to refresh models from OpenCode Go API.");
+      vscode.window.showWarningMessage(
+        `Failed to refresh models from ${PROVIDER_DISPLAY_NAME} API.`,
+      );
     }
   } catch (error) {
     debugLog(
@@ -50,7 +69,7 @@ async function refreshModelsFromApi(
 }
 
 export function activate(context: vscode.ExtensionContext) {
-  const ua = `opencode-go-provider/${EXTENSION_VERSION} VSCode/${vscode.version}`;
+  const ua = `nvidia-nim-provider/${EXTENSION_VERSION} VSCode/${vscode.version}`;
   const channel = getOutputChannel();
   context.subscriptions.push(channel);
   const debugEnabled = context.globalState.get<boolean>("opencode-go.debug", false);
@@ -64,62 +83,68 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     context.secrets.onDidChange((e) => {
-      if (e.key === "opencode-go.apiKey") {
+      if (e.key === SECRET_STORAGE_KEY || e.key === LEGACY_SECRET_STORAGE_KEY) {
         _provider?.fireModelInfoChanged();
       }
     }),
   );
 
-  const registration = vscode.lm.registerLanguageModelChatProvider("opencode-go", provider);
+  const registration = vscode.lm.registerLanguageModelChatProvider(PROVIDER_VENDOR, provider);
   context.subscriptions.push(registration);
   context.subscriptions.push(registerOcGoTools(context.secrets));
   context.subscriptions.push(
-    vscode.commands.registerCommand("opencode-go.manage", async () => {
-      const existing = await context.secrets.get("opencode-go.apiKey");
+    vscode.commands.registerCommand(MANAGE_COMMAND_ID, async () => {
+      const existing =
+        (await context.secrets.get(SECRET_STORAGE_KEY)) ??
+        (await context.secrets.get(LEGACY_SECRET_STORAGE_KEY));
       const apiKey = await vscode.window.showInputBox({
-        title: "OpenCode Go API Key",
-        prompt: existing ? "Update your OpenCode Go API key" : "Enter your OpenCode Go API key",
+        title: `${PROVIDER_DISPLAY_NAME} API Key`,
+        prompt: existing
+          ? `Update your ${PROVIDER_DISPLAY_NAME} API key`
+          : `Enter your ${PROVIDER_DISPLAY_NAME} API key`,
         ignoreFocusOut: true,
         password: true,
         value: existing ?? "",
-        placeHolder: "Enter your OpenCode Go API key...",
+        placeHolder: `Enter your ${PROVIDER_DISPLAY_NAME} API key...`,
       });
       if (apiKey === undefined) {
         return;
       }
       if (!apiKey.trim()) {
-        await context.secrets.delete("opencode-go.apiKey");
-        vscode.window.showInformationMessage("OpenCode Go API key cleared.");
+        await context.secrets.delete(SECRET_STORAGE_KEY);
+        await context.secrets.delete(LEGACY_SECRET_STORAGE_KEY);
+        vscode.window.showInformationMessage(`${PROVIDER_DISPLAY_NAME} API key cleared.`);
         _provider?.fireModelInfoChanged();
         return;
       }
-      await context.secrets.store("opencode-go.apiKey", apiKey.trim());
-      vscode.window.showInformationMessage("OpenCode Go API key saved.");
+      await context.secrets.store(SECRET_STORAGE_KEY, apiKey.trim());
+      await context.secrets.store(LEGACY_SECRET_STORAGE_KEY, apiKey.trim());
+      vscode.window.showInformationMessage(`${PROVIDER_DISPLAY_NAME} API key saved.`);
       _provider?.fireModelInfoChanged();
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("opencode-go.refreshModels", async () => {
+    vscode.commands.registerCommand(REFRESH_MODELS_COMMAND_ID, async () => {
       await refreshModelsFromApi(context, ua, { showMessages: true });
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("opencode-go.toggleDebugLogging", async () => {
+    vscode.commands.registerCommand(TOGGLE_DEBUG_LOGGING_COMMAND_ID, async () => {
       const current = context.globalState.get<boolean>("opencode-go.debug", false);
       const next = !current;
       await context.globalState.update("opencode-go.debug", next);
       process.env.OPENCODE_GO_DEBUG = next ? "1" : "0";
       debugLog("toggleDebug", `Debug logging ${next ? "enabled" : "disabled"}.`);
       vscode.window.showInformationMessage(
-        `OpenCode Go debug logging ${next ? "enabled" : "disabled"}.`,
+        `${PROVIDER_DISPLAY_NAME} debug logging ${next ? "enabled" : "disabled"}.`,
       );
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("opencode-go.openDebugLog", () => {
+    vscode.commands.registerCommand(OPEN_DEBUG_LOG_COMMAND_ID, () => {
       const output = getOutputChannel();
       output.show(true);
     }),

@@ -60,12 +60,41 @@ describe("activate", () => {
     jest.clearAllMocks();
   });
 
+  it("registers the NVIDIA NIM provider and management command on activation", async () => {
+    const secrets = {
+      get: jest.fn(async () => undefined),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "opencode-go.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+
+    expect(mockRegisterLanguageModelChatProvider).toHaveBeenCalledWith(
+      "nvidia-nim",
+      expect.anything(),
+    );
+    expect(mockRegisterCommand).toHaveBeenCalledWith("nvidia-nim.manage", expect.any(Function));
+  });
+
   it("refreshes cached models in the background on activation when an API key exists", async () => {
     const models = [{ id: "kimi-k2.6", name: "Kimi K2.6" }];
     (fetchModels as jest.Mock).mockResolvedValue(models);
 
     const secrets = {
-      get: jest.fn(async (key: string) => (key === "opencode-go.apiKey" ? "test-key" : undefined)),
+      get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),
       store: jest.fn(),
       delete: jest.fn(),
       onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
@@ -91,7 +120,7 @@ describe("activate", () => {
     expect(fetchModels).toHaveBeenCalledWith(
       "test-key",
       undefined,
-      `opencode-go-provider/${version} VSCode/1.104.0`,
+      `nvidia-nim-provider/${version} VSCode/1.104.0`,
     );
     expect(globalState.update).toHaveBeenCalledWith("opencode-go.models", models);
     expect(providerInstance.fireModelInfoChanged).toHaveBeenCalled();

@@ -1,12 +1,12 @@
-# OpenCode Go Provider
+# NVIDIA NIM Provider
 
-VS Code extension to use OpenCode Go models in Copilot Chat with your own OpenCode Go subscription.
+VS Code extension that exposes an NVIDIA NIM-branded provider surface in Copilot Chat while the backend integration is being migrated.
 
 ## Requirements
 
 - VS Code 1.104.0 or later
 - GitHub Copilot extension installed and active
-- An OpenCode Go API key ([get one here](https://opencode.ai/))
+- An API key for the currently configured backend endpoint
 
 ## Installation
 
@@ -24,13 +24,13 @@ VS Code extension to use OpenCode Go models in Copilot Chat with your own OpenCo
 ## Setup
 
 1. Open the Command Palette (`Cmd/Ctrl + Shift + P`).
-2. Run `OpenCode Go: Manage OpenCode Go API Key`.
-3. Enter your OpenCode Go API key, or leave blank and press Enter to clear an existing key.
-4. The extension refreshes the available model list in the background on startup. You can also run `OpenCode Go: Refresh Models` at any time.
+2. Run `NVIDIA NIM: Manage NVIDIA NIM API Key`.
+3. Enter the API key for the current backend endpoint, or leave blank and press Enter to clear an existing key.
+4. The extension refreshes the available model list in the background on startup. You can also run `NVIDIA NIM: Refresh Models` at any time.
 
 ## Supported Models
 
-The extension dynamically fetches available models from OpenCode Go. Fallback models include:
+The extension dynamically fetches available models from the current backend endpoint. Fallback models include:
 
 - GLM-5, GLM-5.1
 - Kimi K2.5, **Kimi K2.6**
@@ -41,7 +41,7 @@ The extension dynamically fetches available models from OpenCode Go. Fallback mo
 ## Usage
 
 1. Open Copilot Chat (`Cmd/Ctrl + Alt + I`).
-2. Select **OpenCode Go** from the provider selector.
+2. Select **NVIDIA NIM** from the provider selector.
 3. Choose a model (e.g., Kimi K2.6) and start chatting.
 
 ## Development
