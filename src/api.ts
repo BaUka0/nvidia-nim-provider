@@ -1,6 +1,6 @@
 import { BASE_RETRY_DELAY_MS, BASE_URL, MAX_RETRY_DELAY_MS } from "./constants";
 import { debugLog } from "./output-channel";
-import { OcGoChatRequest, OcGoStreamResponse } from "./types";
+import { NvidiaModelListResponse, OcGoChatRequest, OcGoStreamResponse } from "./types";
 
 /**
  * Determine whether an HTTP status code is safe to retry.
@@ -95,8 +95,13 @@ export async function fetchModels(
     if (!response.ok) {
       return null;
     }
-    const data = (await response.json()) as { data?: Array<{ id: string; name: string }> };
-    return data.data ?? null;
+    const data = (await response.json()) as NvidiaModelListResponse;
+    return Array.isArray(data.data)
+      ? data.data.map((model) => ({
+          id: model.id,
+          name: model.name ?? model.id,
+        }))
+      : null;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw error;
@@ -125,20 +130,20 @@ export async function* streamChatCompletion(
 
   if (!response.ok) {
     const text = await response.text();
-    let message = `OpenCode Go API error: ${response.status} ${response.statusText}`;
+    let message = `NVIDIA NIM API error: ${response.status} ${response.statusText}`;
     if (response.status === 401 || response.status === 403) {
       message = `Authentication failed. Your API key may be invalid or expired.\n${message}`;
     } else if (response.status === 429) {
       const retryAfter = response.headers.get("retry-after");
       message = `Rate limited. ${retryAfter ? `Retry after ${retryAfter}s. ` : ""}\n${message}`;
     } else if (response.status >= 500 && response.status < 600) {
-      message = `Server error. The OpenCode Go service may be experiencing issues.\n${message}`;
+      message = `Server error. The NVIDIA NIM service may be experiencing issues.\n${message}`;
     }
     throw new Error(`${message}\n${text}`);
   }
 
   if (!response.body) {
-    throw new Error("No response body from OpenCode Go API");
+    throw new Error("No response body from NVIDIA NIM API");
   }
 
   const reader = response.body.getReader();

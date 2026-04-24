@@ -1,5 +1,4 @@
 import { fetchModels, streamChatCompletion } from "../src/api";
-import { BASE_URL } from "../src/constants";
 import { OcGoStreamResponse } from "../src/types";
 
 describe("fetchModels", () => {
@@ -8,16 +7,23 @@ describe("fetchModels", () => {
   });
 
   it("returns models on success", async () => {
-    const mockModels = [{ id: "kimi-k2.6", name: "Kimi K2.6" }];
+    const mockModels = [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        name: "Llama 4 Maverick 17B 128E Instruct",
+      },
+    ];
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ data: mockModels }),
     } as any);
 
     const result = await fetchModels("test-key");
-    expect(result).toEqual(mockModels);
+    expect(result).toEqual([
+      expect.objectContaining({ id: "meta/llama-4-maverick-17b-128e-instruct" }),
+    ]);
     expect(fetch).toHaveBeenCalledWith(
-      `${BASE_URL}/models`,
+      "https://integrate.api.nvidia.com/v1/models",
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer test-key" }),
       }),
@@ -83,7 +89,7 @@ describe("streamChatCompletion", () => {
     } as any);
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
-    await expect(gen.next()).rejects.toThrow("OpenCode Go API error: 500 Internal Server Error");
+    await expect(gen.next()).rejects.toThrow("NVIDIA NIM API error: 500 Internal Server Error");
   });
 
   it("throws authentication error on 401", async () => {
@@ -115,7 +121,12 @@ describe("streamChatCompletion", () => {
   });
 
   it("retries on network failure and succeeds", async () => {
-    const mockModels = [{ id: "kimi-k2.6", name: "Kimi K2.6" }];
+    const mockModels = [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        name: "Llama 4 Maverick 17B 128E Instruct",
+      },
+    ];
     global.fetch = jest
       .fn()
       .mockRejectedValueOnce(new Error("Network error"))
@@ -137,7 +148,12 @@ describe("streamChatCompletion", () => {
     expect(fetch).toHaveBeenCalledTimes(3);
   });
   it("retries on 429 with Retry-After then succeeds", async () => {
-    const mockModels = [{ id: "kimi-k2.6", name: "Kimi K2.6" }];
+    const mockModels = [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        name: "Llama 4 Maverick 17B 128E Instruct",
+      },
+    ];
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce({
@@ -157,7 +173,12 @@ describe("streamChatCompletion", () => {
   });
 
   it("retries on 503 then succeeds", async () => {
-    const mockModels = [{ id: "kimi-k2.6", name: "Kimi K2.6" }];
+    const mockModels = [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        name: "Llama 4 Maverick 17B 128E Instruct",
+      },
+    ];
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce({
