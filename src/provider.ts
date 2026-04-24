@@ -14,6 +14,7 @@ import {
 } from "vscode";
 import { streamChatCompletion } from "./api";
 import { BASE_URL, CONTEXT_WINDOW_SAFETY_MARGIN } from "./constants";
+// TODO(Task 2): Remove this Task 1 compatibility shim import when NVIDIA image fallback is implemented.
 import { OcGoMcpClient } from "./mcp-compat";
 import { debugLog } from "./output-channel";
 import {
@@ -460,6 +461,8 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
   /**
    * Process images for non-vision models by converting them to text descriptions
    * using the OpenCode Go Vision model compatibility shim.
+   * TODO(Task 2): Remove this carried-over network fallback once NVIDIA-specific image handling exists.
+   * Guardrails live in tests/provider.test.ts for both the vision-model switch and shim branch.
    */
   private async processImagesForNonVisionModel(
     messages: readonly LanguageModelChatMessage[],

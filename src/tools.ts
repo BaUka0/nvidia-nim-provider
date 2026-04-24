@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+// TODO(Task 2): Remove this Task 1 compatibility shim import when NVIDIA-specific image tooling is implemented.
 import { OcGoMcpClient } from "./mcp-compat";
 
 /**

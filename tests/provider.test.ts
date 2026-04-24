@@ -1,11 +1,24 @@
 import * as vscode from "vscode";
 import { fetchModels, streamChatCompletion } from "../src/api";
+import { LEGACY_OPENCODE_GO_API_KEY_SECRET } from "../src/mcp-compat";
 import { OcGoChatModelProvider } from "../src/provider";
+
+const mockAnalyzeImage = jest.fn().mockResolvedValue("Mocked image analysis");
 
 jest.mock("../src/api", () => ({
   fetchModels: jest.fn(),
   streamChatCompletion: jest.fn(),
 }));
+
+jest.mock("../src/mcp-compat", () => {
+  const actual = jest.requireActual("../src/mcp-compat") as object;
+  return {
+    ...actual,
+    OcGoMcpClient: jest.fn().mockImplementation(() => ({
+      analyzeImage: mockAnalyzeImage,
+    })),
+  };
+});
 
 jest.mock("vscode", () => ({
   SecretStorage: class {},
@@ -58,6 +71,8 @@ describe("OcGoChatModelProvider", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockAnalyzeImage.mockReset();
+    mockAnalyzeImage.mockResolvedValue("Mocked image analysis");
     secrets = {
       get: jest.fn(),
       store: jest.fn(),
@@ -86,6 +101,10 @@ describe("OcGoChatModelProvider", () => {
     expect(infos.length).toBeGreaterThan(0);
     expect(infos[0].name).toBeDefined();
     expect(fetchModels).not.toHaveBeenCalled();
+  });
+
+  it("exposes the legacy Task 1 compatibility secret key for Task 2 removal", () => {
+    expect(LEGACY_OPENCODE_GO_API_KEY_SECRET).toBe("opencode-go.apiKey");
   });
 
   it("provideLanguageModelChatInformation returns cached models", async () => {
@@ -199,6 +218,50 @@ describe("OcGoChatModelProvider", () => {
     expect(streamChatCompletion).toHaveBeenCalledWith(
       "test-key",
       expect.objectContaining({ model: "mimo-v2-omni", stream: true }),
+      expect.any(AbortSignal),
+      "test-ua",
+    );
+    expect(mockAnalyzeImage).not.toHaveBeenCalled();
+  });
+
+  it("uses the Task 1 compatibility shim when no vision fallback model is available", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    jest.spyOn(provider as never, "getVisionFallbackModelId").mockReturnValue(undefined as never);
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "Fallback shim reply" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "glm-5", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [
+        {
+          role: 1,
+          content: [
+            { value: "What is in this image?" },
+            { mimeType: "image/png", data: new Uint8Array([1, 2, 3]) },
+          ],
+        },
+      ] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    expect(mockAnalyzeImage).toHaveBeenCalledWith(
+      "data:image/png;base64,AQID",
+      "What is in this image?",
+    );
+    expect(streamChatCompletion).toHaveBeenCalledWith(
+      "test-key",
+      expect.objectContaining({ model: "glm-5", stream: true }),
       expect.any(AbortSignal),
       "test-ua",
     );

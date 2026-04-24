@@ -4,12 +4,15 @@ import { BASE_URL } from "./constants";
 /**
  * Temporary compatibility shim for the copied OpenCode Go image-analysis fallback.
  * Task 1 removes src/mcp.ts, but the scaffold still needs the copied runtime behavior.
+ * TODO(Task 2): Remove this file after NVIDIA-specific secret names and image handling land.
  */
+export const LEGACY_OPENCODE_GO_API_KEY_SECRET = "opencode-go.apiKey";
+
 export class OcGoMcpClient {
   constructor(private readonly secrets: vscode.SecretStorage) {}
 
   private async getApiKey(): Promise<string> {
-    return (await this.secrets.get("opencode-go.apiKey")) ?? "";
+    return (await this.secrets.get(LEGACY_OPENCODE_GO_API_KEY_SECRET)) ?? "";
   }
 
   async analyzeImage(imageData: string, prompt: string): Promise<string> {
