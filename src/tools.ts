@@ -1,12 +1,5 @@
 import * as vscode from "vscode";
-import { PROVIDER_DISPLAY_NAME } from "./constants";
-// TODO(Task 2): Remove this Task 1 compatibility shim import when NVIDIA-specific image tooling is implemented.
-import { OcGoMcpClient } from "./mcp-compat";
 
-/**
- * Tool for analyzing images using the NVIDIA NIM vision fallback model.
- * Non-vision models can delegate image content to this tool for analysis.
- */
 export class OcGoAnalyzeImageTool implements vscode.LanguageModelTool<{
   image_data: string;
   prompt: string;
@@ -15,67 +8,37 @@ export class OcGoAnalyzeImageTool implements vscode.LanguageModelTool<{
 
   readonly name = OcGoAnalyzeImageTool.id;
   readonly description =
-    `Analyze an image using ${PROVIDER_DISPLAY_NAME} Vision. Use this tool when you need to ` +
-    "understand or describe the content of an image, extract text from images (OCR), " +
-    "or answer questions about visual content. Returns a detailed analysis of the image.";
-  readonly tags = ["vision", "image", "ocr", "analysis"];
+    "Direct image-analysis fallback is unavailable. Choose a vision-capable NVIDIA NIM model instead.";
+  readonly tags = ["vision", "image"];
 
   readonly inputSchema = {
     type: "object" as const,
     properties: {
       image_data: {
         type: "string",
-        description:
-          "Base64-encoded image data URL (e.g., 'data:image/png;base64,...'). The image to analyze.",
+        description: "Deprecated image data input.",
       },
       prompt: {
         type: "string",
-        description:
-          "The question or instruction about what to analyze in the image. Be specific about what you want to know.",
+        description: "Deprecated prompt input.",
       },
     },
     required: ["image_data", "prompt"],
   };
 
-  private readonly mcpClient: OcGoMcpClient;
-
-  constructor(secrets: vscode.SecretStorage) {
-    this.mcpClient = new OcGoMcpClient(secrets);
+  async invoke(): Promise<vscode.LanguageModelToolResult> {
+    return new vscode.LanguageModelToolResult([
+      new vscode.LanguageModelTextPart(
+        "Direct image-analysis fallback is unavailable. Choose a vision-capable NVIDIA NIM model instead.",
+      ),
+    ]);
   }
 
-  async invoke(
-    options: vscode.LanguageModelToolInvocationOptions<{ image_data: string; prompt: string }>,
-    _token: vscode.CancellationToken,
-  ): Promise<vscode.LanguageModelToolResult> {
-    const { image_data, prompt } = options.input;
-    try {
-      const result = await this.mcpClient.analyzeImage(image_data, prompt);
-      return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(result)]);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      return new vscode.LanguageModelToolResult([
-        new vscode.LanguageModelTextPart(`Failed to analyze image: ${errorMessage}`),
-      ]);
-    }
-  }
-
-  prepareInvocation?(
-    _options: vscode.LanguageModelToolInvocationPrepareOptions<{
-      image_data: string;
-      prompt: string;
-    }>,
-    _token: vscode.CancellationToken,
-  ): vscode.ProviderResult<vscode.PreparedToolInvocation> {
-    return { invocationMessage: `Analyzing image with ${PROVIDER_DISPLAY_NAME} Vision...` };
+  prepareInvocation?(): vscode.ProviderResult<vscode.PreparedToolInvocation> {
+    return { invocationMessage: "Checking NVIDIA NIM vision support..." };
   }
 }
 
-/**
- * Register all NVIDIA NIM tools with the Language Model API.
- * @param secrets VS Code secret storage for API key access
- * @returns Disposable for the tool registrations
- */
-export function registerOcGoTools(secrets: vscode.SecretStorage): vscode.Disposable {
-  const analyzeImageTool = new OcGoAnalyzeImageTool(secrets);
-  return vscode.Disposable.from(vscode.lm.registerTool(OcGoAnalyzeImageTool.id, analyzeImageTool));
+export function registerOcGoTools(_secrets: vscode.SecretStorage): vscode.Disposable {
+  return vscode.Disposable.from();
 }

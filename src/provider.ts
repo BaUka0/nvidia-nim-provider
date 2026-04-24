@@ -14,29 +14,19 @@ import {
 } from "vscode";
 import { streamChatCompletion } from "./api";
 import {
-  BASE_URL,
   CONTEXT_WINDOW_SAFETY_MARGIN,
   MODELS_STATE_KEY,
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
   SECRET_STORAGE_KEY,
 } from "./constants";
-// This fallback stays until the dedicated NVIDIA image path replaces the copied scaffold behavior.
-import { OcGoMcpClient } from "./mcp-compat";
+import { NormalizedNvidiaModel, normalizeNvidiaModels } from "./model-catalog";
 import { debugLog } from "./output-channel";
-import {
-  AnthropicRequestBody,
-  AnthropicSSEEvent,
-  FALLBACK_MODELS,
-  OcGoModelInfo,
-  type Json,
-} from "./types";
+import { FALLBACK_MODELS, NvidiaModelSummary } from "./types";
 import {
   applyReasoningContentWorkaround,
   convertMessages,
-  convertMessagesToAnthropic,
   convertTools,
-  convertToolsToAnthropic,
   estimateMessagesTokens,
   LegacyPart,
 } from "./utils";
@@ -80,6 +70,33 @@ interface ChatRequestContext {
   startLine?: number;
   endLine?: number;
   cwd?: string;
+}
+
+function isNormalizedNvidiaModel(value: unknown): value is NormalizedNvidiaModel {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Partial<NormalizedNvidiaModel>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.displayName === "string" &&
+    typeof candidate.contextWindow === "number" &&
+    typeof candidate.maxOutputTokens === "number" &&
+    typeof candidate.supportsTools === "boolean" &&
+    typeof candidate.supportsVision === "boolean"
+  );
+}
+
+function getFallbackModels(): NormalizedNvidiaModel[] {
+  return FALLBACK_MODELS.map((model) => ({
+    id: model.id,
+    displayName: model.displayName,
+    contextWindow: model.contextWindow,
+    maxOutputTokens: model.maxOutput,
+    supportsTools: model.supportsTools,
+    supportsVision: model.supportsVision,
+  }));
 }
 
 function buildToolCallCanonicalKey(name: string, args: unknown): string {
@@ -405,51 +422,45 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
   readonly onDidChangeLanguageModelChatInformation: Event<void> =
     this._onDidChangeLanguageModelChatInformation.event;
 
-  private readonly mcpClient: OcGoMcpClient;
-
   constructor(
     private readonly secrets: vscode.SecretStorage,
     private readonly userAgent: string,
     private readonly globalState?: vscode.Memento,
-  ) {
-    this.mcpClient = new OcGoMcpClient(secrets);
-  }
+  ) {}
 
   fireModelInfoChanged(): void {
     this._onDidChangeLanguageModelChatInformation.fire();
   }
 
-  /** Look up FALLBACK_MODELS entry by model id. */
-  private getModelInfo(modelId: string): OcGoModelInfo | undefined {
-    return FALLBACK_MODELS.find((m) => m.id === modelId);
-  }
+  private getNormalizedModels(): NormalizedNvidiaModel[] {
+    const storedModels =
+      this.globalState?.get<NormalizedNvidiaModel[] | NvidiaModelSummary[]>(MODELS_STATE_KEY) ?? [];
 
-  /** Return true if the model natively accepts image inputs. */
-  private modelSupportsVision(modelId: string): boolean {
-    return this.getModelInfo(modelId)?.supportsVision ?? false;
-  }
-
-  /** Return the preferred vision fallback model id (mimo-v2-omni preferred). */
-  private getVisionFallbackModelId(): string | undefined {
-    const preferred = FALLBACK_MODELS.find((m) => m.id === "mimo-v2-omni" && m.supportsVision);
-    return preferred?.id ?? FALLBACK_MODELS.find((m) => m.supportsVision)?.id;
-  }
-
-  /**
-   * Calculate max tool result characters based on model context window.
-   * Larger context windows allow larger tool results.
-   */
-  private calculateMaxToolResultChars(modelId: string): number {
-    const modelInfo = this.getModelInfo(modelId);
-    const contextWindow = modelInfo?.contextWindow ?? 262144;
-    if (contextWindow >= 500000) {
-      return 50000; // Very large context (e.g. Qwen, MiMo Pro)
-    } else if (contextWindow >= 200000) {
-      return 30000; // Large context (e.g. Kimi K2.6)
-    } else if (contextWindow >= 100000) {
-      return 20000; // Medium context
+    if (storedModels.length === 0) {
+      return [];
     }
-    return 10000; // Smaller context
+
+    return storedModels.every((model) => isNormalizedNvidiaModel(model))
+      ? (storedModels as NormalizedNvidiaModel[])
+      : normalizeNvidiaModels(storedModels as NvidiaModelSummary[]);
+  }
+
+  private getAvailableModels(): NormalizedNvidiaModel[] {
+    const normalizedModels = this.getNormalizedModels();
+    return normalizedModels.length > 0 ? normalizedModels : getFallbackModels();
+  }
+
+  private calculateMaxToolResultChars(contextWindow: number): number {
+    if (contextWindow >= 500000) {
+      return 50000;
+    }
+    if (contextWindow >= 200000) {
+      return 30000;
+    }
+    if (contextWindow >= 100000) {
+      return 20000;
+    }
+    return 10000;
   }
 
   /** Return true if any message contains image input parts. */
@@ -465,246 +476,6 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     return false;
   }
 
-  /**
-   * Process images for non-vision models by converting them to text descriptions
-   * using the NVIDIA NIM image compatibility shim.
-   * TODO(Task 2): Remove this carried-over network fallback once NVIDIA-specific image handling exists.
-   * Guardrails live in tests/provider.test.ts for both the vision-model switch and shim branch.
-   */
-  private async processImagesForNonVisionModel(
-    messages: readonly LanguageModelChatMessage[],
-    token: CancellationToken,
-  ): Promise<LanguageModelChatMessage[]> {
-    const processedMessages: LanguageModelChatMessage[] = [];
-
-    for (const msg of messages) {
-      const textParts: string[] = [];
-      for (const part of msg.content) {
-        if (part instanceof vscode.LanguageModelTextPart) {
-          textParts.push(part.value);
-        } else if (
-          typeof part === "object" &&
-          part !== null &&
-          "value" in part &&
-          typeof (part as { value?: unknown }).value === "string"
-        ) {
-          textParts.push((part as { value: string }).value);
-        }
-      }
-
-      const images: Array<{ mimeType: string; data: Uint8Array }> = [];
-      for (const part of msg.content) {
-        const p = part as { mimeType?: unknown; data?: unknown; bytes?: unknown };
-        if (typeof p.mimeType !== "string" || !p.mimeType.startsWith("image/")) continue;
-        let data: Uint8Array | undefined;
-        if (p.data instanceof Uint8Array && p.data.length > 0) data = p.data;
-        else if (p.bytes instanceof Uint8Array && p.bytes.length > 0) data = p.bytes;
-        else if (Array.isArray(p.data) && p.data.length > 0)
-          data = new Uint8Array(p.data as number[]);
-        else if (Array.isArray(p.bytes) && p.bytes.length > 0)
-          data = new Uint8Array(p.bytes as number[]);
-        if (data) images.push({ mimeType: p.mimeType, data });
-      }
-
-      if (images.length === 0) {
-        processedMessages.push(msg);
-        continue;
-      }
-
-      const userPrompt = textParts.join(" ");
-      const descriptions: string[] = [];
-
-      for (const img of images) {
-        if (token.isCancellationRequested) throw new vscode.CancellationError();
-        const base64Data = Buffer.from(img.data).toString("base64");
-        const imageDataUrl = `data:${img.mimeType};base64,${base64Data}`;
-        const analysisPrompt = userPrompt || "Describe this image in detail.";
-        const description = await this.mcpClient.analyzeImage(imageDataUrl, analysisPrompt);
-        descriptions.push(description);
-      }
-
-      const newContent: vscode.LanguageModelTextPart[] = textParts.map(
-        (text) => new vscode.LanguageModelTextPart(text),
-      );
-      if (descriptions.length > 0) {
-        newContent.push(
-          new vscode.LanguageModelTextPart(
-            `\n\n[Image Analysis]:\n${descriptions.join("\n\n---\n\n")}`,
-          ),
-        );
-      }
-      processedMessages.push(vscode.LanguageModelChatMessage.User(newContent));
-    }
-
-    return processedMessages;
-  }
-
-  /**
-   * Handle an Anthropic Messages API request (for MiniMax M2.5 / M2.7).
-   */
-  private async handleAnthropicRequest(
-    modelId: string,
-    messages: readonly LanguageModelChatMessage[],
-    options: ProvideLanguageModelChatResponseOptions,
-    apiKey: string,
-    requestedMaxTokens: number,
-    temperatureVal: number,
-    progress: Progress<LanguageModelResponsePart>,
-    token: CancellationToken,
-    abortController: AbortController,
-  ): Promise<void> {
-    const toolConfig = convertToolsToAnthropic(options);
-    const { messages: apiMessages, system } = convertMessagesToAnthropic(messages, {
-      maxToolResultChars: 20000,
-    });
-
-    if (apiMessages.length === 0) {
-      throw new Error("No messages to send to Anthropic API");
-    }
-
-    const requestBody: AnthropicRequestBody = {
-      model: modelId,
-      messages: apiMessages,
-      max_tokens: Math.max(1, requestedMaxTokens),
-      stream: true,
-    };
-
-    if (system) requestBody.system = system;
-    if (typeof temperatureVal === "number" && temperatureVal > 0) {
-      requestBody.temperature = temperatureVal;
-    }
-    if (toolConfig.tools && toolConfig.tools.length > 0) {
-      requestBody.tools = toolConfig.tools;
-      if (toolConfig.tool_choice && toolConfig.tool_choice !== "auto") {
-        requestBody.tool_choice = toolConfig.tool_choice;
-      }
-    }
-
-    const response = await fetch(`${BASE_URL}/messages`, {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-        "User-Agent": this.userAgent,
-      },
-      signal: abortController.signal,
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `${PROVIDER_DISPLAY_NAME} Anthropic API error: ${response.status} ${response.statusText}\n${errorText}`,
-      );
-    }
-
-    if (!response.body) {
-      throw new Error("No response body from Anthropic API");
-    }
-
-    await this.processAnthropicStreamingResponse(response.body, progress, token);
-  }
-
-  /**
-   * Process an Anthropic-format streaming SSE response.
-   */
-  private async processAnthropicStreamingResponse(
-    body: ReadableStream<Uint8Array>,
-    progress: Progress<LanguageModelResponsePart>,
-    token: CancellationToken,
-  ): Promise<void> {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    // Track active tool_use blocks: index -> { id, name, inputJson }
-    const activeToolCalls = new Map<number, { id: string; name: string; inputJson: string }>();
-
-    try {
-      while (!token.isCancellationRequested) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith("data:")) continue;
-
-          const jsonStr = trimmed.slice(5).trim();
-          if (!jsonStr || jsonStr === "[DONE]") continue;
-
-          let event: AnthropicSSEEvent;
-          try {
-            event = JSON.parse(jsonStr) as AnthropicSSEEvent;
-          } catch {
-            continue;
-          }
-
-          switch (event.type) {
-            case "message_start":
-              break;
-
-            case "content_block_start": {
-              const cb = (
-                event as { content_block?: { type?: string; id?: string; name?: string } }
-              ).content_block;
-              if (cb?.type === "tool_use") {
-                const idx = (event as { index: number }).index;
-                const toolId = cb.id ?? `tu_${Math.random().toString(36).slice(2, 10)}`;
-                const toolName = cb.name ?? "unknown_tool";
-                activeToolCalls.set(idx, { id: toolId, name: toolName, inputJson: "" });
-              }
-              break;
-            }
-
-            case "content_block_delta": {
-              const deltaEvt = event as {
-                index: number;
-                delta?: { type?: string; text?: string; partial_json?: string };
-              };
-              if (deltaEvt.delta?.type === "text_delta") {
-                const text = deltaEvt.delta.text ?? "";
-                if (text) progress.report(new vscode.LanguageModelTextPart(text));
-              } else if (deltaEvt.delta?.type === "input_json_delta") {
-                const partialJson = deltaEvt.delta.partial_json ?? "";
-                const tc = activeToolCalls.get(deltaEvt.index);
-                if (tc) tc.inputJson += partialJson;
-              }
-              break;
-            }
-
-            case "content_block_stop": {
-              const idx = (event as { index: number }).index;
-              const tc = activeToolCalls.get(idx);
-              if (tc) {
-                let input: Record<string, Json> = {};
-                if (tc.inputJson.trim()) {
-                  try {
-                    input = JSON.parse(tc.inputJson) as Record<string, Json>;
-                  } catch {
-                    // keep empty input
-                  }
-                }
-                progress.report(new vscode.LanguageModelToolCallPart(tc.id, tc.name, input));
-                activeToolCalls.delete(idx);
-              }
-              break;
-            }
-
-            case "message_delta":
-            case "message_stop":
-              break;
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  }
-
   async provideLanguageModelChatInformation(
     options: PrepareLanguageModelChatModelOptions,
     token: CancellationToken,
@@ -713,48 +484,30 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       return [];
     }
 
-    // When silent, avoid prompting or network calls; return cached/fallback models immediately.
     if (options.silent) {
-      const cached = this.globalState?.get<Array<{ id: string; name: string }>>(MODELS_STATE_KEY);
-      const models = cached && cached.length > 0 ? cached : FALLBACK_MODELS;
-      return this._mapToChatInformation(models);
+      return this._mapToChatInformation(this.getAvailableModels());
     }
 
-    // Non-silent: return cached/fallback models immediately so the chat UI never blocks.
-    const cached = this.globalState?.get<Array<{ id: string; name: string }>>(MODELS_STATE_KEY);
-    const models = cached && cached.length > 0 ? cached : FALLBACK_MODELS;
-
-    return this._mapToChatInformation(models);
+    return this._mapToChatInformation(this.getAvailableModels());
   }
 
-  private _mapToChatInformation(
-    models: Array<{ id: string; name: string }>,
-  ): LanguageModelChatInformation[] {
-    return models.map((model: { id: string; name: string }) => {
-      const info = FALLBACK_MODELS.find((m) => m.id === model.id) ?? {
-        id: model.id,
-        name: model.name,
-        displayName: model.name,
-        contextWindow: 262144,
-        maxOutput: 65536,
-        supportsTools: true,
-        supportsVision: false,
-      };
+  private _mapToChatInformation(models: readonly NormalizedNvidiaModel[]): LanguageModelChatInformation[] {
+    return models.map((info) => {
       return {
         id: info.id,
         name: info.displayName,
         detail: PROVIDER_DISPLAY_NAME,
-        tooltip: `${PROVIDER_DISPLAY_NAME} ${info.name}`,
+        tooltip: `${PROVIDER_DISPLAY_NAME} ${info.displayName}`,
         family: PROVIDER_VENDOR,
         version: "1.0.0",
         maxInputTokens: Math.max(
           1,
-          info.contextWindow - Math.min(info.maxOutput, DEFAULT_MAX_TOKENS),
+          info.contextWindow - Math.min(info.maxOutputTokens, DEFAULT_MAX_TOKENS),
         ),
-        maxOutputTokens: info.maxOutput,
+        maxOutputTokens: info.maxOutputTokens,
         capabilities: {
           toolCalling: info.supportsTools ? 128 : false,
-          imageInput: true,
+          imageInput: info.supportsVision,
         },
       };
     });
@@ -799,56 +552,37 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         model.maxOutputTokens,
       );
 
-      // Resolve model info for apiFormat and fixedTemperature
-      const modelInfo = this.getModelInfo(model.id);
-      const apiFormat = modelInfo?.apiFormat ?? "openai";
+      const modelInfo = this.getAvailableModels().find((entry) => entry.id === model.id);
       const temperatureVal =
-        typeof modelInfo?.fixedTemperature === "number"
-          ? modelInfo.fixedTemperature
-          : typeof (options.modelOptions as Record<string, unknown>)?.temperature === "number"
-            ? ((options.modelOptions as Record<string, unknown>).temperature as number)
-            : 0.7;
+        typeof (options.modelOptions as Record<string, unknown>)?.temperature === "number"
+          ? ((options.modelOptions as Record<string, unknown>).temperature as number)
+          : 0.7;
+      const supportsTools = modelInfo?.supportsTools ?? false;
+      const supportsVision = modelInfo?.supportsVision ?? false;
 
       const hasImages = this.hasImageInput(messages);
-      let effectiveMessages: readonly LanguageModelChatMessage[] = messages;
-      let effectiveModelId = model.id;
-
-      if (hasImages && !this.modelSupportsVision(model.id)) {
-        const visionFallback = this.getVisionFallbackModelId();
-        if (visionFallback && visionFallback !== model.id) {
-          effectiveModelId = visionFallback;
-        } else {
-          effectiveMessages = await this.processImagesForNonVisionModel(messages, token);
-        }
-      }
-
-      // Dispatch to Anthropic format for MiniMax models
-      if (apiFormat === "anthropic") {
-        await this.handleAnthropicRequest(
-          effectiveModelId,
-          effectiveMessages,
-          options,
-          apiKey,
-          requestedMaxTokens,
-          temperatureVal,
-          progress,
-          token,
-          abortController,
+      if (hasImages && !supportsVision) {
+        progress.report(
+          new vscode.LanguageModelTextPart(
+            "The selected NVIDIA NIM model does not support image input.",
+          ),
         );
         return;
       }
 
-      // Dynamically adjust max tool result chars based on model context window
-      const maxToolResultChars = this.calculateMaxToolResultChars(effectiveModelId);
+      const maxToolResultChars = this.calculateMaxToolResultChars(
+        modelInfo?.contextWindow ?? model.maxInputTokens + model.maxOutputTokens,
+      );
 
-      let apiMessages = convertMessages(effectiveMessages, {
+      let apiMessages = convertMessages(messages, {
         maxToolResultChars,
+        supportsVision,
       });
-      apiMessages = applyReasoningContentWorkaround(apiMessages, effectiveModelId);
+      apiMessages = applyReasoningContentWorkaround(apiMessages, model.id);
 
-      const toolConfig = convertTools(options);
+      const toolConfig = supportsTools ? convertTools(options) : {};
       const requestBody: import("./types").OcGoChatRequest = {
-        model: effectiveModelId,
+        model: model.id,
         messages: apiMessages,
         stream: true,
         max_tokens: requestedMaxTokens,

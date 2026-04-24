@@ -47,7 +47,7 @@ describe("convertMessages", () => {
     expect(result).toEqual<OcGoChatMessage[]>([{ role: "user", content: "(empty message)" }]);
   });
 
-  it("converts image parts to base64", () => {
+  it("converts image parts to image_url for vision-capable models", () => {
     const imageData = new Uint8Array([1, 2, 3]);
     const messages = [
       {
@@ -55,12 +55,27 @@ describe("convertMessages", () => {
         content: [{ mimeType: "image/png", data: imageData }],
       },
     ];
-    const result = convertMessages(messages as any);
+    const result = convertMessages(messages as any, { supportsVision: true });
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("user");
     const content = result[0].content as Array<{ type: string; image_url?: { url: string } }>;
     expect(content[0].type).toBe("image_url");
     expect(content[0].image_url?.url).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("does not convert image parts when vision is not supported", () => {
+    const imageData = new Uint8Array([1, 2, 3]);
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [
+          new vscode.LanguageModelTextPart("Describe this image"),
+          { mimeType: "image/png", data: imageData },
+        ],
+      },
+    ];
+    const result = convertMessages(messages as any, { supportsVision: false });
+    expect(result).toEqual<OcGoChatMessage[]>([{ role: "user", content: "Describe this image" }]);
   });
 });
 

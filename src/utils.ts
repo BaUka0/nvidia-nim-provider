@@ -274,7 +274,7 @@ function buildToolDescription(
 
 export function convertMessages(
   messages: readonly vscode.LanguageModelChatMessage[],
-  options?: { maxToolResultChars?: number },
+  options?: { maxToolResultChars?: number; supportsVision?: boolean },
 ): OcGoChatMessage[] {
   const result: OcGoChatMessage[] = [];
 
@@ -299,12 +299,15 @@ export function convertMessages(
         continue;
       }
       const img = extractImageData(part);
-      if (img) {
+      if (img && options?.supportsVision) {
         const base64 = Buffer.from(img.data).toString("base64");
         imageParts.push({
           type: "image_url",
           image_url: { url: `data:${img.mimeType};base64,${base64}` },
         });
+        continue;
+      }
+      if (img) {
         continue;
       }
       console.warn("[OpenCode Go Provider] Unrecognized message part:", part);

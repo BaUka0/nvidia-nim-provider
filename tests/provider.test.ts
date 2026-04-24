@@ -1,24 +1,12 @@
 import * as vscode from "vscode";
 import { fetchModels, streamChatCompletion } from "../src/api";
-import { OcGoMcpClient } from "../src/mcp-compat";
 import { OcGoChatModelProvider } from "../src/provider";
 
-const mockAnalyzeImage = jest.fn().mockResolvedValue("Mocked image analysis");
 
 jest.mock("../src/api", () => ({
   fetchModels: jest.fn(),
   streamChatCompletion: jest.fn(),
 }));
-
-jest.mock("../src/mcp-compat", () => {
-  const actual = jest.requireActual("../src/mcp-compat") as object;
-  return {
-    ...actual,
-    OcGoMcpClient: jest.fn().mockImplementation(() => ({
-      analyzeImage: mockAnalyzeImage,
-    })),
-  };
-});
 
 jest.mock("vscode", () => ({
   SecretStorage: class {},
@@ -71,8 +59,6 @@ describe("OcGoChatModelProvider", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockAnalyzeImage.mockReset();
-    mockAnalyzeImage.mockResolvedValue("Mocked image analysis");
     secrets = {
       get: jest.fn(),
       store: jest.fn(),
@@ -80,7 +66,24 @@ describe("OcGoChatModelProvider", () => {
       onDidChange: jest.fn(),
     } as unknown as vscode.SecretStorage;
     globalState = {
-      get: jest.fn(),
+      get: jest.fn().mockImplementation(() => [
+        {
+          id: "kimi-k2.6",
+          displayName: "Kimi K2.6",
+          contextWindow: 262144,
+          maxOutputTokens: 262144,
+          supportsTools: true,
+          supportsVision: true,
+        },
+        {
+          id: "meta/llama-4-maverick-17b-128e-instruct",
+          displayName: "Llama 4 Maverick 17B 128E Instruct",
+          contextWindow: 131072,
+          maxOutputTokens: 16384,
+          supportsTools: true,
+          supportsVision: false,
+        },
+      ]),
       update: jest.fn(),
       keys: jest.fn(),
     } as unknown as vscode.Memento;
@@ -104,10 +107,6 @@ describe("OcGoChatModelProvider", () => {
     expect(fetchModels).not.toHaveBeenCalled();
   });
 
-  it("keeps the image-analysis fallback client wired during the Task 2 rebrand", () => {
-    expect(OcGoMcpClient).toBeDefined();
-  });
-
   it("provideLanguageModelChatInformation returns cached models", async () => {
     const cachedModels = [{ id: "cached-model", name: "Cached Model" }];
     (globalState.get as jest.Mock).mockReturnValue(cachedModels);
@@ -129,8 +128,17 @@ describe("OcGoChatModelProvider", () => {
     expect(fetchModels).not.toHaveBeenCalled();
   });
 
-  it("advertises image input support for non-vision models via the fallback path", async () => {
-    (globalState.get as jest.Mock).mockReturnValue(undefined);
+  it("does not advertise image input for non-vision normalized models", async () => {
+    (globalState.get as jest.Mock).mockReturnValue([
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        displayName: "Llama 4 Maverick 17B 128E Instruct",
+        contextWindow: 131072,
+        maxOutputTokens: 16384,
+        supportsTools: true,
+        supportsVision: false,
+      },
+    ]);
     const token = {
       isCancellationRequested: false,
       onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
@@ -141,8 +149,9 @@ describe("OcGoChatModelProvider", () => {
       token as any,
     );
 
-    const glmInfo = infos.find((info) => info.id === "glm-5");
-    expect(glmInfo?.capabilities?.imageInput).toBe(true);
+    expect(infos).toHaveLength(1);
+    expect(infos[0].capabilities?.imageInput).toBe(false);
+    expect(infos[0].capabilities?.toolCalling).toBe(128);
   });
 
   it("provideLanguageModelChatInformation returns empty array on cancellation", async () => {
@@ -190,13 +199,18 @@ describe("OcGoChatModelProvider", () => {
     expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Hello world" }));
   });
 
-  it("routes image input on non-vision models through the mimo-v2-omni fallback model", async () => {
+  it("reports unsupported image input for non-vision normalized models", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
-
-    const mockStream = async function* () {
-      yield { choices: [{ delta: { content: "Vision fallback reply" } }] };
-    };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+    (globalState.get as jest.Mock).mockReturnValue([
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        displayName: "Llama 4 Maverick 17B 128E Instruct",
+        contextWindow: 131072,
+        maxOutputTokens: 16384,
+        supportsTools: true,
+        supportsVision: false,
+      },
+    ]);
 
     const progress = { report: jest.fn() };
     const token = {
@@ -205,7 +219,11 @@ describe("OcGoChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "glm-5", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        maxInputTokens: 100000,
+        maxOutputTokens: 16384,
+      } as any,
       [
         {
           role: 1,
@@ -220,21 +238,27 @@ describe("OcGoChatModelProvider", () => {
       token as any,
     );
 
-    expect(streamChatCompletion).toHaveBeenCalledWith(
-      "test-key",
-      expect.objectContaining({ model: "mimo-v2-omni", stream: true }),
-      expect.any(AbortSignal),
-      "test-ua",
+    expect(streamChatCompletion).not.toHaveBeenCalled();
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: expect.stringContaining("does not support image input") }),
     );
-    expect(mockAnalyzeImage).not.toHaveBeenCalled();
   });
 
-  it("uses the Task 1 compatibility shim when no vision fallback model is available", async () => {
+  it("converts image parts to image_url content for vision-capable normalized models", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
-    jest.spyOn(provider as never, "getVisionFallbackModelId").mockReturnValue(undefined as never);
+    (globalState.get as jest.Mock).mockReturnValue([
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        displayName: "Llama 4 Maverick 17B 128E Instruct",
+        contextWindow: 131072,
+        maxOutputTokens: 16384,
+        supportsTools: true,
+        supportsVision: true,
+      },
+    ]);
 
     const mockStream = async function* () {
-      yield { choices: [{ delta: { content: "Fallback shim reply" } }] };
+      yield { choices: [{ delta: { content: "Vision reply" } }] };
     };
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
@@ -245,7 +269,11 @@ describe("OcGoChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "glm-5", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        maxInputTokens: 100000,
+        maxOutputTokens: 16384,
+      } as any,
       [
         {
           role: 1,
@@ -260,15 +288,19 @@ describe("OcGoChatModelProvider", () => {
       token as any,
     );
 
-    expect(mockAnalyzeImage).toHaveBeenCalledWith(
-      "data:image/png;base64,AQID",
-      "What is in this image?",
-    );
-    expect(streamChatCompletion).toHaveBeenCalledWith(
-      "test-key",
-      expect.objectContaining({ model: "glm-5", stream: true }),
-      expect.any(AbortSignal),
-      "test-ua",
+    const requestBody = (streamChatCompletion as jest.Mock).mock.calls[0][1];
+    expect(requestBody.model).toBe("meta/llama-4-maverick-17b-128e-instruct");
+    expect(requestBody.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: expect.arrayContaining([
+            expect.objectContaining({
+              type: "image_url",
+              image_url: { url: expect.stringMatching(/^data:image\/png;base64,/) },
+            }),
+          ]),
+        }),
+      ]),
     );
   });
 
@@ -359,6 +391,16 @@ describe("OcGoChatModelProvider", () => {
 
   it("streams tool call parts", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (globalState.get as jest.Mock).mockReturnValue([
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        displayName: "Llama 4 Maverick 17B 128E Instruct",
+        contextWindow: 131072,
+        maxOutputTokens: 16384,
+        supportsTools: true,
+        supportsVision: false,
+      },
+    ]);
 
     const mockStream = async function* () {
       yield {
@@ -387,7 +429,11 @@ describe("OcGoChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        maxInputTokens: 100000,
+        maxOutputTokens: 16384,
+      } as any,
       [{ role: 1, content: [{ value: "Hi" }] }] as any,
       {
         modelOptions: {},
@@ -397,6 +443,15 @@ describe("OcGoChatModelProvider", () => {
       token as any,
     );
 
+    expect(streamChatCompletion).toHaveBeenCalledWith(
+      "test-key",
+      expect.objectContaining({
+        model: "meta/llama-4-maverick-17b-128e-instruct",
+        tools: expect.any(Array),
+      }),
+      expect.any(AbortSignal),
+      "test-ua",
+    );
     const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
     expect(toolCallReports.length).toBe(1);
     expect(toolCallReports[0][0].callId).toBe("call_1");
