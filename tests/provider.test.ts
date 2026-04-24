@@ -10,6 +10,9 @@ jest.mock("../src/api", () => ({
 jest.mock("vscode", () => ({
   SecretStorage: class {},
   LanguageModelChatMessageRole: { User: 1, Assistant: 2, System: 0 },
+  LanguageModelChatMessage: {
+    User: (content: unknown[]) => ({ role: 1, content }),
+  },
   LanguageModelChatToolMode: { Auto: 1, Required: 2 },
   LanguageModelTextPart: class {
     constructor(public value: string) {}
@@ -102,6 +105,22 @@ describe("OcGoChatModelProvider", () => {
     expect(fetchModels).not.toHaveBeenCalled();
   });
 
+  it("advertises image input support for non-vision models via the fallback path", async () => {
+    (globalState.get as jest.Mock).mockReturnValue(undefined);
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    const infos = await provider.provideLanguageModelChatInformation(
+      { silent: true } as any,
+      token as any,
+    );
+
+    const glmInfo = infos.find((info) => info.id === "glm-5");
+    expect(glmInfo?.capabilities?.imageInput).toBe(true);
+  });
+
   it("provideLanguageModelChatInformation returns empty array on cancellation", async () => {
     const token = {
       isCancellationRequested: true,
@@ -145,6 +164,44 @@ describe("OcGoChatModelProvider", () => {
     );
     expect(progress.report).toHaveBeenCalledTimes(1);
     expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Hello world" }));
+  });
+
+  it("routes image input on non-vision models through the mimo-v2-omni fallback model", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "Vision fallback reply" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "glm-5", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [
+        {
+          role: 1,
+          content: [
+            { value: "What is in this image?" },
+            { mimeType: "image/png", data: new Uint8Array([1, 2, 3]) },
+          ],
+        },
+      ] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledWith(
+      "test-key",
+      expect.objectContaining({ model: "mimo-v2-omni", stream: true }),
+      expect.any(AbortSignal),
+      "test-ua",
+    );
   });
 
   it("throws when message exceeds token limit", async () => {

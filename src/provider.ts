@@ -14,6 +14,7 @@ import {
 } from "vscode";
 import { streamChatCompletion } from "./api";
 import { BASE_URL, CONTEXT_WINDOW_SAFETY_MARGIN } from "./constants";
+import { OcGoMcpClient } from "./mcp-compat";
 import { debugLog } from "./output-channel";
 import {
   AnthropicRequestBody,
@@ -396,11 +397,15 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
   readonly onDidChangeLanguageModelChatInformation: Event<void> =
     this._onDidChangeLanguageModelChatInformation.event;
 
+  private readonly mcpClient: OcGoMcpClient;
+
   constructor(
     private readonly secrets: vscode.SecretStorage,
     private readonly userAgent: string,
     private readonly globalState?: vscode.Memento,
-  ) {}
+  ) {
+    this.mcpClient = new OcGoMcpClient(secrets);
+  }
 
   fireModelInfoChanged(): void {
     this._onDidChangeLanguageModelChatInformation.fire();
@@ -414,6 +419,12 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
   /** Return true if the model natively accepts image inputs. */
   private modelSupportsVision(modelId: string): boolean {
     return this.getModelInfo(modelId)?.supportsVision ?? false;
+  }
+
+  /** Return the preferred vision fallback model id (mimo-v2-omni preferred). */
+  private getVisionFallbackModelId(): string | undefined {
+    const preferred = FALLBACK_MODELS.find((m) => m.id === "mimo-v2-omni" && m.supportsVision);
+    return preferred?.id ?? FALLBACK_MODELS.find((m) => m.supportsVision)?.id;
   }
 
   /**
@@ -444,6 +455,78 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       }
     }
     return false;
+  }
+
+  /**
+   * Process images for non-vision models by converting them to text descriptions
+   * using the OpenCode Go Vision model compatibility shim.
+   */
+  private async processImagesForNonVisionModel(
+    messages: readonly LanguageModelChatMessage[],
+    token: CancellationToken,
+  ): Promise<LanguageModelChatMessage[]> {
+    const processedMessages: LanguageModelChatMessage[] = [];
+
+    for (const msg of messages) {
+      const textParts: string[] = [];
+      for (const part of msg.content) {
+        if (part instanceof vscode.LanguageModelTextPart) {
+          textParts.push(part.value);
+        } else if (
+          typeof part === "object" &&
+          part !== null &&
+          "value" in part &&
+          typeof (part as { value?: unknown }).value === "string"
+        ) {
+          textParts.push((part as { value: string }).value);
+        }
+      }
+
+      const images: Array<{ mimeType: string; data: Uint8Array }> = [];
+      for (const part of msg.content) {
+        const p = part as { mimeType?: unknown; data?: unknown; bytes?: unknown };
+        if (typeof p.mimeType !== "string" || !p.mimeType.startsWith("image/")) continue;
+        let data: Uint8Array | undefined;
+        if (p.data instanceof Uint8Array && p.data.length > 0) data = p.data;
+        else if (p.bytes instanceof Uint8Array && p.bytes.length > 0) data = p.bytes;
+        else if (Array.isArray(p.data) && p.data.length > 0)
+          data = new Uint8Array(p.data as number[]);
+        else if (Array.isArray(p.bytes) && p.bytes.length > 0)
+          data = new Uint8Array(p.bytes as number[]);
+        if (data) images.push({ mimeType: p.mimeType, data });
+      }
+
+      if (images.length === 0) {
+        processedMessages.push(msg);
+        continue;
+      }
+
+      const userPrompt = textParts.join(" ");
+      const descriptions: string[] = [];
+
+      for (const img of images) {
+        if (token.isCancellationRequested) throw new vscode.CancellationError();
+        const base64Data = Buffer.from(img.data).toString("base64");
+        const imageDataUrl = `data:${img.mimeType};base64,${base64Data}`;
+        const analysisPrompt = userPrompt || "Describe this image in detail.";
+        const description = await this.mcpClient.analyzeImage(imageDataUrl, analysisPrompt);
+        descriptions.push(description);
+      }
+
+      const newContent: vscode.LanguageModelTextPart[] = textParts.map(
+        (text) => new vscode.LanguageModelTextPart(text),
+      );
+      if (descriptions.length > 0) {
+        newContent.push(
+          new vscode.LanguageModelTextPart(
+            `\n\n[Image Analysis]:\n${descriptions.join("\n\n---\n\n")}`,
+          ),
+        );
+      }
+      processedMessages.push(vscode.LanguageModelChatMessage.User(newContent));
+    }
+
+    return processedMessages;
   }
 
   /**
@@ -662,7 +745,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         maxOutputTokens: info.maxOutput,
         capabilities: {
           toolCalling: info.supportsTools ? 128 : false,
-          imageInput: info.supportsVision,
+          imageInput: true,
         },
       };
     });
@@ -717,12 +800,18 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
             ? ((options.modelOptions as Record<string, unknown>).temperature as number)
             : 0.7;
 
-      if (this.hasImageInput(messages) && !this.modelSupportsVision(model.id)) {
-        throw new Error(`Model "${model.id}" does not support image input.`);
-      }
+      const hasImages = this.hasImageInput(messages);
+      let effectiveMessages: readonly LanguageModelChatMessage[] = messages;
+      let effectiveModelId = model.id;
 
-      const effectiveMessages: readonly LanguageModelChatMessage[] = messages;
-      const effectiveModelId = model.id;
+      if (hasImages && !this.modelSupportsVision(model.id)) {
+        const visionFallback = this.getVisionFallbackModelId();
+        if (visionFallback && visionFallback !== model.id) {
+          effectiveModelId = visionFallback;
+        } else {
+          effectiveMessages = await this.processImagesForNonVisionModel(messages, token);
+        }
+      }
 
       // Dispatch to Anthropic format for MiniMax models
       if (apiFormat === "anthropic") {
