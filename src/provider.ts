@@ -13,8 +13,15 @@ import {
   ProvideLanguageModelChatResponseOptions,
 } from "vscode";
 import { streamChatCompletion } from "./api";
-import { BASE_URL, CONTEXT_WINDOW_SAFETY_MARGIN } from "./constants";
-// TODO(Task 2): Remove this Task 1 compatibility shim import when NVIDIA image fallback is implemented.
+import {
+  BASE_URL,
+  CONTEXT_WINDOW_SAFETY_MARGIN,
+  MODELS_STATE_KEY,
+  PROVIDER_DISPLAY_NAME,
+  PROVIDER_VENDOR,
+  SECRET_STORAGE_KEY,
+} from "./constants";
+// This fallback stays until the dedicated NVIDIA image path replaces the copied scaffold behavior.
 import { OcGoMcpClient } from "./mcp-compat";
 import { debugLog } from "./output-channel";
 import {
@@ -202,7 +209,7 @@ function buildInvalidToolCallFallback(
 }
 
 function buildMissingApiKeyFallback(): string {
-  return 'OpenCode Go API key is not configured. Run "OpenCode Go: Manage OpenCode Go API Key" from the Command Palette, or retry this request and enter the key when prompted.';
+  return `${PROVIDER_DISPLAY_NAME} API key is not configured. Run "${PROVIDER_DISPLAY_NAME}: Manage ${PROVIDER_DISPLAY_NAME} API Key" from the Command Palette, or retry this request and enter the key when prompted.`;
 }
 
 function findTrailingTokenPrefixStart(text: string, token: string): number {
@@ -460,7 +467,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
   /**
    * Process images for non-vision models by converting them to text descriptions
-   * using the OpenCode Go Vision model compatibility shim.
+   * using the NVIDIA NIM image compatibility shim.
    * TODO(Task 2): Remove this carried-over network fallback once NVIDIA-specific image handling exists.
    * Guardrails live in tests/provider.test.ts for both the vision-model switch and shim branch.
    */
@@ -588,7 +595,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
-        `OpenCode Go Anthropic API error: ${response.status} ${response.statusText}\n${errorText}`,
+        `${PROVIDER_DISPLAY_NAME} Anthropic API error: ${response.status} ${response.statusText}\n${errorText}`,
       );
     }
 
@@ -708,14 +715,13 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
     // When silent, avoid prompting or network calls; return cached/fallback models immediately.
     if (options.silent) {
-      const cached =
-        this.globalState?.get<Array<{ id: string; name: string }>>("opencode-go.models");
+      const cached = this.globalState?.get<Array<{ id: string; name: string }>>(MODELS_STATE_KEY);
       const models = cached && cached.length > 0 ? cached : FALLBACK_MODELS;
       return this._mapToChatInformation(models);
     }
 
     // Non-silent: return cached/fallback models immediately so the chat UI never blocks.
-    const cached = this.globalState?.get<Array<{ id: string; name: string }>>("opencode-go.models");
+    const cached = this.globalState?.get<Array<{ id: string; name: string }>>(MODELS_STATE_KEY);
     const models = cached && cached.length > 0 ? cached : FALLBACK_MODELS;
 
     return this._mapToChatInformation(models);
@@ -737,9 +743,9 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       return {
         id: info.id,
         name: info.displayName,
-        detail: "OpenCode Go",
-        tooltip: `OpenCode Go ${info.name}`,
-        family: "opencode-go",
+        detail: PROVIDER_DISPLAY_NAME,
+        tooltip: `${PROVIDER_DISPLAY_NAME} ${info.name}`,
+        family: PROVIDER_VENDOR,
         version: "1.0.0",
         maxInputTokens: Math.max(
           1,
@@ -1103,17 +1109,17 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
   }
 
   private async ensureApiKey(silent: boolean): Promise<string | undefined> {
-    let apiKey = await this.secrets.get("opencode-go.apiKey");
+    let apiKey = await this.secrets.get(SECRET_STORAGE_KEY);
     if (!apiKey && !silent) {
       const entered = await vscode.window.showInputBox({
-        title: "OpenCode Go API Key",
-        prompt: "Enter your OpenCode Go API key",
+        title: `${PROVIDER_DISPLAY_NAME} API Key`,
+        prompt: `Enter your ${PROVIDER_DISPLAY_NAME} API key`,
         ignoreFocusOut: true,
         password: true,
       });
       if (entered && entered.trim()) {
         apiKey = entered.trim();
-        await this.secrets.store("opencode-go.apiKey", apiKey);
+        await this.secrets.store(SECRET_STORAGE_KEY, apiKey);
       }
     }
     return apiKey;

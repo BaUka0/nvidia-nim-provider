@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
+import { DEBUG_ENV_VAR, PROVIDER_DISPLAY_NAME } from "./constants";
 
-const OUTPUT_CHANNEL_NAME = "OpenCode Go";
+const OUTPUT_CHANNEL_NAME = PROVIDER_DISPLAY_NAME;
+const DEBUG_LOG_PREFIX = `[${PROVIDER_DISPLAY_NAME} Debug]`;
 
 function getGlobalOutputChannel(): vscode.OutputChannel | undefined {
   const globalWindow = globalThis as typeof globalThis & {
@@ -26,7 +28,7 @@ export function getOutputChannel(): vscode.OutputChannel {
 }
 
 export function debugEnabled(): boolean {
-  return process.env.OPENCODE_GO_DEBUG === "1";
+  return process.env[DEBUG_ENV_VAR] === "1";
 }
 
 export function debugLog(label: string, value: unknown): void {
@@ -36,8 +38,8 @@ export function debugLog(label: string, value: unknown): void {
   const message = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   const channel = getGlobalOutputChannel();
   if (channel) {
-    channel.appendLine(`[OpenCode Go Debug] ${label}: ${message}`);
+    channel.appendLine(`${DEBUG_LOG_PREFIX} ${label}: ${message}`);
     return;
   }
-  console.log(`[OpenCode Go Debug] ${label}:`, value);
+  console.log(`${DEBUG_LOG_PREFIX} ${label}:`, value);
 }

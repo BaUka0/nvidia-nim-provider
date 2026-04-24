@@ -70,7 +70,7 @@ describe("OcGoAnalyzeImageTool", () => {
       { input: { image_data: "", prompt: "" } } as any,
       { isCancellationRequested: false } as any,
     );
-    expect(prepared).toEqual({ invocationMessage: "Analyzing image with OpenCode Go Vision..." });
+    expect(prepared).toEqual({ invocationMessage: "Analyzing image with NVIDIA NIM Vision..." });
   });
 });
 

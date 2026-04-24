@@ -1,6 +1,6 @@
 # NVIDIA NIM Provider
 
-VS Code extension that exposes an NVIDIA NIM-branded provider surface in Copilot Chat while the backend integration is being migrated.
+VS Code extension that adds an NVIDIA NIM provider to Copilot Chat.
 
 ## Requirements
 
@@ -76,4 +76,4 @@ The command above produces a `.vsix` that can be uploaded in the VS Code Marketp
 ## Privacy
 
 - Your API key is stored securely in VS Code's built-in SecretStorage.
-- Chat requests are sent to `https://opencode.ai/zen/go/v1`.
+- NVIDIA NIM requests use the `https://integrate.api.nvidia.com/v1` service endpoint.

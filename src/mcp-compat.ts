@@ -1,24 +1,20 @@
 import * as vscode from "vscode";
-import { BASE_URL } from "./constants";
+import { BASE_URL, PROVIDER_DISPLAY_NAME, SECRET_STORAGE_KEY } from "./constants";
 
 /**
- * Temporary compatibility shim for the copied OpenCode Go image-analysis fallback.
- * Task 1 removes src/mcp.ts, but the scaffold still needs the copied runtime behavior.
- * TODO(Task 2): Remove this file after NVIDIA-specific secret names and image handling land.
+ * Temporary image-analysis fallback retained until the dedicated NVIDIA image path is implemented.
  */
-export const LEGACY_OPENCODE_GO_API_KEY_SECRET = "opencode-go.apiKey";
-
 export class OcGoMcpClient {
   constructor(private readonly secrets: vscode.SecretStorage) {}
 
   private async getApiKey(): Promise<string> {
-    return (await this.secrets.get(LEGACY_OPENCODE_GO_API_KEY_SECRET)) ?? "";
+    return (await this.secrets.get(SECRET_STORAGE_KEY)) ?? "";
   }
 
   async analyzeImage(imageData: string, prompt: string): Promise<string> {
     const apiKey = await this.getApiKey();
     if (!apiKey) {
-      throw new Error("OpenCode Go API key not found");
+      throw new Error(`${PROVIDER_DISPLAY_NAME} API key not found`);
     }
 
     const response = await fetch(`${BASE_URL}/chat/completions`, {

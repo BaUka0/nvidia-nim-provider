@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { fetchModels, streamChatCompletion } from "../src/api";
-import { LEGACY_OPENCODE_GO_API_KEY_SECRET } from "../src/mcp-compat";
+import { OcGoMcpClient } from "../src/mcp-compat";
 import { OcGoChatModelProvider } from "../src/provider";
 
 const mockAnalyzeImage = jest.fn().mockResolvedValue("Mocked image analysis");
@@ -100,11 +100,12 @@ describe("OcGoChatModelProvider", () => {
     );
     expect(infos.length).toBeGreaterThan(0);
     expect(infos[0].name).toBeDefined();
+    expect(globalState.get).toHaveBeenCalledWith("nvidia-nim.models");
     expect(fetchModels).not.toHaveBeenCalled();
   });
 
-  it("exposes the legacy Task 1 compatibility secret key for Task 2 removal", () => {
-    expect(LEGACY_OPENCODE_GO_API_KEY_SECRET).toBe("opencode-go.apiKey");
+  it("keeps the image-analysis fallback client wired during the Task 2 rebrand", () => {
+    expect(OcGoMcpClient).toBeDefined();
   });
 
   it("provideLanguageModelChatInformation returns cached models", async () => {
@@ -121,6 +122,10 @@ describe("OcGoChatModelProvider", () => {
     );
     expect(infos.length).toBe(1);
     expect(infos[0].id).toBe("cached-model");
+    expect(infos[0].detail).toBe("NVIDIA NIM");
+    expect(infos[0].tooltip).toBe("NVIDIA NIM Cached Model");
+    expect(infos[0].family).toBe("nvidia-nim");
+    expect(globalState.get).toHaveBeenCalledWith("nvidia-nim.models");
     expect(fetchModels).not.toHaveBeenCalled();
   });
 
@@ -316,7 +321,7 @@ describe("OcGoChatModelProvider", () => {
     );
 
     expect((vscode as any).window.showInputBox).toHaveBeenCalled();
-    expect(secrets.store).toHaveBeenCalledWith("opencode-go.apiKey", "new-api-key");
+    expect(secrets.store).toHaveBeenCalledWith("nvidia-nim.apiKey", "new-api-key");
     expect(streamChatCompletion).toHaveBeenCalledWith(
       "new-api-key",
       expect.objectContaining({ model: "kimi-k2.6", stream: true }),
@@ -348,7 +353,7 @@ describe("OcGoChatModelProvider", () => {
 
     expect(streamChatCompletion).not.toHaveBeenCalled();
     expect(progress.report).toHaveBeenCalledWith(
-      expect.objectContaining({ value: expect.stringContaining("OpenCode Go API key") }),
+      expect.objectContaining({ value: expect.stringContaining("NVIDIA NIM API key") }),
     );
   });
 
