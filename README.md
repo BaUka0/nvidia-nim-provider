@@ -6,7 +6,7 @@ VS Code extension that adds an NVIDIA NIM provider to Copilot Chat.
 
 - VS Code 1.104.0 or later
 - GitHub Copilot extension installed and active
-- An API key for the currently configured backend endpoint
+- An NVIDIA NIM API key from [build.nvidia.com/models](https://build.nvidia.com/models)
 
 ## Installation
 
@@ -25,12 +25,13 @@ VS Code extension that adds an NVIDIA NIM provider to Copilot Chat.
 
 1. Open the Command Palette (`Cmd/Ctrl + Shift + P`).
 2. Run `NVIDIA NIM: Manage NVIDIA NIM API Key`.
-3. Enter the API key for the current backend endpoint, or leave blank and press Enter to clear an existing key.
-4. The extension refreshes the available model list in the background on startup. You can also run `NVIDIA NIM: Refresh Models` at any time.
+3. Paste the API key obtained from [build.nvidia.com/models](https://build.nvidia.com/models), or leave the input blank and press Enter to clear an existing key.
+4. Open Copilot Chat and select **NVIDIA NIM** from the provider picker.
+5. The extension refreshes the available model list in the background on startup. You can also run `NVIDIA NIM: Refresh Models` at any time.
 
 ## Supported Models
 
-The extension dynamically fetches available models from the current backend endpoint. Fallback models include:
+The extension dynamically fetches available models from `https://integrate.api.nvidia.com/v1/models`. Fallback models include:
 
 - GLM-5, GLM-5.1
 - Kimi K2.5, **Kimi K2.6**
@@ -76,4 +77,4 @@ The command above produces a `.vsix` that can be uploaded in the VS Code Marketp
 ## Privacy
 
 - Your API key is stored securely in VS Code's built-in SecretStorage.
-- In the current build, chat and image-analysis requests are sent to `https://opencode.ai/zen/go/v1`.
+- Chat completions and model discovery requests are sent to `https://integrate.api.nvidia.com/v1`.
