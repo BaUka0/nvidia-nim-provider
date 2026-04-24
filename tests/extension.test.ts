@@ -51,8 +51,19 @@ jest.mock("vscode", () => ({
 }));
 
 const flushAsyncWork = async (): Promise<void> => {
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let i = 0; i < 6; i += 1) {
+    await Promise.resolve();
+  }
+};
+
+const createDeferred = <T>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 };
 
 describe("activate", () => {
@@ -93,8 +104,20 @@ describe("activate", () => {
   });
 
   it("refreshes cached models in the background on activation when an API key exists", async () => {
-    const models = [{ id: "kimi-k2.6", name: "Kimi K2.6" }];
-    (fetchModels as jest.Mock).mockResolvedValue(models);
+    const rawModels = [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        name: "Llama 4 Maverick",
+        capabilities: { chat: true, tool_calling: true, vision: true },
+        metadata: { context_window: 128000, max_output_tokens: 8192 },
+      },
+      {
+        id: "nvidia/nv-embedqa-e5-v5",
+        name: "Embed QA",
+        capabilities: { chat: false },
+      },
+    ];
+    (fetchModels as jest.Mock).mockResolvedValue(rawModels);
 
     const secrets = {
       get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),
@@ -125,9 +148,345 @@ describe("activate", () => {
       undefined,
       `nvidia-nim-provider/${version} VSCode/1.104.0`,
     );
-    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", models);
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.rawModels", rawModels);
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        displayName: "Llama 4 Maverick",
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsTools: true,
+        supportsVision: true,
+      },
+    ]);
     expect(providerInstance.fireModelInfoChanged).toHaveBeenCalled();
     expect(mockShowErrorMessage).not.toHaveBeenCalled();
+  });
+
+  it("stores raw and normalized model caches when the refresh command succeeds", async () => {
+    const rawModels = [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        name: "Llama 4 Maverick",
+        capabilities: { chat: true, tool_calling: true, vision: true },
+        metadata: { context_window: 128000, max_output_tokens: 8192 },
+      },
+      {
+        id: "nvidia/nv-embedqa-e5-v5",
+        name: "Embed QA",
+        capabilities: { chat: false },
+      },
+    ];
+    (fetchModels as jest.Mock).mockResolvedValue(rawModels);
+
+    const secrets = {
+      get: jest
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce("test-key"),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+    await flushAsyncWork();
+
+    const refresh = registeredCommands.get("nvidia-nim.refreshModels");
+    expect(refresh).toBeDefined();
+
+    await refresh?.();
+
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.rawModels", rawModels);
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        displayName: "Llama 4 Maverick",
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsTools: true,
+        supportsVision: true,
+      },
+    ]);
+    expect(mockShowInformationMessage).toHaveBeenCalledWith("Refreshed 1 NVIDIA NIM models.");
+  });
+
+  it("keeps existing caches untouched when refresh fails after a previous successful cache", async () => {
+    (fetchModels as jest.Mock).mockRejectedValue(new Error("network down"));
+
+    const secrets = {
+      get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) => {
+        if (key === "nvidia-nim.debug") {
+          return false;
+        }
+        if (key === "nvidia-nim.models") {
+          return [
+            {
+              id: "cached-model",
+              displayName: "Cached Model",
+              contextWindow: 131072,
+              maxOutputTokens: 16384,
+              supportsTools: true,
+              supportsVision: false,
+            },
+          ];
+        }
+        if (key === "nvidia-nim.rawModels") {
+          return [{ id: "cached-model", name: "Cached Model" }];
+        }
+        return fallback;
+      }),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+    await flushAsyncWork();
+
+    const refresh = registeredCommands.get("nvidia-nim.refreshModels");
+    expect(refresh).toBeDefined();
+
+    await refresh?.();
+
+    expect(globalState.update).not.toHaveBeenCalledWith("nvidia-nim.rawModels", expect.anything());
+    expect(globalState.update).not.toHaveBeenCalledWith("nvidia-nim.models", expect.anything());
+    expect(mockShowErrorMessage).toHaveBeenCalledWith("Failed to refresh models: network down");
+  });
+
+  it("rolls back the raw cache if normalized cache persistence fails", async () => {
+    const rawModels = [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        name: "Llama 4 Maverick",
+        capabilities: { chat: true, tool_calling: true, vision: true },
+        metadata: { context_window: 128000, max_output_tokens: 8192 },
+      },
+    ];
+    (fetchModels as jest.Mock).mockResolvedValue(rawModels);
+
+    const previousRawModels = [{ id: "cached-model", name: "Cached Model" }];
+    const update = jest
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("persist normalized failed"))
+      .mockResolvedValueOnce(undefined);
+    const secrets = {
+      get: jest
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce("test-key"),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) => {
+        if (key === "nvidia-nim.debug") {
+          return false;
+        }
+        if (key === "nvidia-nim.rawModels") {
+          return previousRawModels;
+        }
+        if (key === "nvidia-nim.models") {
+          return [
+            {
+              id: "cached-model",
+              displayName: "Cached Model",
+              contextWindow: 131072,
+              maxOutputTokens: 16384,
+              supportsTools: false,
+              supportsVision: false,
+            },
+          ];
+        }
+        return fallback;
+      }),
+      update,
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+    await flushAsyncWork();
+
+    const refresh = registeredCommands.get("nvidia-nim.refreshModels");
+    expect(refresh).toBeDefined();
+
+    await refresh?.();
+
+    expect(update).toHaveBeenNthCalledWith(1, "nvidia-nim.rawModels", rawModels);
+    expect(update).toHaveBeenNthCalledWith(2, "nvidia-nim.models", [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        displayName: "Llama 4 Maverick",
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        supportsTools: true,
+        supportsVision: true,
+      },
+    ]);
+    expect(update).toHaveBeenNthCalledWith(3, "nvidia-nim.rawModels", previousRawModels);
+    expect(mockShowErrorMessage).toHaveBeenCalledWith(
+      "Failed to refresh models: persist normalized failed",
+    );
+  });
+
+  it("waits for an in-flight refresh before starting another refresh", async () => {
+    const firstRawModels = [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        name: "Llama 4 Maverick",
+        capabilities: { chat: true, tool_calling: true, vision: true },
+        metadata: { context_window: 128000, max_output_tokens: 8192 },
+      },
+    ];
+    const secondRawModels = [
+      {
+        id: "meta/llama-3.1-8b-instruct",
+        name: "Llama 3.1 8B Instruct",
+        capabilities: { chat: true, tool_calling: false, vision: false },
+        metadata: { context_window: 64000, max_output_tokens: 4096 },
+      },
+    ];
+    const firstModelsWrite = createDeferred<void>();
+    (fetchModels as jest.Mock)
+      .mockResolvedValueOnce(firstRawModels)
+      .mockResolvedValueOnce(secondRawModels);
+
+    const secrets = {
+      get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async (key: string, value: unknown) => {
+        if (
+          key === "nvidia-nim.models" &&
+          Array.isArray(value) &&
+          value.some(
+            (model) =>
+              typeof model === "object" &&
+              model !== null &&
+              (model as { id?: string }).id === "meta/llama-4-maverick-17b-128e-instruct",
+          )
+        ) {
+          return firstModelsWrite.promise;
+        }
+        return undefined;
+      }),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+    await flushAsyncWork();
+
+    const refresh = registeredCommands.get("nvidia-nim.refreshModels");
+    expect(refresh).toBeDefined();
+
+    const refreshPromise = refresh?.();
+    await flushAsyncWork();
+
+    expect(fetchModels).toHaveBeenCalledTimes(1);
+
+    firstModelsWrite.resolve();
+    await refreshPromise;
+
+    expect(fetchModels).toHaveBeenCalledTimes(2);
+    expect(mockShowInformationMessage).toHaveBeenCalledWith("Refreshed 1 NVIDIA NIM models.");
+  });
+
+  it("preserves the normalized cache write error when rollback also fails", async () => {
+    const rawModels = [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        name: "Llama 4 Maverick",
+        capabilities: { chat: true, tool_calling: true, vision: true },
+        metadata: { context_window: 128000, max_output_tokens: 8192 },
+      },
+    ];
+    (fetchModels as jest.Mock).mockResolvedValue(rawModels);
+
+    const normalizedWriteError = new Error("persist normalized failed");
+    const rollbackWriteError = new Error("rollback failed");
+    const secrets = {
+      get: jest
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce("test-key"),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) => {
+        if (key === "nvidia-nim.debug") {
+          return false;
+        }
+        if (key === "nvidia-nim.rawModels") {
+          return [{ id: "cached-model", name: "Cached Model" }];
+        }
+        return fallback;
+      }),
+      update: jest
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(normalizedWriteError)
+        .mockRejectedValueOnce(rollbackWriteError),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+    await flushAsyncWork();
+
+    const refresh = registeredCommands.get("nvidia-nim.refreshModels");
+    expect(refresh).toBeDefined();
+
+    await refresh?.();
+
+    expect(mockShowErrorMessage).toHaveBeenCalledWith(
+      "Failed to refresh models: persist normalized failed",
+    );
   });
 
   it("does not attempt a background refresh on activation when no API key is configured", async () => {

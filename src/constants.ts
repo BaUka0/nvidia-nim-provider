@@ -4,6 +4,7 @@ const pkg = require("../package.json") as { version: string };
 export const PROVIDER_VENDOR = "nvidia-nim";
 export const PROVIDER_DISPLAY_NAME = "NVIDIA NIM";
 export const SECRET_STORAGE_KEY = "nvidia-nim.apiKey";
+export const RAW_MODELS_STATE_KEY = "nvidia-nim.rawModels";
 export const MODELS_STATE_KEY = "nvidia-nim.models";
 export const DEBUG_STATE_KEY = "nvidia-nim.debug";
 export const DEBUG_ENV_VAR = "NVIDIA_NIM_DEBUG";

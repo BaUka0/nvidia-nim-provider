@@ -9,63 +9,89 @@ import {
   OPEN_DEBUG_LOG_COMMAND_ID,
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
+  RAW_MODELS_STATE_KEY,
   REFRESH_MODELS_COMMAND_ID,
   SECRET_STORAGE_KEY,
   TOGGLE_DEBUG_LOGGING_COMMAND_ID,
 } from "./constants";
+import { normalizeNvidiaModels } from "./model-catalog";
 import { debugLog, getOutputChannel } from "./output-channel";
 import { OcGoChatModelProvider } from "./provider";
 import { registerOcGoTools } from "./tools";
 
 let _provider: OcGoChatModelProvider | null = null;
+let _refreshQueue: Promise<void> = Promise.resolve();
 
 async function refreshModelsFromApi(
   context: vscode.ExtensionContext,
   ua: string,
   options: { showMessages: boolean },
 ): Promise<void> {
-  const apiKey = await context.secrets.get(SECRET_STORAGE_KEY);
-  if (!apiKey) {
-    if (options.showMessages) {
-      vscode.window.showWarningMessage(`No ${PROVIDER_DISPLAY_NAME} API key configured.`);
-    }
-    return;
-  }
-
-  try {
-    const models = await fetchModels(apiKey, undefined, ua);
-    if (models && models.length > 0) {
-      await context.globalState.update(MODELS_STATE_KEY, models);
-      _provider?.fireModelInfoChanged();
-      debugLog(
-        "refreshModels",
-        `Refreshed ${models.length} models from ${PROVIDER_DISPLAY_NAME} API.`,
-      );
+  const nextRefresh = _refreshQueue.catch(() => undefined).then(async () => {
+    const apiKey = await context.secrets.get(SECRET_STORAGE_KEY);
+    if (!apiKey) {
       if (options.showMessages) {
-        vscode.window.showInformationMessage(
-          `Refreshed ${models.length} ${PROVIDER_DISPLAY_NAME} models.`,
-        );
+        vscode.window.showWarningMessage(`No ${PROVIDER_DISPLAY_NAME} API key configured.`);
       }
       return;
     }
 
-    debugLog("refreshModels", "Model refresh returned no models.");
-    if (options.showMessages) {
-      vscode.window.showWarningMessage(
-        `Failed to refresh models from ${PROVIDER_DISPLAY_NAME} API.`,
+    try {
+      const rawModels = await fetchModels(apiKey, undefined, ua);
+      if (rawModels && rawModels.length > 0) {
+        const normalizedModels = normalizeNvidiaModels(rawModels);
+        const previousRawModels = context.globalState.get(RAW_MODELS_STATE_KEY);
+        await context.globalState.update(RAW_MODELS_STATE_KEY, rawModels);
+        try {
+          await context.globalState.update(MODELS_STATE_KEY, normalizedModels);
+        } catch (normalizedWriteError) {
+          try {
+            await context.globalState.update(RAW_MODELS_STATE_KEY, previousRawModels);
+          } catch (rollbackError) {
+            debugLog(
+              "refreshModels",
+              `Raw cache rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+            );
+          }
+          throw normalizedWriteError;
+        }
+        _provider?.fireModelInfoChanged();
+        debugLog(
+          "refreshModels",
+          `Refreshed ${normalizedModels.length} models from ${PROVIDER_DISPLAY_NAME} API.`,
+        );
+        if (options.showMessages) {
+          vscode.window.showInformationMessage(
+            `Refreshed ${normalizedModels.length} ${PROVIDER_DISPLAY_NAME} models.`,
+          );
+        }
+        return;
+      }
+
+      debugLog(
+        "refreshModels",
+        "Model refresh returned no models.",
       );
-    }
-  } catch (error) {
-    debugLog(
-      "refreshModels",
-      `Model refresh failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    if (options.showMessages) {
-      vscode.window.showErrorMessage(
-        `Failed to refresh models: ${error instanceof Error ? error.message : String(error)}`,
+      if (options.showMessages) {
+        vscode.window.showWarningMessage(
+          `Failed to refresh models from ${PROVIDER_DISPLAY_NAME} API.`,
+        );
+      }
+    } catch (error) {
+      debugLog(
+        "refreshModels",
+        `Model refresh failed: ${error instanceof Error ? error.message : String(error)}`,
       );
+      if (options.showMessages) {
+        vscode.window.showErrorMessage(
+          `Failed to refresh models: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
-  }
+  });
+
+  _refreshQueue = nextRefresh.catch(() => undefined);
+  return nextRefresh;
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -151,4 +177,5 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
   _provider = null;
+  _refreshQueue = Promise.resolve();
 }

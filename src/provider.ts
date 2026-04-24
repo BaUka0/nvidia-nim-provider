@@ -24,10 +24,8 @@ import {
   getFallbackModels,
   isNormalizedNvidiaModel,
   NormalizedNvidiaModel,
-  normalizeNvidiaModels,
 } from "./model-catalog";
 import { debugLog } from "./output-channel";
-import { NvidiaModelSummary } from "./types";
 import {
   applyReasoningContentWorkaround,
   convertMessages,
@@ -411,16 +409,13 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
   }
 
   private getNormalizedModels(): NormalizedNvidiaModel[] {
-    const storedModels =
-      this.globalState?.get<NormalizedNvidiaModel[] | NvidiaModelSummary[]>(MODELS_STATE_KEY) ?? [];
+    const storedModels = this.globalState?.get<NormalizedNvidiaModel[]>(MODELS_STATE_KEY) ?? [];
 
     if (storedModels.length === 0) {
       return [];
     }
 
-    return storedModels.every((model) => isNormalizedNvidiaModel(model))
-      ? (storedModels as NormalizedNvidiaModel[])
-      : normalizeNvidiaModels(storedModels as NvidiaModelSummary[]);
+    return storedModels.every((model) => isNormalizedNvidiaModel(model)) ? storedModels : [];
   }
 
   private getAvailableModels(): NormalizedNvidiaModel[] {
