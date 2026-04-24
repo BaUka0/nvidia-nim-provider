@@ -10,6 +10,7 @@ const mockCreateOutputChannel = jest.fn(() => ({
 const mockShowInformationMessage = jest.fn();
 const mockShowWarningMessage = jest.fn();
 const mockShowErrorMessage = jest.fn();
+const mockShowInputBox = jest.fn();
 const mockRegisterCommand = jest.fn(
   (command: string, callback: (...args: unknown[]) => unknown) => {
     registeredCommands.set(command, callback);
@@ -39,7 +40,7 @@ jest.mock("vscode", () => ({
     showInformationMessage: mockShowInformationMessage,
     showWarningMessage: mockShowWarningMessage,
     showErrorMessage: mockShowErrorMessage,
-    showInputBox: jest.fn(),
+    showInputBox: mockShowInputBox,
   },
   commands: {
     registerCommand: mockRegisterCommand,
@@ -58,6 +59,7 @@ describe("activate", () => {
   beforeEach(() => {
     registeredCommands.clear();
     jest.clearAllMocks();
+    delete process.env.NVIDIA_NIM_DEBUG;
   });
 
   it("registers the NVIDIA NIM provider and management command on activation", async () => {
@@ -69,7 +71,7 @@ describe("activate", () => {
     };
     const globalState = {
       get: jest.fn((key: string, fallback?: unknown) =>
-        key === "opencode-go.debug" ? false : fallback,
+        key === "nvidia-nim.debug" ? false : fallback,
       ),
       update: jest.fn(async () => undefined),
     };
@@ -87,6 +89,7 @@ describe("activate", () => {
       expect.anything(),
     );
     expect(mockRegisterCommand).toHaveBeenCalledWith("nvidia-nim.manage", expect.any(Function));
+    expect(process.env.NVIDIA_NIM_DEBUG).toBe("0");
   });
 
   it("refreshes cached models in the background on activation when an API key exists", async () => {
@@ -101,7 +104,7 @@ describe("activate", () => {
     };
     const globalState = {
       get: jest.fn((key: string, fallback?: unknown) =>
-        key === "opencode-go.debug" ? false : fallback,
+        key === "nvidia-nim.debug" ? false : fallback,
       ),
       update: jest.fn(async () => undefined),
     };
@@ -122,7 +125,7 @@ describe("activate", () => {
       undefined,
       `nvidia-nim-provider/${version} VSCode/1.104.0`,
     );
-    expect(globalState.update).toHaveBeenCalledWith("opencode-go.models", models);
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", models);
     expect(providerInstance.fireModelInfoChanged).toHaveBeenCalled();
     expect(mockShowErrorMessage).not.toHaveBeenCalled();
   });
@@ -136,7 +139,7 @@ describe("activate", () => {
     };
     const globalState = {
       get: jest.fn((key: string, fallback?: unknown) =>
-        key === "opencode-go.debug" ? false : fallback,
+        key === "nvidia-nim.debug" ? false : fallback,
       ),
       update: jest.fn(async () => undefined),
     };
@@ -151,6 +154,70 @@ describe("activate", () => {
     await flushAsyncWork();
 
     expect(fetchModels).not.toHaveBeenCalled();
-    expect(globalState.update).not.toHaveBeenCalledWith("opencode-go.models", expect.anything());
+    expect(globalState.update).not.toHaveBeenCalledWith("nvidia-nim.models", expect.anything());
+  });
+
+  it("stores only the NVIDIA NIM secret key from the manage command", async () => {
+    mockShowInputBox.mockResolvedValue("new-key");
+    const secrets = {
+      get: jest.fn(async () => undefined),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+
+    const manage = registeredCommands.get("nvidia-nim.manage");
+    expect(manage).toBeDefined();
+
+    await manage?.();
+
+    expect(secrets.store).toHaveBeenCalledTimes(1);
+    expect(secrets.store).toHaveBeenCalledWith("nvidia-nim.apiKey", "new-key");
+    expect(secrets.delete).not.toHaveBeenCalled();
+  });
+
+  it("toggles NVIDIA NIM debug logging state and env var", async () => {
+    const secrets = {
+      get: jest.fn(async () => undefined),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+
+    const toggleDebug = registeredCommands.get("nvidia-nim.toggleDebugLogging");
+    expect(toggleDebug).toBeDefined();
+
+    await toggleDebug?.();
+
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.debug", true);
+    expect(process.env.NVIDIA_NIM_DEBUG).toBe("1");
   });
 });

@@ -1,9 +1,11 @@
 import * as vscode from "vscode";
 import { fetchModels } from "./api";
 import {
+  DEBUG_ENV_VAR,
+  DEBUG_STATE_KEY,
   EXTENSION_VERSION,
-  LEGACY_SECRET_STORAGE_KEY,
   MANAGE_COMMAND_ID,
+  MODELS_STATE_KEY,
   OPEN_DEBUG_LOG_COMMAND_ID,
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
@@ -22,9 +24,7 @@ async function refreshModelsFromApi(
   ua: string,
   options: { showMessages: boolean },
 ): Promise<void> {
-  const apiKey =
-    (await context.secrets.get(SECRET_STORAGE_KEY)) ??
-    (await context.secrets.get(LEGACY_SECRET_STORAGE_KEY));
+  const apiKey = await context.secrets.get(SECRET_STORAGE_KEY);
   if (!apiKey) {
     if (options.showMessages) {
       vscode.window.showWarningMessage(`No ${PROVIDER_DISPLAY_NAME} API key configured.`);
@@ -35,7 +35,7 @@ async function refreshModelsFromApi(
   try {
     const models = await fetchModels(apiKey, undefined, ua);
     if (models && models.length > 0) {
-      await context.globalState.update("opencode-go.models", models);
+      await context.globalState.update(MODELS_STATE_KEY, models);
       _provider?.fireModelInfoChanged();
       debugLog(
         "refreshModels",
@@ -72,8 +72,8 @@ export function activate(context: vscode.ExtensionContext) {
   const ua = `nvidia-nim-provider/${EXTENSION_VERSION} VSCode/${vscode.version}`;
   const channel = getOutputChannel();
   context.subscriptions.push(channel);
-  const debugEnabled = context.globalState.get<boolean>("opencode-go.debug", false);
-  process.env.OPENCODE_GO_DEBUG = debugEnabled ? "1" : "0";
+  const debugEnabled = context.globalState.get<boolean>(DEBUG_STATE_KEY, false);
+  process.env[DEBUG_ENV_VAR] = debugEnabled ? "1" : "0";
   debugLog(
     "activate",
     `Extension activated. Debug logging ${debugEnabled ? "enabled" : "disabled"}.`,
@@ -83,7 +83,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     context.secrets.onDidChange((e) => {
-      if (e.key === SECRET_STORAGE_KEY || e.key === LEGACY_SECRET_STORAGE_KEY) {
+      if (e.key === SECRET_STORAGE_KEY) {
         _provider?.fireModelInfoChanged();
       }
     }),
@@ -94,9 +94,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(registerOcGoTools(context.secrets));
   context.subscriptions.push(
     vscode.commands.registerCommand(MANAGE_COMMAND_ID, async () => {
-      const existing =
-        (await context.secrets.get(SECRET_STORAGE_KEY)) ??
-        (await context.secrets.get(LEGACY_SECRET_STORAGE_KEY));
+      const existing = await context.secrets.get(SECRET_STORAGE_KEY);
       const apiKey = await vscode.window.showInputBox({
         title: `${PROVIDER_DISPLAY_NAME} API Key`,
         prompt: existing
@@ -112,13 +110,11 @@ export function activate(context: vscode.ExtensionContext) {
       }
       if (!apiKey.trim()) {
         await context.secrets.delete(SECRET_STORAGE_KEY);
-        await context.secrets.delete(LEGACY_SECRET_STORAGE_KEY);
         vscode.window.showInformationMessage(`${PROVIDER_DISPLAY_NAME} API key cleared.`);
         _provider?.fireModelInfoChanged();
         return;
       }
       await context.secrets.store(SECRET_STORAGE_KEY, apiKey.trim());
-      await context.secrets.store(LEGACY_SECRET_STORAGE_KEY, apiKey.trim());
       vscode.window.showInformationMessage(`${PROVIDER_DISPLAY_NAME} API key saved.`);
       _provider?.fireModelInfoChanged();
     }),
@@ -132,10 +128,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(TOGGLE_DEBUG_LOGGING_COMMAND_ID, async () => {
-      const current = context.globalState.get<boolean>("opencode-go.debug", false);
+      const current = context.globalState.get<boolean>(DEBUG_STATE_KEY, false);
       const next = !current;
-      await context.globalState.update("opencode-go.debug", next);
-      process.env.OPENCODE_GO_DEBUG = next ? "1" : "0";
+      await context.globalState.update(DEBUG_STATE_KEY, next);
+      process.env[DEBUG_ENV_VAR] = next ? "1" : "0";
       debugLog("toggleDebug", `Debug logging ${next ? "enabled" : "disabled"}.`);
       vscode.window.showInformationMessage(
         `${PROVIDER_DISPLAY_NAME} debug logging ${next ? "enabled" : "disabled"}.`,
