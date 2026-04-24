@@ -11,7 +11,7 @@ export class OcGoAnalyzeImageTool implements vscode.LanguageModelTool<{
   image_data: string;
   prompt: string;
 }> {
-  static readonly id = "opencode_go_analyze_image";
+  static readonly id = "nvidia_nim_analyze_image";
 
   readonly name = OcGoAnalyzeImageTool.id;
   readonly description =

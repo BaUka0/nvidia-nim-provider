@@ -32,7 +32,7 @@ describe("OcGoAnalyzeImageTool", () => {
   });
 
   it("has correct metadata", () => {
-    expect(tool.name).toBe("opencode_go_analyze_image");
+    expect(tool.name).toBe("nvidia_nim_analyze_image");
     expect(tool.description).toContain("Analyze an image");
     expect(tool.tags).toContain("vision");
   });
@@ -81,6 +81,9 @@ describe("registerOcGoTools", () => {
     expect(disposable).toBeDefined();
     expect(typeof disposable.dispose).toBe("function");
     expect(vscode.Disposable.from).toHaveBeenCalled();
-    expect((vscode as any).lm.registerTool).toHaveBeenCalled();
+    expect((vscode as any).lm.registerTool).toHaveBeenCalledWith(
+      "nvidia_nim_analyze_image",
+      expect.any(OcGoAnalyzeImageTool),
+    );
   });
 });

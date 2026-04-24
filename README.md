@@ -76,4 +76,4 @@ The command above produces a `.vsix` that can be uploaded in the VS Code Marketp
 ## Privacy
 
 - Your API key is stored securely in VS Code's built-in SecretStorage.
-- NVIDIA NIM requests use the `https://integrate.api.nvidia.com/v1` service endpoint.
+- In the current build, chat and image-analysis requests are sent to `https://opencode.ai/zen/go/v1`.
