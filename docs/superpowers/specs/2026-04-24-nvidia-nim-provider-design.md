@@ -27,6 +27,7 @@ aggressive abstraction.
 - Source models dynamically from `GET /models`.
 - Send chat requests through `POST /chat/completions`.
 - Support streaming responses and tool calling where the selected model supports them.
+- Support image input in v1 for models that explicitly advertise vision capability.
 - Keep the implementation close enough to `opencode-go-provider` that tests and maintenance stay
   straightforward.
 
@@ -87,6 +88,9 @@ in `model-catalog.ts`, not in `provider.ts`.
    metadata.
 3. Fall back to safe defaults when information is missing.
 
+`KNOWN_MODEL_OVERRIDES` is only a metadata supplement. It is not a fallback model catalog and must
+not replace `/models` as the source of which models are shown.
+
 ### Safe defaults
 
 When `/models` does not provide enough information:
@@ -119,7 +123,8 @@ The first release uses a single OpenAI-compatible path:
 
 - Convert VS Code chat messages to OpenAI-compatible `messages`.
 - Forward `tools` and `tool_choice` only when the selected model is marked as tool-call capable.
-- Pass image input only when the selected model is marked as image-capable.
+- Pass image input in v1 only when the selected model is marked as image-capable, using the
+  OpenAI-compatible `image_url` content format.
 - Do not silently substitute another model or another transport when a capability is unsupported.
 
 ### Unsupported capability behavior
@@ -150,7 +155,7 @@ The initial test suite should cover four areas:
 | --- | --- |
 | `tests/api.test.ts` | `/models` fetching, `/chat/completions` streaming, auth errors, retryable failures |
 | `tests/model-catalog.test.ts` | normalization, capability inference, model filtering, default metadata |
-| `tests/provider.test.ts` | missing API key guidance, streaming output, tool-call handling, capability gating |
+| `tests/provider.test.ts` | missing API key guidance, streaming output, tool-call handling, image input handling, capability gating |
 | `tests/extension.test.ts` | command registration, secret updates, refresh behavior, provider notifications |
 
 ## Implementation Order
@@ -182,4 +187,5 @@ extension that:
 - shows models discovered from `/models`
 - sends chat requests to NVIDIA-hosted NIM
 - streams responses into Copilot Chat
+- forwards image input for vision-capable models in v1
 - enables capabilities only when the selected model can support them
