@@ -27,10 +27,7 @@ function normalizeNvidiaModel(model: NvidiaModelSummary): NormalizedNvidiaModel 
 
   return {
     id: model.id,
-    displayName:
-      model.name ??
-      override?.displayName ??
-      deriveDisplayName(model.id),
+    displayName: model.name ?? override?.displayName ?? deriveDisplayName(model.id),
     contextWindow:
       getPositiveNumber(model.metadata?.context_window) ??
       getPositiveNumber(override?.contextWindow) ??
@@ -40,14 +37,8 @@ function normalizeNvidiaModel(model: NvidiaModelSummary): NormalizedNvidiaModel 
       getPositiveNumber(model.metadata?.max_tokens) ??
       getPositiveNumber(override?.maxOutputTokens) ??
       DEFAULT_MAX_OUTPUT_TOKENS,
-    supportsTools:
-      model.capabilities?.tool_calling ??
-      override?.supportsTools ??
-      false,
-    supportsVision:
-      model.capabilities?.vision ??
-      override?.supportsVision ??
-      false,
+    supportsTools: model.capabilities?.tool_calling ?? override?.supportsTools ?? false,
+    supportsVision: model.capabilities?.vision ?? override?.supportsVision ?? false,
   };
 }
 

@@ -45,6 +45,38 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
+  it("uses metadata.max_tokens when max_output_tokens is absent", () => {
+    const raw: NvidiaModelSummary[] = [
+      {
+        id: "meta/llama-3.1-8b-instruct",
+        metadata: { max_tokens: 8192 },
+      },
+    ];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([
+      expect.objectContaining({
+        id: "meta/llama-3.1-8b-instruct",
+        maxOutputTokens: 8192,
+      }),
+    ]);
+  });
+
+  it("prefers the API name over a known override display name", () => {
+    const raw: NvidiaModelSummary[] = [
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        name: "API Supplied Llama 4 Maverick",
+      },
+    ];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([
+      expect.objectContaining({
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        displayName: "API Supplied Llama 4 Maverick",
+      }),
+    ]);
+  });
+
   it("filters obvious non-chat models when chat capability metadata is absent", () => {
     const raw: NvidiaModelSummary[] = [
       { id: "nvidia/nv-embedqa-e5-v5" },
