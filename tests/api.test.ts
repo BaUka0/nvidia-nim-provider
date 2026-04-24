@@ -1,27 +1,42 @@
 import { fetchModels, streamChatCompletion } from "../src/api";
-import { OcGoStreamResponse } from "../src/types";
+import { NvidiaModelSummary, OcGoStreamResponse } from "../src/types";
+
+const rawModelSummaries: NvidiaModelSummary[] = [
+  {
+    id: "meta/llama-4-maverick-17b-128e-instruct",
+    name: "Llama 4 Maverick 17B 128E Instruct",
+    capabilities: {
+      chat: true,
+      vision: true,
+      tool_calling: true,
+    },
+    metadata: {
+      context_window: 262144,
+      max_output_tokens: 8192,
+    },
+  },
+];
 
 describe("fetchModels", () => {
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
-  it("returns models on success", async () => {
-    const mockModels = [
-      {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        name: "Llama 4 Maverick 17B 128E Instruct",
-      },
-    ];
+  it("returns raw NVIDIA model summaries on success", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: mockModels }),
+      json: async () => ({ data: rawModelSummaries }),
     } as any);
 
     const result = await fetchModels("test-key");
-    expect(result).toEqual([
-      expect.objectContaining({ id: "meta/llama-4-maverick-17b-128e-instruct" }),
-    ]);
+    expect(result).toEqual(rawModelSummaries);
+    expect(result?.[0]).toEqual(
+      expect.objectContaining({
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        capabilities: expect.objectContaining({ vision: true, tool_calling: true }),
+        metadata: expect.objectContaining({ context_window: 262144, max_output_tokens: 8192 }),
+      }),
+    );
     expect(fetch).toHaveBeenCalledWith(
       "https://integrate.api.nvidia.com/v1/models",
       expect.objectContaining({
@@ -40,6 +55,79 @@ describe("fetchModels", () => {
 
     const result = await fetchModels("bad-key");
     expect(result).toBeNull();
+  });
+
+  it("retries on network failure and succeeds", async () => {
+    global.fetch = jest
+      .fn()
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: rawModelSummaries }),
+      } as any);
+
+    const result = await fetchModels("test-key");
+    expect(result).toEqual(rawModelSummaries);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries up to 3 times then returns null", async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error("Network error"));
+
+    const result = await fetchModels("test-key");
+    expect(result).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries on 429 with Retry-After then succeeds", async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        headers: { get: (name: string) => (name === "retry-after" ? "1" : null) },
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: rawModelSummaries }),
+      } as any);
+
+    const result = await fetchModels("test-key");
+    expect(result).toEqual(rawModelSummaries);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries on 503 then succeeds", async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        headers: { get: () => null },
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: rawModelSummaries }),
+      } as any);
+
+    const result = await fetchModels("test-key");
+    expect(result).toEqual(rawModelSummaries);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry on 401 and returns null immediately", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      text: async () => "Invalid key",
+    } as any);
+
+    const result = await fetchModels("bad-key");
+    expect(result).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -118,96 +206,6 @@ describe("streamChatCompletion", () => {
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     await expect(gen.next()).rejects.toThrow("HTTP 429");
     expect(fetch).toHaveBeenCalledTimes(3);
-  });
-
-  it("retries on network failure and succeeds", async () => {
-    const mockModels = [
-      {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        name: "Llama 4 Maverick 17B 128E Instruct",
-      },
-    ];
-    global.fetch = jest
-      .fn()
-      .mockRejectedValueOnce(new Error("Network error"))
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: mockModels }),
-      } as any);
-
-    const result = await fetchModels("test-key");
-    expect(result).toEqual(mockModels);
-    expect(fetch).toHaveBeenCalledTimes(2);
-  });
-
-  it("retries up to 3 times then returns null", async () => {
-    global.fetch = jest.fn().mockRejectedValue(new Error("Network error"));
-
-    const result = await fetchModels("test-key");
-    expect(result).toBeNull();
-    expect(fetch).toHaveBeenCalledTimes(3);
-  });
-  it("retries on 429 with Retry-After then succeeds", async () => {
-    const mockModels = [
-      {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        name: "Llama 4 Maverick 17B 128E Instruct",
-      },
-    ];
-    global.fetch = jest
-      .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 429,
-        statusText: "Too Many Requests",
-        headers: { get: (name: string) => (name === "retry-after" ? "1" : null) },
-      } as any)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: mockModels }),
-      } as any);
-
-    const result = await fetchModels("test-key");
-    expect(result).toEqual(mockModels);
-    expect(fetch).toHaveBeenCalledTimes(2);
-  });
-
-  it("retries on 503 then succeeds", async () => {
-    const mockModels = [
-      {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        name: "Llama 4 Maverick 17B 128E Instruct",
-      },
-    ];
-    global.fetch = jest
-      .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 503,
-        statusText: "Service Unavailable",
-        headers: { get: () => null },
-      } as any)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: mockModels }),
-      } as any);
-
-    const result = await fetchModels("test-key");
-    expect(result).toEqual(mockModels);
-    expect(fetch).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not retry on 401 and returns null immediately", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      statusText: "Unauthorized",
-      text: async () => "Invalid key",
-    } as any);
-
-    const result = await fetchModels("bad-key");
-    expect(result).toBeNull();
-    expect(fetch).toHaveBeenCalledTimes(1);
   });
   it("handles partial lines across chunks", async () => {
     const chunk: OcGoStreamResponse = {

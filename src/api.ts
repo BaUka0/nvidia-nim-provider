@@ -1,6 +1,11 @@
 import { BASE_RETRY_DELAY_MS, BASE_URL, MAX_RETRY_DELAY_MS } from "./constants";
 import { debugLog } from "./output-channel";
-import { NvidiaModelListResponse, OcGoChatRequest, OcGoStreamResponse } from "./types";
+import {
+  NvidiaModelListResponse,
+  NvidiaModelSummary,
+  OcGoChatRequest,
+  OcGoStreamResponse,
+} from "./types";
 
 /**
  * Determine whether an HTTP status code is safe to retry.
@@ -81,7 +86,7 @@ export async function fetchModels(
   apiKey: string,
   signal?: AbortSignal,
   userAgent?: string,
-): Promise<Array<{ id: string; name: string }> | null> {
+): Promise<NvidiaModelSummary[] | null> {
   try {
     const response = await fetchWithRetry(`${BASE_URL}/models`, {
       method: "GET",
@@ -96,12 +101,7 @@ export async function fetchModels(
       return null;
     }
     const data = (await response.json()) as NvidiaModelListResponse;
-    return Array.isArray(data.data)
-      ? data.data.map((model) => ({
-          id: model.id,
-          name: model.name ?? model.id,
-        }))
-      : null;
+    return Array.isArray(data.data) ? data.data : null;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw error;
