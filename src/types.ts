@@ -65,9 +65,6 @@ export interface OcGoStreamResponse {
   };
 }
 
-/** API format used by a model */
-export type OcGoApiFormat = "openai" | "anthropic";
-
 export interface OcGoModelInfo {
   id: string;
   name: string;
@@ -76,10 +73,6 @@ export interface OcGoModelInfo {
   maxOutput: number;
   supportsTools: boolean;
   supportsVision: boolean;
-  /** API format: "openai" (default) or "anthropic" (MiniMax models) */
-  apiFormat?: OcGoApiFormat;
-  /** If set, this exact temperature value is sent for every request */
-  fixedTemperature?: number;
 }
 
 export interface NvidiaModelCapabilities {
@@ -114,7 +107,6 @@ export const FALLBACK_MODELS: OcGoModelInfo[] = [
     maxOutput: 131072,
     supportsTools: true,
     supportsVision: false,
-    apiFormat: "openai",
   },
   {
     id: "glm-5.1",
@@ -124,7 +116,6 @@ export const FALLBACK_MODELS: OcGoModelInfo[] = [
     maxOutput: 131072,
     supportsTools: true,
     supportsVision: false,
-    apiFormat: "openai",
   },
   {
     id: "kimi-k2.5",
@@ -134,8 +125,6 @@ export const FALLBACK_MODELS: OcGoModelInfo[] = [
     maxOutput: 65536,
     supportsTools: true,
     supportsVision: true,
-    apiFormat: "openai",
-    fixedTemperature: 1,
   },
   {
     id: "kimi-k2.6",
@@ -145,8 +134,6 @@ export const FALLBACK_MODELS: OcGoModelInfo[] = [
     maxOutput: 262144,
     supportsTools: true,
     supportsVision: true,
-    apiFormat: "openai",
-    fixedTemperature: 1,
   },
   {
     id: "mimo-v2-pro",
@@ -156,7 +143,6 @@ export const FALLBACK_MODELS: OcGoModelInfo[] = [
     maxOutput: 131072,
     supportsTools: true,
     supportsVision: false,
-    apiFormat: "openai",
   },
   {
     id: "mimo-v2-omni",
@@ -166,7 +152,6 @@ export const FALLBACK_MODELS: OcGoModelInfo[] = [
     maxOutput: 65536,
     supportsTools: true,
     supportsVision: true,
-    apiFormat: "openai",
   },
   {
     id: "mimo-v2.5-pro",
@@ -176,7 +161,6 @@ export const FALLBACK_MODELS: OcGoModelInfo[] = [
     maxOutput: 131072,
     supportsTools: true,
     supportsVision: true,
-    apiFormat: "openai",
   },
   {
     id: "mimo-v2.5",
@@ -186,7 +170,6 @@ export const FALLBACK_MODELS: OcGoModelInfo[] = [
     maxOutput: 65536,
     supportsTools: true,
     supportsVision: true,
-    apiFormat: "openai",
   },
   {
     id: "minimax-m2.5",
@@ -196,7 +179,6 @@ export const FALLBACK_MODELS: OcGoModelInfo[] = [
     maxOutput: 131072,
     supportsTools: true,
     supportsVision: false,
-    apiFormat: "anthropic",
   },
   {
     id: "minimax-m2.7",
@@ -206,7 +188,6 @@ export const FALLBACK_MODELS: OcGoModelInfo[] = [
     maxOutput: 131072,
     supportsTools: true,
     supportsVision: false,
-    apiFormat: "anthropic",
   },
   {
     id: "qwen3.5-plus",
@@ -216,7 +197,6 @@ export const FALLBACK_MODELS: OcGoModelInfo[] = [
     maxOutput: 65536,
     supportsTools: true,
     supportsVision: true,
-    apiFormat: "openai",
   },
   {
     id: "qwen3.6-plus",
@@ -226,97 +206,5 @@ export const FALLBACK_MODELS: OcGoModelInfo[] = [
     maxOutput: 65536,
     supportsTools: true,
     supportsVision: true,
-    apiFormat: "openai",
   },
 ];
-
-// ============================================================================
-// Anthropic Messages API types
-// Used by MiniMax M2.5 and M2.7 via OpenCode Go proxy
-// ============================================================================
-
-/** Anthropic message content block */
-export type AnthropicContentBlock =
-  | { type: "text"; text: string }
-  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
-  | { type: "tool_use"; id: string; name: string; input: JsonObject }
-  | { type: "tool_result"; tool_use_id: string; content: string | AnthropicContentBlock[] };
-
-/** Anthropic message format */
-export interface AnthropicMessage {
-  role: "user" | "assistant";
-  content: string | AnthropicContentBlock[];
-}
-
-/** Anthropic tool definition */
-export interface AnthropicTool {
-  name: string;
-  description?: string;
-  input_schema: JsonObject;
-}
-
-/** Anthropic request body */
-export interface AnthropicRequestBody {
-  model: string;
-  messages: AnthropicMessage[];
-  system?: string | Array<{ type: "text"; text: string }>;
-  max_tokens: number;
-  stream?: boolean;
-  temperature?: number;
-  top_p?: number;
-  stop_sequences?: string[];
-  tools?: AnthropicTool[];
-  tool_choice?: "auto" | "any" | { type: "tool"; name: string };
-}
-
-/** Anthropic SSE event types */
-export interface AnthropicMessageStartEvent {
-  type: "message_start";
-  message: {
-    id: string;
-    type: "message";
-    role: "assistant";
-    content: AnthropicContentBlock[];
-    model: string;
-    stop_reason: string | null;
-    usage: { input_tokens: number; output_tokens: number };
-  };
-}
-
-export interface AnthropicContentBlockStartEvent {
-  type: "content_block_start";
-  index: number;
-  content_block: AnthropicContentBlock;
-}
-
-export interface AnthropicContentBlockDeltaEvent {
-  type: "content_block_delta";
-  index: number;
-  delta:
-    | { type: "text_delta"; text: string }
-    | { type: "input_json_delta"; partial_json: string }
-    | { type: "thinking_delta"; thinking: string };
-}
-
-export interface AnthropicContentBlockStopEvent {
-  type: "content_block_stop";
-  index: number;
-}
-
-export interface AnthropicMessageDeltaEvent {
-  type: "message_delta";
-  delta: { stop_reason: string | null; stop_sequence: string | null };
-  usage: { output_tokens: number };
-}
-
-export interface AnthropicMessageStopEvent {
-  type: "message_stop";
-}
-
-export type AnthropicSSEEvent =
-  | AnthropicMessageStartEvent
-  | AnthropicContentBlockStartEvent
-  | AnthropicContentBlockDeltaEvent
-  | AnthropicContentBlockStopEvent
-  | AnthropicMessageDeltaEvent
-  | AnthropicMessageStopEvent;

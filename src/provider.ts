@@ -20,9 +20,14 @@ import {
   PROVIDER_VENDOR,
   SECRET_STORAGE_KEY,
 } from "./constants";
-import { NormalizedNvidiaModel, normalizeNvidiaModels } from "./model-catalog";
+import {
+  getFallbackModels,
+  isNormalizedNvidiaModel,
+  NormalizedNvidiaModel,
+  normalizeNvidiaModels,
+} from "./model-catalog";
 import { debugLog } from "./output-channel";
-import { FALLBACK_MODELS, NvidiaModelSummary } from "./types";
+import { NvidiaModelSummary } from "./types";
 import {
   applyReasoningContentWorkaround,
   convertMessages,
@@ -70,33 +75,6 @@ interface ChatRequestContext {
   startLine?: number;
   endLine?: number;
   cwd?: string;
-}
-
-function isNormalizedNvidiaModel(value: unknown): value is NormalizedNvidiaModel {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const candidate = value as Partial<NormalizedNvidiaModel>;
-  return (
-    typeof candidate.id === "string" &&
-    typeof candidate.displayName === "string" &&
-    typeof candidate.contextWindow === "number" &&
-    typeof candidate.maxOutputTokens === "number" &&
-    typeof candidate.supportsTools === "boolean" &&
-    typeof candidate.supportsVision === "boolean"
-  );
-}
-
-function getFallbackModels(): NormalizedNvidiaModel[] {
-  return FALLBACK_MODELS.map((model) => ({
-    id: model.id,
-    displayName: model.displayName,
-    contextWindow: model.contextWindow,
-    maxOutputTokens: model.maxOutput,
-    supportsTools: model.supportsTools,
-    supportsVision: model.supportsVision,
-  }));
 }
 
 function buildToolCallCanonicalKey(name: string, args: unknown): string {
@@ -482,10 +460,6 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
   ): Promise<LanguageModelChatInformation[]> {
     if (token.isCancellationRequested) {
       return [];
-    }
-
-    if (options.silent) {
-      return this._mapToChatInformation(this.getAvailableModels());
     }
 
     return this._mapToChatInformation(this.getAvailableModels());

@@ -1,4 +1,4 @@
-import type { NvidiaModelSummary } from "./types";
+import { FALLBACK_MODELS, type NvidiaModelSummary } from "./types";
 
 export interface NormalizedNvidiaModel {
   id: string;
@@ -20,6 +20,33 @@ const KNOWN_MODEL_OVERRIDES: Record<string, Partial<NormalizedNvidiaModel>> = {
 
 export function normalizeNvidiaModels(models: NvidiaModelSummary[]): NormalizedNvidiaModel[] {
   return models.filter(isChatModel).map(normalizeNvidiaModel);
+}
+
+export function isNormalizedNvidiaModel(value: unknown): value is NormalizedNvidiaModel {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Partial<NormalizedNvidiaModel>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.displayName === "string" &&
+    typeof candidate.contextWindow === "number" &&
+    typeof candidate.maxOutputTokens === "number" &&
+    typeof candidate.supportsTools === "boolean" &&
+    typeof candidate.supportsVision === "boolean"
+  );
+}
+
+export function getFallbackModels(): NormalizedNvidiaModel[] {
+  return FALLBACK_MODELS.map((model) => ({
+    id: model.id,
+    displayName: model.displayName,
+    contextWindow: model.contextWindow,
+    maxOutputTokens: model.maxOutput,
+    supportsTools: model.supportsTools,
+    supportsVision: model.supportsVision,
+  }));
 }
 
 function normalizeNvidiaModel(model: NvidiaModelSummary): NormalizedNvidiaModel {
