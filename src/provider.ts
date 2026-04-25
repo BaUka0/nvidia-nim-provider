@@ -12,7 +12,7 @@ import {
   Progress,
   ProvideLanguageModelChatResponseOptions,
 } from "vscode";
-import { streamChatCompletion } from "./api";
+import { fetchModels, streamChatCompletion } from "./api";
 import {
   CONTEXT_WINDOW_SAFETY_MARGIN,
   MODELS_STATE_KEY,
@@ -20,7 +20,11 @@ import {
   PROVIDER_VENDOR,
   SECRET_STORAGE_KEY,
 } from "./constants";
-import { isNormalizedNvidiaModel, NormalizedNvidiaModel } from "./model-catalog";
+import {
+  isNormalizedNvidiaModel,
+  normalizeNvidiaModels,
+  NormalizedNvidiaModel,
+} from "./model-catalog";
 import { debugLog } from "./output-channel";
 import {
   applyReasoningContentWorkaround,
@@ -413,8 +417,30 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     return storedModels.every(isNormalizedNvidiaModel) ? storedModels : [];
   }
 
-  private getAvailableModels(): NormalizedNvidiaModel[] {
-    return this.getNormalizedModels();
+  private async getAvailableModels(): Promise<NormalizedNvidiaModel[]> {
+    const cachedModels = this.getNormalizedModels();
+    if (cachedModels.length > 0) {
+      return cachedModels;
+    }
+
+    return this.fetchAvailableModels();
+  }
+
+  private async fetchAvailableModels(): Promise<NormalizedNvidiaModel[]> {
+    const apiKey = await this.secrets.get(SECRET_STORAGE_KEY);
+    if (!apiKey) {
+      return [];
+    }
+
+    const rawModels = await fetchModels(apiKey, undefined, this.userAgent);
+    if (!Array.isArray(rawModels)) {
+      debugLog("modelPicker", "Unable to fetch models on demand.");
+      return [];
+    }
+
+    const normalizedModels = normalizeNvidiaModels(rawModels);
+    await this.globalState?.update(MODELS_STATE_KEY, normalizedModels);
+    return normalizedModels;
   }
 
   private calculateMaxToolResultChars(contextWindow: number): number {
@@ -451,7 +477,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       return [];
     }
 
-    return this._mapToChatInformation(this.getAvailableModels());
+    return this._mapToChatInformation(await this.getAvailableModels());
   }
 
   private _mapToChatInformation(
@@ -517,7 +543,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         model.maxOutputTokens,
       );
 
-      const modelInfo = this.getAvailableModels().find((entry) => entry.id === model.id);
+      const modelInfo = (await this.getAvailableModels()).find((entry) => entry.id === model.id);
       const temperatureVal =
         typeof (options.modelOptions as Record<string, unknown>)?.temperature === "number"
           ? ((options.modelOptions as Record<string, unknown>).temperature as number)

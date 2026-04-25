@@ -1,5 +1,12 @@
 # Change Log
 
+## [0.1.6] - 2026-04-25
+
+### Fixed
+
+- Fetch NVIDIA NIM models on demand when the Copilot Chat model picker asks for models before the
+  background refresh has populated the cache.
+
 ## [0.1.5] - 2026-04-25
 
 ### Fixed

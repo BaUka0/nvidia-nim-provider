@@ -90,8 +90,9 @@ describe("OcGoChatModelProvider", () => {
     ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue(undefined);
   });
 
-  it("provideLanguageModelChatInformation returns no models when cache is empty", async () => {
+  it("provideLanguageModelChatInformation returns no models when cache is empty and no API key exists", async () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
+    (secrets.get as jest.Mock).mockResolvedValue(undefined);
     const token = {
       isCancellationRequested: false,
       onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
@@ -103,6 +104,47 @@ describe("OcGoChatModelProvider", () => {
     expect(infos).toEqual([]);
     expect(globalState.get).toHaveBeenCalledWith("nvidia-nim.models");
     expect(fetchModels).not.toHaveBeenCalled();
+  });
+
+  it("provideLanguageModelChatInformation fetches models on demand when cache is empty and an API key exists", async () => {
+    (globalState.get as jest.Mock).mockReturnValue(undefined);
+    (globalState.update as jest.Mock).mockResolvedValue(undefined);
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (fetchModels as jest.Mock).mockResolvedValue([
+      {
+        id: "meta/llama-3.1-8b-instruct",
+        object: "model",
+        owned_by: "integrate.api.nvidia.com",
+      },
+    ]);
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    const infos = await provider.provideLanguageModelChatInformation(
+      { silent: true } as any,
+      token as any,
+    );
+
+    expect(fetchModels).toHaveBeenCalledWith("test-key", undefined, "test-ua");
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
+      {
+        id: "meta/llama-3.1-8b-instruct",
+        displayName: "llama-3.1-8b-instruct",
+        contextWindow: 131072,
+        maxOutputTokens: 16384,
+        supportsTools: false,
+        supportsVision: false,
+      },
+    ]);
+    expect(infos).toEqual([
+      expect.objectContaining({
+        id: "meta/llama-3.1-8b-instruct",
+        name: "llama-3.1-8b-instruct",
+        detail: "NVIDIA NIM",
+      }),
+    ]);
   });
 
   it("provideLanguageModelChatInformation returns cached normalized models", async () => {
