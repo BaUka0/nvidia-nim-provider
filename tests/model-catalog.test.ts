@@ -1,8 +1,4 @@
-import {
-  getFallbackModels,
-  isNormalizedNvidiaModel,
-  normalizeNvidiaModels,
-} from "../src/model-catalog";
+import { isNormalizedNvidiaModel, normalizeNvidiaModels } from "../src/model-catalog";
 import type { NvidiaModelSummary } from "../src/types";
 
 describe("normalizeNvidiaModels", () => {
@@ -88,21 +84,6 @@ describe("normalizeNvidiaModels", () => {
     ];
 
     expect(normalizeNvidiaModels(raw)).toEqual([]);
-  });
-
-  it("converts fallback models into normalized NVIDIA model metadata", () => {
-    expect(getFallbackModels()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "kimi-k2.6",
-          displayName: "Kimi K2.6",
-          contextWindow: 262144,
-          maxOutputTokens: 262144,
-          supportsTools: true,
-          supportsVision: true,
-        }),
-      ]),
-    );
   });
 
   it("detects whether cached values match the normalized NVIDIA model shape", () => {

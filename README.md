@@ -31,19 +31,15 @@ VS Code extension that adds an NVIDIA NIM provider to Copilot Chat.
 
 ## Supported Models
 
-The extension dynamically fetches available models from `https://integrate.api.nvidia.com/v1/models`. Fallback models include:
-
-- GLM-5, GLM-5.1
-- Kimi K2.5, **Kimi K2.6**
-- MiMo-V2-Pro, MiMo-V2-Omni, MiMo-V2.5-Pro, MiMo-V2.5
-- MiniMax M2.5, MiniMax M2.7
-- Qwen3.5 Plus, Qwen3.6 Plus
+The extension dynamically fetches available models from `https://integrate.api.nvidia.com/v1/models`.
+It does not ship a hardcoded fallback model catalog; the Copilot Chat model picker shows the models
+returned by your NVIDIA NIM account.
 
 ## Usage
 
 1. Open Copilot Chat (`Cmd/Ctrl + Alt + I`).
 2. Select **NVIDIA NIM** from the provider selector.
-3. Choose a model (e.g., Kimi K2.6) and start chatting.
+3. Choose one of the dynamically discovered NVIDIA NIM models and start chatting.
 
 ## Development
 

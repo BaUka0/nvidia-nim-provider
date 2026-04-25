@@ -20,7 +20,7 @@ import {
   PROVIDER_VENDOR,
   SECRET_STORAGE_KEY,
 } from "./constants";
-import { getFallbackModels, isNormalizedNvidiaModel, NormalizedNvidiaModel } from "./model-catalog";
+import { isNormalizedNvidiaModel, NormalizedNvidiaModel } from "./model-catalog";
 import { debugLog } from "./output-channel";
 import {
   applyReasoningContentWorkaround,
@@ -415,8 +415,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
   }
 
   private getAvailableModels(): NormalizedNvidiaModel[] {
-    const normalizedModels = this.getNormalizedModels();
-    return normalizedModels.length > 0 ? normalizedModels : getFallbackModels();
+    return this.getNormalizedModels();
   }
 
   private calculateMaxToolResultChars(contextWindow: number): number {

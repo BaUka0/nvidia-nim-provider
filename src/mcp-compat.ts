@@ -1,14 +1,33 @@
 import * as vscode from "vscode";
-import { BASE_URL, PROVIDER_DISPLAY_NAME, SECRET_STORAGE_KEY } from "./constants";
+import { BASE_URL, MODELS_STATE_KEY, PROVIDER_DISPLAY_NAME, SECRET_STORAGE_KEY } from "./constants";
+import { isNormalizedNvidiaModel } from "./model-catalog";
 
 /**
  * Temporary image-analysis fallback retained until the dedicated NVIDIA image path is implemented.
  */
 export class OcGoMcpClient {
-  constructor(private readonly secrets: vscode.SecretStorage) {}
+  constructor(
+    private readonly secrets: vscode.SecretStorage,
+    private readonly modelStorage?: vscode.Memento,
+  ) {}
 
   private async getApiKey(): Promise<string> {
     return (await this.secrets.get(SECRET_STORAGE_KEY)) ?? "";
+  }
+
+  private getVisionModelId(): string {
+    const cachedModels = this.modelStorage?.get<unknown>(MODELS_STATE_KEY);
+    const visionModel = Array.isArray(cachedModels)
+      ? cachedModels.find((model) => isNormalizedNvidiaModel(model) && model.supportsVision)
+      : undefined;
+
+    if (!visionModel || !isNormalizedNvidiaModel(visionModel)) {
+      throw new Error(
+        `No NVIDIA NIM vision model is available. Run "${PROVIDER_DISPLAY_NAME}: Refresh Models" after setting your API key.`,
+      );
+    }
+
+    return visionModel.id;
   }
 
   async analyzeImage(imageData: string, prompt: string): Promise<string> {
@@ -16,6 +35,7 @@ export class OcGoMcpClient {
     if (!apiKey) {
       throw new Error(`${PROVIDER_DISPLAY_NAME} API key not found`);
     }
+    const model = this.getVisionModelId();
 
     const response = await fetch(`${BASE_URL}/chat/completions`, {
       method: "POST",
@@ -24,7 +44,7 @@ export class OcGoMcpClient {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "mimo-v2-omni",
+        model,
         messages: [
           {
             role: "user",

@@ -301,7 +301,7 @@ export function convertMessages(
       if (img) {
         continue;
       }
-      console.warn("[OpenCode Go Provider] Unrecognized message part:", part);
+      console.warn("[NVIDIA NIM Provider] Unrecognized message part:", part);
     }
 
     // Handle tool calls

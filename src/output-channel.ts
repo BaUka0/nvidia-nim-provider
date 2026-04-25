@@ -6,16 +6,16 @@ const DEBUG_LOG_PREFIX = `[${PROVIDER_DISPLAY_NAME} Debug]`;
 
 function getGlobalOutputChannel(): vscode.OutputChannel | undefined {
   const globalWindow = globalThis as typeof globalThis & {
-    __opencodeGoOutputChannel?: vscode.OutputChannel;
+    __nvidiaNimOutputChannel?: vscode.OutputChannel;
   };
-  return globalWindow.__opencodeGoOutputChannel;
+  return globalWindow.__nvidiaNimOutputChannel;
 }
 
 function setGlobalOutputChannel(channel: vscode.OutputChannel): void {
   const globalWindow = globalThis as typeof globalThis & {
-    __opencodeGoOutputChannel?: vscode.OutputChannel;
+    __nvidiaNimOutputChannel?: vscode.OutputChannel;
   };
-  globalWindow.__opencodeGoOutputChannel = channel;
+  globalWindow.__nvidiaNimOutputChannel = channel;
 }
 
 export function getOutputChannel(): vscode.OutputChannel {

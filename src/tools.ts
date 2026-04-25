@@ -38,8 +38,8 @@ export class OcGoAnalyzeImageTool implements vscode.LanguageModelTool<{
 
   private readonly mcpClient: OcGoMcpClient;
 
-  constructor(secrets: vscode.SecretStorage) {
-    this.mcpClient = new OcGoMcpClient(secrets);
+  constructor(secrets: vscode.SecretStorage, modelStorage?: vscode.Memento) {
+    this.mcpClient = new OcGoMcpClient(secrets, modelStorage);
   }
 
   async invoke(
@@ -74,7 +74,10 @@ export class OcGoAnalyzeImageTool implements vscode.LanguageModelTool<{
  * @param secrets VS Code secret storage for API key access
  * @returns Disposable for the tool registrations
  */
-export function registerOcGoTools(secrets: vscode.SecretStorage): vscode.Disposable {
-  const analyzeImageTool = new OcGoAnalyzeImageTool(secrets);
+export function registerOcGoTools(
+  secrets: vscode.SecretStorage,
+  modelStorage?: vscode.Memento,
+): vscode.Disposable {
+  const analyzeImageTool = new OcGoAnalyzeImageTool(secrets, modelStorage);
   return vscode.Disposable.from(vscode.lm.registerTool(OcGoAnalyzeImageTool.id, analyzeImageTool));
 }

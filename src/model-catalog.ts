@@ -1,4 +1,4 @@
-import { FALLBACK_MODELS, type NvidiaModelSummary } from "./types";
+import type { NvidiaModelSummary } from "./types";
 
 export interface NormalizedNvidiaModel {
   id: string;
@@ -36,17 +36,6 @@ export function isNormalizedNvidiaModel(value: unknown): value is NormalizedNvid
     typeof candidate.supportsTools === "boolean" &&
     typeof candidate.supportsVision === "boolean"
   );
-}
-
-export function getFallbackModels(): NormalizedNvidiaModel[] {
-  return FALLBACK_MODELS.map((model) => ({
-    id: model.id,
-    displayName: model.displayName,
-    contextWindow: model.contextWindow,
-    maxOutputTokens: model.maxOutput,
-    supportsTools: model.supportsTools,
-    supportsVision: model.supportsVision,
-  }));
 }
 
 function normalizeNvidiaModel(model: NvidiaModelSummary): NormalizedNvidiaModel {

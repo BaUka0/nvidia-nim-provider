@@ -116,7 +116,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const registration = vscode.lm.registerLanguageModelChatProvider(PROVIDER_VENDOR, provider);
   context.subscriptions.push(registration);
-  context.subscriptions.push(registerOcGoTools(context.secrets));
+  context.subscriptions.push(registerOcGoTools(context.secrets, context.globalState));
   context.subscriptions.push(
     vscode.commands.registerCommand(MANAGE_COMMAND_ID, async () => {
       const existing = await context.secrets.get(SECRET_STORAGE_KEY);

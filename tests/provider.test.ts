@@ -90,7 +90,7 @@ describe("OcGoChatModelProvider", () => {
     ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue(undefined);
   });
 
-  it("provideLanguageModelChatInformation returns fallback models when cache is empty", async () => {
+  it("provideLanguageModelChatInformation returns no models when cache is empty", async () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
     const token = {
       isCancellationRequested: false,
@@ -100,8 +100,7 @@ describe("OcGoChatModelProvider", () => {
       { silent: true } as any,
       token as any,
     );
-    expect(infos.length).toBeGreaterThan(0);
-    expect(infos[0].name).toBeDefined();
+    expect(infos).toEqual([]);
     expect(globalState.get).toHaveBeenCalledWith("nvidia-nim.models");
     expect(fetchModels).not.toHaveBeenCalled();
   });
@@ -136,7 +135,7 @@ describe("OcGoChatModelProvider", () => {
     expect(fetchModels).not.toHaveBeenCalled();
   });
 
-  it("provideLanguageModelChatInformation falls back when the cache is not normalized", async () => {
+  it("provideLanguageModelChatInformation returns no models when the cache is not normalized", async () => {
     (globalState.get as jest.Mock).mockReturnValue([{ id: "cached-model", name: "Cached Model" }]);
     const token = {
       isCancellationRequested: false,
@@ -148,8 +147,7 @@ describe("OcGoChatModelProvider", () => {
       token as any,
     );
 
-    expect(infos.length).toBeGreaterThan(0);
-    expect(infos.some((info) => info.id === "cached-model")).toBe(false);
+    expect(infos).toEqual([]);
   });
 
   it("does not advertise image input for non-vision normalized models", async () => {
