@@ -1,5 +1,13 @@
 # Change Log
 
+## [0.1.5] - 2026-04-25
+
+### Fixed
+
+- Clear stale cached models when NVIDIA NIM `/models` successfully returns an empty list.
+- Treat non-array persisted model cache values as malformed and return no picker models.
+- Update image-analysis helper comments to reflect cached vision-model selection rather than fallback behavior.
+
 ## [0.1.4] - 2026-04-25
 
 ### Fixed

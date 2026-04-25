@@ -220,6 +220,41 @@ describe("activate", () => {
     expect(mockShowInformationMessage).toHaveBeenCalledWith("Refreshed 1 NVIDIA NIM models.");
   });
 
+  it("clears raw and normalized model caches when the refresh command returns an empty model list", async () => {
+    (fetchModels as jest.Mock).mockResolvedValue([]);
+
+    const secrets = {
+      get: jest.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce("test-key"),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+    await flushAsyncWork();
+
+    const refresh = registeredCommands.get("nvidia-nim.refreshModels");
+    expect(refresh).toBeDefined();
+
+    await refresh?.();
+
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.rawModels", []);
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", []);
+    expect(mockShowInformationMessage).toHaveBeenCalledWith("Refreshed 0 NVIDIA NIM models.");
+  });
+
   it("keeps existing caches untouched when refresh fails after a previous successful cache", async () => {
     (fetchModels as jest.Mock).mockRejectedValue(new Error("network down"));
 

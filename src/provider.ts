@@ -405,13 +405,12 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
   }
 
   private getNormalizedModels(): NormalizedNvidiaModel[] {
-    const storedModels = this.globalState?.get<NormalizedNvidiaModel[]>(MODELS_STATE_KEY) ?? [];
-
-    if (storedModels.length === 0) {
+    const storedModels = this.globalState?.get<unknown>(MODELS_STATE_KEY);
+    if (!Array.isArray(storedModels)) {
       return [];
     }
 
-    return storedModels.every((model) => isNormalizedNvidiaModel(model)) ? storedModels : [];
+    return storedModels.every(isNormalizedNvidiaModel) ? storedModels : [];
   }
 
   private getAvailableModels(): NormalizedNvidiaModel[] {

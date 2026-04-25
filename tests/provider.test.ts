@@ -150,6 +150,24 @@ describe("OcGoChatModelProvider", () => {
     expect(infos).toEqual([]);
   });
 
+  it.each([{}, "bad-cache", 123])(
+    "provideLanguageModelChatInformation returns no models when cache is malformed non-array: %p",
+    async (malformedCache) => {
+      (globalState.get as jest.Mock).mockReturnValue(malformedCache);
+      const token = {
+        isCancellationRequested: false,
+        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+      };
+
+      const infos = await provider.provideLanguageModelChatInformation(
+        { silent: true } as any,
+        token as any,
+      );
+
+      expect(infos).toEqual([]);
+    },
+  );
+
   it("does not advertise image input for non-vision normalized models", async () => {
     (globalState.get as jest.Mock).mockReturnValue([
       {
@@ -356,7 +374,7 @@ describe("OcGoChatModelProvider", () => {
     ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue("new-api-key");
 
     const mockStream = async function* () {
-      yield { choices: [{ delta: { content: "Hello from OpenCode Go" } }] };
+      yield { choices: [{ delta: { content: "Hello from NVIDIA NIM" } }] };
     };
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
@@ -383,7 +401,7 @@ describe("OcGoChatModelProvider", () => {
       "test-ua",
     );
     expect(progress.report).toHaveBeenCalledWith(
-      expect.objectContaining({ value: "Hello from OpenCode Go" }),
+      expect.objectContaining({ value: "Hello from NVIDIA NIM" }),
     );
   });
 

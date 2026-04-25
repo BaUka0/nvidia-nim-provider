@@ -3,7 +3,7 @@ import { BASE_URL, MODELS_STATE_KEY, PROVIDER_DISPLAY_NAME, SECRET_STORAGE_KEY }
 import { isNormalizedNvidiaModel } from "./model-catalog";
 
 /**
- * Temporary image-analysis fallback retained until the dedicated NVIDIA image path is implemented.
+ * Image-analysis client that uses a cached NVIDIA NIM vision-capable model.
  */
 export class OcGoMcpClient {
   constructor(

@@ -103,7 +103,7 @@ describe("convertTools", () => {
     expect(result).toEqual({});
   });
 
-  it("converts VS Code tools to OpenCode Go format", () => {
+  it("converts VS Code tools to NVIDIA NIM format", () => {
     const result = convertTools({
       tools: [
         {

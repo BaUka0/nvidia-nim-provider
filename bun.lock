@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "my-opencode-go-provider",
+      "name": "nvidia-nim-provider",
       "devDependencies": {
         "@types/jest": "^29.0.0",
         "@types/node": "^22.0.0",

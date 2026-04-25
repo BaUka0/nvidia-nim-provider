@@ -40,7 +40,7 @@ async function refreshModelsFromApi(
 
       try {
         const rawModels = await fetchModels(apiKey, undefined, ua);
-        if (rawModels && rawModels.length > 0) {
+        if (Array.isArray(rawModels)) {
           const normalizedModels = normalizeNvidiaModels(rawModels);
           const previousRawModels = context.globalState.get(RAW_MODELS_STATE_KEY);
           await context.globalState.update(RAW_MODELS_STATE_KEY, rawModels);
@@ -70,7 +70,7 @@ async function refreshModelsFromApi(
           return;
         }
 
-        debugLog("refreshModels", "Model refresh returned no models.");
+        debugLog("refreshModels", "Model refresh failed or returned malformed data.");
         if (options.showMessages) {
           vscode.window.showWarningMessage(
             `Failed to refresh models from ${PROVIDER_DISPLAY_NAME} API.`,

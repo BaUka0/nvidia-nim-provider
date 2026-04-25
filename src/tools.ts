@@ -3,7 +3,7 @@ import { PROVIDER_DISPLAY_NAME } from "./constants";
 import { OcGoMcpClient } from "./mcp-compat";
 
 /**
- * Tool for analyzing images using the NVIDIA NIM vision fallback model.
+ * Tool for analyzing images using a cached NVIDIA NIM vision-capable model.
  * Non-vision models can delegate image content to this tool for analysis.
  */
 export class OcGoAnalyzeImageTool implements vscode.LanguageModelTool<{
