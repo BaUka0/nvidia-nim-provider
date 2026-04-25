@@ -3,7 +3,7 @@
   "publisher": "HidenobuNagai",
   "displayName": "NVIDIA NIM Provider",
   "description": "Use NVIDIA NIM models in GitHub Copilot Chat for VS Code",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -33,7 +33,8 @@
     "Chat"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onLanguageModelChatProvider:nvidia-nim"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -41,7 +42,19 @@
       {
         "vendor": "nvidia-nim",
         "displayName": "NVIDIA NIM",
-        "managementCommand": "nvidia-nim.manage"
+        "configuration": {
+          "properties": {
+            "apiKey": {
+              "type": "string",
+              "secret": true,
+              "description": "API key from build.nvidia.com/models",
+              "title": "API Key"
+            }
+          },
+          "required": [
+            "apiKey"
+          ]
+        }
       }
     ],
     "commands": [

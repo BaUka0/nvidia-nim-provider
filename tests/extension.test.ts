@@ -103,6 +103,37 @@ describe("activate", () => {
     expect(process.env.NVIDIA_NIM_DEBUG).toBe("0");
   });
 
+  it("declares an API key configuration schema for VS Code model settings", () => {
+    const packageJson = require("../package.json") as {
+      activationEvents?: string[];
+      contributes?: {
+        languageModelChatProviders?: Array<{
+          vendor?: string;
+          managementCommand?: string;
+          configuration?: {
+            properties?: Record<string, { secret?: boolean; type?: string }>;
+            required?: string[];
+          };
+        }>;
+      };
+    };
+
+    expect(packageJson.activationEvents).toContain("onLanguageModelChatProvider:nvidia-nim");
+
+    const providerContribution = packageJson.contributes?.languageModelChatProviders?.find(
+      (provider) => provider.vendor === "nvidia-nim",
+    );
+
+    expect(providerContribution?.managementCommand).toBeUndefined();
+    expect(providerContribution?.configuration?.properties?.apiKey).toEqual(
+      expect.objectContaining({
+        type: "string",
+        secret: true,
+      }),
+    );
+    expect(providerContribution?.configuration?.required).toContain("apiKey");
+  });
+
   it("refreshes cached models in the background on activation when an API key exists", async () => {
     const rawModels = [
       {

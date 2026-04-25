@@ -147,6 +147,37 @@ describe("OcGoChatModelProvider", () => {
     ]);
   });
 
+  it("provideLanguageModelChatInformation uses the VS Code model configuration API key", async () => {
+    (globalState.get as jest.Mock).mockReturnValue(undefined);
+    (globalState.update as jest.Mock).mockResolvedValue(undefined);
+    (secrets.get as jest.Mock).mockResolvedValue(undefined);
+    (fetchModels as jest.Mock).mockResolvedValue([
+      {
+        id: "meta/llama-3.1-8b-instruct",
+        object: "model",
+        owned_by: "integrate.api.nvidia.com",
+      },
+    ]);
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    const infos = await provider.provideLanguageModelChatInformation(
+      { silent: true, configuration: { apiKey: "configured-key" } } as any,
+      token as any,
+    );
+
+    expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
+    expect(secrets.get).not.toHaveBeenCalledWith("nvidia-nim.apiKey");
+    expect(infos).toEqual([
+      expect.objectContaining({
+        id: "meta/llama-3.1-8b-instruct",
+        apiKey: "configured-key",
+      }),
+    ]);
+  });
+
   it("provideLanguageModelChatInformation returns cached normalized models", async () => {
     const cachedModels = [
       {
@@ -445,6 +476,43 @@ describe("OcGoChatModelProvider", () => {
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Hello from NVIDIA NIM" }),
     );
+  });
+
+  it("uses the API key carried by the configured model for chat requests", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue(undefined);
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "Hello from configured key" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+    const progress = { report: jest.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: "configured-model",
+        name: "Configured Model",
+        family: "nvidia-nim",
+        version: "1.0.0",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: {},
+        apiKey: "configured-key",
+      } as any,
+      [vscode.LanguageModelChatMessage.User([new vscode.LanguageModelTextPart("Hi")])],
+      { modelOptions: {} } as any,
+      progress as any,
+      {
+        isCancellationRequested: false,
+        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+      } as any,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledWith(
+      "configured-key",
+      expect.anything(),
+      expect.any(AbortSignal),
+      "test-ua",
+    );
+    expect((vscode as any).window.showInputBox).not.toHaveBeenCalled();
   });
 
   it("returns setup guidance in chat when no API key is available", async () => {

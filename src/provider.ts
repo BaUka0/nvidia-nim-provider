@@ -36,6 +36,29 @@ import {
 
 const DEFAULT_MAX_TOKENS = 65536;
 
+interface NvidiaProviderConfiguration {
+  apiKey?: string;
+}
+
+interface NvidiaLanguageModelChatInformation extends LanguageModelChatInformation {
+  apiKey?: string;
+}
+
+function getApiKeyFromConfiguration(
+  options: PrepareLanguageModelChatModelOptions,
+): string | undefined {
+  const configuration = (options as { configuration?: NvidiaProviderConfiguration }).configuration;
+  return getNonEmptyApiKey(configuration?.apiKey);
+}
+
+function getApiKeyFromModel(model: LanguageModelChatInformation): string | undefined {
+  return getNonEmptyApiKey((model as NvidiaLanguageModelChatInformation).apiKey);
+}
+
+function getNonEmptyApiKey(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 interface ToolSchema {
   required?: string[];
   enumValues?: Record<string, string[]>;
@@ -417,17 +440,17 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     return storedModels.every(isNormalizedNvidiaModel) ? storedModels : [];
   }
 
-  private async getAvailableModels(): Promise<NormalizedNvidiaModel[]> {
+  private async getAvailableModels(apiKey?: string): Promise<NormalizedNvidiaModel[]> {
     const cachedModels = this.getNormalizedModels();
     if (cachedModels.length > 0) {
       return cachedModels;
     }
 
-    return this.fetchAvailableModels();
+    return this.fetchAvailableModels(apiKey);
   }
 
-  private async fetchAvailableModels(): Promise<NormalizedNvidiaModel[]> {
-    const apiKey = await this.secrets.get(SECRET_STORAGE_KEY);
+  private async fetchAvailableModels(configuredApiKey?: string): Promise<NormalizedNvidiaModel[]> {
+    const apiKey = configuredApiKey ?? (await this.secrets.get(SECRET_STORAGE_KEY));
     if (!apiKey) {
       return [];
     }
@@ -472,17 +495,19 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
   async provideLanguageModelChatInformation(
     options: PrepareLanguageModelChatModelOptions,
     token: CancellationToken,
-  ): Promise<LanguageModelChatInformation[]> {
+  ): Promise<NvidiaLanguageModelChatInformation[]> {
     if (token.isCancellationRequested) {
       return [];
     }
 
-    return this._mapToChatInformation(await this.getAvailableModels());
+    const apiKey = getApiKeyFromConfiguration(options);
+    return this._mapToChatInformation(await this.getAvailableModels(apiKey), apiKey);
   }
 
   private _mapToChatInformation(
     models: readonly NormalizedNvidiaModel[],
-  ): LanguageModelChatInformation[] {
+    apiKey?: string,
+  ): NvidiaLanguageModelChatInformation[] {
     return models.map((info) => {
       return {
         id: info.id,
@@ -500,6 +525,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
           toolCalling: info.supportsTools ? 128 : false,
           imageInput: info.supportsVision,
         },
+        ...(apiKey ? { apiKey } : {}),
       };
     });
   }
@@ -517,7 +543,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     });
 
     try {
-      const apiKey = await this.ensureApiKey(false);
+      const apiKey = await this.ensureApiKey(false, getApiKeyFromModel(model));
       if (!apiKey) {
         progress.report(new vscode.LanguageModelTextPart(buildMissingApiKeyFallback()));
         return;
@@ -543,7 +569,9 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         model.maxOutputTokens,
       );
 
-      const modelInfo = (await this.getAvailableModels()).find((entry) => entry.id === model.id);
+      const modelInfo = (await this.getAvailableModels(apiKey)).find(
+        (entry) => entry.id === model.id,
+      );
       const temperatureVal =
         typeof (options.modelOptions as Record<string, unknown>)?.temperature === "number"
           ? ((options.modelOptions as Record<string, unknown>).temperature as number)
@@ -833,8 +861,11 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     return Promise.resolve(total);
   }
 
-  private async ensureApiKey(silent: boolean): Promise<string | undefined> {
-    let apiKey = await this.secrets.get(SECRET_STORAGE_KEY);
+  private async ensureApiKey(
+    silent: boolean,
+    configuredApiKey?: string,
+  ): Promise<string | undefined> {
+    let apiKey = configuredApiKey ?? (await this.secrets.get(SECRET_STORAGE_KEY));
     if (!apiKey && !silent) {
       const entered = await vscode.window.showInputBox({
         title: `${PROVIDER_DISPLAY_NAME} API Key`,

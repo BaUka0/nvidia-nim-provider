@@ -1,5 +1,14 @@
 # Change Log
 
+## [0.1.7] - 2026-04-25
+
+### Fixed
+
+- Add the VS Code language model provider configuration schema for the NVIDIA NIM API key.
+- Read API keys supplied by VS Code model settings when resolving picker models and chat requests.
+- Remove the deprecated model provider `managementCommand` contribution so VS Code can create a
+  configured NVIDIA NIM model group.
+
 ## [0.1.6] - 2026-04-25
 
 ### Fixed
