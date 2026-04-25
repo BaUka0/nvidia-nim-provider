@@ -1,5 +1,20 @@
 # Change Log
 
+## [0.1.13] - 2026-04-27
+
+### Fixed
+
+- **Duplicate model display (root cause fixed)**: Replaced the API-key-based duplicate guard with a
+  per-resolution-cycle flag. VS Code calls `provideLanguageModelChatInformation` once per provider
+  group per cycle; the extension now returns models only for the first group call in each cycle and
+  suppresses all subsequent calls — regardless of whether those groups share the same API key or use
+  different keys. This eliminates the duplicate model picker entries that persisted through v0.1.11
+  and v0.1.12.
+- **Restore Manage Models entry on startup**: Reverted the one-time migration guard introduced in
+  v0.1.12. `migrateLanguageModelProviderGroup` now runs on every startup when a legacy API key is
+  present, so the NVIDIA NIM entry in VS Code's Manage Models is automatically recreated if it was
+  accidentally removed.
+
 ## [0.1.12] - 2026-04-27
 
 ### Fixed

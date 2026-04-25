@@ -421,7 +421,8 @@ function isToolCallInput(args: unknown): args is Record<string, unknown> {
 
 export class OcGoChatModelProvider implements LanguageModelChatProvider {
   private readonly _onDidChangeLanguageModelChatInformation = new EventEmitter<void>();
-  private readonly seenProviderGroupApiKeys = new Set<string>();
+  /** Cleared at the start of each VS Code resolution cycle (groupless call). */
+  private _cycleModelsReturned = false;
   private _infoCallCounter = 0;
   readonly onDidChangeLanguageModelChatInformation: Event<void> =
     this._onDidChangeLanguageModelChatInformation.event;
@@ -520,12 +521,12 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     const apiKey = getApiKeyFromConfiguration(options);
 
     if (!apiKey) {
-      outputLog("resolution", `call #${callNum}: groupless — clearing duplicate-guard state`);
-      this.seenProviderGroupApiKeys.clear();
+      outputLog("resolution", `call #${callNum}: groupless — new resolution cycle, resetting duplicate guard`);
+      this._cycleModelsReturned = false;
       return [];
     }
 
-    if (this.seenProviderGroupApiKeys.has(apiKey)) {
+    if (this._cycleModelsReturned) {
       outputLog(
         "resolution",
         `call #${callNum}: ⚠️  duplicate provider group detected — skipping to avoid showing models twice.\n` +
@@ -535,9 +536,11 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       return [];
     }
 
-    this.seenProviderGroupApiKeys.add(apiKey);
     const models = await this.getAvailableModels(apiKey, { refreshStaleCache: true });
     outputLog("resolution", `call #${callNum}: returning ${models.length} models for this provider group`);
+    if (models.length > 0) {
+      this._cycleModelsReturned = true;
+    }
     return this._mapToChatInformation(models, apiKey);
   }
 

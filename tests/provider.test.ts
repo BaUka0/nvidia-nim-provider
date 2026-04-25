@@ -236,6 +236,44 @@ describe("OcGoChatModelProvider", () => {
     expect(duplicateInfos).toEqual([]);
   });
 
+  it("returns [] for a second provider group even when it uses a different API key", async () => {
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "meta/llama-3.1-8b-instruct",
+            displayName: "llama-3.1-8b-instruct",
+            contextWindow: 131072,
+            maxOutputTokens: 16384,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === "nvidia-nim.modelsCacheVersion") {
+        return 2;
+      }
+      return undefined;
+    });
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
+    const firstInfos = await provider.provideLanguageModelChatInformation(
+      { silent: true, configuration: { apiKey: "key-aaa" } } as any,
+      token as any,
+    );
+    const differentKeyInfos = await provider.provideLanguageModelChatInformation(
+      { silent: true, configuration: { apiKey: "key-bbb" } } as any,
+      token as any,
+    );
+
+    expect(firstInfos).toHaveLength(1);
+    expect(differentKeyInfos).toEqual([]);
+  });
+
   it("allows the same configured provider group again after a new provider resolution cycle starts", async () => {
     (globalState.get as jest.Mock).mockImplementation((key: string) => {
       if (key === "nvidia-nim.models") {
