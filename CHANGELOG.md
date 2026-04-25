@@ -1,5 +1,14 @@
 # Change Log
 
+## [0.1.10] - 2026-04-25
+
+### Fixed
+
+- Avoid duplicate NVIDIA NIM model picker entries by only returning models for VS Code provider
+  groups that supply an API key configuration.
+- Keep legacy API keys available for migration and chat fallback without advertising a second
+  unconfigured copy of every model.
+
 ## [0.1.9] - 2026-04-25
 
 ### Fixed

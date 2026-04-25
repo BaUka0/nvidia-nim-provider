@@ -94,7 +94,7 @@ describe("OcGoChatModelProvider", () => {
     ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue(undefined);
   });
 
-  it("provideLanguageModelChatInformation returns no models when cache is empty and no API key exists", async () => {
+  it("provideLanguageModelChatInformation returns no models when no provider group API key exists", async () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
     (secrets.get as jest.Mock).mockResolvedValue(undefined);
     const token = {
@@ -106,14 +106,13 @@ describe("OcGoChatModelProvider", () => {
       token as any,
     );
     expect(infos).toEqual([]);
-    expect(globalState.get).toHaveBeenCalledWith("nvidia-nim.models");
     expect(fetchModels).not.toHaveBeenCalled();
   });
 
-  it("provideLanguageModelChatInformation fetches models on demand when cache is empty and an API key exists", async () => {
+  it("provideLanguageModelChatInformation fetches models on demand when cache is empty and a provider group API key exists", async () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
-    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
     (fetchModels as jest.Mock).mockResolvedValue([
       {
         id: "meta/llama-3.1-8b-instruct",
@@ -127,11 +126,11 @@ describe("OcGoChatModelProvider", () => {
     };
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true } as any,
+      { silent: true, configuration: { apiKey: "configured-key" } } as any,
       token as any,
     );
 
-    expect(fetchModels).toHaveBeenCalledWith("test-key", undefined, "test-ua");
+    expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
         id: "meta/llama-3.1-8b-instruct",
@@ -147,6 +146,7 @@ describe("OcGoChatModelProvider", () => {
         id: "meta/llama-3.1-8b-instruct",
         name: "llama-3.1-8b-instruct",
         detail: "NVIDIA NIM",
+        apiKey: "configured-key",
       }),
     ]);
   });
@@ -180,6 +180,22 @@ describe("OcGoChatModelProvider", () => {
         apiKey: "configured-key",
       }),
     ]);
+  });
+
+  it("does not return legacy cached models for unconfigured provider-group resolution", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    const infos = await provider.provideLanguageModelChatInformation(
+      { silent: true } as any,
+      token as any,
+    );
+
+    expect(infos).toEqual([]);
+    expect(fetchModels).not.toHaveBeenCalled();
   });
 
   it("refreshes stale cached models when a configured API key is available", async () => {
@@ -267,7 +283,7 @@ describe("OcGoChatModelProvider", () => {
     ]);
   });
 
-  it("provideLanguageModelChatInformation returns cached normalized models", async () => {
+  it("provideLanguageModelChatInformation returns cached normalized models for a configured provider group", async () => {
     const cachedModels = [
       {
         id: "cached-model",
@@ -278,14 +294,22 @@ describe("OcGoChatModelProvider", () => {
         supportsVision: false,
       },
     ];
-    (globalState.get as jest.Mock).mockReturnValue(cachedModels);
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return cachedModels;
+      }
+      if (key === "nvidia-nim.modelsCacheVersion") {
+        return 2;
+      }
+      return undefined;
+    });
     const token = {
       isCancellationRequested: false,
       onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
     };
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true } as any,
+      { silent: true, configuration: { apiKey: "configured-key" } } as any,
       token as any,
     );
     expect(infos.length).toBe(1);
@@ -332,7 +356,7 @@ describe("OcGoChatModelProvider", () => {
   );
 
   it("does not advertise image input for non-vision normalized models", async () => {
-    (globalState.get as jest.Mock).mockReturnValue([
+    const cachedModels = [
       {
         id: "meta/llama-4-maverick-17b-128e-instruct",
         displayName: "Llama 4 Maverick 17B 128E Instruct",
@@ -341,14 +365,23 @@ describe("OcGoChatModelProvider", () => {
         supportsTools: true,
         supportsVision: false,
       },
-    ]);
+    ];
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return cachedModels;
+      }
+      if (key === "nvidia-nim.modelsCacheVersion") {
+        return 2;
+      }
+      return undefined;
+    });
     const token = {
       isCancellationRequested: false,
       onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
     };
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true } as any,
+      { silent: true, configuration: { apiKey: "configured-key" } } as any,
       token as any,
     );
 

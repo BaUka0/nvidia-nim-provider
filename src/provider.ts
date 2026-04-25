@@ -515,6 +515,10 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     }
 
     const apiKey = getApiKeyFromConfiguration(options);
+    if (!apiKey) {
+      return [];
+    }
+
     return this._mapToChatInformation(
       await this.getAvailableModels(apiKey, { refreshStaleCache: true }),
       apiKey,
