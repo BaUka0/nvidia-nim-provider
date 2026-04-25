@@ -28,8 +28,9 @@ VS Code extension that adds an NVIDIA NIM provider to Copilot Chat.
 3. Paste the API key obtained from [build.nvidia.com/models](https://build.nvidia.com/models).
 4. Select one of the NVIDIA NIM models returned by your account.
 
-You can also run `NVIDIA NIM: Manage NVIDIA NIM API Key` from the Command Palette for the legacy
-extension-managed key path. The VS Code model settings flow is recommended for new setups.
+You can also run `NVIDIA NIM: Manage NVIDIA NIM API Key` from the Command Palette. The extension
+will migrate that key into VS Code's language model provider group so the model picker can resolve
+NVIDIA NIM models. The VS Code model settings flow is recommended for new setups.
 
 ## Supported Models
 
@@ -74,5 +75,6 @@ The command above produces a `.vsix` that can be uploaded in the VS Code Marketp
 
 ## Privacy
 
-- Your API key is stored securely in VS Code's built-in SecretStorage.
+- Your API key is stored securely through VS Code's language model provider configuration and, for
+  legacy command-palette setup, VS Code SecretStorage.
 - Chat completions and model discovery requests are sent to `https://integrate.api.nvidia.com/v1`.

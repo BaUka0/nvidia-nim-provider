@@ -15,22 +15,51 @@ import {
   TOGGLE_DEBUG_LOGGING_COMMAND_ID,
 } from "./constants";
 import { normalizeNvidiaModels } from "./model-catalog";
-import { debugLog, getOutputChannel } from "./output-channel";
+import { debugLog, getOutputChannel, outputLog } from "./output-channel";
 import { OcGoChatModelProvider } from "./provider";
 import { registerOcGoTools } from "./tools";
 
 let _provider: OcGoChatModelProvider | null = null;
 let _refreshQueue: Promise<void> = Promise.resolve();
 
+async function migrateLanguageModelProviderGroup(apiKey: string): Promise<void> {
+  try {
+    await vscode.commands.executeCommand("lm.migrateLanguageModelsProviderGroup", {
+      vendor: PROVIDER_VENDOR,
+      name: PROVIDER_DISPLAY_NAME,
+      apiKey,
+    });
+    outputLog(
+      "languageModelGroup",
+      `Configured ${PROVIDER_DISPLAY_NAME} language model group from stored API key.`,
+    );
+  } catch (error) {
+    outputLog(
+      "languageModelGroup",
+      `Could not configure VS Code language model group automatically: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+async function initializeStoredApiKey(context: vscode.ExtensionContext, ua: string): Promise<void> {
+  const apiKey = await context.secrets.get(SECRET_STORAGE_KEY);
+  if (!apiKey) {
+    return;
+  }
+
+  await migrateLanguageModelProviderGroup(apiKey);
+  await refreshModelsFromApi(context, ua, { showMessages: false, apiKey });
+}
+
 async function refreshModelsFromApi(
   context: vscode.ExtensionContext,
   ua: string,
-  options: { showMessages: boolean },
+  options: { showMessages: boolean; apiKey?: string },
 ): Promise<void> {
   const nextRefresh = _refreshQueue
     .catch(() => undefined)
     .then(async () => {
-      const apiKey = await context.secrets.get(SECRET_STORAGE_KEY);
+      const apiKey = options.apiKey ?? (await context.secrets.get(SECRET_STORAGE_KEY));
       if (!apiKey) {
         if (options.showMessages) {
           vscode.window.showWarningMessage(`No ${PROVIDER_DISPLAY_NAME} API key configured.`);
@@ -135,11 +164,14 @@ export function activate(context: vscode.ExtensionContext) {
       }
       if (!apiKey.trim()) {
         await context.secrets.delete(SECRET_STORAGE_KEY);
-        vscode.window.showInformationMessage(`${PROVIDER_DISPLAY_NAME} API key cleared.`);
+        vscode.window.showInformationMessage(
+          `${PROVIDER_DISPLAY_NAME} legacy API key cleared. If ${PROVIDER_DISPLAY_NAME} still appears in Copilot Chat, remove its model group from Manage Models.`,
+        );
         _provider?.fireModelInfoChanged();
         return;
       }
       await context.secrets.store(SECRET_STORAGE_KEY, apiKey.trim());
+      await migrateLanguageModelProviderGroup(apiKey.trim());
       vscode.window.showInformationMessage(`${PROVIDER_DISPLAY_NAME} API key saved.`);
       _provider?.fireModelInfoChanged();
     }),
@@ -171,7 +203,7 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  void refreshModelsFromApi(context, ua, { showMessages: false });
+  void initializeStoredApiKey(context, ua);
 }
 
 export function deactivate() {

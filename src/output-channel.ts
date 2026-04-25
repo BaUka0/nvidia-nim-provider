@@ -3,6 +3,7 @@ import { DEBUG_ENV_VAR, PROVIDER_DISPLAY_NAME } from "./constants";
 
 const OUTPUT_CHANNEL_NAME = PROVIDER_DISPLAY_NAME;
 const DEBUG_LOG_PREFIX = `[${PROVIDER_DISPLAY_NAME} Debug]`;
+const LOG_PREFIX = `[${PROVIDER_DISPLAY_NAME}]`;
 
 function getGlobalOutputChannel(): vscode.OutputChannel | undefined {
   const globalWindow = globalThis as typeof globalThis & {
@@ -42,4 +43,14 @@ export function debugLog(label: string, value: unknown): void {
     return;
   }
   console.log(`${DEBUG_LOG_PREFIX} ${label}:`, value);
+}
+
+export function outputLog(label: string, value: unknown): void {
+  const message = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const channel = getGlobalOutputChannel();
+  if (channel) {
+    channel.appendLine(`${LOG_PREFIX} ${label}: ${message}`);
+    return;
+  }
+  console.log(`${LOG_PREFIX} ${label}:`, value);
 }

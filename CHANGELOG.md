@@ -1,5 +1,15 @@
 # Change Log
 
+## [0.1.8] - 2026-04-25
+
+### Fixed
+
+- Automatically migrate API keys saved by the legacy `NVIDIA NIM: Manage NVIDIA NIM API Key`
+  command into VS Code's language model provider group, so Copilot Chat's model picker resolves
+  NVIDIA NIM models instead of only showing the provider in settings.
+- Keep the legacy SecretStorage key as a fallback while wiring it into VS Code's model configuration
+  flow.
+
 ## [0.1.7] - 2026-04-25
 
 ### Fixed

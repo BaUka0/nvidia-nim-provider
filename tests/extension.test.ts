@@ -17,6 +17,7 @@ const mockRegisterCommand = jest.fn(
     return { dispose: jest.fn() };
   },
 );
+const mockExecuteCommand = jest.fn();
 const mockRegisterLanguageModelChatProvider = jest.fn(() => ({ dispose: jest.fn() }));
 
 jest.mock("../src/api", () => ({
@@ -44,6 +45,7 @@ jest.mock("vscode", () => ({
   },
   commands: {
     registerCommand: mockRegisterCommand,
+    executeCommand: mockExecuteCommand,
   },
   lm: {
     registerLanguageModelChatProvider: mockRegisterLanguageModelChatProvider,
@@ -51,7 +53,7 @@ jest.mock("vscode", () => ({
 }));
 
 const flushAsyncWork = async (): Promise<void> => {
-  for (let i = 0; i < 6; i += 1) {
+  for (let i = 0; i < 12; i += 1) {
     await Promise.resolve();
   }
 };
@@ -101,6 +103,36 @@ describe("activate", () => {
     );
     expect(mockRegisterCommand).toHaveBeenCalledWith("nvidia-nim.manage", expect.any(Function));
     expect(process.env.NVIDIA_NIM_DEBUG).toBe("0");
+  });
+
+  it("migrates a legacy API key into the VS Code language model provider group on activation", async () => {
+    const secrets = {
+      get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+    await flushAsyncWork();
+
+    expect(mockExecuteCommand).toHaveBeenCalledWith("lm.migrateLanguageModelsProviderGroup", {
+      vendor: "nvidia-nim",
+      name: "NVIDIA NIM",
+      apiKey: "test-key",
+    });
   });
 
   it("declares an API key configuration schema for VS Code model settings", () => {
@@ -604,6 +636,76 @@ describe("activate", () => {
     expect(secrets.store).toHaveBeenCalledTimes(1);
     expect(secrets.store).toHaveBeenCalledWith("nvidia-nim.apiKey", "new-key");
     expect(secrets.delete).not.toHaveBeenCalled();
+  });
+
+  it("migrates a newly saved API key into the VS Code language model provider group", async () => {
+    mockShowInputBox.mockResolvedValue("new-key");
+    const secrets = {
+      get: jest.fn(async () => undefined),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+
+    const manage = registeredCommands.get("nvidia-nim.manage");
+    expect(manage).toBeDefined();
+
+    await manage?.();
+
+    expect(mockExecuteCommand).toHaveBeenCalledWith("lm.migrateLanguageModelsProviderGroup", {
+      vendor: "nvidia-nim",
+      name: "NVIDIA NIM",
+      apiKey: "new-key",
+    });
+  });
+
+  it("clears the legacy API key and instructs users to remove the VS Code model group", async () => {
+    mockShowInputBox.mockResolvedValue("   ");
+    const secrets = {
+      get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "old-key" : undefined)),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+    await flushAsyncWork();
+
+    const manage = registeredCommands.get("nvidia-nim.manage");
+    expect(manage).toBeDefined();
+
+    await manage?.();
+
+    expect(secrets.delete).toHaveBeenCalledWith("nvidia-nim.apiKey");
+    expect(mockShowInformationMessage).toHaveBeenCalledWith(
+      "NVIDIA NIM legacy API key cleared. If NVIDIA NIM still appears in Copilot Chat, remove its model group from Manage Models.",
+    );
   });
 
   it("toggles NVIDIA NIM debug logging state and env var", async () => {
