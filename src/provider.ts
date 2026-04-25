@@ -421,6 +421,7 @@ function isToolCallInput(args: unknown): args is Record<string, unknown> {
 
 export class OcGoChatModelProvider implements LanguageModelChatProvider {
   private readonly _onDidChangeLanguageModelChatInformation = new EventEmitter<void>();
+  private readonly seenProviderGroupApiKeys = new Set<string>();
   readonly onDidChangeLanguageModelChatInformation: Event<void> =
     this._onDidChangeLanguageModelChatInformation.event;
 
@@ -516,8 +517,13 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
     const apiKey = getApiKeyFromConfiguration(options);
     if (!apiKey) {
+      this.seenProviderGroupApiKeys.clear();
       return [];
     }
+    if (this.seenProviderGroupApiKeys.has(apiKey)) {
+      return [];
+    }
+    this.seenProviderGroupApiKeys.add(apiKey);
 
     return this._mapToChatInformation(
       await this.getAvailableModels(apiKey, { refreshStaleCache: true }),

@@ -198,6 +198,82 @@ describe("OcGoChatModelProvider", () => {
     expect(fetchModels).not.toHaveBeenCalled();
   });
 
+  it("returns models only once for duplicate configured provider groups with the same API key", async () => {
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "meta/llama-3.1-8b-instruct",
+            displayName: "llama-3.1-8b-instruct",
+            contextWindow: 131072,
+            maxOutputTokens: 16384,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === "nvidia-nim.modelsCacheVersion") {
+        return 2;
+      }
+      return undefined;
+    });
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
+    const firstInfos = await provider.provideLanguageModelChatInformation(
+      { silent: true, configuration: { apiKey: "configured-key" } } as any,
+      token as any,
+    );
+    const duplicateInfos = await provider.provideLanguageModelChatInformation(
+      { silent: true, configuration: { apiKey: "configured-key" } } as any,
+      token as any,
+    );
+
+    expect(firstInfos).toHaveLength(1);
+    expect(duplicateInfos).toEqual([]);
+  });
+
+  it("allows the same configured provider group again after a new provider resolution cycle starts", async () => {
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "meta/llama-3.1-8b-instruct",
+            displayName: "llama-3.1-8b-instruct",
+            contextWindow: 131072,
+            maxOutputTokens: 16384,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === "nvidia-nim.modelsCacheVersion") {
+        return 2;
+      }
+      return undefined;
+    });
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
+    await provider.provideLanguageModelChatInformation(
+      { silent: true, configuration: { apiKey: "configured-key" } } as any,
+      token as any,
+    );
+    await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
+    const infos = await provider.provideLanguageModelChatInformation(
+      { silent: true, configuration: { apiKey: "configured-key" } } as any,
+      token as any,
+    );
+
+    expect(infos).toHaveLength(1);
+  });
+
   it("refreshes stale cached models when a configured API key is available", async () => {
     (globalState.get as jest.Mock).mockImplementation((key: string) => {
       if (key === "nvidia-nim.models") {

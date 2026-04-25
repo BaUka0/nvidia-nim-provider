@@ -1,5 +1,12 @@
 # Change Log
 
+## [0.1.11] - 2026-04-26
+
+### Fixed
+
+- Suppress duplicate model picker entries when multiple configured NVIDIA NIM provider groups use
+  the same API key.
+
 ## [0.1.10] - 2026-04-25
 
 ### Fixed
