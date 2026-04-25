@@ -14,6 +14,7 @@ export const MANAGE_COMMAND_ID = "nvidia-nim.manage";
 export const REFRESH_MODELS_COMMAND_ID = "nvidia-nim.refreshModels";
 export const TOGGLE_DEBUG_LOGGING_COMMAND_ID = "nvidia-nim.toggleDebugLogging";
 export const OPEN_DEBUG_LOG_COMMAND_ID = "nvidia-nim.openDebugLog";
+export const MIGRATION_DONE_KEY = "nvidia-nim.legacyMigrationDone";
 
 export const BASE_URL = "https://integrate.api.nvidia.com/v1";
 export const EXTENSION_VERSION: string = pkg.version;

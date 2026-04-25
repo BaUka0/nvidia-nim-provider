@@ -133,6 +133,38 @@ describe("activate", () => {
       name: "NVIDIA NIM",
       apiKey: "test-key",
     });
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.legacyMigrationDone", true);
+  });
+
+  it("skips migration on subsequent activations when migration flag is already set", async () => {
+    const secrets = {
+      get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) => {
+        if (key === "nvidia-nim.debug") return false;
+        if (key === "nvidia-nim.legacyMigrationDone") return true;
+        return fallback;
+      }),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+    await flushAsyncWork();
+
+    expect(mockExecuteCommand).not.toHaveBeenCalledWith(
+      "lm.migrateLanguageModelsProviderGroup",
+      expect.anything(),
+    );
   });
 
   it("declares an API key configuration schema for VS Code model settings", () => {

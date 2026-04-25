@@ -27,7 +27,7 @@ import {
   normalizeNvidiaModels,
   NormalizedNvidiaModel,
 } from "./model-catalog";
-import { debugLog } from "./output-channel";
+import { debugLog, outputLog } from "./output-channel";
 import {
   applyReasoningContentWorkaround,
   convertMessages,
@@ -422,6 +422,7 @@ function isToolCallInput(args: unknown): args is Record<string, unknown> {
 export class OcGoChatModelProvider implements LanguageModelChatProvider {
   private readonly _onDidChangeLanguageModelChatInformation = new EventEmitter<void>();
   private readonly seenProviderGroupApiKeys = new Set<string>();
+  private _infoCallCounter = 0;
   readonly onDidChangeLanguageModelChatInformation: Event<void> =
     this._onDidChangeLanguageModelChatInformation.event;
 
@@ -515,20 +516,29 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       return [];
     }
 
+    const callNum = ++this._infoCallCounter;
     const apiKey = getApiKeyFromConfiguration(options);
+
     if (!apiKey) {
+      outputLog("resolution", `call #${callNum}: groupless — clearing duplicate-guard state`);
       this.seenProviderGroupApiKeys.clear();
       return [];
     }
+
     if (this.seenProviderGroupApiKeys.has(apiKey)) {
+      outputLog(
+        "resolution",
+        `call #${callNum}: ⚠️  duplicate provider group detected — skipping to avoid showing models twice.\n` +
+          `  → If NVIDIA NIM models still appear twice in the model picker, open VS Code Settings,\n` +
+          `    search "Manage Models", find NVIDIA NIM, and remove the extra entry.`,
+      );
       return [];
     }
-    this.seenProviderGroupApiKeys.add(apiKey);
 
-    return this._mapToChatInformation(
-      await this.getAvailableModels(apiKey, { refreshStaleCache: true }),
-      apiKey,
-    );
+    this.seenProviderGroupApiKeys.add(apiKey);
+    const models = await this.getAvailableModels(apiKey, { refreshStaleCache: true });
+    outputLog("resolution", `call #${callNum}: returning ${models.length} models for this provider group`);
+    return this._mapToChatInformation(models, apiKey);
   }
 
   private _mapToChatInformation(

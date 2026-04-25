@@ -5,6 +5,7 @@ import {
   DEBUG_STATE_KEY,
   EXTENSION_VERSION,
   MANAGE_COMMAND_ID,
+  MIGRATION_DONE_KEY,
   MODELS_CACHE_VERSION,
   MODELS_CACHE_VERSION_STATE_KEY,
   MODELS_STATE_KEY,
@@ -49,7 +50,11 @@ async function initializeStoredApiKey(context: vscode.ExtensionContext, ua: stri
     return;
   }
 
-  await migrateLanguageModelProviderGroup(apiKey);
+  const migrationDone = context.globalState.get<boolean>(MIGRATION_DONE_KEY, false);
+  if (!migrationDone) {
+    await migrateLanguageModelProviderGroup(apiKey);
+    await context.globalState.update(MIGRATION_DONE_KEY, true);
+  }
   await refreshModelsFromApi(context, ua, { showMessages: false, apiKey });
 }
 

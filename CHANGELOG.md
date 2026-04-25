@@ -1,5 +1,25 @@
 # Change Log
 
+## [0.1.12] - 2026-04-27
+
+### Fixed
+
+- **Duplicate model display (root cause)**: Legacy API key migration is now performed only once
+  per installation. Previously the migration ran on every startup, which could create multiple
+  NVIDIA NIM provider groups in VS Code's Manage Models system and cause every model to appear
+  twice in the model picker.
+- **Diagnostic logging**: The NVIDIA NIM output channel now logs each VS Code model resolution
+  call with its call number and result count. When a duplicate provider group is detected, a
+  actionable warning is written to the output channel explaining how to remove the extra entry
+  via VS Code Settings → Manage Models.
+
+### How to diagnose remaining duplicate models
+
+Open the NVIDIA NIM output channel (`View → Output → NVIDIA NIM`) and look for lines starting
+with `[NVIDIA NIM] resolution:`. A `⚠️ duplicate provider group detected` message means VS Code
+is still invoking your provider more than once with the same API key. Open VS Code Settings
+(⌘,), search "Manage Models", find NVIDIA NIM, and remove the extra entry.
+
 ## [0.1.11] - 2026-04-26
 
 ### Fixed
