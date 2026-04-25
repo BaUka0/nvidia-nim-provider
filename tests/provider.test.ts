@@ -65,24 +65,28 @@ describe("OcGoChatModelProvider", () => {
       onDidChange: jest.fn(),
     } as unknown as vscode.SecretStorage;
     globalState = {
-      get: jest.fn().mockImplementation(() => [
-        {
-          id: "kimi-k2.6",
-          displayName: "Kimi K2.6",
-          contextWindow: 262144,
-          maxOutputTokens: 262144,
-          supportsTools: true,
-          supportsVision: true,
-        },
-        {
-          id: "meta/llama-4-maverick-17b-128e-instruct",
-          displayName: "Llama 4 Maverick 17B 128E Instruct",
-          contextWindow: 131072,
-          maxOutputTokens: 16384,
-          supportsTools: true,
-          supportsVision: false,
-        },
-      ]),
+      get: jest.fn().mockImplementation((key: string) =>
+        key === "nvidia-nim.models"
+          ? [
+              {
+                id: "kimi-k2.6",
+                displayName: "Kimi K2.6",
+                contextWindow: 262144,
+                maxOutputTokens: 262144,
+                supportsTools: true,
+                supportsVision: true,
+              },
+              {
+                id: "meta/llama-4-maverick-17b-128e-instruct",
+                displayName: "Llama 4 Maverick 17B 128E Instruct",
+                contextWindow: 131072,
+                maxOutputTokens: 16384,
+                supportsTools: true,
+                supportsVision: false,
+              },
+            ]
+          : undefined,
+      ),
       update: jest.fn(),
       keys: jest.fn(),
     } as unknown as vscode.Memento;
@@ -134,7 +138,7 @@ describe("OcGoChatModelProvider", () => {
         displayName: "llama-3.1-8b-instruct",
         contextWindow: 131072,
         maxOutputTokens: 16384,
-        supportsTools: false,
+        supportsTools: true,
         supportsVision: false,
       },
     ]);
@@ -178,6 +182,91 @@ describe("OcGoChatModelProvider", () => {
     ]);
   });
 
+  it("refreshes stale cached models when a configured API key is available", async () => {
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "stale-model",
+            displayName: "Stale Model",
+            contextWindow: 131072,
+            maxOutputTokens: 16384,
+            supportsTools: false,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === "nvidia-nim.modelsCacheVersion") {
+        return undefined;
+      }
+      return undefined;
+    });
+    (globalState.update as jest.Mock).mockResolvedValue(undefined);
+    (fetchModels as jest.Mock).mockResolvedValue([
+      {
+        id: "meta/llama-3.1-8b-instruct",
+        object: "model",
+        owned_by: "integrate.api.nvidia.com",
+      },
+    ]);
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    const infos = await provider.provideLanguageModelChatInformation(
+      { silent: true, configuration: { apiKey: "configured-key" } } as any,
+      token as any,
+    );
+
+    expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
+    expect(infos[0]).toEqual(
+      expect.objectContaining({
+        id: "meta/llama-3.1-8b-instruct",
+        isUserSelectable: true,
+      }),
+    );
+  });
+
+  it("keeps stale cached models visible when refreshing them fails", async () => {
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "stale-model",
+            displayName: "Stale Model",
+            contextWindow: 131072,
+            maxOutputTokens: 16384,
+            supportsTools: false,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === "nvidia-nim.modelsCacheVersion") {
+        return undefined;
+      }
+      return undefined;
+    });
+    (fetchModels as jest.Mock).mockResolvedValue(null);
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    const infos = await provider.provideLanguageModelChatInformation(
+      { silent: true, configuration: { apiKey: "configured-key" } } as any,
+      token as any,
+    );
+
+    expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
+    expect(infos).toEqual([
+      expect.objectContaining({
+        id: "stale-model",
+        isUserSelectable: true,
+      }),
+    ]);
+  });
+
   it("provideLanguageModelChatInformation returns cached normalized models", async () => {
     const cachedModels = [
       {
@@ -204,6 +293,7 @@ describe("OcGoChatModelProvider", () => {
     expect(infos[0].detail).toBe("NVIDIA NIM");
     expect(infos[0].tooltip).toBe("NVIDIA NIM Cached Model");
     expect(infos[0].family).toBe("nvidia-nim");
+    expect(infos[0]).toEqual(expect.objectContaining({ isUserSelectable: true }));
     expect(globalState.get).toHaveBeenCalledWith("nvidia-nim.models");
     expect(fetchModels).not.toHaveBeenCalled();
   });

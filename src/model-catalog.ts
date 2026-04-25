@@ -53,7 +53,7 @@ function normalizeNvidiaModel(model: NvidiaModelSummary): NormalizedNvidiaModel 
       getPositiveNumber(model.metadata?.max_tokens) ??
       getPositiveNumber(override?.maxOutputTokens) ??
       DEFAULT_MAX_OUTPUT_TOKENS,
-    supportsTools: model.capabilities?.tool_calling ?? override?.supportsTools ?? false,
+    supportsTools: model.capabilities?.tool_calling ?? override?.supportsTools ?? true,
     supportsVision: model.capabilities?.vision ?? override?.supportsVision ?? false,
   };
 }

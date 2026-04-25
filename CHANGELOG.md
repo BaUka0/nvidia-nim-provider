@@ -1,5 +1,15 @@
 # Change Log
 
+## [0.1.9] - 2026-04-25
+
+### Fixed
+
+- Mark NVIDIA NIM models as user-selectable so Copilot Chat's model picker does not filter them out.
+- Treat missing NVIDIA `/models` tool-calling metadata as unknown/supported instead of unsupported, so
+  chat models are still available when Copilot Chat is in Agent mode.
+- Refresh stale normalized model caches when VS Code model settings provide an API key, ensuring older
+  caches written before this picker metadata fix are upgraded.
+
 ## [0.1.8] - 2026-04-25
 
 ### Fixed

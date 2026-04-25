@@ -38,6 +38,10 @@ The extension dynamically fetches available models from `https://integrate.api.n
 It does not ship a hardcoded fallback model catalog; the Copilot Chat model picker shows the models
 returned by your NVIDIA NIM account.
 
+When NVIDIA's `/models` response omits tool-calling capability metadata, chat models are treated as
+tool-capable so they remain selectable in Copilot Chat Agent mode. Models that explicitly report
+`tool_calling: false` are still treated as non-tool models.
+
 ## Usage
 
 1. Open Copilot Chat (`Cmd/Ctrl + Alt + I`).

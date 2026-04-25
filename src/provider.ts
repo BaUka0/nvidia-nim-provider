@@ -15,6 +15,8 @@ import {
 import { fetchModels, streamChatCompletion } from "./api";
 import {
   CONTEXT_WINDOW_SAFETY_MARGIN,
+  MODELS_CACHE_VERSION,
+  MODELS_CACHE_VERSION_STATE_KEY,
   MODELS_STATE_KEY,
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
@@ -42,6 +44,7 @@ interface NvidiaProviderConfiguration {
 
 interface NvidiaLanguageModelChatInformation extends LanguageModelChatInformation {
   apiKey?: string;
+  isUserSelectable?: boolean;
 }
 
 function getApiKeyFromConfiguration(
@@ -440,29 +443,40 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     return storedModels.every(isNormalizedNvidiaModel) ? storedModels : [];
   }
 
-  private async getAvailableModels(apiKey?: string): Promise<NormalizedNvidiaModel[]> {
+  private async getAvailableModels(
+    apiKey?: string,
+    options: { refreshStaleCache?: boolean } = {},
+  ): Promise<NormalizedNvidiaModel[]> {
     const cachedModels = this.getNormalizedModels();
-    if (cachedModels.length > 0) {
+    const cacheVersion = this.globalState?.get<number>(MODELS_CACHE_VERSION_STATE_KEY);
+    if (
+      cachedModels.length > 0 &&
+      (cacheVersion === MODELS_CACHE_VERSION || !apiKey || !options.refreshStaleCache)
+    ) {
       return cachedModels;
     }
 
-    return this.fetchAvailableModels(apiKey);
+    const refreshedModels = await this.fetchAvailableModels(apiKey);
+    return refreshedModels ?? cachedModels;
   }
 
-  private async fetchAvailableModels(configuredApiKey?: string): Promise<NormalizedNvidiaModel[]> {
+  private async fetchAvailableModels(
+    configuredApiKey?: string,
+  ): Promise<NormalizedNvidiaModel[] | undefined> {
     const apiKey = configuredApiKey ?? (await this.secrets.get(SECRET_STORAGE_KEY));
     if (!apiKey) {
-      return [];
+      return undefined;
     }
 
     const rawModels = await fetchModels(apiKey, undefined, this.userAgent);
     if (!Array.isArray(rawModels)) {
       debugLog("modelPicker", "Unable to fetch models on demand.");
-      return [];
+      return undefined;
     }
 
     const normalizedModels = normalizeNvidiaModels(rawModels);
     await this.globalState?.update(MODELS_STATE_KEY, normalizedModels);
+    await this.globalState?.update(MODELS_CACHE_VERSION_STATE_KEY, MODELS_CACHE_VERSION);
     return normalizedModels;
   }
 
@@ -501,7 +515,10 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     }
 
     const apiKey = getApiKeyFromConfiguration(options);
-    return this._mapToChatInformation(await this.getAvailableModels(apiKey), apiKey);
+    return this._mapToChatInformation(
+      await this.getAvailableModels(apiKey, { refreshStaleCache: true }),
+      apiKey,
+    );
   }
 
   private _mapToChatInformation(
@@ -521,6 +538,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
           info.contextWindow - Math.min(info.maxOutputTokens, DEFAULT_MAX_TOKENS),
         ),
         maxOutputTokens: info.maxOutputTokens,
+        isUserSelectable: true,
         capabilities: {
           toolCalling: info.supportsTools ? 128 : false,
           imageInput: info.supportsVision,

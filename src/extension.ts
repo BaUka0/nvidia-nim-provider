@@ -5,6 +5,8 @@ import {
   DEBUG_STATE_KEY,
   EXTENSION_VERSION,
   MANAGE_COMMAND_ID,
+  MODELS_CACHE_VERSION,
+  MODELS_CACHE_VERSION_STATE_KEY,
   MODELS_STATE_KEY,
   OPEN_DEBUG_LOG_COMMAND_ID,
   PROVIDER_DISPLAY_NAME,
@@ -86,6 +88,7 @@ async function refreshModelsFromApi(
             }
             throw normalizedWriteError;
           }
+          await context.globalState.update(MODELS_CACHE_VERSION_STATE_KEY, MODELS_CACHE_VERSION);
           _provider?.fireModelInfoChanged();
           debugLog(
             "refreshModels",

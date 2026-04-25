@@ -26,7 +26,7 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
-  it("applies safe defaults when model metadata is missing", () => {
+  it("assumes chat models can use tools when the API omits capability metadata", () => {
     const raw: NvidiaModelSummary[] = [
       {
         id: "meta/llama-3.1-8b-instruct",
@@ -39,7 +39,7 @@ describe("normalizeNvidiaModels", () => {
         displayName: "llama-3.1-8b-instruct",
         contextWindow: 131072,
         maxOutputTokens: 16384,
-        supportsTools: false,
+        supportsTools: true,
         supportsVision: false,
       },
     ]);
