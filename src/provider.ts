@@ -27,8 +27,9 @@ import {
   NormalizedNvidiaModel,
   normalizeNvidiaModels,
 } from "./model-catalog";
+import { getModelRequestProfile } from "./model-profile";
 import { debugLog, outputLog } from "./output-channel";
-import { OcGoChatRequest } from "./types";
+import { OcGoChatMessage, OcGoChatRequest } from "./types";
 import {
   applyReasoningContentWorkaround,
   convertMessages,
@@ -277,31 +278,114 @@ function findTrailingTokenPrefixStart(text: string, token: string): number {
   return -1;
 }
 
+function findTrailingTokenPrefixStartAny(text: string, tokens: readonly string[]): number {
+  let bestMatch = -1;
+
+  for (const token of tokens) {
+    const matchIndex = findTrailingTokenPrefixStart(text, token);
+    if (matchIndex !== -1 && (bestMatch === -1 || matchIndex < bestMatch)) {
+      bestMatch = matchIndex;
+    }
+  }
+
+  return bestMatch;
+}
+
+function unwrapJsonCodeFence(text: string): string {
+  const trimmed = text.trim();
+  const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return fencedMatch ? fencedMatch[1].trim() : trimmed;
+}
+
+function stripKnownControlText(text: string): string {
+  return text.replace(/<｜DSML｜[^\s<]*/g, "").replace(/<\|DSML\|>[^\s<]*/g, "");
+}
+
+function parseDeepSeekTextEmbeddedToolCall(content: string): ParsedTextToolCall | undefined {
+  const separatorToken = "<｜tool▁sep｜>";
+  const separatorIndex = content.indexOf(separatorToken);
+  if (separatorIndex === -1) {
+    return undefined;
+  }
+
+  const afterSeparator = content.slice(separatorIndex + separatorToken.length).trim();
+  if (!afterSeparator) {
+    return undefined;
+  }
+
+  const newlineIndex = afterSeparator.indexOf("\n");
+  const name =
+    newlineIndex === -1 ? afterSeparator.trim() : afterSeparator.slice(0, newlineIndex).trim();
+  const argsText =
+    newlineIndex === -1 ? "" : unwrapJsonCodeFence(afterSeparator.slice(newlineIndex).trim());
+
+  if (!name) {
+    return undefined;
+  }
+
+  return {
+    name,
+    args: argsText ? JSON.parse(argsText) : {},
+  };
+}
+
 function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResult {
   const beginToken = "<|tool_call_begin|>";
   const argBeginToken = "<|tool_call_argument_begin|>";
   const endToken = "<|tool_call_end|>";
+  const deepSeekCallsBeginToken = "<｜tool▁calls▁begin｜>";
+  const deepSeekCallBeginToken = "<｜tool▁call▁begin｜>";
+  const deepSeekCallEndToken = "<｜tool▁call▁end｜>";
+  const deepSeekCallsEndToken = "<｜tool▁calls▁end｜>";
+  const partialTokens = [
+    beginToken,
+    deepSeekCallsBeginToken,
+    deepSeekCallBeginToken,
+    deepSeekCallsEndToken,
+  ] as const;
 
   const segments: ParsedTextSegment[] = [];
   let remaining = text;
   let incompleteText = "";
 
   const appendText = (value: string): void => {
-    if (!value) {
+    const sanitizedValue = stripKnownControlText(value);
+    if (!sanitizedValue) {
       return;
     }
     const lastSegment = segments.at(-1);
     if (lastSegment?.type === "text") {
-      lastSegment.text += value;
+      lastSegment.text += sanitizedValue;
       return;
     }
-    segments.push({ type: "text", text: value });
+    segments.push({ type: "text", text: sanitizedValue });
   };
 
   while (remaining.length > 0) {
-    const beginIndex = remaining.indexOf(beginToken);
-    if (beginIndex === -1) {
-      const partialBeginIndex = findTrailingTokenPrefixStart(remaining, beginToken);
+    const tokenMatches = [
+      { kind: "openai", token: beginToken, index: remaining.indexOf(beginToken) },
+      {
+        kind: "strip",
+        token: deepSeekCallsBeginToken,
+        index: remaining.indexOf(deepSeekCallsBeginToken),
+      },
+      {
+        kind: "deepseek",
+        token: deepSeekCallBeginToken,
+        index: remaining.indexOf(deepSeekCallBeginToken),
+      },
+      {
+        kind: "strip",
+        token: deepSeekCallsEndToken,
+        index: remaining.indexOf(deepSeekCallsEndToken),
+      },
+    ].filter((match) => match.index !== -1);
+
+    tokenMatches.sort((left, right) => left.index - right.index);
+    const nextTokenMatch = tokenMatches[0];
+
+    if (!nextTokenMatch) {
+      const partialBeginIndex = findTrailingTokenPrefixStartAny(remaining, partialTokens);
       if (partialBeginIndex === -1) {
         appendText(remaining);
       } else {
@@ -311,8 +395,36 @@ function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResult {
       break;
     }
 
-    appendText(remaining.slice(0, beginIndex));
-    remaining = remaining.slice(beginIndex + beginToken.length);
+    appendText(remaining.slice(0, nextTokenMatch.index));
+    remaining = remaining.slice(nextTokenMatch.index + nextTokenMatch.token.length);
+
+    if (nextTokenMatch.kind === "strip") {
+      continue;
+    }
+
+    if (nextTokenMatch.kind === "deepseek") {
+      const endIndex = remaining.indexOf(deepSeekCallEndToken);
+      if (endIndex === -1) {
+        incompleteText = nextTokenMatch.token + remaining;
+        break;
+      }
+
+      const callText = remaining.slice(0, endIndex);
+      remaining = remaining.slice(endIndex + deepSeekCallEndToken.length);
+
+      try {
+        const parsedToolCall = parseDeepSeekTextEmbeddedToolCall(callText);
+        if (parsedToolCall) {
+          segments.push({ type: "toolCall", toolCall: parsedToolCall });
+          continue;
+        }
+      } catch {
+        // Fall back to returning the original text when parsing fails.
+      }
+
+      appendText(`${nextTokenMatch.token}${callText}${deepSeekCallEndToken}`);
+      continue;
+    }
 
     const argBeginIndex = remaining.indexOf(argBeginToken);
     const endIndex = remaining.indexOf(endToken);
@@ -672,10 +784,6 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       const modelInfo = (await this.getAvailableModels(apiKey)).find(
         (entry) => entry.id === model.id,
       );
-      const temperatureVal =
-        typeof (options.modelOptions as Record<string, unknown>)?.temperature === "number"
-          ? ((options.modelOptions as Record<string, unknown>).temperature as number)
-          : 0.7;
       const supportsTools = modelInfo?.supportsTools ?? false;
       const supportsVision = modelInfo?.supportsVision ?? false;
 
@@ -693,13 +801,29 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         modelInfo?.contextWindow ?? model.maxInputTokens + model.maxOutputTokens,
       );
 
+      const toolConfig = supportsTools ? convertTools(options) : {};
+      const requestProfile = getModelRequestProfile(model.id, {
+        toolsEnabled: Boolean(toolConfig.tools?.length),
+      });
+      const temperatureVal =
+        typeof (options.modelOptions as Record<string, unknown>)?.temperature === "number"
+          ? ((options.modelOptions as Record<string, unknown>).temperature as number)
+          : requestProfile.defaultTemperature;
+
       let apiMessages = convertMessages(messages, {
         maxToolResultChars,
         supportsVision,
       });
       apiMessages = applyReasoningContentWorkaround(apiMessages, model.id);
+      if (requestProfile.extraSystemMessages.length > 0) {
+        apiMessages = [
+          ...requestProfile.extraSystemMessages.map(
+            (content): OcGoChatMessage => ({ role: "system", content }),
+          ),
+          ...apiMessages,
+        ];
+      }
 
-      const toolConfig = supportsTools ? convertTools(options) : {};
       const requestBody: OcGoChatRequest = {
         model: model.id,
         messages: apiMessages,
@@ -984,9 +1108,9 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         typeof part === "object" &&
         part !== null &&
         "value" in part &&
-        typeof (part as any).value === "string"
+        typeof (part as { value?: unknown }).value === "string"
       ) {
-        total += Math.ceil((part as any).value.length / 2);
+        total += Math.ceil((part as { value: string }).value.length / 2);
       } else {
         total += 2; // rough estimate for non-text parts
       }

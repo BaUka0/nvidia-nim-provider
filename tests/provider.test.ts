@@ -1498,6 +1498,292 @@ describe("OcGoChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({ filePath: "/tmp/example.md" });
   });
 
+  it("emits a tool call parsed from DeepSeek-style text-embedded control tokens", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              content:
+                '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>read_file\n```json\n{"filePath":"/tmp/example.md"}\n```<｜tool▁call▁end｜><｜tool▁calls▁end｜>',
+            },
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "deepseek-ai/deepseek-v4-pro", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Read the file" }] }] as any,
+      {
+        modelOptions: {},
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file from disk",
+            inputSchema: {
+              type: "object",
+              properties: { filePath: { type: "string" } },
+              required: ["filePath"],
+            },
+          },
+        ],
+      } as any,
+      progress,
+      token as any,
+    );
+
+    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const textReports = progress.report.mock.calls.filter((c: any) => c[0]?.value);
+
+    expect(toolCallReports).toHaveLength(1);
+    expect(toolCallReports[0][0].name).toBe("read_file");
+    expect(toolCallReports[0][0].input).toEqual({ filePath: "/tmp/example.md" });
+    expect(textReports).toHaveLength(0);
+  });
+
+  it("strips raw DSML control markers from streamed text output", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              content: "Let me inspect the workspace.\n\n<｜DSML｜tool_calls",
+            },
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "deepseek-ai/deepseek-v4-pro", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Inspect the workspace" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const textReports = progress.report.mock.calls.filter((c: any) => c[0]?.value);
+
+    expect(textReports).toHaveLength(1);
+    expect(textReports[0][0].value).toBe("Let me inspect the workspace.\n\n");
+  });
+
+  it("applies the DeepSeek request profile defaults when tools are enabled", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (globalState.get as jest.Mock).mockImplementation((key: string) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "deepseek-ai/deepseek-v4-pro",
+              displayName: "deepseek-v4-pro",
+              contextWindow: 131072,
+              maxOutputTokens: 16384,
+              supportsTools: true,
+              supportsVision: false,
+            },
+          ]
+        : undefined,
+    );
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "done" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "deepseek-ai/deepseek-v4-pro", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Inspect the workspace" }] }] as any,
+      {
+        modelOptions: {},
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file from disk",
+            inputSchema: {
+              type: "object",
+              properties: { filePath: { type: "string" } },
+              required: ["filePath"],
+            },
+          },
+        ],
+      } as any,
+      progress,
+      token as any,
+    );
+
+    const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
+
+    expect(requestBody.temperature).toBe(0);
+    expect(requestBody.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "system",
+          content: expect.stringContaining("Do not reveal internal control tokens"),
+        }),
+      ]),
+    );
+  });
+
+  it("keeps explicit temperature overrides for DeepSeek request profiles", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (globalState.get as jest.Mock).mockImplementation((key: string) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "deepseek-ai/deepseek-v4-pro",
+              displayName: "deepseek-v4-pro",
+              contextWindow: 131072,
+              maxOutputTokens: 16384,
+              supportsTools: true,
+              supportsVision: false,
+            },
+          ]
+        : undefined,
+    );
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "done" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "deepseek-ai/deepseek-v4-pro", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Inspect the workspace" }] }] as any,
+      {
+        modelOptions: { temperature: 0.35 },
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file from disk",
+            inputSchema: {
+              type: "object",
+              properties: { filePath: { type: "string" } },
+              required: ["filePath"],
+            },
+          },
+        ],
+      } as any,
+      progress,
+      token as any,
+    );
+
+    const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
+
+    expect(requestBody.temperature).toBe(0.35);
+  });
+
+  it.each([
+    ["kimi-k2.6", 0.2, "Do not reveal chain-of-thought"],
+    ["zai-org/glm-4.5", 0.1, "strict JSON arguments"],
+    ["meta/llama-4-maverick-17b-128e-instruct", 0.2, "Do not emit pseudo tool syntax"],
+  ])(
+    "applies the provider request profile for %s when tools are enabled",
+    async (modelId: string, expectedTemperature: number, expectedMessageSnippet: string) => {
+      (secrets.get as jest.Mock).mockResolvedValue("test-key");
+      (globalState.get as jest.Mock).mockImplementation((key: string) =>
+        key === "nvidia-nim.models"
+          ? [
+              {
+                id: modelId,
+                displayName: modelId,
+                contextWindow: 131072,
+                maxOutputTokens: 16384,
+                supportsTools: true,
+                supportsVision: false,
+              },
+            ]
+          : undefined,
+      );
+
+      const mockStream = async function* () {
+        yield { choices: [{ delta: { content: "done" } }] };
+      };
+      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+      const progress = { report: jest.fn() };
+      const token = {
+        isCancellationRequested: false,
+        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+      } as unknown as vscode.CancellationToken;
+      const model = {
+        id: modelId,
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as vscode.LanguageModelChatInformation;
+      const requestMessages = [
+        {
+          role: vscode.LanguageModelChatMessageRole.User,
+          content: [new vscode.LanguageModelTextPart("Inspect the workspace")],
+        },
+      ] as unknown as vscode.LanguageModelChatMessage[];
+      const requestOptions = {
+        modelOptions: {},
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file from disk",
+            inputSchema: {
+              type: "object",
+              properties: { filePath: { type: "string" } },
+              required: ["filePath"],
+            },
+          },
+        ],
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions;
+
+      await provider.provideLanguageModelChatResponse(
+        model,
+        requestMessages,
+        requestOptions,
+        progress,
+        token,
+      );
+
+      const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
+
+      expect(requestBody.temperature).toBe(expectedTemperature);
+      expect(requestBody.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "system",
+            content: expect.stringContaining(expectedMessageSnippet),
+          }),
+        ]),
+      );
+    },
+  );
+
   it("preserves text order around a text-embedded tool call", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
