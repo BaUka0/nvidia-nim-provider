@@ -24,10 +24,11 @@ import {
 } from "./constants";
 import {
   isNormalizedNvidiaModel,
-  normalizeNvidiaModels,
   NormalizedNvidiaModel,
+  normalizeNvidiaModels,
 } from "./model-catalog";
 import { debugLog, outputLog } from "./output-channel";
+import { OcGoChatRequest } from "./types";
 import {
   applyReasoningContentWorkaround,
   convertMessages,
@@ -242,6 +243,23 @@ function buildInvalidToolCallFallback(
 
   const requiredArgs = skippedWithRequiredArgs.required.map((arg) => `\`${arg}\``).join(", ");
   return `The model tried to call \`${skippedWithRequiredArgs.name}\` without the required argument(s) ${requiredArgs}. Please retry the request and provide those arguments explicitly.`;
+}
+
+function buildInvalidToolCallRetryMessage(
+  skippedToolCalls: readonly SkippedToolCall[],
+): string | undefined {
+  const skippedWithRequiredArgs = skippedToolCalls.find((toolCall) => toolCall.required.length > 0);
+  if (!skippedWithRequiredArgs) {
+    return undefined;
+  }
+
+  return [
+    `Your previous response tried to call ${skippedWithRequiredArgs.name} without the required arguments ${skippedWithRequiredArgs.required.join(", ")}.`,
+    "Retry the response now.",
+    "If you call a tool, return a valid JSON object and include every required argument explicitly.",
+    "Do not call any tool with an empty object.",
+    "Do not ask the user to retry.",
+  ].join(" ");
 }
 
 function buildMissingApiKeyFallback(): string {
@@ -682,7 +700,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       apiMessages = applyReasoningContentWorkaround(apiMessages, model.id);
 
       const toolConfig = supportsTools ? convertTools(options) : {};
-      const requestBody: import("./types").OcGoChatRequest = {
+      const requestBody: OcGoChatRequest = {
         model: model.id,
         messages: apiMessages,
         stream: true,
@@ -698,214 +716,247 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
       debugLog("Outgoing request messages", requestBody.messages);
 
-      // Buffers for assembling streamed tool calls by index
-      const toolCallBuffers = new Map<number, { id?: string; name?: string; args: string }>();
-      const completedToolCallIndices = new Set<number>();
       const toolSchemas = getToolSchemaMap(options);
       const requestContext = extractChatRequestContext(messages);
-      const skippedToolCalls: SkippedToolCall[] = [];
       const emittedTextToolCallKeys = getCompletedToolCallKeys(
         messages,
         requestContext,
         toolSchemas,
       );
-      let pendingTextEmbeddedContent = "";
-      let pendingText = "";
-      let sawToolCall = false;
-      let emittedToolCall = false;
-      const flushPendingText = (): void => {
-        if (!pendingText) {
-          return;
-        }
-        progress.report(new vscode.LanguageModelTextPart(pendingText));
-        pendingText = "";
-      };
+      let activeRequestBody = requestBody;
+      let deferredInvalidToolFallbackText: string | undefined;
 
-      for await (const chunk of streamChatCompletion(
-        apiKey,
-        requestBody,
-        abortController.signal,
-        this.userAgent,
-      )) {
-        if (token.isCancellationRequested) {
-          throw new vscode.CancellationError();
-        }
-
-        const choice = chunk.choices?.[0];
-
-        // Handle text content
-        if (choice?.delta?.content) {
-          const { segments, incompleteText } = parseTextEmbeddedToolCalls(
-            pendingTextEmbeddedContent + choice.delta.content,
-          );
-          pendingTextEmbeddedContent = incompleteText;
-
-          for (const segment of segments) {
-            if (segment.type === "text") {
-              pendingText += segment.text;
-              continue;
-            }
-
-            const toolCall = segment.toolCall;
-            sawToolCall = true;
-            const schema = toolSchemas.get(toolCall.name);
-            const repairedArgs = repairToolArguments(
-              toolCall.name,
-              toolCall.args,
-              requestContext,
-              schema,
-            );
-            const canonicalKey = buildToolCallCanonicalKey(toolCall.name, repairedArgs);
-            if (emittedTextToolCallKeys.has(canonicalKey)) {
-              continue;
-            }
-
-            if (hasRequiredToolArguments(repairedArgs, schema)) {
-              flushPendingText();
-              progress.report(
-                new vscode.LanguageModelToolCallPart(
-                  `text_tool_${Math.random().toString(36).slice(2, 10)}`,
-                  toolCall.name,
-                  repairedArgs as Record<string, unknown>,
-                ),
-              );
-              emittedToolCall = true;
-              emittedTextToolCallKeys.add(canonicalKey);
-            } else {
-              skippedToolCalls.push({
-                name: toolCall.name,
-                required: schema?.required ?? [],
-              });
-              debugLog("Skipped invalid text tool call", toolCall);
-            }
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const toolCallBuffers = new Map<number, { id?: string; name?: string; args: string }>();
+        const completedToolCallIndices = new Set<number>();
+        const skippedToolCalls: SkippedToolCall[] = [];
+        let pendingTextEmbeddedContent = "";
+        let pendingText = "";
+        let sawToolCall = false;
+        let emittedToolCall = false;
+        let reportedContent = false;
+        const reportPart = (part: LanguageModelResponsePart): void => {
+          progress.report(part);
+          reportedContent = true;
+        };
+        const flushPendingText = (): void => {
+          if (!pendingText) {
+            return;
           }
-        }
+          reportPart(new vscode.LanguageModelTextPart(pendingText));
+          pendingText = "";
+        };
 
-        // Handle tool calls
-        if (choice?.delta?.tool_calls) {
-          sawToolCall = true;
-          for (const tc of choice.delta.tool_calls) {
-            const idx = (tc as { index?: number }).index ?? 0;
-            if (completedToolCallIndices.has(idx)) {
-              continue;
-            }
+        for await (const chunk of streamChatCompletion(
+          apiKey,
+          activeRequestBody,
+          abortController.signal,
+          this.userAgent,
+        )) {
+          if (token.isCancellationRequested) {
+            throw new vscode.CancellationError();
+          }
 
-            const buf = toolCallBuffers.get(idx) ?? { args: "" };
-            if (tc.id && typeof tc.id === "string") {
-              buf.id = tc.id;
-            }
-            const func = tc.function;
-            if (func?.name && typeof func.name === "string") {
-              buf.name = func.name;
-            }
-            if (typeof func?.arguments === "string") {
-              buf.args += func.arguments;
-            }
-            toolCallBuffers.set(idx, buf);
+          const choice = chunk.choices?.[0];
 
-            if (buf.args.trim().length === 0) {
-              continue;
-            }
+          // Handle text content
+          if (choice?.delta?.content) {
+            const { segments, incompleteText } = parseTextEmbeddedToolCalls(
+              pendingTextEmbeddedContent + choice.delta.content,
+            );
+            pendingTextEmbeddedContent = incompleteText;
 
-            // Emit immediately once arguments become valid JSON
-            try {
-              const schema = toolSchemas.get(buf.name ?? "");
-              const args = repairToolArguments(
-                buf.name ?? "",
-                buf.args ? JSON.parse(buf.args) : {},
+            for (const segment of segments) {
+              if (segment.type === "text") {
+                pendingText += segment.text;
+                continue;
+              }
+
+              const toolCall = segment.toolCall;
+              sawToolCall = true;
+              const schema = toolSchemas.get(toolCall.name);
+              const repairedArgs = repairToolArguments(
+                toolCall.name,
+                toolCall.args,
                 requestContext,
                 schema,
               );
-              if (
-                buf.id &&
-                buf.name &&
-                isToolCallInput(args) &&
-                hasRequiredToolArguments(args, schema)
-              ) {
-                const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
-                if (emittedTextToolCallKeys.has(canonicalKey)) {
-                  completedToolCallIndices.add(idx);
-                  toolCallBuffers.delete(idx);
-                  continue;
-                }
+              const canonicalKey = buildToolCallCanonicalKey(toolCall.name, repairedArgs);
+              if (emittedTextToolCallKeys.has(canonicalKey)) {
+                continue;
+              }
+
+              if (hasRequiredToolArguments(repairedArgs, schema)) {
                 flushPendingText();
-                progress.report(new vscode.LanguageModelToolCallPart(buf.id, buf.name, args));
+                reportPart(
+                  new vscode.LanguageModelToolCallPart(
+                    `text_tool_${Math.random().toString(36).slice(2, 10)}`,
+                    toolCall.name,
+                    repairedArgs as Record<string, unknown>,
+                  ),
+                );
                 emittedToolCall = true;
                 emittedTextToolCallKeys.add(canonicalKey);
-                completedToolCallIndices.add(idx);
-                toolCallBuffers.delete(idx);
-              } else if (buf.id && buf.name) {
+              } else {
                 skippedToolCalls.push({
-                  name: buf.name,
+                  name: toolCall.name,
                   required: schema?.required ?? [],
                 });
-                debugLog("Skipped invalid tool call", { id: buf.id, name: buf.name, args });
-                completedToolCallIndices.add(idx);
-                toolCallBuffers.delete(idx);
+                debugLog("Skipped invalid text tool call", toolCall);
               }
-            } catch {
-              // JSON incomplete — wait for next chunk
+            }
+          }
+
+          // Handle tool calls
+          if (choice?.delta?.tool_calls) {
+            sawToolCall = true;
+            for (const tc of choice.delta.tool_calls) {
+              const idx = (tc as { index?: number }).index ?? 0;
+              if (completedToolCallIndices.has(idx)) {
+                continue;
+              }
+
+              const buf = toolCallBuffers.get(idx) ?? { args: "" };
+              if (tc.id && typeof tc.id === "string") {
+                buf.id = tc.id;
+              }
+              const func = tc.function;
+              if (func?.name && typeof func.name === "string") {
+                buf.name = func.name;
+              }
+              if (typeof func?.arguments === "string") {
+                buf.args += func.arguments;
+              }
+              toolCallBuffers.set(idx, buf);
+
+              if (buf.args.trim().length === 0) {
+                continue;
+              }
+
+              // Emit immediately once arguments become valid JSON
+              try {
+                const schema = toolSchemas.get(buf.name ?? "");
+                const args = repairToolArguments(
+                  buf.name ?? "",
+                  buf.args ? JSON.parse(buf.args) : {},
+                  requestContext,
+                  schema,
+                );
+                if (
+                  buf.id &&
+                  buf.name &&
+                  isToolCallInput(args) &&
+                  hasRequiredToolArguments(args, schema)
+                ) {
+                  const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
+                  if (emittedTextToolCallKeys.has(canonicalKey)) {
+                    completedToolCallIndices.add(idx);
+                    toolCallBuffers.delete(idx);
+                    continue;
+                  }
+                  flushPendingText();
+                  reportPart(new vscode.LanguageModelToolCallPart(buf.id, buf.name, args));
+                  emittedToolCall = true;
+                  emittedTextToolCallKeys.add(canonicalKey);
+                  completedToolCallIndices.add(idx);
+                  toolCallBuffers.delete(idx);
+                } else if (buf.id && buf.name) {
+                  skippedToolCalls.push({
+                    name: buf.name,
+                    required: schema?.required ?? [],
+                  });
+                  debugLog("Skipped invalid tool call", { id: buf.id, name: buf.name, args });
+                  completedToolCallIndices.add(idx);
+                  toolCallBuffers.delete(idx);
+                }
+              } catch {
+                // JSON incomplete — wait for next chunk
+              }
             }
           }
         }
-      }
 
-      if (pendingTextEmbeddedContent) {
-        pendingText += pendingTextEmbeddedContent;
-      }
-
-      // Flush any remaining buffered tool calls at stream end
-      for (const [idx, buf] of Array.from(toolCallBuffers.entries())) {
-        if (completedToolCallIndices.has(idx)) {
-          continue;
+        if (pendingTextEmbeddedContent) {
+          pendingText += pendingTextEmbeddedContent;
         }
-        try {
-          const schema = toolSchemas.get(buf.name ?? "");
-          const args = repairToolArguments(
-            buf.name ?? "",
-            buf.args ? JSON.parse(buf.args) : {},
-            requestContext,
-            schema,
-          );
-          if (
-            buf.id &&
-            buf.name &&
-            isToolCallInput(args) &&
-            hasRequiredToolArguments(args, schema)
-          ) {
-            const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
-            if (emittedTextToolCallKeys.has(canonicalKey)) {
-              continue;
-            }
-            flushPendingText();
-            progress.report(new vscode.LanguageModelToolCallPart(buf.id, buf.name, args));
-            emittedToolCall = true;
-            emittedTextToolCallKeys.add(canonicalKey);
-          } else if (buf.id && buf.name) {
-            skippedToolCalls.push({
-              name: buf.name,
-              required: schema?.required ?? [],
-            });
-            debugLog("Skipped invalid tool call at stream end", {
-              id: buf.id,
-              name: buf.name,
-              args,
-            });
+
+        // Flush any remaining buffered tool calls at stream end
+        for (const [idx, buf] of Array.from(toolCallBuffers.entries())) {
+          if (completedToolCallIndices.has(idx)) {
+            continue;
           }
-        } catch {
-          // Ignore incomplete JSON at stream end
+          try {
+            const schema = toolSchemas.get(buf.name ?? "");
+            const args = repairToolArguments(
+              buf.name ?? "",
+              buf.args ? JSON.parse(buf.args) : {},
+              requestContext,
+              schema,
+            );
+            if (
+              buf.id &&
+              buf.name &&
+              isToolCallInput(args) &&
+              hasRequiredToolArguments(args, schema)
+            ) {
+              const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
+              if (emittedTextToolCallKeys.has(canonicalKey)) {
+                continue;
+              }
+              flushPendingText();
+              reportPart(new vscode.LanguageModelToolCallPart(buf.id, buf.name, args));
+              emittedToolCall = true;
+              emittedTextToolCallKeys.add(canonicalKey);
+            } else if (buf.id && buf.name) {
+              skippedToolCalls.push({
+                name: buf.name,
+                required: schema?.required ?? [],
+              });
+              debugLog("Skipped invalid tool call at stream end", {
+                id: buf.id,
+                name: buf.name,
+                args,
+              });
+            }
+          } catch {
+            // Ignore incomplete JSON at stream end
+          }
         }
+
+        if (pendingText && (!sawToolCall || emittedToolCall || pendingText.trim().length > 0)) {
+          flushPendingText();
+        }
+
+        if (sawToolCall && !emittedToolCall) {
+          const fallbackText = buildInvalidToolCallFallback(skippedToolCalls);
+          const retryMessage = buildInvalidToolCallRetryMessage(skippedToolCalls);
+          if (attempt === 0 && !reportedContent && fallbackText && retryMessage) {
+            deferredInvalidToolFallbackText = fallbackText;
+            activeRequestBody = {
+              ...activeRequestBody,
+              messages: [
+                ...activeRequestBody.messages,
+                {
+                  role: "system",
+                  content: retryMessage,
+                },
+              ],
+            };
+            continue;
+          }
+          if (fallbackText) {
+            reportPart(new vscode.LanguageModelTextPart(fallbackText));
+          }
+        }
+
+        if (reportedContent || emittedToolCall) {
+          deferredInvalidToolFallbackText = undefined;
+        }
+        break;
       }
 
-      if (pendingText && (!sawToolCall || emittedToolCall || pendingText.trim().length > 0)) {
-        flushPendingText();
-      }
-
-      if (sawToolCall && !emittedToolCall) {
-        const fallbackText = buildInvalidToolCallFallback(skippedToolCalls);
-        if (fallbackText) {
-          progress.report(new vscode.LanguageModelTextPart(fallbackText));
-        }
+      if (deferredInvalidToolFallbackText) {
+        progress.report(new vscode.LanguageModelTextPart(deferredInvalidToolFallbackText));
       }
     } catch (err) {
       if (token.isCancellationRequested || (err instanceof Error && err.name === "AbortError")) {

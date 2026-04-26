@@ -1,5 +1,20 @@
 # Change Log
 
+## [0.1.20] - 2026-04-26
+
+### Fixed
+
+- Exclude local development-only files such as `.venv`, tests, docs, and source TypeScript from the
+  published VSIX so Marketplace installs only ship the runtime extension payload.
+
+## [0.1.19] - 2026-04-26
+
+### Fixed
+
+- Retry NVIDIA model responses once when they emit a required-argument tool call such as
+  `read_file` with an empty JSON object, so Copilot Chat can recover instead of immediately
+  surfacing a retry error to the user.
+
 ## [0.1.18] - 2026-04-26
 
 ### Fixed

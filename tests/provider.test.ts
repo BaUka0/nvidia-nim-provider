@@ -1279,6 +1279,118 @@ describe("OcGoChatModelProvider", () => {
     expect(textReports[0][0].value).toContain("read_file");
   });
 
+  it("retries once when the model emits an invalid required-argument tool call", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const invalidStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "read_file", arguments: "{}" },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    };
+
+    const repairedStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_2",
+                  type: "function",
+                  function: {
+                    name: "read_file",
+                    arguments: '{"filePath":"/tmp/example.md","startLine":1,"endLine":20}',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => invalidStream())
+      .mockImplementationOnce(() => repairedStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Read the file" }] }] as any,
+      {
+        modelOptions: {},
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file from disk",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "number" },
+                endLine: { type: "number" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      } as any,
+      progress,
+      token as any,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+
+    const retryRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(retryRequest.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "system",
+          content: expect.stringContaining("read_file"),
+        }),
+      ]),
+    );
+    expect(retryRequest.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "system",
+          content: expect.stringContaining("filePath, startLine, endLine"),
+        }),
+      ]),
+    );
+
+    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const textReports = progress.report.mock.calls.filter((c: any) => c[0]?.value);
+
+    expect(toolCallReports).toHaveLength(1);
+    expect(toolCallReports[0][0].name).toBe("read_file");
+    expect(toolCallReports[0][0].input).toEqual({
+      filePath: "/tmp/example.md",
+      startLine: 1,
+      endLine: 20,
+    });
+    expect(textReports).toHaveLength(0);
+  });
+
   it("returns a text fallback when invalid tool calls are preceded by whitespace content", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
