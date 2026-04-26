@@ -106,7 +106,15 @@ interface ParsedTextSegmentToolCall {
   toolCall: ParsedTextToolCall;
 }
 
-type ParsedTextSegment = ParsedTextSegmentText | ParsedTextSegmentToolCall;
+interface ParsedTextSegmentInvalidToolCall {
+  type: "invalidToolCall";
+  name: string;
+}
+
+type ParsedTextSegment =
+  | ParsedTextSegmentText
+  | ParsedTextSegmentToolCall
+  | ParsedTextSegmentInvalidToolCall;
 
 interface ParsedTextToolCallResult {
   segments: ParsedTextSegment[];
@@ -238,27 +246,43 @@ function buildInvalidToolCallFallback(
   skippedToolCalls: readonly SkippedToolCall[],
 ): string | undefined {
   const skippedWithRequiredArgs = skippedToolCalls.find((toolCall) => toolCall.required.length > 0);
-  if (!skippedWithRequiredArgs) {
+  if (skippedWithRequiredArgs) {
+    const requiredArgs = skippedWithRequiredArgs.required.map((arg) => `\`${arg}\``).join(", ");
+    return `The model tried to call \`${skippedWithRequiredArgs.name}\` without the required argument(s) ${requiredArgs}. Please retry the request and provide those arguments explicitly.`;
+  }
+
+  const firstSkippedToolCall = skippedToolCalls[0];
+  if (!firstSkippedToolCall) {
     return undefined;
   }
 
-  const requiredArgs = skippedWithRequiredArgs.required.map((arg) => `\`${arg}\``).join(", ");
-  return `The model tried to call \`${skippedWithRequiredArgs.name}\` without the required argument(s) ${requiredArgs}. Please retry the request and provide those arguments explicitly.`;
+  return `The model tried to call \`${firstSkippedToolCall.name}\` with invalid arguments. Please retry the request and provide a valid JSON object for that tool call.`;
 }
 
 function buildInvalidToolCallRetryMessage(
   skippedToolCalls: readonly SkippedToolCall[],
 ): string | undefined {
   const skippedWithRequiredArgs = skippedToolCalls.find((toolCall) => toolCall.required.length > 0);
-  if (!skippedWithRequiredArgs) {
+  if (skippedWithRequiredArgs) {
+    return [
+      `Your previous response tried to call ${skippedWithRequiredArgs.name} without the required arguments ${skippedWithRequiredArgs.required.join(", ")}.`,
+      "Retry the response now.",
+      "If you call a tool, return a valid JSON object and include every required argument explicitly.",
+      "Do not call any tool with an empty object.",
+      "Do not ask the user to retry.",
+    ].join(" ");
+  }
+
+  const firstSkippedToolCall = skippedToolCalls[0];
+  if (!firstSkippedToolCall) {
     return undefined;
   }
 
   return [
-    `Your previous response tried to call ${skippedWithRequiredArgs.name} without the required arguments ${skippedWithRequiredArgs.required.join(", ")}.`,
+    `Your previous response tried to call ${firstSkippedToolCall.name} with invalid arguments.`,
     "Retry the response now.",
-    "If you call a tool, return a valid JSON object and include every required argument explicitly.",
-    "Do not call any tool with an empty object.",
+    "If you call a tool, return a valid JSON object.",
+    "Do not emit malformed JSON.",
     "Do not ask the user to retry.",
   ].join(" ");
 }
@@ -301,7 +325,14 @@ function stripKnownControlText(text: string): string {
   return text.replace(/<｜DSML｜[^\s<]*/g, "").replace(/<\|DSML\|>[^\s<]*/g, "");
 }
 
-function parseDeepSeekTextEmbeddedToolCall(content: string): ParsedTextToolCall | undefined {
+function findControlTextTerminatorIndex(text: string): number {
+  const terminatorMatch = text.match(/[\s<]/);
+  return terminatorMatch?.index ?? -1;
+}
+
+function parseDeepSeekTextEmbeddedToolCallContent(
+  content: string,
+): { name: string; argsText: string } | undefined {
   const separatorToken = "<｜tool▁sep｜>";
   const separatorIndex = content.indexOf(separatorToken);
   if (separatorIndex === -1) {
@@ -325,7 +356,7 @@ function parseDeepSeekTextEmbeddedToolCall(content: string): ParsedTextToolCall 
 
   return {
     name,
-    args: argsText ? JSON.parse(argsText) : {},
+    argsText,
   };
 }
 
@@ -337,11 +368,15 @@ function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResult {
   const deepSeekCallBeginToken = "<｜tool▁call▁begin｜>";
   const deepSeekCallEndToken = "<｜tool▁call▁end｜>";
   const deepSeekCallsEndToken = "<｜tool▁calls▁end｜>";
+  const unicodeDsmlToken = "<｜DSML｜";
+  const asciiDsmlToken = "<|DSML|>";
   const partialTokens = [
     beginToken,
     deepSeekCallsBeginToken,
     deepSeekCallBeginToken,
     deepSeekCallsEndToken,
+    unicodeDsmlToken,
+    asciiDsmlToken,
   ] as const;
 
   const segments: ParsedTextSegment[] = [];
@@ -379,6 +414,16 @@ function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResult {
         token: deepSeekCallsEndToken,
         index: remaining.indexOf(deepSeekCallsEndToken),
       },
+      {
+        kind: "control",
+        token: unicodeDsmlToken,
+        index: remaining.indexOf(unicodeDsmlToken),
+      },
+      {
+        kind: "control",
+        token: asciiDsmlToken,
+        index: remaining.indexOf(asciiDsmlToken),
+      },
     ].filter((match) => match.index !== -1);
 
     tokenMatches.sort((left, right) => left.index - right.index);
@@ -402,6 +447,17 @@ function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResult {
       continue;
     }
 
+    if (nextTokenMatch.kind === "control") {
+      const terminatorIndex = findControlTextTerminatorIndex(remaining);
+      if (terminatorIndex === -1) {
+        incompleteText = nextTokenMatch.token + remaining;
+        break;
+      }
+
+      remaining = remaining.slice(terminatorIndex);
+      continue;
+    }
+
     if (nextTokenMatch.kind === "deepseek") {
       const endIndex = remaining.indexOf(deepSeekCallEndToken);
       if (endIndex === -1) {
@@ -412,14 +468,22 @@ function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResult {
       const callText = remaining.slice(0, endIndex);
       remaining = remaining.slice(endIndex + deepSeekCallEndToken.length);
 
-      try {
-        const parsedToolCall = parseDeepSeekTextEmbeddedToolCall(callText);
-        if (parsedToolCall) {
-          segments.push({ type: "toolCall", toolCall: parsedToolCall });
+      const parsedToolCallContent = parseDeepSeekTextEmbeddedToolCallContent(callText);
+
+      if (parsedToolCallContent) {
+        try {
+          const parsedArgs = parsedToolCallContent.argsText
+            ? JSON.parse(parsedToolCallContent.argsText)
+            : {};
+          segments.push({
+            type: "toolCall",
+            toolCall: { name: parsedToolCallContent.name, args: parsedArgs },
+          });
+          continue;
+        } catch {
+          segments.push({ type: "invalidToolCall", name: parsedToolCallContent.name });
           continue;
         }
-      } catch {
-        // Fall back to returning the original text when parsing fails.
       }
 
       appendText(`${nextTokenMatch.token}${callText}${deepSeekCallEndToken}`);
@@ -447,7 +511,7 @@ function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResult {
         toolCall: { name, args: argsText ? JSON.parse(argsText) : {} },
       });
     } catch {
-      appendText(`${beginToken}${name}${argBeginToken}${argsText}${endToken}`);
+      segments.push({ type: "invalidToolCall", name });
     }
   }
 
@@ -896,6 +960,17 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
                 continue;
               }
 
+              if (segment.type === "invalidToolCall") {
+                sawToolCall = true;
+                const schema = toolSchemas.get(segment.name);
+                skippedToolCalls.push({
+                  name: segment.name,
+                  required: schema?.required ?? [],
+                });
+                debugLog("Skipped invalid text tool call", { name: segment.name });
+                continue;
+              }
+
               const toolCall = segment.toolCall;
               sawToolCall = true;
               const schema = toolSchemas.get(toolCall.name);
@@ -998,10 +1073,6 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
               }
             }
           }
-        }
-
-        if (pendingTextEmbeddedContent) {
-          pendingText += pendingTextEmbeddedContent;
         }
 
         // Flush any remaining buffered tool calls at stream end

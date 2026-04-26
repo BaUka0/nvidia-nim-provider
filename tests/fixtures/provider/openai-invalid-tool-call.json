@@ -1,0 +1,23 @@
+[
+  {
+    "name": "single-chunk-malformed-json",
+    "chunks": [
+      "<|tool_call_begin|>read_file<|tool_call_argument_begin|>{\"filePath\":\"/tmp/example.md\"<|tool_call_end|>"
+    ],
+    "expectedToolName": "read_file",
+    "expectedRequiredArgs": [
+      "filePath"
+    ]
+  },
+  {
+    "name": "split-chunk-malformed-json",
+    "chunks": [
+      "<|tool_call_begin|>read_file<|tool_call_argument_begin|>{\"filePath\":\"/tmp/exa",
+      "mple.md\"<|tool_call_end|>"
+    ],
+    "expectedToolName": "read_file",
+    "expectedRequiredArgs": [
+      "filePath"
+    ]
+  }
+]

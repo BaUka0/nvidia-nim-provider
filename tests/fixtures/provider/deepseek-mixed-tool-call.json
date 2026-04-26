@@ -1,0 +1,27 @@
+[
+  {
+    "name": "single-chunk-before-and-after-text",
+    "chunks": [
+      "Before <｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>read_file\n```json\n{\"filePath\":\"/tmp/example.md\"}\n```<｜tool▁call▁end｜><｜tool▁calls▁end｜> after"
+    ],
+    "expectedBefore": "Before ",
+    "expectedAfter": " after",
+    "expectedToolName": "read_file",
+    "expectedToolInput": {
+      "filePath": "/tmp/example.md"
+    }
+  },
+  {
+    "name": "split-chunks-before-call-and-after-text",
+    "chunks": [
+      "Before <｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>read_file\n```json\n{\"filePath\":\"/tmp/exa",
+      "mple.md\"}\n```<｜tool▁call▁end｜><｜tool▁calls▁end｜> after"
+    ],
+    "expectedBefore": "Before ",
+    "expectedAfter": " after",
+    "expectedToolName": "read_file",
+    "expectedToolInput": {
+      "filePath": "/tmp/example.md"
+    }
+  }
+]

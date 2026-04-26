@@ -20,6 +20,45 @@ const KNOWN_MODEL_OVERRIDES: Record<string, Partial<NormalizedNvidiaModel>> = {
   "meta/llama-4-maverick-17b-128e-instruct": {
     displayName: "Llama 4 Maverick 17B 128E Instruct",
   },
+  "meta/llama-4-scout-17b-16e-instruct": {
+    displayName: "Llama 4 Scout 17B 16E Instruct",
+  },
+  "nvidia/nemotron-4-340b-instruct": {
+    displayName: "Nemotron 4 340B Instruct",
+  },
+  "nvidia/llama-3.1-nemotron-70b-instruct": {
+    displayName: "Llama 3.1 Nemotron 70B Instruct",
+  },
+  "nvidia/llama-3.1-nemotron-ultra-253b-v1": {
+    displayName: "Llama 3.1 Nemotron Ultra 253B",
+  },
+  "mistralai/mistral-large": {
+    displayName: "Mistral Large",
+  },
+  "mistralai/mistral-large-2407": {
+    displayName: "Mistral Large 2407",
+  },
+  "mistralai/mixtral-8x22b-instruct-v0.1": {
+    displayName: "Mixtral 8x22B Instruct",
+  },
+  "qwen/qwen2.5-72b-instruct": {
+    displayName: "Qwen 2.5 72B Instruct",
+  },
+  "qwen/qwen2.5-coder-32b-instruct": {
+    displayName: "Qwen 2.5 Coder 32B Instruct",
+  },
+  "microsoft/phi-3.5-mini-instruct": {
+    displayName: "Phi 3.5 Mini Instruct",
+  },
+  "01-ai/yi-large": {
+    displayName: "Yi Large",
+  },
+  "google/gemma-2-27b-it": {
+    displayName: "Gemma 2 27B IT",
+  },
+  "google/gemma-2-9b-it": {
+    displayName: "Gemma 2 9B IT",
+  },
 };
 
 export function normalizeNvidiaModels(models: NvidiaModelSummary[]): NormalizedNvidiaModel[] {

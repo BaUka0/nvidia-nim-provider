@@ -1,0 +1,34 @@
+[
+  {
+    "name": "unicode-dsml-marker-split-across-chunks",
+    "chunks": [
+      "Let me inspect the workspace.\n\n<｜DSM",
+      "L｜tool_calls"
+    ],
+    "expectedText": "Let me inspect the workspace.\n\n"
+  },
+  {
+    "name": "ascii-dsml-marker-split-across-chunks",
+    "chunks": [
+      "Let me inspect the workspace.\n\n<|DS",
+      "ML|>tool_calls"
+    ],
+    "expectedText": "Let me inspect the workspace.\n\n"
+  },
+  {
+    "name": "unicode-dsml-suffix-split-across-chunks",
+    "chunks": [
+      "Let me inspect the workspace.\n\n<｜DSML｜tool_",
+      "calls"
+    ],
+    "expectedText": "Let me inspect the workspace.\n\n"
+  },
+  {
+    "name": "ascii-dsml-suffix-split-across-chunks",
+    "chunks": [
+      "Let me inspect the workspace.\n\n<|DSML|>tool_",
+      "calls"
+    ],
+    "expectedText": "Let me inspect the workspace.\n\n"
+  }
+]

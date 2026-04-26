@@ -1,5 +1,12 @@
 import * as vscode from "vscode";
-import { BASE_URL, MODELS_STATE_KEY, PROVIDER_DISPLAY_NAME, SECRET_STORAGE_KEY } from "./constants";
+import { fetchWithRetry } from "./api";
+import {
+  BASE_URL,
+  EXTENSION_VERSION,
+  MODELS_STATE_KEY,
+  PROVIDER_DISPLAY_NAME,
+  SECRET_STORAGE_KEY,
+} from "./constants";
 import { isNormalizedNvidiaModel } from "./model-catalog";
 
 /**
@@ -36,12 +43,14 @@ export class OcGoMcpClient {
       throw new Error(`${PROVIDER_DISPLAY_NAME} API key not found`);
     }
     const model = this.getVisionModelId();
+    const ua = `nvidia-nim-provider/${EXTENSION_VERSION} VSCode/${vscode.version}`;
 
-    const response = await fetch(`${BASE_URL}/chat/completions`, {
+    const response = await fetchWithRetry(`${BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
+        "User-Agent": ua,
       },
       body: JSON.stringify({
         model,

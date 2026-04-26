@@ -1,5 +1,28 @@
 # Change Log
 
+## [0.1.22] - 2026-04-26
+
+### Added
+
+- Model profiles for Mistral/Mixtral, Qwen, Phi, Yi, and Gemma model families with per-family temperature defaults and tool-use system messages.
+- Known model display-name overrides for Llama-4 Scout, Nemotron 4, Nemotron Ultra, Mistral Large, Mixtral 8x22B, Qwen 2.5 (72B/Coder 32B), Phi 3.5 Mini, Yi Large, and Gemma 2.
+- Expanded VS Code mock for better test coverage (EventEmitter, CancellationError, Disposable, etc.).
+
+### Changed
+
+- Model-profile matching uses word-boundary regex instead of naive `includes()` to avoid false matches.
+- Image analysis requests now use `fetchWithRetry` and include a User-Agent header.
+- Token estimation is now character-type-aware (CJK vs. Latin) for better accuracy while retaining a safety margin.
+- Unrecognized message parts log via the debug channel instead of `console.warn`.
+
+## [0.1.21] - 2026-04-26
+
+### Fixed
+
+- Stop leaking split or truncated DSML and text-embedded tool-control markers into streamed chat text.
+- Treat malformed text-embedded tool calls as invalid calls so the provider retries once with corrective guidance instead of echoing raw control tokens or silently dropping them.
+- Prefer required-argument retry and fallback guidance when the model emits multiple invalid tool calls in a single response.
+
 ## [0.1.20] - 2026-04-26
 
 ### Fixed

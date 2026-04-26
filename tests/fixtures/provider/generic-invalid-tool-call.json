@@ -1,0 +1,22 @@
+[
+  {
+    "name": "openai-style-optional-tool-malformed-json",
+    "modelId": "kimi-k2.6",
+    "chunks": [
+      "Before <|tool_call_begin|>list_dir<|tool_call_argument_begin|>{\"path\":\"/tmp\"<|tool_call_end|>"
+    ],
+    "expectedBefore": "Before ",
+    "expectedToolName": "list_dir",
+    "forbiddenMarker": "<|tool_call"
+  },
+  {
+    "name": "deepseek-style-optional-tool-malformed-json",
+    "modelId": "deepseek-ai/deepseek-v4-pro",
+    "chunks": [
+      "Before <｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>list_dir\n```json\n{\"path\":\"/tmp\"\n```<｜tool▁call▁end｜><｜tool▁calls▁end｜>"
+    ],
+    "expectedBefore": "Before ",
+    "expectedToolName": "list_dir",
+    "forbiddenMarker": "<｜tool"
+  }
+]
