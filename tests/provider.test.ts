@@ -182,7 +182,25 @@ describe("OcGoChatModelProvider", () => {
     ]);
   });
 
-  it("does not return legacy cached models for unconfigured provider-group resolution", async () => {
+  it("does not return legacy cached models for groupless resolution", async () => {
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "deepseek-ai/deepseek-v4-pro",
+            displayName: "deepseek-v4-pro",
+            contextWindow: 131072,
+            maxOutputTokens: 16384,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === "nvidia-nim.modelsCacheVersion") {
+        return 3;
+      }
+      return undefined;
+    });
     (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
     const token = {
       isCancellationRequested: false,
@@ -198,7 +216,119 @@ describe("OcGoChatModelProvider", () => {
     expect(fetchModels).not.toHaveBeenCalled();
   });
 
-  it("returns models only once for duplicate configured provider groups with the same API key", async () => {
+  it("treats an undefined configuration property as groupless resolution", async () => {
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "deepseek-ai/deepseek-v4-pro",
+            displayName: "deepseek-v4-pro",
+            contextWindow: 131072,
+            maxOutputTokens: 16384,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === "nvidia-nim.modelsCacheVersion") {
+        return 3;
+      }
+      return undefined;
+    });
+    (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    const infos = await provider.provideLanguageModelChatInformation(
+      { silent: true, configuration: undefined } as any,
+      token as any,
+    );
+
+    expect(infos).toEqual([]);
+    expect(fetchModels).not.toHaveBeenCalled();
+  });
+
+  it("uses the legacy API key fallback for a configuration-only provider group missing an api key", async () => {
+    (globalState.get as jest.Mock).mockReturnValue(undefined);
+    (globalState.update as jest.Mock).mockResolvedValue(undefined);
+    (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
+    (fetchModels as jest.Mock).mockResolvedValue([
+      {
+        id: "deepseek-ai/deepseek-v4-pro",
+        object: "model",
+        owned_by: "deepseek-ai",
+      },
+    ]);
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    const infos = await provider.provideLanguageModelChatInformation(
+      { silent: true, configuration: {} } as any,
+      token as any,
+    );
+
+    expect(fetchModels).toHaveBeenCalledWith("legacy-key", undefined, "test-ua");
+    expect(infos).toEqual([
+      expect.objectContaining({
+        id: "deepseek-ai/deepseek-v4-pro",
+        name: "deepseek-v4-pro",
+        apiKey: "legacy-key",
+        isUserSelectable: true,
+      }),
+    ]);
+  });
+
+  it("keeps a configuration-only provider group selectable after a groupless reset", async () => {
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "deepseek-ai/deepseek-v4-pro",
+            displayName: "deepseek-v4-pro",
+            contextWindow: 131072,
+            maxOutputTokens: 16384,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === "nvidia-nim.modelsCacheVersion") {
+        return 3;
+      }
+      return undefined;
+    });
+    (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    const grouplessInfos = await provider.provideLanguageModelChatInformation(
+      { silent: true } as any,
+      token as any,
+    );
+    const groupInfos = await provider.provideLanguageModelChatInformation(
+      { silent: true, configuration: {} } as any,
+      token as any,
+    );
+
+    expect(grouplessInfos).toEqual([]);
+    expect(groupInfos).toHaveLength(1);
+    expect(groupInfos[0]).toEqual(
+      expect.objectContaining({
+        id: "deepseek-ai/deepseek-v4-pro",
+        apiKey: "legacy-key",
+        isUserSelectable: true,
+      }),
+    );
+    expect(fetchModels).not.toHaveBeenCalled();
+  });
+
+  it("keeps duplicate configured provider group models resolvable but hides them from the picker", async () => {
     (globalState.get as jest.Mock).mockImplementation((key: string) => {
       if (key === "nvidia-nim.models") {
         return [
@@ -213,7 +343,7 @@ describe("OcGoChatModelProvider", () => {
         ];
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 2;
+        return 3;
       }
       return undefined;
     });
@@ -224,19 +354,21 @@ describe("OcGoChatModelProvider", () => {
 
     await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
     const firstInfos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: { apiKey: "configured-key" } } as any,
+      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "configured-key" } } as any,
       token as any,
     );
     const duplicateInfos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: { apiKey: "configured-key" } } as any,
+      { group: "NVIDIA NIM 2", silent: true, configuration: { apiKey: "configured-key" } } as any,
       token as any,
     );
 
     expect(firstInfos).toHaveLength(1);
-    expect(duplicateInfos).toEqual([]);
+    expect(firstInfos[0]).toEqual(expect.objectContaining({ isUserSelectable: true }));
+    expect(duplicateInfos).toHaveLength(1);
+    expect(duplicateInfos[0]).toEqual(expect.objectContaining({ isUserSelectable: false }));
   });
 
-  it("returns [] for a second provider group even when it uses a different API key", async () => {
+  it("hides duplicate model ids from a second provider group even when it uses a different API key", async () => {
     (globalState.get as jest.Mock).mockImplementation((key: string) => {
       if (key === "nvidia-nim.models") {
         return [
@@ -251,7 +383,7 @@ describe("OcGoChatModelProvider", () => {
         ];
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 2;
+        return 3;
       }
       return undefined;
     });
@@ -262,16 +394,18 @@ describe("OcGoChatModelProvider", () => {
 
     await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
     const firstInfos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: { apiKey: "key-aaa" } } as any,
+      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "key-aaa" } } as any,
       token as any,
     );
     const differentKeyInfos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: { apiKey: "key-bbb" } } as any,
+      { group: "NVIDIA NIM 2", silent: true, configuration: { apiKey: "key-bbb" } } as any,
       token as any,
     );
 
     expect(firstInfos).toHaveLength(1);
-    expect(differentKeyInfos).toEqual([]);
+    expect(firstInfos[0]).toEqual(expect.objectContaining({ isUserSelectable: true }));
+    expect(differentKeyInfos).toHaveLength(1);
+    expect(differentKeyInfos[0]).toEqual(expect.objectContaining({ isUserSelectable: false }));
   });
 
   it("allows the same configured provider group again after a new provider resolution cycle starts", async () => {
@@ -289,7 +423,7 @@ describe("OcGoChatModelProvider", () => {
         ];
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 2;
+        return 3;
       }
       return undefined;
     });
@@ -300,12 +434,12 @@ describe("OcGoChatModelProvider", () => {
 
     await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
     await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: { apiKey: "configured-key" } } as any,
+      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "configured-key" } } as any,
       token as any,
     );
     await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: { apiKey: "configured-key" } } as any,
+      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "configured-key" } } as any,
       token as any,
     );
 
@@ -413,7 +547,7 @@ describe("OcGoChatModelProvider", () => {
         return cachedModels;
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 2;
+        return 3;
       }
       return undefined;
     });
@@ -485,7 +619,7 @@ describe("OcGoChatModelProvider", () => {
         return cachedModels;
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 2;
+        return 3;
       }
       return undefined;
     });

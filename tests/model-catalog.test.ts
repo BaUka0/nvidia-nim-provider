@@ -79,11 +79,28 @@ describe("normalizeNvidiaModels", () => {
 
   it("filters obvious non-chat models when chat capability metadata is absent", () => {
     const raw: NvidiaModelSummary[] = [
+      { id: "baai/bge-m3" },
+      { id: "nvidia/ai-synthetic-video-detector" },
+      { id: "nvidia/nemoretriever-parse" },
       { id: "nvidia/nv-embedqa-e5-v5" },
       { id: "nv-rerank-qa-mistral-4b:1" },
     ];
 
     expect(normalizeNvidiaModels(raw)).toEqual([]);
+  });
+
+  it("deduplicates exact duplicate model ids from the NVIDIA catalog", () => {
+    const raw: NvidiaModelSummary[] = [
+      { id: "openai/gpt-oss-120b" },
+      { id: "openai/gpt-oss-120b" },
+    ];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([
+      expect.objectContaining({
+        id: "openai/gpt-oss-120b",
+        displayName: "gpt-oss-120b",
+      }),
+    ]);
   });
 
   it("detects whether cached values match the normalized NVIDIA model shape", () => {

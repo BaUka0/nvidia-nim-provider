@@ -1,5 +1,53 @@
 # Change Log
 
+## [0.1.18] - 2026-04-26
+
+### Fixed
+
+- Correctly treat VS Code's groupless provider resolution as groupless when the extension host
+  passes `configuration: undefined`. This prevents the legacy `nvidia-nim/<model>` model set from
+  being re-registered and shown alongside `nvidia-nim/NVIDIA NIM/<model>` in Manage Models.
+
+## [0.1.17] - 2026-04-26
+
+### Fixed
+
+- Stop advertising the legacy groupless NVIDIA NIM model set now that the named provider group is
+  restored. This removes the duplicate `nvidia-nim/<model>` and `nvidia-nim/NVIDIA NIM/<model>`
+  rows from VS Code Manage Models.
+- Keep the named NVIDIA NIM group working with either its configured API key or the legacy
+  SecretStorage key fallback.
+
+## [0.1.16] - 2026-04-26
+
+### Fixed
+
+- Treat VS Code provider-group resolutions that only include `configuration` as provider-group
+  calls, so the NVIDIA row can resolve models even when VS Code does not pass a string group name.
+- Keep the duplicate-picker guard from resetting during those configuration-only group calls.
+
+## [0.1.15] - 2026-04-26
+
+### Fixed
+
+- Restore legacy groupless NVIDIA NIM model identifiers such as `nvidia-nim/<model>` so stale VS
+  Code model selections remain backed by the NVIDIA provider instead of falling back to Copilot.
+- Keep named NVIDIA NIM provider-group models resolvable while hiding them from the picker when the
+  groupless legacy entries are already visible, preventing duplicate selectable rows.
+
+## [0.1.14] - 2026-04-26
+
+### Fixed
+
+- Restore broken NVIDIA NIM Manage Models entries that exist without an `apiKey` by falling back to
+  the legacy SecretStorage API key for named provider groups.
+- Stop hiding duplicate provider groups by returning an empty model list. Duplicate model IDs now
+  remain resolvable for existing chats but are marked non-selectable so the model picker does not
+  show duplicate rows.
+- Reintroduce one-time legacy key migration to avoid repeatedly creating or touching VS Code model
+  groups on every startup.
+- Filter obvious non-chat NVIDIA catalog entries and exact duplicate model IDs from the picker cache.
+
 ## [0.1.13] - 2026-04-27
 
 ### Fixed

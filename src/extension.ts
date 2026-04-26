@@ -5,6 +5,7 @@ import {
   DEBUG_STATE_KEY,
   EXTENSION_VERSION,
   MANAGE_COMMAND_ID,
+  MIGRATION_DONE_KEY,
   MODELS_CACHE_VERSION,
   MODELS_CACHE_VERSION_STATE_KEY,
   MODELS_STATE_KEY,
@@ -24,7 +25,7 @@ import { registerOcGoTools } from "./tools";
 let _provider: OcGoChatModelProvider | null = null;
 let _refreshQueue: Promise<void> = Promise.resolve();
 
-async function migrateLanguageModelProviderGroup(apiKey: string): Promise<void> {
+async function migrateLanguageModelProviderGroup(apiKey: string): Promise<boolean> {
   try {
     await vscode.commands.executeCommand("lm.migrateLanguageModelsProviderGroup", {
       vendor: PROVIDER_VENDOR,
@@ -35,11 +36,14 @@ async function migrateLanguageModelProviderGroup(apiKey: string): Promise<void> 
       "languageModelGroup",
       `Configured ${PROVIDER_DISPLAY_NAME} language model group from stored API key.`,
     );
+    return true;
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     outputLog(
       "languageModelGroup",
-      `Could not configure VS Code language model group automatically: ${error instanceof Error ? error.message : String(error)}`,
+      `Could not configure VS Code language model group automatically: ${message}`,
     );
+    return /already exists/i.test(message);
   }
 }
 
@@ -49,7 +53,10 @@ async function initializeStoredApiKey(context: vscode.ExtensionContext, ua: stri
     return;
   }
 
-  await migrateLanguageModelProviderGroup(apiKey);
+  const migrationDone = context.globalState.get<boolean>(MIGRATION_DONE_KEY, false);
+  if (!migrationDone && (await migrateLanguageModelProviderGroup(apiKey))) {
+    await context.globalState.update(MIGRATION_DONE_KEY, true);
+  }
   await refreshModelsFromApi(context, ua, { showMessages: false, apiKey });
 }
 
@@ -174,7 +181,9 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
       await context.secrets.store(SECRET_STORAGE_KEY, apiKey.trim());
-      await migrateLanguageModelProviderGroup(apiKey.trim());
+      if (await migrateLanguageModelProviderGroup(apiKey.trim())) {
+        await context.globalState.update(MIGRATION_DONE_KEY, true);
+      }
       vscode.window.showInformationMessage(`${PROVIDER_DISPLAY_NAME} API key saved.`);
       _provider?.fireModelInfoChanged();
     }),

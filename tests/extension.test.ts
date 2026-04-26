@@ -133,6 +133,68 @@ describe("activate", () => {
       name: "NVIDIA NIM",
       apiKey: "test-key",
     });
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.legacyMigrationDone", true);
+  });
+
+  it("skips legacy API key migration on activation after the one-time migration has run", async () => {
+    const secrets = {
+      get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) => {
+        if (key === "nvidia-nim.debug") return false;
+        if (key === "nvidia-nim.legacyMigrationDone") return true;
+        return fallback;
+      }),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+    await flushAsyncWork();
+
+    expect(mockExecuteCommand).not.toHaveBeenCalledWith(
+      "lm.migrateLanguageModelsProviderGroup",
+      expect.anything(),
+    );
+  });
+
+  it("treats an already-existing VS Code model group as migrated", async () => {
+    mockExecuteCommand.mockRejectedValueOnce(
+      new Error("Language model group with name NVIDIA NIM already exists for vendor nvidia-nim"),
+    );
+    (fetchModels as jest.Mock).mockResolvedValue(null);
+    const secrets = {
+      get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+    await flushAsyncWork();
+
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.legacyMigrationDone", true);
   });
 
   it("declares an API key configuration schema for VS Code model settings", () => {
@@ -671,6 +733,7 @@ describe("activate", () => {
       name: "NVIDIA NIM",
       apiKey: "new-key",
     });
+    expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.legacyMigrationDone", true);
   });
 
   it("clears the legacy API key and instructs users to remove the VS Code model group", async () => {

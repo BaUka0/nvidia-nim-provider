@@ -11,6 +11,10 @@ export interface NormalizedNvidiaModel {
 
 const DEFAULT_CONTEXT_WINDOW = 131072;
 const DEFAULT_MAX_OUTPUT_TOKENS = 16384;
+const NON_CHAT_MODEL_ID_PATTERNS = [
+  /(^|[/_-])bge([-_/]|$)/i,
+  /(^|[/_-])(clip|detector|embed|embedcode|embedqa|embedding|gliner|parse|rerank|retriever|reward)([-_/]|$)/i,
+];
 
 const KNOWN_MODEL_OVERRIDES: Record<string, Partial<NormalizedNvidiaModel>> = {
   "meta/llama-4-maverick-17b-128e-instruct": {
@@ -19,7 +23,18 @@ const KNOWN_MODEL_OVERRIDES: Record<string, Partial<NormalizedNvidiaModel>> = {
 };
 
 export function normalizeNvidiaModels(models: NvidiaModelSummary[]): NormalizedNvidiaModel[] {
-  return models.filter(isChatModel).map(normalizeNvidiaModel);
+  const seenIds = new Set<string>();
+  const normalizedModels: NormalizedNvidiaModel[] = [];
+
+  for (const model of models) {
+    if (seenIds.has(model.id) || !isChatModel(model)) {
+      continue;
+    }
+    seenIds.add(model.id);
+    normalizedModels.push(normalizeNvidiaModel(model));
+  }
+
+  return normalizedModels;
 }
 
 export function isNormalizedNvidiaModel(value: unknown): value is NormalizedNvidiaModel {
@@ -71,7 +86,7 @@ function isChatModel(model: NvidiaModelSummary): boolean {
 }
 
 function isClearlyNonChatModelId(modelId: string): boolean {
-  return /(embed|embedding|rerank|reranker)/i.test(modelId);
+  return NON_CHAT_MODEL_ID_PATTERNS.some((pattern) => pattern.test(modelId));
 }
 
 function deriveDisplayName(modelId: string): string {

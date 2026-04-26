@@ -3,8 +3,10 @@ tests/**
 docs/**
 __mocks__/**
 .vscode/**
+.playwright-mcp/**
 .github/
 node_modules/**
+*.vsix
 .gitignore
 package-lock.json
 jest.config.js

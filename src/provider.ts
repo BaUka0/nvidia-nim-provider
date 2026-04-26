@@ -58,6 +58,23 @@ function getApiKeyFromModel(model: LanguageModelChatInformation): string | undef
   return getNonEmptyApiKey((model as NvidiaLanguageModelChatInformation).apiKey);
 }
 
+function getProviderGroupName(options: PrepareLanguageModelChatModelOptions): string | undefined {
+  const group = (options as { group?: unknown }).group;
+  if (typeof group === "string" && group.trim().length > 0) {
+    return group.trim();
+  }
+  if (typeof group === "object" && group !== null) {
+    const name = (group as { name?: unknown }).name;
+    return typeof name === "string" && name.trim().length > 0 ? name.trim() : undefined;
+  }
+  return undefined;
+}
+
+function hasProviderGroupConfiguration(options: PrepareLanguageModelChatModelOptions): boolean {
+  const configuration = (options as { configuration?: unknown }).configuration;
+  return typeof configuration === "object" && configuration !== null;
+}
+
 function getNonEmptyApiKey(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
@@ -422,7 +439,7 @@ function isToolCallInput(args: unknown): args is Record<string, unknown> {
 export class OcGoChatModelProvider implements LanguageModelChatProvider {
   private readonly _onDidChangeLanguageModelChatInformation = new EventEmitter<void>();
   /** Cleared at the start of each VS Code resolution cycle (groupless call). */
-  private _cycleModelsReturned = false;
+  private readonly _selectableModelIdsInCycle = new Set<string>();
   private _infoCallCounter = 0;
   readonly onDidChangeLanguageModelChatInformation: Event<void> =
     this._onDidChangeLanguageModelChatInformation.event;
@@ -518,30 +535,54 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     }
 
     const callNum = ++this._infoCallCounter;
-    const apiKey = getApiKeyFromConfiguration(options);
+    const groupName = getProviderGroupName(options);
+    const hasProviderGroup = groupName !== undefined || hasProviderGroupConfiguration(options);
+    const configuredApiKey = getApiKeyFromConfiguration(options);
 
-    if (!apiKey) {
-      outputLog("resolution", `call #${callNum}: groupless — new resolution cycle, resetting duplicate guard`);
-      this._cycleModelsReturned = false;
+    if (!hasProviderGroup) {
+      outputLog(
+        "resolution",
+        `call #${callNum}: groupless - new resolution cycle, resetting duplicate guard`,
+      );
+      this._selectableModelIdsInCycle.clear();
       return [];
     }
 
-    if (this._cycleModelsReturned) {
+    const legacyApiKey = configuredApiKey ? undefined : await this.secrets.get(SECRET_STORAGE_KEY);
+    const apiKey = configuredApiKey ?? legacyApiKey;
+
+    if (!apiKey) {
+      const groupLabel = groupName ? ` "${groupName}"` : "";
       outputLog(
         "resolution",
-        `call #${callNum}: ⚠️  duplicate provider group detected — skipping to avoid showing models twice.\n` +
-          `  → If NVIDIA NIM models still appear twice in the model picker, open VS Code Settings,\n` +
-          `    search "Manage Models", find NVIDIA NIM, and remove the extra entry.`,
+        `call #${callNum}: provider group${groupLabel} has no configured or legacy API key`,
       );
       return [];
     }
 
     const models = await this.getAvailableModels(apiKey, { refreshStaleCache: true });
-    outputLog("resolution", `call #${callNum}: returning ${models.length} models for this provider group`);
-    if (models.length > 0) {
-      this._cycleModelsReturned = true;
+    const chatInformation = this._mapToChatInformation(models, apiKey);
+    let duplicateCount = 0;
+    for (const model of chatInformation) {
+      if (this._selectableModelIdsInCycle.has(model.id)) {
+        model.isUserSelectable = false;
+        duplicateCount += 1;
+        continue;
+      }
+      this._selectableModelIdsInCycle.add(model.id);
     }
-    return this._mapToChatInformation(models, apiKey);
+
+    const keySource = configuredApiKey ? "configured API key" : "legacy API key fallback";
+    const duplicateNote =
+      duplicateCount > 0
+        ? `; hid ${duplicateCount} duplicate picker entr${duplicateCount === 1 ? "y" : "ies"}`
+        : "";
+    const providerContext = groupName ? `provider group "${groupName}"` : "provider group";
+    outputLog(
+      "resolution",
+      `call #${callNum}: returning ${models.length} models for ${providerContext} using ${keySource}${duplicateNote}`,
+    );
+    return chatInformation;
   }
 
   private _mapToChatInformation(
