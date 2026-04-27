@@ -33,7 +33,6 @@
     "Chat"
   ],
   "activationEvents": [
-    "onStartupFinished",
     "onLanguageModelChatProvider:nvidia-nim"
   ],
   "main": "./out/extension.js",
