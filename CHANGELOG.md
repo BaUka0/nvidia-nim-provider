@@ -1,5 +1,13 @@
 # Change Log
 
+## [0.1.23] - 2026-04-27
+
+### Changed
+
+- Reduced chat hot-path overhead by collapsing message conversion into a single content pass and by avoiding no-op copies in the Kimi reasoning-content workaround.
+- Deferred tool parsing state construction until a response actually needs tool handling, reducing unnecessary per-request work on plain text chats.
+- Expanded debug stream timing logs with request-preparation and lazy tool-parsing initialization durations so latency tuning can distinguish setup cost from first-token delay.
+
 ## [0.1.22] - 2026-04-26
 
 ### Added
