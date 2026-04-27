@@ -198,20 +198,6 @@ function getToolResultTexts(part: vscode.LanguageModelInputPart | LegacyPart): s
   return results;
 }
 
-function getToolResultEntries(
-  parts: Array<vscode.LanguageModelInputPart | LegacyPart>,
-): Array<{ callId: string; content: string }> {
-  const entries: Array<{ callId: string; content: string }> = [];
-  for (const part of parts) {
-    const p = part as { callId?: string; content?: unknown[] };
-    if (typeof p.callId === "string" && Array.isArray(p.content)) {
-      const content = getToolResultTexts(part).join("\n").trim();
-      entries.push({ callId: p.callId, content });
-    }
-  }
-  return entries;
-}
-
 function buildToolDescription(
   description: string | undefined,
   inputSchema: unknown,
@@ -279,11 +265,25 @@ export function convertMessages(
 
     const textParts: string[] = [];
     const imageParts: OcGoContentPart[] = [];
+    const toolCalls: Array<{ id?: string; name?: string; args?: Record<string, unknown> }> = [];
+    const toolResults: Array<{ callId: string; content: string }> = [];
 
     for (const part of msg.content) {
-      if (getToolCallInfo(part) || getToolResultTexts(part).length > 0) {
+      const toolCallInfo = getToolCallInfo(part);
+      if (toolCallInfo) {
+        toolCalls.push(toolCallInfo);
         continue;
       }
+
+      const toolResultPart = part as { callId?: unknown; content?: unknown[] };
+      if (typeof toolResultPart.callId === "string" && Array.isArray(toolResultPart.content)) {
+        toolResults.push({
+          callId: toolResultPart.callId,
+          content: getToolResultTexts(part).join("\n").trim(),
+        });
+        continue;
+      }
+
       const tv = getTextPartValue(part) ?? getDataPartTextValue(part);
       if (tv !== undefined) {
         textParts.push(tv);
@@ -304,11 +304,6 @@ export function convertMessages(
       debugLog("convertMessages", `Unrecognized message part: ${JSON.stringify(part)}`);
     }
 
-    // Handle tool calls
-    const toolCalls = msg.content
-      .map((p) => getToolCallInfo(p))
-      .filter((t): t is { id?: string; name?: string; args?: Record<string, unknown> } => !!t);
-
     if (toolCalls.length > 0) {
       const assistantContent = textParts.join("");
       result.push({
@@ -326,10 +321,6 @@ export function convertMessages(
       });
     }
 
-    // Handle tool results
-    const toolResults = getToolResultEntries(
-      msg.content as Array<vscode.LanguageModelInputPart | LegacyPart>,
-    );
     for (const tr of toolResults) {
       let content = tr.content || "";
       if (options?.maxToolResultChars && content.length > options.maxToolResultChars) {
