@@ -1022,8 +1022,11 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       let activeRequestBody = requestBody;
       let deferredInvalidToolFallbackText: string | undefined;
       let retryReason: "invalid_tool_call" | undefined;
+      const retryReasonHistory: string[] = [];
+      let totalAttempts = 0;
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
+        totalAttempts += 1;
         const attemptStartedAtMs = Date.now();
         const toolCallBuffers = new Map<number, { id?: string; name?: string; args: string }>();
         const completedToolCallIndices = new Set<number>();
@@ -1273,6 +1276,10 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
           const totalTokens = lastUsage?.total_tokens;
           debugLog("stream timing", {
             attempt: attempt + 1,
+            totalAttempts,
+            ...(retryReasonHistory.length > 0
+              ? { retryReasonHistory: [...retryReasonHistory] }
+              : {}),
             model: model.id,
             inputTokenCount,
             requestedMaxTokens,
@@ -1310,6 +1317,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
           if (attempt === 0 && !reportedContent && fallbackText && retryMessage) {
             deferredInvalidToolFallbackText = fallbackText;
             retryReason = "invalid_tool_call";
+            retryReasonHistory.push("invalid_tool_call");
             activeRequestBody = {
               ...activeRequestBody,
               messages: [
