@@ -1012,13 +1012,26 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
       debugLog("Outgoing request messages", requestBody.messages);
 
-      const toolSchemas = getToolSchemaMap(options);
-      const requestContext = extractChatRequestContext(messages);
-      const emittedTextToolCallKeys = getCompletedToolCallKeys(
-        messages,
-        requestContext,
-        toolSchemas,
-      );
+      type ToolParsingState = {
+        toolSchemas: Map<string, ToolSchema>;
+        requestContext: ChatRequestContext | undefined;
+        emittedTextToolCallKeys: Set<string>;
+      };
+      let toolParsingState: ToolParsingState | undefined;
+      const getToolParsingState = (): ToolParsingState => {
+        if (toolParsingState) {
+          return toolParsingState;
+        }
+
+        const toolSchemas = getToolSchemaMap(options);
+        const requestContext = extractChatRequestContext(messages);
+        toolParsingState = {
+          toolSchemas,
+          requestContext,
+          emittedTextToolCallKeys: getCompletedToolCallKeys(messages, requestContext, toolSchemas),
+        };
+        return toolParsingState;
+      };
       let activeRequestBody = requestBody;
       let deferredInvalidToolFallbackText: string | undefined;
       let retryReason: "invalid_tool_call" | undefined;
@@ -1090,6 +1103,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
               if (segment.type === "invalidToolCall") {
                 sawToolCall = true;
+                const { toolSchemas } = getToolParsingState();
                 const schema = toolSchemas.get(segment.name);
                 skippedToolCalls.push({
                   name: segment.name,
@@ -1101,6 +1115,8 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
               const toolCall = segment.toolCall;
               sawToolCall = true;
+              const { emittedTextToolCallKeys, requestContext, toolSchemas } =
+                getToolParsingState();
               const schema = toolSchemas.get(toolCall.name);
               const repairedArgs = repairToolArguments(
                 toolCall.name,
@@ -1167,6 +1183,8 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
               // Emit immediately once arguments become valid JSON
               try {
+                const { emittedTextToolCallKeys, requestContext, toolSchemas } =
+                  getToolParsingState();
                 const schema = toolSchemas.get(buf.name ?? "");
                 const args = repairToolArguments(
                   buf.name ?? "",
@@ -1218,6 +1236,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
             continue;
           }
           try {
+            const { emittedTextToolCallKeys, requestContext, toolSchemas } = getToolParsingState();
             const schema = toolSchemas.get(buf.name ?? "");
             const args = repairToolArguments(
               buf.name ?? "",
