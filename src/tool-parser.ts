@@ -3,6 +3,20 @@ import {
   LanguageModelChatMessage,
   ProvideLanguageModelChatResponseOptions,
 } from "vscode";
+import { jsonrepair } from "jsonrepair";
+
+function safeJsonParse(text: string): unknown {
+  if (!text) return {};
+  try {
+    const value = JSON.parse(text);
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      return value;
+    }
+  } catch {
+    // ignore
+  }
+  throw new Error("Failed to parse JSON");
+}
 
 export interface ToolSchema {
   required?: string[];
@@ -427,7 +441,7 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
     try {
       segments.push({
         type: "toolCall",
-        toolCall: { name, args: argsText ? JSON.parse(argsText) : {} },
+        toolCall: { name, args: safeJsonParse(argsText) },
       });
     } catch {
       segments.push({ type: "invalidToolCall", name });

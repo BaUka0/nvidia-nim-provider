@@ -1,4 +1,18 @@
 import * as vscode from "vscode";
+import { jsonrepair } from "jsonrepair";
+
+function safeJsonParse(text: string): unknown {
+  if (!text) return {};
+  try {
+    const value = JSON.parse(text);
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      return value;
+    }
+  } catch {
+    // wait for next chunk
+  }
+  throw new Error("Failed to parse JSON");
+}
 import {
   CancellationToken,
   Event,
