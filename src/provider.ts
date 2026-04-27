@@ -1035,8 +1035,10 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         let pendingText = "";
         let sawToolCall = false;
         let emittedToolCall = false;
+        let emittedFirstToolCall = false;
         let reportedContent = false;
         let firstResponseAtMs: number | undefined;
+        let firstToolCallAtMs: number | undefined;
         let lastUsage:
           | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
           | undefined;
@@ -1121,6 +1123,10 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
                   ),
                 );
                 emittedToolCall = true;
+                if (!emittedFirstToolCall) {
+                  emittedFirstToolCall = true;
+                  firstToolCallAtMs = Date.now();
+                }
                 emittedTextToolCallKeys.add(canonicalKey);
               } else {
                 skippedToolCalls.push({
@@ -1183,6 +1189,10 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
                   flushPendingText();
                   reportPart(new vscode.LanguageModelToolCallPart(buf.id, buf.name, args));
                   emittedToolCall = true;
+                  if (!emittedFirstToolCall) {
+                    emittedFirstToolCall = true;
+                    firstToolCallAtMs = Date.now();
+                  }
                   emittedTextToolCallKeys.add(canonicalKey);
                   completedToolCallIndices.add(idx);
                   toolCallBuffers.delete(idx);
@@ -1228,6 +1238,10 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
               flushPendingText();
               reportPart(new vscode.LanguageModelToolCallPart(buf.id, buf.name, args));
               emittedToolCall = true;
+              if (!emittedFirstToolCall) {
+                emittedFirstToolCall = true;
+                firstToolCallAtMs = Date.now();
+              }
               emittedTextToolCallKeys.add(canonicalKey);
             } else if (buf.id && buf.name) {
               skippedToolCalls.push({
@@ -1292,6 +1306,9 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
             ...(skippedToolCallNames.length > 0 ? { skippedToolCallNames } : {}),
             ...(currentRetryReason ? { retryReason: currentRetryReason } : {}),
             firstTokenLatencyMs: firstResponseAtMs - attemptStartedAtMs,
+            ...(firstToolCallAtMs !== undefined
+              ? { firstToolCallLatencyMs: firstToolCallAtMs - attemptStartedAtMs }
+              : {}),
             totalDurationMs,
             generationDurationMs,
             ...(promptTokens !== undefined ? { promptTokens } : {}),
