@@ -1,9 +1,5 @@
 import * as vscode from "vscode";
-import {
-  LanguageModelChatMessage,
-  ProvideLanguageModelChatResponseOptions,
-} from "vscode";
-import { jsonrepair } from "jsonrepair";
+import { LanguageModelChatMessage, ProvideLanguageModelChatResponseOptions } from "vscode";
 
 function safeJsonParse(text: string): unknown {
   if (!text) return {};
