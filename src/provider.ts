@@ -50,6 +50,15 @@ interface NvidiaLanguageModelChatInformation extends LanguageModelChatInformatio
   isUserSelectable?: boolean;
 }
 
+type SelectedModelRuntimeCapabilities = LanguageModelChatInformation & {
+  capabilities?: {
+    toolCalling?: unknown;
+    imageInput?: unknown;
+  };
+};
+
+type ChatRuntimeMetadataSource = "cache" | "selected-model" | "fetched-model";
+
 function getApiKeyFromConfiguration(
   options: PrepareLanguageModelChatModelOptions,
 ): string | undefined {
@@ -632,6 +641,15 @@ function isToolCallInput(args: unknown): args is Record<string, unknown> {
 }
 
 export class OcGoChatModelProvider implements LanguageModelChatProvider {
+  private readonly runtimeInfoCache = new Map<
+    string,
+    {
+      supportsTools: boolean;
+      supportsVision: boolean;
+      contextWindow: number;
+      runtimeMetadataSource: ChatRuntimeMetadataSource;
+    }
+  >();
   private readonly _onDidChangeLanguageModelChatInformation = new EventEmitter<void>();
   /** Cleared at the start of each VS Code resolution cycle (groupless call). */
   private readonly _selectableModelIdsInCycle = new Set<string>();
@@ -646,6 +664,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
   ) {}
 
   fireModelInfoChanged(): void {
+    this.runtimeInfoCache.clear();
     this._onDidChangeLanguageModelChatInformation.fire();
   }
 
@@ -693,6 +712,59 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     await this.globalState?.update(MODELS_STATE_KEY, normalizedModels);
     await this.globalState?.update(MODELS_CACHE_VERSION_STATE_KEY, MODELS_CACHE_VERSION);
     return normalizedModels;
+  }
+
+  private async resolveChatModelRuntimeInfo(
+    model: LanguageModelChatInformation,
+    apiKey?: string,
+  ): Promise<{
+    supportsTools: boolean;
+    supportsVision: boolean;
+    contextWindow: number;
+    runtimeMetadataSource: ChatRuntimeMetadataSource;
+  }> {
+    const cachedRuntimeInfo = this.runtimeInfoCache.get(model.id);
+    if (cachedRuntimeInfo) {
+      return cachedRuntimeInfo;
+    }
+
+    const cachedModel = this.getNormalizedModels().find((entry) => entry.id === model.id);
+    if (cachedModel) {
+      const runtimeInfo = {
+        supportsTools: cachedModel.supportsTools,
+        supportsVision: cachedModel.supportsVision,
+        contextWindow: cachedModel.contextWindow,
+        runtimeMetadataSource: "cache" as const,
+      };
+      this.runtimeInfoCache.set(model.id, runtimeInfo);
+      return runtimeInfo;
+    }
+
+    const capabilities = (model as SelectedModelRuntimeCapabilities).capabilities;
+    if (capabilities) {
+      const runtimeInfo = {
+        supportsTools: Boolean(capabilities.toolCalling),
+        supportsVision: capabilities.imageInput === true,
+        contextWindow: model.maxInputTokens + Math.min(model.maxOutputTokens, DEFAULT_MAX_TOKENS),
+        runtimeMetadataSource: "selected-model" as const,
+      };
+      this.runtimeInfoCache.set(model.id, runtimeInfo);
+      return runtimeInfo;
+    }
+
+    const fetchedModel = (await this.getAvailableModels(apiKey)).find(
+      (entry) => entry.id === model.id,
+    );
+    const runtimeInfo = {
+      supportsTools: fetchedModel?.supportsTools ?? false,
+      supportsVision: fetchedModel?.supportsVision ?? false,
+      contextWindow:
+        fetchedModel?.contextWindow ??
+        model.maxInputTokens + Math.min(model.maxOutputTokens, DEFAULT_MAX_TOKENS),
+      runtimeMetadataSource: "fetched-model" as const,
+    };
+    this.runtimeInfoCache.set(model.id, runtimeInfo);
+    return runtimeInfo;
   }
 
   private calculateMaxToolResultChars(contextWindow: number): number {
@@ -858,13 +930,8 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         );
       }
 
-      const modelInfo = (await this.getAvailableModels(apiKey)).find(
-        (entry) => entry.id === model.id,
-      );
-      const supportsTools = modelInfo?.supportsTools ?? false;
-      const supportsVision = modelInfo?.supportsVision ?? false;
-      const contextWindow =
-        modelInfo?.contextWindow ?? model.maxInputTokens + model.maxOutputTokens;
+      const { supportsTools, supportsVision, contextWindow, runtimeMetadataSource } =
+        await this.resolveChatModelRuntimeInfo(model, apiKey);
       const maxTokensVal = (options.modelOptions as Record<string, unknown>)?.max_tokens;
       const requestedMaxTokens = this.calculateRequestedMaxTokens({
         requestedMaxTokens:
@@ -1193,6 +1260,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
           Boolean(fallbackText && retryMessage);
         const currentRetryReason =
           retryReason ?? (willRetryAfterInvalidToolCall ? "invalid_tool_call" : undefined);
+        const skippedToolCallNames = Array.from(new Set(skippedToolCalls.map((call) => call.name)));
 
         if (firstResponseAtMs !== undefined) {
           const totalDurationMs = Date.now() - attemptStartedAtMs;
@@ -1210,8 +1278,11 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
             requestedMaxTokens,
             temperature: temperatureVal,
             toolsEnabled,
+            runtimeMetadataSource,
             isRetryAttempt: attempt > 0,
             willRetryAfterInvalidToolCall,
+            skippedToolCallCount: skippedToolCalls.length,
+            ...(skippedToolCallNames.length > 0 ? { skippedToolCallNames } : {}),
             ...(currentRetryReason ? { retryReason: currentRetryReason } : {}),
             firstTokenLatencyMs: firstResponseAtMs - attemptStartedAtMs,
             totalDurationMs,

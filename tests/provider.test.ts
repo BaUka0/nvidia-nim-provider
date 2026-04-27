@@ -723,6 +723,63 @@ describe("OcGoChatModelProvider", () => {
     expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Hello world" }));
   });
 
+  it("does not fetch models during chat when the selected model already exposes capabilities", async () => {
+    (globalState.get as jest.Mock).mockReturnValue(undefined);
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "done" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: {
+          toolCalling: 128,
+          imageInput: false,
+        },
+      } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      {
+        modelOptions: {},
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file from disk",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "number" },
+                endLine: { type: "number" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      } as any,
+      progress,
+      token as any,
+    );
+
+    expect(fetchModels).not.toHaveBeenCalled();
+    const requestBody = (streamChatCompletion as jest.Mock).mock.calls[0][1];
+    expect(requestBody.tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ function: expect.objectContaining({ name: "read_file" }) }),
+      ]),
+    );
+  });
+
   it("reports unsupported image input for non-vision normalized models", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (globalState.get as jest.Mock).mockReturnValue([
@@ -1000,6 +1057,77 @@ describe("OcGoChatModelProvider", () => {
     }
   });
 
+  it("logs the selected model as the runtime metadata source when chat skips model fetching", async () => {
+    process.env.NVIDIA_NIM_DEBUG = "1";
+    (globalState.get as jest.Mock).mockReturnValue(undefined);
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const nowSpy = jest.spyOn(Date, "now");
+    nowSpy.mockReturnValueOnce(4000).mockReturnValueOnce(4075).mockReturnValueOnce(4300);
+
+    try {
+      const mockStream = async function* () {
+        yield { choices: [{ delta: { content: "done" } }] };
+      };
+      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+      const progress = { report: jest.fn() };
+      const token = {
+        isCancellationRequested: false,
+        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+      } as unknown as vscode.CancellationToken;
+
+      await provider.provideLanguageModelChatResponse(
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+          capabilities: {
+            toolCalling: 128,
+            imageInput: false,
+          },
+        } as unknown as vscode.LanguageModelChatInformation,
+        [
+          { role: 1, content: [{ value: "Inspect the workspace" }] },
+        ] as unknown as vscode.LanguageModelChatMessage[],
+        {
+          modelOptions: {},
+          tools: [
+            {
+              name: "read_file",
+              description: "Read a file from disk",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  filePath: { type: "string" },
+                  startLine: { type: "number" },
+                  endLine: { type: "number" },
+                },
+                required: ["filePath", "startLine", "endLine"],
+              },
+            },
+          ],
+        } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
+        progress,
+        token,
+      );
+
+      expect(fetchModels).not.toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[NVIDIA NIM Debug] stream timing:",
+        expect.objectContaining({
+          runtimeMetadataSource: "selected-model",
+          toolsEnabled: true,
+        }),
+      );
+    } finally {
+      nowSpy.mockRestore();
+      consoleSpy.mockRestore();
+      delete process.env.NVIDIA_NIM_DEBUG;
+    }
+  });
+
   it("includes request context and retry metadata in stream timing logs for invalid tool retries", async () => {
     process.env.NVIDIA_NIM_DEBUG = "1";
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
@@ -1122,6 +1250,125 @@ describe("OcGoChatModelProvider", () => {
           willRetryAfterInvalidToolCall: false,
           retryReason: "invalid_tool_call",
           emittedToolCall: true,
+        }),
+      );
+    } finally {
+      nowSpy.mockRestore();
+      consoleSpy.mockRestore();
+      delete process.env.NVIDIA_NIM_DEBUG;
+    }
+  });
+
+  it("includes skipped tool call summary fields in stream timing logs", async () => {
+    process.env.NVIDIA_NIM_DEBUG = "1";
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const nowSpy = jest.spyOn(Date, "now");
+    nowSpy
+      .mockReturnValueOnce(5000)
+      .mockReturnValueOnce(5050)
+      .mockReturnValueOnce(5100)
+      .mockReturnValueOnce(6000)
+      .mockReturnValueOnce(6125)
+      .mockReturnValueOnce(6600);
+
+    const invalidStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "read_file", arguments: "{}" },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    };
+
+    const repairedStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_2",
+                  type: "function",
+                  function: {
+                    name: "read_file",
+                    arguments: '{"filePath":"/tmp/example.md","startLine":1,"endLine":20}',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => invalidStream())
+      .mockImplementationOnce(() => repairedStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    } as unknown as vscode.CancellationToken;
+
+    try {
+      await provider.provideLanguageModelChatResponse(
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [
+          { role: 1, content: [{ value: "Read the file" }] },
+        ] as unknown as vscode.LanguageModelChatMessage[],
+        {
+          modelOptions: {},
+          tools: [
+            {
+              name: "read_file",
+              description: "Read a file from disk",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  filePath: { type: "string" },
+                  startLine: { type: "number" },
+                  endLine: { type: "number" },
+                },
+                required: ["filePath", "startLine", "endLine"],
+              },
+            },
+          ],
+        } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
+        progress,
+        token,
+      );
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[NVIDIA NIM Debug] stream timing:",
+        expect.objectContaining({
+          attempt: 1,
+          skippedToolCallCount: 1,
+          skippedToolCallNames: ["read_file"],
+        }),
+      );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[NVIDIA NIM Debug] stream timing:",
+        expect.objectContaining({
+          attempt: 2,
+          skippedToolCallCount: 0,
         }),
       );
     } finally {

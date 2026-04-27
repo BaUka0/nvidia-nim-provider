@@ -97,25 +97,45 @@ const PROFILE_DEFINITIONS: readonly NvidiaModelRequestProfileDefinition[] = [
   },
 ];
 
+const profileCache = new Map<string, NvidiaModelRequestProfile>();
+const MAX_PROFILE_CACHE_SIZE = 64;
+
 export function getModelRequestProfile(
   modelId: string,
   options: { toolsEnabled?: boolean } = {},
 ): NvidiaModelRequestProfile {
+  const cacheKey = `${modelId}:${options.toolsEnabled ?? false}`;
+  const cached = profileCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const normalizedModelId = modelId.toLowerCase();
   const matchedProfile = PROFILE_DEFINITIONS.find((profile) => profile.matches(normalizedModelId));
 
+  let result: NvidiaModelRequestProfile;
+
   if (matchedProfile) {
-    return {
+    result = {
       defaultTemperature: matchedProfile.defaultTemperature,
       toolTemperature: matchedProfile.toolTemperature,
       extraSystemMessages: options.toolsEnabled
         ? [...(matchedProfile.toolSystemMessages ?? [])]
         : [],
     };
+  } else {
+    result = {
+      defaultTemperature: DEFAULT_TEMPERATURE,
+      extraSystemMessages: [],
+    };
   }
 
-  return {
-    defaultTemperature: DEFAULT_TEMPERATURE,
-    extraSystemMessages: [],
-  };
+  if (profileCache.size >= MAX_PROFILE_CACHE_SIZE) {
+    const firstKey = profileCache.keys().next().value;
+    if (firstKey !== undefined) {
+      profileCache.delete(firstKey);
+    }
+  }
+  profileCache.set(cacheKey, result);
+  return result;
 }
