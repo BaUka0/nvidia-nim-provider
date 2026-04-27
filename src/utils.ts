@@ -369,12 +369,17 @@ export function applyReasoningContentWorkaround(
     return messages;
   }
 
-  return messages.map((msg) => {
-    if (msg.role === "assistant" && !msg.reasoning_content) {
-      return { ...msg, reasoning_content: " " };
+  let patchedMessages: OcGoChatMessage[] | undefined;
+  for (const [index, msg] of messages.entries()) {
+    if (msg.role !== "assistant" || msg.reasoning_content) {
+      continue;
     }
-    return msg;
-  });
+
+    patchedMessages ??= [...messages];
+    patchedMessages[index] = { ...msg, reasoning_content: " " };
+  }
+
+  return patchedMessages ?? messages;
 }
 
 export function convertTools(options: vscode.ProvideLanguageModelChatResponseOptions): {

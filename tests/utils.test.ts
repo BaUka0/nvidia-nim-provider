@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { OcGoChatMessage } from "../src/types";
 import {
+  applyReasoningContentWorkaround,
   convertMessages,
   convertTools,
   estimateMessagesTokens,
@@ -326,25 +327,31 @@ describe("convertMessages with tools", () => {
 
 describe("applyReasoningContentWorkaround", () => {
   it("adds reasoning_content for Kimi K2.6", () => {
-    const { applyReasoningContentWorkaround } = require("../src/utils");
     const messages: OcGoChatMessage[] = [{ role: "assistant", content: "Hello" }];
     const result = applyReasoningContentWorkaround(messages, "kimi-k2.6");
     expect(result[0].reasoning_content).toBe(" ");
   });
 
   it("does not add reasoning_content for other models", () => {
-    const { applyReasoningContentWorkaround } = require("../src/utils");
     const messages: OcGoChatMessage[] = [{ role: "assistant", content: "Hello" }];
     const result = applyReasoningContentWorkaround(messages, "glm-5");
     expect(result[0].reasoning_content).toBeUndefined();
   });
 
   it("preserves existing reasoning_content", () => {
-    const { applyReasoningContentWorkaround } = require("../src/utils");
     const messages: OcGoChatMessage[] = [
       { role: "assistant", content: "Hello", reasoning_content: "existing" },
     ];
     const result = applyReasoningContentWorkaround(messages, "kimi-k2.6");
     expect(result[0].reasoning_content).toBe("existing");
+  });
+
+  it("returns the original array when a Kimi request needs no reasoning_content patch", () => {
+    const messages: OcGoChatMessage[] = [
+      { role: "assistant", content: "Hello", reasoning_content: "existing" },
+      { role: "user", content: "Hi" },
+    ];
+    const result = applyReasoningContentWorkaround(messages, "kimi-k2.6");
+    expect(result).toBe(messages);
   });
 });
