@@ -6,6 +6,7 @@ import {
   convertTools,
   estimateMessagesTokens,
   estimateTokens,
+  stripThinkTags,
 } from "../src/utils";
 
 describe("convertMessages", () => {
@@ -353,5 +354,27 @@ describe("applyReasoningContentWorkaround", () => {
     ];
     const result = applyReasoningContentWorkaround(messages, "kimi-k2.6");
     expect(result).toBe(messages);
+  });
+});
+
+describe("stripThinkTags", () => {
+  it("removes think tags", () => {
+    expect(stripThinkTags("<think>reasoning</think>answer")).toBe("answer");
+  });
+
+  it("handles nested multiline think tags", () => {
+    expect(stripThinkTags("<think>\nstep1\nstep2\n</think>\nresult")).toBe("\nresult");
+  });
+
+  it("is case-insensitive", () => {
+    expect(stripThinkTags("<THINK>hidden</THINK>visible")).toBe("visible");
+  });
+
+  it("returns plain text unchanged", () => {
+    expect(stripThinkTags("plain text")).toBe("plain text");
+  });
+
+  it("handles incomplete open tag", () => {
+    expect(stripThinkTags("<think>no close")).toBe("<think>no close");
   });
 });

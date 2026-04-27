@@ -357,6 +357,15 @@ export function convertMessages(
 }
 
 /**
+ * Strip `<think>...</think>` blocks from streamed text.
+ * Some reasoning models emit chain-of-thought wrapped in these tags
+ * even when a separate reasoning_content field is present.
+ */
+export function stripThinkTags(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+}
+
+/**
  * Apply reasoning_content workaround for models that need it (e.g. Kimi K2.5/2.6).
  * These models may return incomplete responses when reasoning_content is absent.
  * A single space prevents this without polluting the actual output.

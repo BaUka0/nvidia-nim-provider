@@ -38,6 +38,7 @@ import {
   estimateMessagesTokens,
   estimateTokens,
   LegacyPart,
+  stripThinkTags,
 } from "./utils";
 
 const DEFAULT_MAX_TOKENS = 65536;
@@ -1107,8 +1108,9 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
           if (choice?.delta?.content) {
             markFirstResponse();
+            const filteredContent = stripThinkTags(choice.delta.content);
             const { segments, incompleteText } = parseTextEmbeddedToolCalls(
-              pendingTextEmbeddedContent + choice.delta.content,
+              pendingTextEmbeddedContent + filteredContent,
             );
             pendingTextEmbeddedContent = incompleteText;
 
