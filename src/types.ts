@@ -37,6 +37,8 @@ export interface OcGoChatRequest {
   stream?: boolean;
   top_p?: number;
   stop?: string | string[];
+  frequency_penalty?: number;
+  presence_penalty?: number;
   tools?: OcGoTool[];
   tool_choice?: "auto" | "none" | "required" | { type: string; function: { name: string } };
 }

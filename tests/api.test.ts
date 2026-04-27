@@ -1,4 +1,5 @@
 import { fetchModels, streamChatCompletion } from "../src/api";
+import { STREAM_IDLE_TIMEOUT_MS } from "../src/constants";
 import { NvidiaModelSummary, OcGoStreamResponse } from "../src/types";
 
 const rawModelSummaries: NvidiaModelSummary[] = [
@@ -266,5 +267,38 @@ describe("streamChatCompletion", () => {
     }
 
     expect(results).toHaveLength(0);
+  });
+
+  it("cancels the reader when the stream idle timeout elapses", async () => {
+    jest.useFakeTimers();
+
+    try {
+      const cancel = jest.fn().mockResolvedValue(undefined);
+      const reader = {
+        read: jest.fn(() => new Promise(() => undefined)),
+        cancel,
+        releaseLock: jest.fn(),
+      };
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => reader,
+        },
+      } as any);
+
+      const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
+      const nextPromise = gen.next();
+      const rejection = expect(nextPromise).rejects.toThrow(
+        "NVIDIA NIM streaming timeout: no data received",
+      );
+
+      await jest.advanceTimersByTimeAsync(STREAM_IDLE_TIMEOUT_MS);
+
+      await rejection;
+      expect(cancel).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

@@ -36,3 +36,9 @@ export const ANTHROPIC_MAX_TOOL_RESULT_CHARS = 20000;
 
 /** Models that require the reasoning_content workaround */
 export const REASONING_CONTENT_WORKAROUND_MODELS = new Set(["kimi-k2.5", "kimi-k2.6"]);
+
+/** Maximum time (ms) between stream chunks before timeout */
+export const STREAM_IDLE_TIMEOUT_MS = 120000;
+
+/** Frequency to check for cancellation during idle (ms) */
+export const STREAM_IDLE_POLL_MS = 500;

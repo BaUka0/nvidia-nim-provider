@@ -2,15 +2,21 @@ import { getModelRequestProfile } from "../src/model-profile";
 
 describe("getModelRequestProfile", () => {
   it.each([
-    ["kimi-k2.6", 0.2, "Do not reveal chain-of-thought"],
-    ["zai-org/glm-4.5", 0.1, "strict JSON arguments"],
-    ["meta/llama-4-maverick-17b-128e-instruct", 0.2, "Do not emit pseudo tool syntax"],
+    ["kimi-k2.6", 0.2, 0.1, "Do not reveal chain-of-thought"],
+    ["zai-org/glm-4.5", 0.1, 0.05, "strict JSON arguments"],
+    ["meta/llama-4-maverick-17b-128e-instruct", 0.2, 0.1, "Do not emit pseudo tool syntax"],
   ])(
     "returns a specialized tool-enabled profile for %s",
-    (modelId: string, expectedTemperature: number, expectedMessageSnippet: string) => {
+    (
+      modelId: string,
+      expectedDefaultTemperature: number,
+      expectedToolTemperature: number,
+      expectedMessageSnippet: string,
+    ) => {
       const profile = getModelRequestProfile(modelId, { toolsEnabled: true });
 
-      expect(profile.defaultTemperature).toBe(expectedTemperature);
+      expect(profile.defaultTemperature).toBe(expectedDefaultTemperature);
+      expect(profile.toolTemperature).toBe(expectedToolTemperature);
       expect(profile.extraSystemMessages).toEqual(
         expect.arrayContaining([expect.stringContaining(expectedMessageSnippet)]),
       );

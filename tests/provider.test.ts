@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as vscode from "vscode";
 import { fetchModels, streamChatCompletion } from "../src/api";
+import { CONTEXT_WINDOW_SAFETY_MARGIN } from "../src/constants";
 import { OcGoChatModelProvider } from "../src/provider";
 
 jest.mock("../src/api", () => ({
@@ -850,6 +851,284 @@ describe("OcGoChatModelProvider", () => {
         token as any,
       ),
     ).rejects.toThrow("Message exceeds token limit");
+  });
+
+  it("caps max_tokens to the remaining context budget", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (globalState.get as jest.Mock).mockImplementation((key: string) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "kimi-k2.6",
+              displayName: "Kimi K2.6",
+              contextWindow: 70000,
+              maxOutputTokens: 200000,
+              supportsTools: true,
+              supportsVision: false,
+            },
+          ]
+        : undefined,
+    );
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "done" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const prompt = "a".repeat(900);
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "kimi-k2.6", maxInputTokens: 5000, maxOutputTokens: 200000 } as any,
+      [{ role: 1, content: [{ value: prompt }] }] as any,
+      { modelOptions: { max_tokens: 120000 } } as any,
+      progress,
+      token as any,
+    );
+
+    const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
+    const expectedRemainingBudget = 70000 - 300 - CONTEXT_WINDOW_SAFETY_MARGIN;
+
+    expect(requestBody.max_tokens).toBe(expectedRemainingBudget);
+  });
+
+  it("logs first token latency and total stream duration when debug logging is enabled", async () => {
+    process.env.NVIDIA_NIM_DEBUG = "1";
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const nowSpy = jest.spyOn(Date, "now");
+    nowSpy.mockReturnValueOnce(1000).mockReturnValueOnce(1125).mockReturnValueOnce(1450);
+
+    try {
+      const mockStream = async function* () {
+        yield { choices: [{ delta: { content: "done" } }] };
+      };
+      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+      const progress = { report: jest.fn() };
+      const token = {
+        isCancellationRequested: false,
+        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+      } as unknown as vscode.CancellationToken;
+
+      await provider.provideLanguageModelChatResponse(
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [
+          { role: 1, content: [{ value: "Inspect the workspace" }] },
+        ] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
+        progress,
+        token,
+      );
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[NVIDIA NIM Debug] stream timing:",
+        expect.objectContaining({
+          attempt: 1,
+          model: "kimi-k2.6",
+          firstTokenLatencyMs: 125,
+          totalDurationMs: 450,
+        }),
+      );
+    } finally {
+      nowSpy.mockRestore();
+      consoleSpy.mockRestore();
+      delete process.env.NVIDIA_NIM_DEBUG;
+    }
+  });
+
+  it("includes usage-derived throughput metrics in the stream timing log when usage is available", async () => {
+    process.env.NVIDIA_NIM_DEBUG = "1";
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const nowSpy = jest.spyOn(Date, "now");
+    nowSpy.mockReturnValueOnce(2000).mockReturnValueOnce(2200).mockReturnValueOnce(3000);
+
+    try {
+      const mockStream = async function* () {
+        yield {
+          choices: [{ delta: { content: "done" } }],
+          usage: { prompt_tokens: 120, completion_tokens: 80, total_tokens: 200 },
+        };
+      };
+      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+      const progress = { report: jest.fn() };
+      const token = {
+        isCancellationRequested: false,
+        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+      } as unknown as vscode.CancellationToken;
+
+      await provider.provideLanguageModelChatResponse(
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [
+          { role: 1, content: [{ value: "Inspect the workspace" }] },
+        ] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
+        progress,
+        token,
+      );
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[NVIDIA NIM Debug] stream timing:",
+        expect.objectContaining({
+          promptTokens: 120,
+          completionTokens: 80,
+          totalTokens: 200,
+          generationDurationMs: 800,
+          completionTokensPerSecond: 100,
+        }),
+      );
+    } finally {
+      nowSpy.mockRestore();
+      consoleSpy.mockRestore();
+      delete process.env.NVIDIA_NIM_DEBUG;
+    }
+  });
+
+  it("includes request context and retry metadata in stream timing logs for invalid tool retries", async () => {
+    process.env.NVIDIA_NIM_DEBUG = "1";
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const nowSpy = jest.spyOn(Date, "now");
+    nowSpy
+      .mockReturnValueOnce(1000)
+      .mockReturnValueOnce(1050)
+      .mockReturnValueOnce(1100)
+      .mockReturnValueOnce(2000)
+      .mockReturnValueOnce(2125)
+      .mockReturnValueOnce(2600);
+
+    const invalidStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "read_file", arguments: "{}" },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    };
+
+    const repairedStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_2",
+                  type: "function",
+                  function: {
+                    name: "read_file",
+                    arguments: '{"filePath":"/tmp/example.md","startLine":1,"endLine":20}',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => invalidStream())
+      .mockImplementationOnce(() => repairedStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    } as unknown as vscode.CancellationToken;
+
+    try {
+      await provider.provideLanguageModelChatResponse(
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [
+          { role: 1, content: [{ value: "Read the file" }] },
+        ] as unknown as vscode.LanguageModelChatMessage[],
+        {
+          modelOptions: {},
+          tools: [
+            {
+              name: "read_file",
+              description: "Read a file from disk",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  filePath: { type: "string" },
+                  startLine: { type: "number" },
+                  endLine: { type: "number" },
+                },
+                required: ["filePath", "startLine", "endLine"],
+              },
+            },
+          ],
+        } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
+        progress,
+        token,
+      );
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[NVIDIA NIM Debug] stream timing:",
+        expect.objectContaining({
+          attempt: 1,
+          toolsEnabled: true,
+          requestedMaxTokens: 65536,
+          temperature: 0.1,
+          inputTokenCount: expect.any(Number),
+          isRetryAttempt: false,
+          willRetryAfterInvalidToolCall: true,
+          retryReason: "invalid_tool_call",
+        }),
+      );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[NVIDIA NIM Debug] stream timing:",
+        expect.objectContaining({
+          attempt: 2,
+          toolsEnabled: true,
+          requestedMaxTokens: 65536,
+          temperature: 0.1,
+          inputTokenCount: expect.any(Number),
+          isRetryAttempt: true,
+          willRetryAfterInvalidToolCall: false,
+          retryReason: "invalid_tool_call",
+          emittedToolCall: true,
+        }),
+      );
+    } finally {
+      nowSpy.mockRestore();
+      consoleSpy.mockRestore();
+      delete process.env.NVIDIA_NIM_DEBUG;
+    }
   });
 
   it("prompts for an API key during chat and continues the request when one is provided", async () => {
@@ -2603,9 +2882,9 @@ describe("OcGoChatModelProvider", () => {
   });
 
   it.each([
-    ["kimi-k2.6", 0.2, "Do not reveal chain-of-thought"],
-    ["zai-org/glm-4.5", 0.1, "strict JSON arguments"],
-    ["meta/llama-4-maverick-17b-128e-instruct", 0.2, "Do not emit pseudo tool syntax"],
+    ["kimi-k2.6", 0.1, "Do not reveal chain-of-thought"],
+    ["zai-org/glm-4.5", 0.05, "strict JSON arguments"],
+    ["meta/llama-4-maverick-17b-128e-instruct", 0.1, "Do not emit pseudo tool syntax"],
   ])(
     "applies the provider request profile for %s when tools are enabled",
     async (modelId: string, expectedTemperature: number, expectedMessageSnippet: string) => {

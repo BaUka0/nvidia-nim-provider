@@ -1,4 +1,9 @@
-import { BASE_RETRY_DELAY_MS, BASE_URL, MAX_RETRY_DELAY_MS } from "./constants";
+import {
+  BASE_RETRY_DELAY_MS,
+  BASE_URL,
+  MAX_RETRY_DELAY_MS,
+  STREAM_IDLE_TIMEOUT_MS,
+} from "./constants";
 import { debugLog } from "./output-channel";
 import {
   NvidiaModelListResponse,
@@ -153,11 +158,52 @@ export async function* streamChatCompletion(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let lastChunkTime = Date.now();
+
+  function readWithTimeout() {
+    return new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve, reject) => {
+      let settled = false;
+      const resolveOnce = (result: Awaited<ReturnType<typeof reader.read>>) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeoutId);
+        resolve(result);
+      };
+      const rejectOnce = (error: unknown) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeoutId);
+        reject(error);
+      };
+      const timeoutId = setTimeout(() => {
+        const idleSec = Math.round((Date.now() - lastChunkTime) / 1000);
+        const err = new Error(`Stream idle timeout: no data for ${idleSec}s`);
+        err.name = "TimeoutError";
+        void reader.cancel(err).catch(() => undefined);
+        rejectOnce(err);
+      }, STREAM_IDLE_TIMEOUT_MS);
+
+      reader.read().then(
+        (result) => {
+          resolveOnce(result);
+        },
+        (error) => {
+          rejectOnce(error);
+        },
+      );
+    });
+  }
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readWithTimeout();
       if (done) break;
+
+      lastChunkTime = Date.now();
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
@@ -193,6 +239,14 @@ export async function* streamChatCompletion(
         // Ignore malformed lines
       }
     }
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      const idleSec = Math.round((Date.now() - lastChunkTime) / 1000);
+      throw new Error(
+        `NVIDIA NIM streaming timeout: no data received for ${idleSec}s. The model may be stalled.`,
+      );
+    }
+    throw error;
   } finally {
     reader.releaseLock();
   }

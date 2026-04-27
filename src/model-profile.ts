@@ -1,11 +1,13 @@
 export interface NvidiaModelRequestProfile {
   defaultTemperature: number;
+  toolTemperature?: number;
   extraSystemMessages: string[];
 }
 
 interface NvidiaModelRequestProfileDefinition {
   matches: (modelId: string) => boolean;
   defaultTemperature: number;
+  toolTemperature?: number;
   toolSystemMessages?: string[];
 }
 
@@ -42,46 +44,55 @@ const PROFILE_DEFINITIONS: readonly NvidiaModelRequestProfileDefinition[] = [
   {
     matches: (modelId) => /(^|[\/_-])deepseek([\/_-]|$)/i.test(modelId),
     defaultTemperature: DEEPSEEK_DEFAULT_TEMPERATURE,
+    toolTemperature: 0,
     toolSystemMessages: [DEEPSEEK_TOOL_SYSTEM_MESSAGE],
   },
   {
     matches: (modelId) => /(^|[\/_-])kimi([\/_-]|$)/i.test(modelId),
     defaultTemperature: KIMI_DEFAULT_TEMPERATURE,
+    toolTemperature: 0.1,
     toolSystemMessages: [KIMI_TOOL_SYSTEM_MESSAGE],
   },
   {
     matches: (modelId) => /(^|[\/_-])glm([\/_-]|$)/i.test(modelId),
     defaultTemperature: GLM_DEFAULT_TEMPERATURE,
+    toolTemperature: 0.05,
     toolSystemMessages: [GLM_TOOL_SYSTEM_MESSAGE],
   },
   {
     matches: (modelId) => /(^|[\/_-])llama([\/_-]|$)/i.test(modelId),
     defaultTemperature: LLAMA_DEFAULT_TEMPERATURE,
+    toolTemperature: 0.1,
     toolSystemMessages: [LLAMA_TOOL_SYSTEM_MESSAGE],
   },
   {
     matches: (modelId) => /(^|[\/_-])(mistral|mixtral)([\/_-]|$)/i.test(modelId),
     defaultTemperature: MISTRAL_DEFAULT_TEMPERATURE,
+    toolTemperature: 0.2,
     toolSystemMessages: [MISTRAL_TOOL_SYSTEM_MESSAGE],
   },
   {
     matches: (modelId) => /(^|[\/_-])qwen([\/_-]|$)/i.test(modelId),
     defaultTemperature: QWEN_DEFAULT_TEMPERATURE,
+    toolTemperature: 0.05,
     toolSystemMessages: [QWEN_TOOL_SYSTEM_MESSAGE],
   },
   {
     matches: (modelId) => /(^|[\/_-])phi([\/_-]|$)/i.test(modelId),
     defaultTemperature: PHI_DEFAULT_TEMPERATURE,
+    toolTemperature: 0.2,
     toolSystemMessages: [PHI_TOOL_SYSTEM_MESSAGE],
   },
   {
     matches: (modelId) => /(^|[\/_-])yi([\/_-]|$)/i.test(modelId),
     defaultTemperature: YI_DEFAULT_TEMPERATURE,
+    toolTemperature: 0.2,
     toolSystemMessages: [YI_TOOL_SYSTEM_MESSAGE],
   },
   {
     matches: (modelId) => /(^|[\/_-])gemma([\/_-]|$)/i.test(modelId),
     defaultTemperature: GEMMA_DEFAULT_TEMPERATURE,
+    toolTemperature: 0.15,
     toolSystemMessages: [GEMMA_TOOL_SYSTEM_MESSAGE],
   },
 ];
@@ -96,6 +107,7 @@ export function getModelRequestProfile(
   if (matchedProfile) {
     return {
       defaultTemperature: matchedProfile.defaultTemperature,
+      toolTemperature: matchedProfile.toolTemperature,
       extraSystemMessages: options.toolsEnabled
         ? [...(matchedProfile.toolSystemMessages ?? [])]
         : [],

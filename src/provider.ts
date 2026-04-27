@@ -35,6 +35,7 @@ import {
   convertMessages,
   convertTools,
   estimateMessagesTokens,
+  estimateTokens,
   LegacyPart,
 } from "./utils";
 
@@ -707,6 +708,24 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     return 10000;
   }
 
+  private calculateRequestedMaxTokens(options: {
+    requestedMaxTokens: number;
+    modelMaxOutputTokens: number;
+    contextWindow: number;
+    inputTokenCount: number;
+  }): number {
+    const availableCompletionTokens = Math.max(
+      1,
+      options.contextWindow - options.inputTokenCount - CONTEXT_WINDOW_SAFETY_MARGIN,
+    );
+
+    return Math.min(
+      options.requestedMaxTokens,
+      options.modelMaxOutputTokens,
+      availableCompletionTokens,
+    );
+  }
+
   /** Return true if any message contains image input parts. */
   private hasImageInput(messages: readonly LanguageModelChatMessage[]): boolean {
     for (const msg of messages) {
@@ -839,17 +858,21 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         );
       }
 
-      const maxTokensVal = (options.modelOptions as Record<string, unknown>)?.max_tokens;
-      const requestedMaxTokens = Math.min(
-        typeof maxTokensVal === "number" ? maxTokensVal : DEFAULT_MAX_TOKENS,
-        model.maxOutputTokens,
-      );
-
       const modelInfo = (await this.getAvailableModels(apiKey)).find(
         (entry) => entry.id === model.id,
       );
       const supportsTools = modelInfo?.supportsTools ?? false;
       const supportsVision = modelInfo?.supportsVision ?? false;
+      const contextWindow =
+        modelInfo?.contextWindow ?? model.maxInputTokens + model.maxOutputTokens;
+      const maxTokensVal = (options.modelOptions as Record<string, unknown>)?.max_tokens;
+      const requestedMaxTokens = this.calculateRequestedMaxTokens({
+        requestedMaxTokens:
+          typeof maxTokensVal === "number" && maxTokensVal > 0 ? maxTokensVal : DEFAULT_MAX_TOKENS,
+        modelMaxOutputTokens: model.maxOutputTokens,
+        contextWindow,
+        inputTokenCount,
+      });
 
       const hasImages = this.hasImageInput(messages);
       if (hasImages && !supportsVision) {
@@ -861,18 +884,20 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         return;
       }
 
-      const maxToolResultChars = this.calculateMaxToolResultChars(
-        modelInfo?.contextWindow ?? model.maxInputTokens + model.maxOutputTokens,
-      );
+      const maxToolResultChars = this.calculateMaxToolResultChars(contextWindow);
 
       const toolConfig = supportsTools ? convertTools(options) : {};
+      const toolsEnabled = Boolean(toolConfig.tools?.length);
       const requestProfile = getModelRequestProfile(model.id, {
-        toolsEnabled: Boolean(toolConfig.tools?.length),
+        toolsEnabled,
       });
-      const temperatureVal =
-        typeof (options.modelOptions as Record<string, unknown>)?.temperature === "number"
-          ? ((options.modelOptions as Record<string, unknown>).temperature as number)
+      const userTemperature = (options.modelOptions as Record<string, unknown>)?.temperature;
+      const profileTemperature =
+        toolsEnabled && requestProfile.toolTemperature !== undefined
+          ? requestProfile.toolTemperature
           : requestProfile.defaultTemperature;
+      const temperatureVal =
+        typeof userTemperature === "number" ? userTemperature : profileTemperature;
 
       let apiMessages = convertMessages(messages, {
         maxToolResultChars,
@@ -895,6 +920,22 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         max_tokens: requestedMaxTokens,
         temperature: temperatureVal,
       };
+
+      const modelOpts = options.modelOptions as Record<string, unknown>;
+      if (typeof modelOpts?.top_p === "number") {
+        requestBody.top_p = Math.min(1, Math.max(0, modelOpts.top_p));
+      }
+      if (typeof modelOpts?.frequency_penalty === "number") {
+        requestBody.frequency_penalty = Math.min(2, Math.max(-2, modelOpts.frequency_penalty));
+      }
+      if (typeof modelOpts?.presence_penalty === "number") {
+        requestBody.presence_penalty = Math.min(2, Math.max(-2, modelOpts.presence_penalty));
+      }
+      const stopVal = modelOpts?.stop;
+      if (typeof stopVal === "string" || (Array.isArray(stopVal) && stopVal.length > 0)) {
+        requestBody.stop = stopVal as string | string[];
+      }
+
       if (toolConfig.tools) {
         requestBody.tools = toolConfig.tools;
       }
@@ -913,8 +954,10 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       );
       let activeRequestBody = requestBody;
       let deferredInvalidToolFallbackText: string | undefined;
+      let retryReason: "invalid_tool_call" | undefined;
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
+        const attemptStartedAtMs = Date.now();
         const toolCallBuffers = new Map<number, { id?: string; name?: string; args: string }>();
         const completedToolCallIndices = new Set<number>();
         const skippedToolCalls: SkippedToolCall[] = [];
@@ -923,6 +966,15 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         let sawToolCall = false;
         let emittedToolCall = false;
         let reportedContent = false;
+        let firstResponseAtMs: number | undefined;
+        let lastUsage:
+          | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+          | undefined;
+        const markFirstResponse = (): void => {
+          if (firstResponseAtMs === undefined) {
+            firstResponseAtMs = Date.now();
+          }
+        };
         const reportPart = (part: LanguageModelResponsePart): void => {
           progress.report(part);
           reportedContent = true;
@@ -947,8 +999,12 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
           const choice = chunk.choices?.[0];
 
-          // Handle text content
+          if (chunk.usage) {
+            lastUsage = chunk.usage;
+          }
+
           if (choice?.delta?.content) {
+            markFirstResponse();
             const { segments, incompleteText } = parseTextEmbeddedToolCalls(
               pendingTextEmbeddedContent + choice.delta.content,
             );
@@ -1008,6 +1064,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
           // Handle tool calls
           if (choice?.delta?.tool_calls) {
+            markFirstResponse();
             sawToolCall = true;
             for (const tc of choice.delta.tool_calls) {
               const idx = (tc as { index?: number }).index ?? 0;
@@ -1122,11 +1179,66 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
           flushPendingText();
         }
 
+        const fallbackText = sawToolCall
+          ? buildInvalidToolCallFallback(skippedToolCalls)
+          : undefined;
+        const retryMessage = sawToolCall
+          ? buildInvalidToolCallRetryMessage(skippedToolCalls)
+          : undefined;
+        const willRetryAfterInvalidToolCall =
+          sawToolCall &&
+          !emittedToolCall &&
+          attempt === 0 &&
+          !reportedContent &&
+          Boolean(fallbackText && retryMessage);
+        const currentRetryReason =
+          retryReason ?? (willRetryAfterInvalidToolCall ? "invalid_tool_call" : undefined);
+
+        if (firstResponseAtMs !== undefined) {
+          const totalDurationMs = Date.now() - attemptStartedAtMs;
+          const generationDurationMs = Math.max(
+            0,
+            totalDurationMs - (firstResponseAtMs - attemptStartedAtMs),
+          );
+          const promptTokens = lastUsage?.prompt_tokens;
+          const completionTokens = lastUsage?.completion_tokens;
+          const totalTokens = lastUsage?.total_tokens;
+          debugLog("stream timing", {
+            attempt: attempt + 1,
+            model: model.id,
+            inputTokenCount,
+            requestedMaxTokens,
+            temperature: temperatureVal,
+            toolsEnabled,
+            isRetryAttempt: attempt > 0,
+            willRetryAfterInvalidToolCall,
+            ...(currentRetryReason ? { retryReason: currentRetryReason } : {}),
+            firstTokenLatencyMs: firstResponseAtMs - attemptStartedAtMs,
+            totalDurationMs,
+            generationDurationMs,
+            ...(promptTokens !== undefined ? { promptTokens } : {}),
+            ...(completionTokens !== undefined ? { completionTokens } : {}),
+            ...(totalTokens !== undefined ? { totalTokens } : {}),
+            ...(completionTokens !== undefined && generationDurationMs > 0
+              ? {
+                  completionTokensPerSecond: Number(
+                    (completionTokens / (generationDurationMs / 1000)).toFixed(2),
+                  ),
+                }
+              : {}),
+            reportedContent,
+            emittedToolCall,
+          });
+        }
+
+        if (lastUsage) {
+          debugLog("stream usage", lastUsage);
+        }
+
         if (sawToolCall && !emittedToolCall) {
-          const fallbackText = buildInvalidToolCallFallback(skippedToolCalls);
-          const retryMessage = buildInvalidToolCallRetryMessage(skippedToolCalls);
           if (attempt === 0 && !reportedContent && fallbackText && retryMessage) {
             deferredInvalidToolFallbackText = fallbackText;
+            retryReason = "invalid_tool_call";
             activeRequestBody = {
               ...activeRequestBody,
               messages: [
@@ -1169,19 +1281,19 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
     _token: CancellationToken,
   ): Promise<number> {
     if (typeof text === "string") {
-      return Promise.resolve(Math.ceil(text.length / 2));
+      return Promise.resolve(estimateTokens(text));
     }
     let total = 0;
     for (const part of text.content) {
       if (part instanceof vscode.LanguageModelTextPart) {
-        total += Math.ceil(part.value.length / 2);
+        total += estimateTokens(part.value);
       } else if (
         typeof part === "object" &&
         part !== null &&
         "value" in part &&
         typeof (part as { value?: unknown }).value === "string"
       ) {
-        total += Math.ceil((part as { value: string }).value.length / 2);
+        total += estimateTokens((part as { value: string }).value);
       } else {
         total += 2; // rough estimate for non-text parts
       }
