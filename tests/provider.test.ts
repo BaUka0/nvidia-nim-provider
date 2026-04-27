@@ -1060,6 +1060,99 @@ describe("OcGoChatModelProvider", () => {
     }
   });
 
+  it("includes tool parsing state initialization duration in the stream timing log", async () => {
+    process.env.NVIDIA_NIM_DEBUG = "1";
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const nowSpy = jest.spyOn(Date, "now");
+    nowSpy
+      .mockReturnValueOnce(1000)
+      .mockReturnValueOnce(1100)
+      .mockReturnValueOnce(1200)
+      .mockReturnValueOnce(1250)
+      .mockReturnValueOnce(1290)
+      .mockReturnValueOnce(1350)
+      .mockReturnValueOnce(1500);
+
+    try {
+      const mockStream = async function* () {
+        yield {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_1",
+                    type: "function",
+                    function: {
+                      name: "read_file",
+                      arguments: '{"filePath":"/tmp/example.md","startLine":1,"endLine":20}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        };
+      };
+      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+      const progress = { report: jest.fn() };
+      const token = {
+        isCancellationRequested: false,
+        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+      } as unknown as vscode.CancellationToken;
+
+      await provider.provideLanguageModelChatResponse(
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [
+          { role: 1, content: [{ value: "Read the file" }] },
+        ] as unknown as vscode.LanguageModelChatMessage[],
+        {
+          modelOptions: {},
+          tools: [
+            {
+              name: "read_file",
+              description: "Read a file from disk",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  filePath: { type: "string" },
+                  startLine: { type: "number" },
+                  endLine: { type: "number" },
+                },
+                required: ["filePath", "startLine", "endLine"],
+              },
+            },
+          ],
+        } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
+        progress,
+        token,
+      );
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[NVIDIA NIM Debug] stream timing:",
+        expect.objectContaining({
+          requestPreparationDurationMs: 100,
+          firstTokenLatencyMs: 100,
+          toolParsingStateInitDurationMs: 40,
+          totalDurationMs: 400,
+          emittedToolCall: true,
+        }),
+      );
+    } finally {
+      nowSpy.mockRestore();
+      consoleSpy.mockRestore();
+      delete process.env.NVIDIA_NIM_DEBUG;
+    }
+  });
+
   it("includes usage-derived throughput metrics in the stream timing log when usage is available", async () => {
     process.env.NVIDIA_NIM_DEBUG = "1";
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
@@ -1203,9 +1296,12 @@ describe("OcGoChatModelProvider", () => {
       .mockReturnValueOnce(1000)
       .mockReturnValueOnce(1000)
       .mockReturnValueOnce(1050)
+      .mockReturnValueOnce(1060)
+      .mockReturnValueOnce(1090)
       .mockReturnValueOnce(1100)
       .mockReturnValueOnce(2000)
       .mockReturnValueOnce(2125)
+      .mockReturnValueOnce(2200)
       .mockReturnValueOnce(2600);
 
     const invalidStream = async function* () {
@@ -1335,9 +1431,12 @@ describe("OcGoChatModelProvider", () => {
       .mockReturnValueOnce(5000)
       .mockReturnValueOnce(5000)
       .mockReturnValueOnce(5050)
+      .mockReturnValueOnce(5060)
+      .mockReturnValueOnce(5090)
       .mockReturnValueOnce(5100)
       .mockReturnValueOnce(6000)
       .mockReturnValueOnce(6125)
+      .mockReturnValueOnce(6200)
       .mockReturnValueOnce(6600);
 
     const invalidStream = async function* () {

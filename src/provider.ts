@@ -1027,6 +1027,8 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
           return toolParsingState;
         }
 
+        const toolParsingStateStartedAtMs =
+          process.env[DEBUG_ENV_VAR] === "1" ? Date.now() : undefined;
         const toolSchemas = getToolSchemaMap(options);
         const requestContext = extractChatRequestContext(messages);
         toolParsingState = {
@@ -1034,6 +1036,9 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
           requestContext,
           emittedTextToolCallKeys: getCompletedToolCallKeys(messages, requestContext, toolSchemas),
         };
+        if (toolParsingStateStartedAtMs !== undefined) {
+          toolParsingStateInitDurationMs = Date.now() - toolParsingStateStartedAtMs;
+        }
         return toolParsingState;
       };
       let activeRequestBody = requestBody;
@@ -1042,6 +1047,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       const retryReasonHistory: string[] = [];
       let totalAttempts = 0;
       let requestPreparationDurationMs: number | undefined;
+      let toolParsingStateInitDurationMs: number | undefined;
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
         totalAttempts += 1;
@@ -1322,6 +1328,9 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
             attempt: attempt + 1,
             totalAttempts,
             ...(requestPreparationDurationMs !== undefined ? { requestPreparationDurationMs } : {}),
+            ...(toolParsingStateInitDurationMs !== undefined
+              ? { toolParsingStateInitDurationMs }
+              : {}),
             ...(retryReasonHistory.length > 0
               ? { retryReasonHistory: [...retryReasonHistory] }
               : {}),
