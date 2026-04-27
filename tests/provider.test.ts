@@ -959,7 +959,11 @@ describe("OcGoChatModelProvider", () => {
 
     const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
     const nowSpy = jest.spyOn(Date, "now");
-    nowSpy.mockReturnValueOnce(1000).mockReturnValueOnce(1125).mockReturnValueOnce(1450);
+    nowSpy
+      .mockReturnValueOnce(1000)
+      .mockReturnValueOnce(1000)
+      .mockReturnValueOnce(1125)
+      .mockReturnValueOnce(1450);
 
     try {
       const mockStream = async function* () {
@@ -1003,13 +1007,70 @@ describe("OcGoChatModelProvider", () => {
     }
   });
 
+  it("includes request preparation duration in the stream timing log", async () => {
+    process.env.NVIDIA_NIM_DEBUG = "1";
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const nowSpy = jest.spyOn(Date, "now");
+    nowSpy
+      .mockReturnValueOnce(1000)
+      .mockReturnValueOnce(1250)
+      .mockReturnValueOnce(1400)
+      .mockReturnValueOnce(2100);
+
+    try {
+      const mockStream = async function* () {
+        yield { choices: [{ delta: { content: "done" } }] };
+      };
+      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+      const progress = { report: jest.fn() };
+      const token = {
+        isCancellationRequested: false,
+        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+      } as unknown as vscode.CancellationToken;
+
+      await provider.provideLanguageModelChatResponse(
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [
+          { role: 1, content: [{ value: "Inspect the workspace" }] },
+        ] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
+        progress,
+        token,
+      );
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[NVIDIA NIM Debug] stream timing:",
+        expect.objectContaining({
+          requestPreparationDurationMs: 250,
+          firstTokenLatencyMs: 150,
+          totalDurationMs: 850,
+        }),
+      );
+    } finally {
+      nowSpy.mockRestore();
+      consoleSpy.mockRestore();
+      delete process.env.NVIDIA_NIM_DEBUG;
+    }
+  });
+
   it("includes usage-derived throughput metrics in the stream timing log when usage is available", async () => {
     process.env.NVIDIA_NIM_DEBUG = "1";
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
     const nowSpy = jest.spyOn(Date, "now");
-    nowSpy.mockReturnValueOnce(2000).mockReturnValueOnce(2200).mockReturnValueOnce(3000);
+    nowSpy
+      .mockReturnValueOnce(2000)
+      .mockReturnValueOnce(2000)
+      .mockReturnValueOnce(2200)
+      .mockReturnValueOnce(3000);
 
     try {
       const mockStream = async function* () {
@@ -1064,7 +1125,11 @@ describe("OcGoChatModelProvider", () => {
 
     const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
     const nowSpy = jest.spyOn(Date, "now");
-    nowSpy.mockReturnValueOnce(4000).mockReturnValueOnce(4075).mockReturnValueOnce(4300);
+    nowSpy
+      .mockReturnValueOnce(4000)
+      .mockReturnValueOnce(4000)
+      .mockReturnValueOnce(4075)
+      .mockReturnValueOnce(4300);
 
     try {
       const mockStream = async function* () {
@@ -1135,6 +1200,7 @@ describe("OcGoChatModelProvider", () => {
     const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
     const nowSpy = jest.spyOn(Date, "now");
     nowSpy
+      .mockReturnValueOnce(1000)
       .mockReturnValueOnce(1000)
       .mockReturnValueOnce(1050)
       .mockReturnValueOnce(1100)
@@ -1266,6 +1332,7 @@ describe("OcGoChatModelProvider", () => {
     const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
     const nowSpy = jest.spyOn(Date, "now");
     nowSpy
+      .mockReturnValueOnce(5000)
       .mockReturnValueOnce(5000)
       .mockReturnValueOnce(5050)
       .mockReturnValueOnce(5100)

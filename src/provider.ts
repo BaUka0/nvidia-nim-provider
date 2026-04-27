@@ -15,6 +15,7 @@ import {
 import { fetchModels, streamChatCompletion } from "./api";
 import {
   CONTEXT_WINDOW_SAFETY_MARGIN,
+  DEBUG_ENV_VAR,
   MODELS_CACHE_VERSION,
   MODELS_CACHE_VERSION_STATE_KEY,
   MODELS_STATE_KEY,
@@ -916,6 +917,9 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         return;
       }
 
+      const requestPreparationStartedAtMs =
+        process.env[DEBUG_ENV_VAR] === "1" ? Date.now() : undefined;
+
       const inputTokenCount = estimateMessagesTokens(
         messages as readonly { content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
       );
@@ -1037,10 +1041,17 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       let retryReason: "invalid_tool_call" | undefined;
       const retryReasonHistory: string[] = [];
       let totalAttempts = 0;
+      let requestPreparationDurationMs: number | undefined;
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
         totalAttempts += 1;
         const attemptStartedAtMs = Date.now();
+        if (
+          requestPreparationDurationMs === undefined &&
+          requestPreparationStartedAtMs !== undefined
+        ) {
+          requestPreparationDurationMs = attemptStartedAtMs - requestPreparationStartedAtMs;
+        }
         const toolCallBuffers = new Map<number, { id?: string; name?: string; args: string }>();
         const completedToolCallIndices = new Set<number>();
         const skippedToolCalls: SkippedToolCall[] = [];
@@ -1310,6 +1321,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
           debugLog("stream timing", {
             attempt: attempt + 1,
             totalAttempts,
+            ...(requestPreparationDurationMs !== undefined ? { requestPreparationDurationMs } : {}),
             ...(retryReasonHistory.length > 0
               ? { retryReasonHistory: [...retryReasonHistory] }
               : {}),
