@@ -1,6 +1,6 @@
-import { getModelRequestProfile } from "../src/model-profile";
+import { getModelAdapter } from "../src/adapters";
 
-describe("getModelRequestProfile", () => {
+describe("getModelAdapter", () => {
   it.each([
     ["kimi-k2.6", 0.2, 0.1, "Do not reveal chain-of-thought"],
     ["zai-org/glm-4.5", 0.1, 0.05, "strict JSON arguments"],
@@ -13,7 +13,8 @@ describe("getModelRequestProfile", () => {
       expectedToolTemperature: number,
       expectedMessageSnippet: string,
     ) => {
-      const profile = getModelRequestProfile(modelId, { toolsEnabled: true });
+      const adapter = getModelAdapter(modelId);
+      const profile = adapter.getProfile({ toolsEnabled: true });
 
       expect(profile.defaultTemperature).toBe(expectedDefaultTemperature);
       expect(profile.toolTemperature).toBe(expectedToolTemperature);
@@ -24,14 +25,16 @@ describe("getModelRequestProfile", () => {
   );
 
   it("does not add extra system guidance when tools are disabled", () => {
-    const profile = getModelRequestProfile("kimi-k2.6", { toolsEnabled: false });
+    const adapter = getModelAdapter("kimi-k2.6");
+    const profile = adapter.getProfile({ toolsEnabled: false });
 
     expect(profile.defaultTemperature).toBe(0.2);
     expect(profile.extraSystemMessages).toEqual([]);
   });
 
   it("falls back to the default profile for unknown models", () => {
-    const profile = getModelRequestProfile("unknown-model", { toolsEnabled: true });
+    const adapter = getModelAdapter("unknown-model");
+    const profile = adapter.getProfile({ toolsEnabled: true });
 
     expect(profile.defaultTemperature).toBe(0.7);
     expect(profile.extraSystemMessages).toEqual([]);

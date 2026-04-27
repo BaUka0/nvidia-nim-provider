@@ -43,11 +43,10 @@ import {
   NormalizedNvidiaModel,
   normalizeNvidiaModels,
 } from "./model-catalog";
-import { getModelRequestProfile } from "./model-profile";
+import { getModelAdapter } from "./adapters";
 import { debugLog, outputLog } from "./output-channel";
 import { OcGoChatMessage, OcGoChatRequest } from "./types";
 import {
-  applyReasoningContentWorkaround,
   convertMessages,
   convertTools,
   estimateMessagesTokens,
@@ -431,7 +430,8 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
       const toolConfig = supportsTools ? convertTools(options) : {};
       const toolsEnabled = Boolean(toolConfig.tools?.length);
-      const requestProfile = getModelRequestProfile(model.id, {
+      const adapter = getModelAdapter(model.id);
+      const requestProfile = adapter.getProfile({
         toolsEnabled,
       });
       const userTemperature = (options.modelOptions as Record<string, unknown>)?.temperature;
@@ -446,7 +446,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         maxToolResultChars,
         supportsVision,
       });
-      apiMessages = applyReasoningContentWorkaround(apiMessages, model.id);
+      apiMessages = adapter.applyMessagesWorkaround ? adapter.applyMessagesWorkaround(apiMessages) : apiMessages;
       if (requestProfile.extraSystemMessages.length > 0) {
         apiMessages = [
           ...requestProfile.extraSystemMessages.map(

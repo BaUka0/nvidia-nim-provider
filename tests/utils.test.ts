@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import { OcGoChatMessage } from "../src/types";
 import {
-  applyReasoningContentWorkaround,
   convertMessages,
   convertTools,
   estimateMessagesTokens,
@@ -326,34 +325,25 @@ describe("convertMessages with tools", () => {
   });
 });
 
-describe("applyReasoningContentWorkaround", () => {
-  it("adds reasoning_content for Kimi K2.6", () => {
-    const messages: OcGoChatMessage[] = [{ role: "assistant", content: "Hello" }];
-    const result = applyReasoningContentWorkaround(messages, "kimi-k2.6");
-    expect(result[0].reasoning_content).toBe(" ");
+describe("stripThinkTags", () => {
+  it("removes think tags", () => {
+    expect(stripThinkTags("<think>reasoning</think>answer")).toBe("answer");
   });
 
-  it("does not add reasoning_content for other models", () => {
-    const messages: OcGoChatMessage[] = [{ role: "assistant", content: "Hello" }];
-    const result = applyReasoningContentWorkaround(messages, "glm-5");
-    expect(result[0].reasoning_content).toBeUndefined();
+  it("handles nested multiline think tags", () => {
+    expect(stripThinkTags("<think>\nstep1\nstep2\n</think>\nresult")).toBe("\nresult");
   });
 
-  it("preserves existing reasoning_content", () => {
-    const messages: OcGoChatMessage[] = [
-      { role: "assistant", content: "Hello", reasoning_content: "existing" },
-    ];
-    const result = applyReasoningContentWorkaround(messages, "kimi-k2.6");
-    expect(result[0].reasoning_content).toBe("existing");
+  it("is case-insensitive", () => {
+    expect(stripThinkTags("<THINK>hidden</THINK>visible")).toBe("visible");
   });
 
-  it("returns the original array when a Kimi request needs no reasoning_content patch", () => {
-    const messages: OcGoChatMessage[] = [
-      { role: "assistant", content: "Hello", reasoning_content: "existing" },
-      { role: "user", content: "Hi" },
-    ];
-    const result = applyReasoningContentWorkaround(messages, "kimi-k2.6");
-    expect(result).toBe(messages);
+  it("returns plain text unchanged", () => {
+    expect(stripThinkTags("plain text")).toBe("plain text");
+  });
+
+  it("handles incomplete open tag", () => {
+    expect(stripThinkTags("<think>no close")).toBe("<think>no close");
   });
 });
 

@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { REASONING_CONTENT_WORKAROUND_MODELS } from "./constants";
 import { debugLog } from "./output-channel";
 import { Json, JsonObject, OcGoChatMessage, OcGoContentPart, OcGoTool } from "./types";
 
@@ -437,27 +436,6 @@ export function flushThinkTagFilter(state: ThinkTagFilterState): string {
  * These models may return incomplete responses when reasoning_content is absent.
  * A single space prevents this without polluting the actual output.
  */
-export function applyReasoningContentWorkaround(
-  messages: OcGoChatMessage[],
-  modelId: string,
-): OcGoChatMessage[] {
-  if (!REASONING_CONTENT_WORKAROUND_MODELS.has(modelId)) {
-    return messages;
-  }
-
-  let patchedMessages: OcGoChatMessage[] | undefined;
-  for (const [index, msg] of messages.entries()) {
-    if (msg.role !== "assistant" || msg.reasoning_content) {
-      continue;
-    }
-
-    patchedMessages ??= [...messages];
-    patchedMessages[index] = { ...msg, reasoning_content: " " };
-  }
-
-  return patchedMessages ?? messages;
-}
-
 export function convertTools(options: vscode.ProvideLanguageModelChatResponseOptions): {
   tools?: OcGoTool[];
   tool_choice?: "auto" | "required" | { type: "function"; function: { name: string } };
