@@ -723,6 +723,37 @@ describe("OcGoChatModelProvider", () => {
     expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Hello world" }));
   });
 
+  it("strips think tags even when the stream splits tag boundaries", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "<th" } }] };
+      yield { choices: [{ delta: { content: "ink>hidden" } }] };
+      yield { choices: [{ delta: { content: "</th" } }] };
+      yield { choices: [{ delta: { content: "ink>表示テキスト" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "nim-any-model", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    expect(progress.report).toHaveBeenCalledTimes(1);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "表示テキスト" }),
+    );
+  });
+
   it("does not fetch models during chat when the selected model already exposes capabilities", async () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
     (secrets.get as jest.Mock).mockResolvedValue("test-key");

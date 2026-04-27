@@ -37,8 +37,9 @@ import {
   convertTools,
   estimateMessagesTokens,
   estimateTokens,
+  filterThinkTagsFromChunk,
+  flushThinkTagFilter,
   LegacyPart,
-  stripThinkTags,
 } from "./utils";
 
 const DEFAULT_MAX_TOKENS = 65536;
@@ -1062,6 +1063,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
         const toolCallBuffers = new Map<number, { id?: string; name?: string; args: string }>();
         const completedToolCallIndices = new Set<number>();
         const skippedToolCalls: SkippedToolCall[] = [];
+        const thinkTagFilterState = { insideThinkBlock: false, pendingText: "" };
         let pendingTextEmbeddedContent = "";
         let pendingText = "";
         let sawToolCall = false;
@@ -1089,6 +1091,73 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
           reportPart(new vscode.LanguageModelTextPart(pendingText));
           pendingText = "";
         };
+        const processFilteredText = (text: string): void => {
+          if (!text) {
+            return;
+          }
+
+          const { segments, incompleteText } = parseTextEmbeddedToolCalls(
+            pendingTextEmbeddedContent + text,
+          );
+          pendingTextEmbeddedContent = incompleteText;
+
+          for (const segment of segments) {
+            if (segment.type === "text") {
+              pendingText += segment.text;
+              continue;
+            }
+
+            if (segment.type === "invalidToolCall") {
+              sawToolCall = true;
+              const { toolSchemas } = getToolParsingState();
+              const schema = toolSchemas.get(segment.name);
+              skippedToolCalls.push({
+                name: segment.name,
+                required: schema?.required ?? [],
+              });
+              debugLog("Skipped invalid text tool call", { name: segment.name });
+              continue;
+            }
+
+            const toolCall = segment.toolCall;
+            sawToolCall = true;
+            const { emittedTextToolCallKeys, requestContext, toolSchemas } = getToolParsingState();
+            const schema = toolSchemas.get(toolCall.name);
+            const repairedArgs = repairToolArguments(
+              toolCall.name,
+              toolCall.args,
+              requestContext,
+              schema,
+            );
+            const canonicalKey = buildToolCallCanonicalKey(toolCall.name, repairedArgs);
+            if (emittedTextToolCallKeys.has(canonicalKey)) {
+              continue;
+            }
+
+            if (hasRequiredToolArguments(repairedArgs, schema)) {
+              flushPendingText();
+              reportPart(
+                new vscode.LanguageModelToolCallPart(
+                  `text_tool_${Math.random().toString(36).slice(2, 10)}`,
+                  toolCall.name,
+                  repairedArgs as Record<string, unknown>,
+                ),
+              );
+              emittedToolCall = true;
+              if (!emittedFirstToolCall) {
+                emittedFirstToolCall = true;
+                firstToolCallAtMs = Date.now();
+              }
+              emittedTextToolCallKeys.add(canonicalKey);
+            } else {
+              skippedToolCalls.push({
+                name: toolCall.name,
+                required: schema?.required ?? [],
+              });
+              debugLog("Skipped invalid text tool call", toolCall);
+            }
+          }
+        };
 
         for await (const chunk of streamChatCompletion(
           apiKey,
@@ -1108,69 +1177,9 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
           if (choice?.delta?.content) {
             markFirstResponse();
-            const filteredContent = stripThinkTags(choice.delta.content);
-            const { segments, incompleteText } = parseTextEmbeddedToolCalls(
-              pendingTextEmbeddedContent + filteredContent,
+            processFilteredText(
+              filterThinkTagsFromChunk(choice.delta.content, thinkTagFilterState),
             );
-            pendingTextEmbeddedContent = incompleteText;
-
-            for (const segment of segments) {
-              if (segment.type === "text") {
-                pendingText += segment.text;
-                continue;
-              }
-
-              if (segment.type === "invalidToolCall") {
-                sawToolCall = true;
-                const { toolSchemas } = getToolParsingState();
-                const schema = toolSchemas.get(segment.name);
-                skippedToolCalls.push({
-                  name: segment.name,
-                  required: schema?.required ?? [],
-                });
-                debugLog("Skipped invalid text tool call", { name: segment.name });
-                continue;
-              }
-
-              const toolCall = segment.toolCall;
-              sawToolCall = true;
-              const { emittedTextToolCallKeys, requestContext, toolSchemas } =
-                getToolParsingState();
-              const schema = toolSchemas.get(toolCall.name);
-              const repairedArgs = repairToolArguments(
-                toolCall.name,
-                toolCall.args,
-                requestContext,
-                schema,
-              );
-              const canonicalKey = buildToolCallCanonicalKey(toolCall.name, repairedArgs);
-              if (emittedTextToolCallKeys.has(canonicalKey)) {
-                continue;
-              }
-
-              if (hasRequiredToolArguments(repairedArgs, schema)) {
-                flushPendingText();
-                reportPart(
-                  new vscode.LanguageModelToolCallPart(
-                    `text_tool_${Math.random().toString(36).slice(2, 10)}`,
-                    toolCall.name,
-                    repairedArgs as Record<string, unknown>,
-                  ),
-                );
-                emittedToolCall = true;
-                if (!emittedFirstToolCall) {
-                  emittedFirstToolCall = true;
-                  firstToolCallAtMs = Date.now();
-                }
-                emittedTextToolCallKeys.add(canonicalKey);
-              } else {
-                skippedToolCalls.push({
-                  name: toolCall.name,
-                  required: schema?.required ?? [],
-                });
-                debugLog("Skipped invalid text tool call", toolCall);
-              }
-            }
           }
 
           // Handle tool calls
@@ -1248,6 +1257,8 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
             }
           }
         }
+
+        processFilteredText(flushThinkTagFilter(thinkTagFilterState));
 
         // Flush any remaining buffered tool calls at stream end
         for (const [idx, buf] of Array.from(toolCallBuffers.entries())) {
