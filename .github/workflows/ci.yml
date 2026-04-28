@@ -18,3 +18,5 @@ jobs:
       - run: bun run lint
       - run: bun run compile
       - run: bun run test -- --runInBand
+      - name: Type Check
+        run: npx tsc --noEmit

@@ -3,7 +3,7 @@
   "publisher": "HidenobuNagai",
   "displayName": "NVIDIA NIM Provider",
   "description": "Use NVIDIA NIM models in GitHub Copilot Chat for VS Code",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -76,8 +76,23 @@
         "command": "nvidia-nim.openDebugLog",
         "title": "Open Debug Log",
         "category": "NVIDIA NIM"
+      },
+      {
+        "command": "nvidia-nim.toggleShowReasoning",
+        "title": "Toggle Reasoning Content Display",
+        "category": "NVIDIA NIM"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "NVIDIA NIM",
+      "properties": {
+        "nvidia-nim.showReasoning": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show model reasoning content (thinking process) in responses. Some models like DeepSeek R1 emit reasoning that may be useful for debugging."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "bun run compile",

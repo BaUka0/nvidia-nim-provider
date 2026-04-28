@@ -38,7 +38,7 @@ describe("normalizeNvidiaModels", () => {
         id: "meta/llama-3.1-8b-instruct",
         displayName: "llama-3.1-8b-instruct",
         contextWindow: 131072,
-        maxOutputTokens: 16384,
+        maxOutputTokens: 65536,
         supportsTools: true,
         supportsVision: false,
       },

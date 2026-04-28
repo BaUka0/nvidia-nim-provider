@@ -654,6 +654,23 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
             );
           }
 
+          const reasoningContent = (choice?.delta as { reasoning_content?: string })
+            ?.reasoning_content;
+          if (reasoningContent) {
+            markFirstResponse();
+            const showReasoning = vscode.workspace
+              .getConfiguration("nvidia-nim")
+              .get<boolean>("showReasoning", false);
+            if (showReasoning) {
+              flushPendingText();
+              reportPart(
+                new vscode.LanguageModelTextPart(
+                  reasoningContent.startsWith(" ") ? reasoningContent : ` ${reasoningContent}`,
+                ),
+              );
+            }
+          }
+
           // Handle tool calls
           if (choice?.delta?.tool_calls) {
             markFirstResponse();

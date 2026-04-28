@@ -181,7 +181,7 @@ export function buildInvalidToolCallFallback(
   const skippedWithRequiredArgs = skippedToolCalls.find((toolCall) => toolCall.required.length > 0);
   if (skippedWithRequiredArgs) {
     const requiredArgs = skippedWithRequiredArgs.required.map((arg) => `\`${arg}\``).join(", ");
-    return `The model tried to call \`${skippedWithRequiredArgs.name}\` without the required argument(s) ${requiredArgs}. Please retry the request and provide those arguments explicitly.`;
+    return `Tool call \`${skippedWithRequiredArgs.name}\` is missing required arguments: ${requiredArgs}. Retry with all required fields filled.`;
   }
 
   const firstSkippedToolCall = skippedToolCalls[0];
@@ -189,7 +189,7 @@ export function buildInvalidToolCallFallback(
     return undefined;
   }
 
-  return `The model tried to call \`${firstSkippedToolCall.name}\` with invalid arguments. Please retry the request and provide a valid JSON object for that tool call.`;
+  return `Tool call \`${firstSkippedToolCall.name}\` has invalid arguments. Retry with a valid JSON object.`;
 }
 
 export function buildInvalidToolCallRetryMessage(
@@ -198,9 +198,8 @@ export function buildInvalidToolCallRetryMessage(
   const skippedWithRequiredArgs = skippedToolCalls.find((toolCall) => toolCall.required.length > 0);
   if (skippedWithRequiredArgs) {
     return [
-      `Your previous response tried to call ${skippedWithRequiredArgs.name} without the required arguments ${skippedWithRequiredArgs.required.join(", ")}.`,
-      "Retry the response now.",
-      "If you call a tool, return a valid JSON object and include every required argument explicitly.",
+      `Tool call "${skippedWithRequiredArgs.name}" is missing required args: ${skippedWithRequiredArgs.required.join(", ")}.`,
+      "Retry NOW with a valid JSON object containing ALL required arguments.",
       "Do not call any tool with an empty object.",
       "Do not ask the user to retry.",
     ].join(" ");
@@ -212,9 +211,8 @@ export function buildInvalidToolCallRetryMessage(
   }
 
   return [
-    `Your previous response tried to call ${firstSkippedToolCall.name} with invalid arguments.`,
-    "Retry the response now.",
-    "If you call a tool, return a valid JSON object.",
+    `Tool call "${firstSkippedToolCall.name}" has invalid arguments.`,
+    "Retry NOW with a valid JSON object.",
     "Do not emit malformed JSON.",
     "Do not ask the user to retry.",
   ].join(" ");

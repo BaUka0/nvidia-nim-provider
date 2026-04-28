@@ -42,7 +42,7 @@ export class DeepSeekAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0;
   readonly toolTemperature = 0;
   readonly toolSystemMessage =
-    "When tools are available, either answer with normal user-facing text or emit a tool call. Do not reveal internal control tokens, protocol markers, JSON fences, planning text, or DSML/tool_call markers in the user-visible response.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, either answer with normal user-facing text or emit a tool call. Do not reveal internal control tokens, protocol markers, JSON fences, planning text, or DSML/tool_call markers in the user-visible response.";
 }
 
 export class KimiAdapter extends BaseModelAdapter {
@@ -50,7 +50,7 @@ export class KimiAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0.2;
   readonly toolTemperature = 0.1;
   readonly toolSystemMessage =
-    "When tools are available, answer with concise user-facing text or a valid tool call. Do not reveal chain-of-thought, reasoning scratchpads, or internal reasoning markers in the user-visible response.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, answer with concise user-facing text or a valid tool call. Do not reveal chain-of-thought, reasoning scratchpads, or internal reasoning markers in the user-visible response.";
 
   applyMessagesWorkaround(messages: OcGoChatMessage[]): OcGoChatMessage[] {
     let patchedMessages: OcGoChatMessage[] | undefined;
@@ -70,7 +70,7 @@ export class GlmAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0.1;
   readonly toolTemperature = 0.05;
   readonly toolSystemMessage =
-    "When calling tools, emit strict JSON arguments only. Do not wrap tool arguments in markdown fences, backticks, or explanatory prose.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When calling tools, emit strict JSON arguments only. Do not wrap tool arguments in markdown fences, backticks, or explanatory prose.";
 }
 
 export class LlamaAdapter extends BaseModelAdapter {
@@ -78,7 +78,7 @@ export class LlamaAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0.2;
   readonly toolTemperature = 0.1;
   readonly toolSystemMessage =
-    "When tools are available, answer with concise user-facing text or valid tool calls only. Do not emit pseudo tool syntax, XML-like wrappers, or tool planning markers.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, answer with concise user-facing text or valid tool calls only. Do not emit pseudo tool syntax, XML-like wrappers, or tool planning markers.";
 }
 
 export class MistralAdapter extends BaseModelAdapter {
@@ -86,7 +86,7 @@ export class MistralAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0.3;
   readonly toolTemperature = 0.2;
   readonly toolSystemMessage =
-    "When tools are available, answer with concise user-facing text or a valid tool call. Do not include disclaimers, apologies, or meta-commentary about your capabilities in the response.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, answer with concise user-facing text or a valid tool call. Do not include disclaimers, apologies, or meta-commentary about your capabilities in the response.";
 }
 
 export class QwenAdapter extends BaseModelAdapter {
@@ -94,7 +94,7 @@ export class QwenAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0.1;
   readonly toolTemperature = 0.05;
   readonly toolSystemMessage =
-    "When calling tools, emit a valid JSON arguments object only. Do not wrap tool arguments in markdown fences, backticks, or explanatory prose. Do not provide multiple alternative actions for the user to choose from.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When calling tools, emit a valid JSON arguments object only. Do not wrap tool arguments in markdown fences, backticks, or explanatory prose. Do not provide multiple alternative actions for the user to choose from.";
 }
 
 export class PhiAdapter extends BaseModelAdapter {
@@ -102,7 +102,7 @@ export class PhiAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0.3;
   readonly toolTemperature = 0.2;
   readonly toolSystemMessage =
-    "When tools are available, answer with concise user-facing text or a valid tool call. Keep responses brief and direct. Do not ask follow-up questions unless necessary.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, answer with concise user-facing text or a valid tool call. Keep responses brief and direct. Do not ask follow-up questions unless necessary.";
 }
 
 export class YiAdapter extends BaseModelAdapter {
@@ -110,7 +110,7 @@ export class YiAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0.3;
   readonly toolTemperature = 0.2;
   readonly toolSystemMessage =
-    "When tools are available, answer with concise user-facing text or a valid tool call. Do not wrap tool arguments in markdown fences or backticks.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, answer with concise user-facing text or a valid tool call. Do not wrap tool arguments in markdown fences or backticks.";
 }
 
 export class GemmaAdapter extends BaseModelAdapter {
@@ -118,12 +118,39 @@ export class GemmaAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0.3;
   readonly toolTemperature = 0.15;
   readonly toolSystemMessage =
-    "When calling tools, emit a valid JSON arguments object only. Do not include chain-of-thought reasoning or internal scratchpad text in the visible response.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When calling tools, emit a valid JSON arguments object only. Do not include chain-of-thought reasoning or internal scratchpad text in the visible response.";
+}
+
+export class NemotronAdapter extends BaseModelAdapter {
+  readonly idPattern = /(^|[\/_-])nemotron([\/_-]|$)/i;
+  readonly defaultTemperature = 0.2;
+  readonly toolTemperature = 0.1;
+  readonly toolSystemMessage =
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, answer with concise user-facing text or a valid tool call. Do not wrap tool arguments in markdown fences, backticks, or explanatory prose.";
+}
+
+export class ClaudeAdapter extends BaseModelAdapter {
+  readonly idPattern = /(^|[\/_-])claude([\/_-]|$)/i;
+  readonly defaultTemperature = 0.3;
+  readonly toolTemperature = 0.2;
+  readonly toolSystemMessage =
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. Prefer simple solutions. When tools are available, emit a valid tool call or respond with concise text. Do not include meta-commentary about your capabilities.";
+}
+
+export class GptAdapter extends BaseModelAdapter {
+  readonly idPattern = /(^|[\/_-])gpt([\/_-]|$)/i;
+  readonly defaultTemperature = 0.3;
+  readonly toolTemperature = 0.2;
+  readonly toolSystemMessage =
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, emit a valid tool call or respond with concise text. Do not include disclaimers or apologies.";
 }
 
 export class DefaultAdapter extends BaseModelAdapter {
   readonly idPattern = /.*/;
   readonly defaultTemperature = DEFAULT_TEMPERATURE;
+  readonly toolTemperature = 0.3;
+  readonly toolSystemMessage =
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. Prefer simple solutions. Analyze the problem before coding. When tools are available, answer with concise user-facing text or a valid tool call. Do not include disclaimers or apologies.";
 }
 
 const ADAPTERS: ModelAdapter[] = [
@@ -131,6 +158,9 @@ const ADAPTERS: ModelAdapter[] = [
   new KimiAdapter(),
   new GlmAdapter(),
   new LlamaAdapter(),
+  new NemotronAdapter(),
+  new ClaudeAdapter(),
+  new GptAdapter(),
   new MistralAdapter(),
   new QwenAdapter(),
   new PhiAdapter(),

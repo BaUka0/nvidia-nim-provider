@@ -10,7 +10,7 @@ export interface NormalizedNvidiaModel {
 }
 
 const DEFAULT_CONTEXT_WINDOW = 131072;
-const DEFAULT_MAX_OUTPUT_TOKENS = 16384;
+const DEFAULT_MAX_OUTPUT_TOKENS = 65536;
 const NON_CHAT_MODEL_ID_PATTERNS = [
   /(^|[/_-])bge([-_/]|$)/i,
   /(^|[/_-])(clip|detector|embed|embedcode|embedqa|embedding|gliner|parse|rerank|retriever|reward)([-_/]|$)/i,
@@ -58,6 +58,42 @@ const KNOWN_MODEL_OVERRIDES: Record<string, Partial<NormalizedNvidiaModel>> = {
   },
   "google/gemma-2-9b-it": {
     displayName: "Gemma 2 9B IT",
+  },
+  "google/gemma-3-27b-it": {
+    displayName: "Gemma 3 27B IT",
+  },
+  "google/gemma-3-12b-it": {
+    displayName: "Gemma 3 12B IT",
+  },
+  "deepseek-ai/deepseek-r1": {
+    displayName: "DeepSeek R1",
+  },
+  "deepseek-ai/deepseek-v3": {
+    displayName: "DeepSeek V3",
+  },
+  "deepseek-ai/deepseek-v3-0324": {
+    displayName: "DeepSeek V3 0324",
+  },
+  "qwen/qwq-32b-preview": {
+    displayName: "QwQ 32B Preview",
+  },
+  "nvidia/llama-3.1-nemotron-ultra-253b-v1:awq-moe": {
+    displayName: "Llama 3.1 Nemotron Ultra 253B (AWQ MoE)",
+  },
+  "anthropic/claude-3-5-sonnet": {
+    displayName: "Claude 3.5 Sonnet",
+  },
+  "anthropic/claude-3-5-haiku": {
+    displayName: "Claude 3.5 Haiku",
+  },
+  "anthropic/claude-3-opus": {
+    displayName: "Claude 3 Opus",
+  },
+  "microsoft/phi-4": {
+    displayName: "Phi 4",
+  },
+  "microsoft/phi-4-mini-instruct": {
+    displayName: "Phi 4 Mini Instruct",
   },
 };
 

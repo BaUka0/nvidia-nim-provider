@@ -16,6 +16,7 @@ import {
   REFRESH_MODELS_COMMAND_ID,
   SECRET_STORAGE_KEY,
   TOGGLE_DEBUG_LOGGING_COMMAND_ID,
+  TOGGLE_SHOW_REASONING_COMMAND_ID,
 } from "./constants";
 import { normalizeNvidiaModels } from "./model-catalog";
 import { debugLog, getOutputChannel, outputLog } from "./output-channel";
@@ -212,6 +213,17 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(OPEN_DEBUG_LOG_COMMAND_ID, () => {
       const output = getOutputChannel();
       output.show(true);
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(TOGGLE_SHOW_REASONING_COMMAND_ID, async () => {
+      const config = vscode.workspace.getConfiguration("nvidia-nim");
+      const current = config.get<boolean>("showReasoning", false);
+      await config.update("showReasoning", !current, vscode.ConfigurationTarget.Global);
+      vscode.window.showInformationMessage(
+        `NVIDIA NIM reasoning content display ${!current ? "enabled" : "disabled"}.`,
+      );
     }),
   );
 
