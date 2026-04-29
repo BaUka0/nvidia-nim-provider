@@ -3172,7 +3172,7 @@ describe("OcGoChatModelProvider", () => {
         expect.arrayContaining([
           expect.objectContaining({
             role: "system",
-            content: expect.stringContaining("invalid arguments"),
+            content: expect.stringContaining("invalid or incomplete arguments"),
           }),
         ]),
       );
@@ -3180,7 +3180,7 @@ describe("OcGoChatModelProvider", () => {
         expect.arrayContaining([
           expect.objectContaining({
             role: "system",
-            content: expect.stringContaining("Do not emit malformed JSON."),
+            content: expect.stringContaining("Do not emit malformed JSON or empty arguments."),
           }),
         ]),
       );

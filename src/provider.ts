@@ -523,7 +523,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
       let requestPreparationDurationMs: number | undefined;
       let toolParsingStateInitDurationMs: number | undefined;
 
-      for (let attempt = 0; attempt < 2; attempt += 1) {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
         totalAttempts += 1;
         const attemptStartedAtMs = Date.now();
         if (

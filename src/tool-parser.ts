@@ -181,7 +181,7 @@ export function buildInvalidToolCallFallback(
   const skippedWithRequiredArgs = skippedToolCalls.find((toolCall) => toolCall.required.length > 0);
   if (skippedWithRequiredArgs) {
     const requiredArgs = skippedWithRequiredArgs.required.map((arg) => `\`${arg}\``).join(", ");
-    return `Tool call \`${skippedWithRequiredArgs.name}\` is missing required arguments: ${requiredArgs}. Retry with all required fields filled.`;
+    return `Tool call \`${skippedWithRequiredArgs.name}\` was rejected: missing ${requiredArgs}. Retry with all required fields filled.`;
   }
 
   const firstSkippedToolCall = skippedToolCalls[0];
@@ -189,7 +189,7 @@ export function buildInvalidToolCallFallback(
     return undefined;
   }
 
-  return `Tool call \`${firstSkippedToolCall.name}\` has invalid arguments. Retry with a valid JSON object.`;
+  return `Tool call \`${firstSkippedToolCall.name}\` had invalid arguments. Retry with a valid JSON object.`;
 }
 
 export function buildInvalidToolCallRetryMessage(
@@ -197,11 +197,12 @@ export function buildInvalidToolCallRetryMessage(
 ): string | undefined {
   const skippedWithRequiredArgs = skippedToolCalls.find((toolCall) => toolCall.required.length > 0);
   if (skippedWithRequiredArgs) {
+    const requiredList = skippedWithRequiredArgs.required.join(", ");
     return [
-      `Tool call "${skippedWithRequiredArgs.name}" is missing required args: ${skippedWithRequiredArgs.required.join(", ")}.`,
-      "Retry NOW with a valid JSON object containing ALL required arguments.",
-      "Do not call any tool with an empty object.",
-      "Do not ask the user to retry.",
+      `Your previous tool call "${skippedWithRequiredArgs.name}" was rejected because it was missing required arguments: ${requiredList}.`,
+      `Retry NOW. Provide a valid JSON object containing ALL of: ${requiredList}.`,
+      "Do not call any tool with an empty object or missing fields.",
+      "Do not ask the user to retry. Do not explain the error.",
     ].join(" ");
   }
 
@@ -211,10 +212,10 @@ export function buildInvalidToolCallRetryMessage(
   }
 
   return [
-    `Tool call "${firstSkippedToolCall.name}" has invalid arguments.`,
-    "Retry NOW with a valid JSON object.",
-    "Do not emit malformed JSON.",
-    "Do not ask the user to retry.",
+    `Your previous tool call "${firstSkippedToolCall.name}" was rejected due to invalid or incomplete arguments.`,
+    "Retry NOW with a complete, valid JSON object.",
+    "Do not emit malformed JSON or empty arguments.",
+    "Do not ask the user to retry. Do not explain what went wrong.",
   ].join(" ");
 }
 
