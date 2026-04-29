@@ -49,7 +49,9 @@ describe("output-channel", () => {
     getOutputChannel();
     warnLog("timeout", "Stream approaching idle timeout");
 
-    expect(mockAppendLine).toHaveBeenCalledWith("[NVIDIA NIM Warning] timeout: Stream approaching idle timeout");
+    expect(mockAppendLine).toHaveBeenCalledWith(
+      "[NVIDIA NIM Warning] timeout: Stream approaching idle timeout",
+    );
   });
 
   it("errorLog and warnLog still work when debug is enabled", async () => {

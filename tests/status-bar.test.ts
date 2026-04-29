@@ -26,10 +26,7 @@ describe("StatusBarManager", () => {
   it("creates a status bar item on construction", async () => {
     const { StatusBarManager } = await import("../src/status-bar");
     new StatusBarManager();
-    expect(mockCreateStatusBarItem).toHaveBeenCalledWith(
-      expect.any(Number),
-      expect.any(Number),
-    );
+    expect(mockCreateStatusBarItem).toHaveBeenCalledWith(expect.any(Number), expect.any(Number));
   });
 
   it("shows model count when set to ok state", async () => {

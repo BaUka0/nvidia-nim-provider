@@ -10,10 +10,7 @@ export class StatusBarManager {
   private readonly item: vscode.StatusBarItem;
 
   constructor() {
-    this.item = vscode.window.createStatusBarItem(
-      vscode.StatusBarAlignment.Right,
-      100,
-    );
+    this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     this.item.command = REFRESH_MODELS_COMMAND_ID;
     this.item.tooltip = `Click to refresh ${PROVIDER_DISPLAY_NAME} models`;
   }

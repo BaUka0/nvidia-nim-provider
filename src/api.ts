@@ -174,10 +174,7 @@ export async function* streamChatCompletion(
   const idleTimeoutMs = options?.maxOutputTokens
     ? Math.min(
         STREAM_IDLE_TIMEOUT_MAX_MS,
-        Math.max(
-          STREAM_IDLE_TIMEOUT_MIN_MS,
-          Math.round(options.maxOutputTokens / 10) * 1000,
-        ),
+        Math.max(STREAM_IDLE_TIMEOUT_MIN_MS, Math.round(options.maxOutputTokens / 10) * 1000),
       )
     : STREAM_IDLE_TIMEOUT_MS;
 

@@ -96,11 +96,9 @@ const ERROR_MESSAGES: Record<string, StructuredError> = {
 function formatStructuredError(key: string, detail?: string): string {
   const err = ERROR_MESSAGES[key];
   if (!err) return detail ?? "An unknown error occurred.";
-  return [
-    `[${err.code}] ${err.cause}`,
-    detail ? `Details: ${detail}` : "",
-    `Action: ${err.action}`,
-  ].filter(Boolean).join("\n");
+  return [`[${err.code}] ${err.cause}`, detail ? `Details: ${detail}` : "", `Action: ${err.action}`]
+    .filter(Boolean)
+    .join("\n");
 }
 
 interface NvidiaProviderConfiguration {
@@ -446,7 +444,8 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
       if (inputTokenCount > effectiveMaxInputTokens) {
         throw new Error(
-          formatStructuredError("token_limit",
+          formatStructuredError(
+            "token_limit",
             `Input tokens: ${inputTokenCount}, max: ${effectiveMaxInputTokens}`,
           ),
         );

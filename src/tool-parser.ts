@@ -574,9 +574,7 @@ export function repairToolArguments(
       ...(needsNumberField(repaired.startLine, "startLine")
         ? { startLine: context.startLine ?? 1 }
         : {}),
-      ...(needsNumberField(repaired.endLine, "endLine")
-        ? { endLine: context.endLine ?? 200 }
-        : {}),
+      ...(needsNumberField(repaired.endLine, "endLine") ? { endLine: context.endLine ?? 200 } : {}),
     };
   }
 
