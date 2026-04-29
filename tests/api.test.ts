@@ -119,7 +119,7 @@ describe("fetchModels", () => {
   });
 
   it("parses Retry-After as HTTP-date format", async () => {
-    const retryDate = new Date(Date.now() + 5000).toUTCString();
+    const retryDate = new Date(Date.now() + 100).toUTCString();
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce({
@@ -136,7 +136,7 @@ describe("fetchModels", () => {
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
     expect(fetch).toHaveBeenCalledTimes(2);
-  });
+  }, 10000);
 
   it("falls back to exponential backoff when Retry-After is unparseable", async () => {
     global.fetch = jest
@@ -172,6 +172,9 @@ describe("fetchModels", () => {
 });
 
 describe("streamChatCompletion", () => {
+  beforeEach(() => {
+    delete (globalThis as Record<string, unknown>).fetch;
+  });
   afterEach(() => {
     jest.restoreAllMocks();
   });

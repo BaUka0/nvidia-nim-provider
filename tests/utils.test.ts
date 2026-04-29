@@ -6,7 +6,6 @@ import {
   estimateMessagesTokens,
   estimateTokens,
   filterThinkTagsFromChunk,
-  flushThinkTagFilter,
   stripThinkTags,
 } from "../src/utils";
 
