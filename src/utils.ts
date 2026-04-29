@@ -428,6 +428,7 @@ export function filterThinkTagsFromChunk(text: string, state: ThinkTagFilterStat
 export function flushThinkTagFilter(state: ThinkTagFilterState): string {
   const flushedText = state.insideThinkBlock ? "" : state.pendingText;
   state.pendingText = "";
+  state.insideThinkBlock = false;
   return flushedText;
 }
 

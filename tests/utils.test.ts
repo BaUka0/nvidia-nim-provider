@@ -5,6 +5,8 @@ import {
   convertTools,
   estimateMessagesTokens,
   estimateTokens,
+  filterThinkTagsFromChunk,
+  flushThinkTagFilter,
   stripThinkTags,
 } from "../src/utils";
 
@@ -347,24 +349,34 @@ describe("stripThinkTags", () => {
   });
 });
 
-describe("stripThinkTags", () => {
-  it("removes think tags", () => {
-    expect(stripThinkTags("<think>reasoning</think>answer")).toBe("answer");
+describe("filterThinkTagsFromChunk cross-chunk handling", () => {
+  it("buffers partial open tag and resolves in next chunk", () => {
+    const state = { insideThinkBlock: false, pendingText: "" };
+    const result1 = filterThinkTagsFromChunk("hello <thin", state);
+    expect(result1).toBe("hello ");
+
+    const result2 = filterThinkTagsFromChunk("k>hidden</think> world", state);
+    expect(result2).toBe(" world");
+    expect(state.insideThinkBlock).toBe(false);
   });
 
-  it("handles nested multiline think tags", () => {
-    expect(stripThinkTags("<think>\nstep1\nstep2\n</think>\nresult")).toBe("\nresult");
+  it("buffers partial close tag inside think block across chunks", () => {
+    const state = { insideThinkBlock: true, pendingText: "" };
+    const result1 = filterThinkTagsFromChunk("text </thin", state);
+    expect(result1).toBe("");
+
+    const result2 = filterThinkTagsFromChunk("k> visible", state);
+    expect(result2).toBe(" visible");
+    expect(state.insideThinkBlock).toBe(false);
   });
 
-  it("is case-insensitive", () => {
-    expect(stripThinkTags("<THINK>hidden</THINK>visible")).toBe("visible");
-  });
+  it("buffers partial close tag starting with </ across chunks", () => {
+    const state = { insideThinkBlock: true, pendingText: "" };
+    const result1 = filterThinkTagsFromChunk("text </", state);
+    expect(result1).toBe("");
 
-  it("returns plain text unchanged", () => {
-    expect(stripThinkTags("plain text")).toBe("plain text");
-  });
-
-  it("handles incomplete open tag", () => {
-    expect(stripThinkTags("<think>no close")).toBe("<think>no close");
+    const result2 = filterThinkTagsFromChunk("think> visible", state);
+    expect(result2).toBe(" visible");
+    expect(state.insideThinkBlock).toBe(false);
   });
 });
