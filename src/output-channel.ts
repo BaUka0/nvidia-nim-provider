@@ -54,3 +54,26 @@ export function outputLog(label: string, value: unknown): void {
   }
   console.log(`${LOG_PREFIX} ${label}:`, value);
 }
+
+const ERROR_LOG_PREFIX = `[${PROVIDER_DISPLAY_NAME} Error]`;
+const WARN_LOG_PREFIX = `[${PROVIDER_DISPLAY_NAME} Warning]`;
+
+export function errorLog(label: string, value: unknown): void {
+  const message = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const channel = getGlobalOutputChannel();
+  if (channel) {
+    channel.appendLine(`${ERROR_LOG_PREFIX} ${label}: ${message}`);
+    return;
+  }
+  console.error(`${ERROR_LOG_PREFIX} ${label}:`, value);
+}
+
+export function warnLog(label: string, value: unknown): void {
+  const message = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const channel = getGlobalOutputChannel();
+  if (channel) {
+    channel.appendLine(`${WARN_LOG_PREFIX} ${label}: ${message}`);
+    return;
+  }
+  console.warn(`${WARN_LOG_PREFIX} ${label}:`, value);
+}
