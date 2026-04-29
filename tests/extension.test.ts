@@ -34,6 +34,20 @@ jest.mock("../src/tools", () => ({
   registerOcGoTools: jest.fn(() => ({ dispose: jest.fn() })),
 }));
 
+const mockStatusBarOk = jest.fn();
+const mockStatusBarRefresh = jest.fn();
+const mockStatusBarError = jest.fn();
+const mockStatusBarDispose = jest.fn();
+
+jest.mock("../src/status-bar", () => ({
+  StatusBarManager: jest.fn().mockImplementation(() => ({
+    showOk: mockStatusBarOk,
+    showRefreshing: mockStatusBarRefresh,
+    showError: mockStatusBarError,
+    dispose: mockStatusBarDispose,
+  })),
+}));
+
 jest.mock("vscode", () => ({
   version: "1.104.0",
   window: {
@@ -800,5 +814,35 @@ describe("activate", () => {
 
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.debug", true);
     expect(process.env.NVIDIA_NIM_DEBUG).toBe("1");
+  });
+
+  it("creates and registers status bar item on activation", async () => {
+    const secrets = {
+      get: jest.fn(async () => undefined),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+
+    const { StatusBarManager } = await import("../src/status-bar");
+    expect(StatusBarManager).toHaveBeenCalled();
+    const hasStatusBarDisposable = context.subscriptions.some(
+      (s) => typeof s.dispose === "function",
+    );
+    expect(hasStatusBarDisposable).toBe(true);
   });
 });

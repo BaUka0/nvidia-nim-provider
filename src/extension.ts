@@ -21,6 +21,7 @@ import {
 import { normalizeNvidiaModels } from "./model-catalog";
 import { debugLog, getOutputChannel, outputLog } from "./output-channel";
 import { OcGoChatModelProvider } from "./provider";
+import { StatusBarManager } from "./status-bar";
 import { registerOcGoTools } from "./tools";
 
 let _provider: OcGoChatModelProvider | null = null;
@@ -137,6 +138,8 @@ export function activate(context: vscode.ExtensionContext) {
   const ua = `nvidia-nim-provider/${EXTENSION_VERSION} VSCode/${vscode.version}`;
   const channel = getOutputChannel();
   context.subscriptions.push(channel);
+  const statusBar = new StatusBarManager();
+  context.subscriptions.push(statusBar);
   const debugEnabled = context.globalState.get<boolean>(DEBUG_STATE_KEY, false);
   process.env[DEBUG_ENV_VAR] = debugEnabled ? "1" : "0";
   debugLog(
