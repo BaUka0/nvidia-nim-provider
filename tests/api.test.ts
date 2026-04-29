@@ -269,6 +269,48 @@ describe("streamChatCompletion", () => {
     expect(results).toHaveLength(0);
   });
 
+  it("uses dynamic idle timeout based on maxOutputTokens", async () => {
+    const chunk: OcGoStreamResponse = {
+      id: "1",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: "kimi-k2.6",
+      choices: [{ index: 0, delta: { content: "hello" }, finish_reason: null }],
+    };
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      body: stream,
+    } as any);
+
+    const gen = streamChatCompletion(
+      "test-key",
+      {
+        model: "test-model",
+        messages: [{ role: "user", content: "hi" }],
+        stream: true,
+        max_tokens: 100,
+        temperature: 0,
+      },
+      new AbortController().signal,
+      "test-agent",
+      { maxOutputTokens: 500 },
+    );
+
+    for await (const _ of gen) {
+      // consume
+    }
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("cancels the reader when the stream idle timeout elapses", async () => {
     jest.useFakeTimers();
 

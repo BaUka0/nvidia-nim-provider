@@ -2,6 +2,8 @@ import {
   BASE_RETRY_DELAY_MS,
   BASE_URL,
   MAX_RETRY_DELAY_MS,
+  STREAM_IDLE_TIMEOUT_MAX_MS,
+  STREAM_IDLE_TIMEOUT_MIN_MS,
   STREAM_IDLE_TIMEOUT_MS,
 } from "./constants";
 import { debugLog } from "./output-channel";
@@ -125,6 +127,7 @@ export async function* streamChatCompletion(
   requestBody: OcGoChatRequest,
   signal?: AbortSignal,
   userAgent?: string,
+  options?: { maxOutputTokens?: number },
 ): AsyncGenerator<OcGoStreamResponse, void, unknown> {
   const response = await fetchWithRetry(`${BASE_URL}/chat/completions`, {
     method: "POST",
@@ -157,6 +160,17 @@ export async function* streamChatCompletion(
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+
+  const idleTimeoutMs = options?.maxOutputTokens
+    ? Math.min(
+        STREAM_IDLE_TIMEOUT_MAX_MS,
+        Math.max(
+          STREAM_IDLE_TIMEOUT_MIN_MS,
+          Math.round(options.maxOutputTokens / 10) * 1000,
+        ),
+      )
+    : STREAM_IDLE_TIMEOUT_MS;
+
   let buffer = "";
   let lastChunkTime = Date.now();
 
@@ -185,7 +199,7 @@ export async function* streamChatCompletion(
         err.name = "TimeoutError";
         void reader.cancel(err).catch(() => undefined);
         rejectOnce(err);
-      }, STREAM_IDLE_TIMEOUT_MS);
+      }, idleTimeoutMs);
 
       reader.read().then(
         (result) => {

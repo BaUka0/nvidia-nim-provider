@@ -41,6 +41,9 @@ export const ANTHROPIC_MAX_TOOL_RESULT_CHARS = 20000;
 /** Maximum time (ms) between stream chunks before timeout */
 export const STREAM_IDLE_TIMEOUT_MS = 120000;
 
+export const STREAM_IDLE_TIMEOUT_MIN_MS = 60000;
+export const STREAM_IDLE_TIMEOUT_MAX_MS = 300000;
+
 /** Frequency to check for cancellation during idle (ms) */
 export const STREAM_IDLE_POLL_MS = 500;
 

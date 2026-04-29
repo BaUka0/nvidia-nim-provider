@@ -718,6 +718,7 @@ describe("OcGoChatModelProvider", () => {
       expect.objectContaining({ model: "kimi-k2.6", stream: true }),
       expect.any(AbortSignal),
       "test-ua",
+      { maxOutputTokens: 65536 },
     );
     expect(progress.report).toHaveBeenCalledTimes(1);
     expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Hello world" }));
@@ -1605,6 +1606,7 @@ describe("OcGoChatModelProvider", () => {
       expect.objectContaining({ model: "kimi-k2.6", stream: true }),
       expect.any(AbortSignal),
       "test-ua",
+      { maxOutputTokens: 65536 },
     );
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Hello from NVIDIA NIM" }),
@@ -1644,6 +1646,7 @@ describe("OcGoChatModelProvider", () => {
       expect.anything(),
       expect.any(AbortSignal),
       "test-ua",
+      { maxOutputTokens: 65536 },
     );
     expect((vscode as any).window.showInputBox).not.toHaveBeenCalled();
   });
@@ -1734,6 +1737,7 @@ describe("OcGoChatModelProvider", () => {
       }),
       expect.any(AbortSignal),
       "test-ua",
+      { maxOutputTokens: 16384 },
     );
     const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
     expect(toolCallReports.length).toBe(1);

@@ -636,6 +636,7 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
           activeRequestBody,
           abortController.signal,
           this.userAgent,
+          { maxOutputTokens: model.maxOutputTokens },
         )) {
           if (token.isCancellationRequested) {
             throw new vscode.CancellationError();
