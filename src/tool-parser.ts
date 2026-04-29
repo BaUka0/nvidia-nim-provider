@@ -525,33 +525,69 @@ export function repairToolArguments(
     required.has(field) && (typeof value !== "string" || value.trim().length === 0);
   const needsNumberField = (value: unknown, field: string): boolean =>
     required.has(field) && typeof value !== "number";
-  const context = requestContext;
 
+  const repaired: Record<string, unknown> = { ...record };
+
+  if (schema?.required) {
+    for (const key of schema.required) {
+      const val = repaired[key];
+      if (typeof val === "string") {
+        const lower = val.toLowerCase().trim();
+        if (lower === "true" || lower === "yes" || lower === "1") {
+          repaired[key] = true;
+        } else if (lower === "false" || lower === "no" || lower === "0") {
+          repaired[key] = false;
+        }
+      }
+    }
+  }
+
+  if (
+    repaired.arguments &&
+    typeof repaired.arguments === "object" &&
+    !Array.isArray(repaired.arguments)
+  ) {
+    const inner = repaired.arguments as Record<string, unknown>;
+    const outerRequiredKeys = schema?.required ?? [];
+    const hasRequiredInInner = outerRequiredKeys.every((k) => k in inner);
+    if (hasRequiredInInner && outerRequiredKeys.length > 0) {
+      for (const key of outerRequiredKeys) {
+        if (!(key in repaired) && key in inner) {
+          repaired[key] = inner[key];
+        }
+      }
+      delete repaired.arguments;
+    }
+  }
+
+  const context = requestContext;
   if (!context) {
-    return args;
+    return repaired;
   }
 
   if (toolName === "read_file") {
     return {
-      ...record,
-      ...(needsStringField(record.filePath, "filePath") && context.filePath
+      ...repaired,
+      ...(needsStringField(repaired.filePath, "filePath") && context.filePath
         ? { filePath: context.filePath }
         : {}),
-      ...(needsNumberField(record.startLine, "startLine")
+      ...(needsNumberField(repaired.startLine, "startLine")
         ? { startLine: context.startLine ?? 1 }
         : {}),
-      ...(needsNumberField(record.endLine, "endLine") ? { endLine: context.endLine ?? 200 } : {}),
+      ...(needsNumberField(repaired.endLine, "endLine")
+        ? { endLine: context.endLine ?? 200 }
+        : {}),
     };
   }
 
   if (toolName === "list_dir") {
     return {
-      ...record,
-      ...(needsStringField(record.path, "path") && context.cwd ? { path: context.cwd } : {}),
+      ...repaired,
+      ...(needsStringField(repaired.path, "path") && context.cwd ? { path: context.cwd } : {}),
     };
   }
 
-  return args;
+  return repaired;
 }
 
 export function isToolCallInput(args: unknown): args is Record<string, unknown> {
