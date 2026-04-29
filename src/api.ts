@@ -24,15 +24,23 @@ function isRetryableHttpError(status: number): boolean {
 }
 
 /**
- * Read Retry-After header value (seconds) if present.
+ * Read Retry-After header value (seconds or HTTP-date) if present.
  */
 function getRetryAfterMs(response: Response): number | undefined {
   const raw = response.headers.get("retry-after");
   if (!raw) return undefined;
+
   const seconds = Number.parseInt(raw, 10);
   if (Number.isFinite(seconds) && seconds > 0) {
     return seconds * 1000;
   }
+
+  const dateValue = Date.parse(raw);
+  if (Number.isFinite(dateValue)) {
+    const deltaMs = dateValue - Date.now();
+    return deltaMs > 0 ? deltaMs : undefined;
+  }
+
   return undefined;
 }
 

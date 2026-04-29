@@ -118,6 +118,45 @@ describe("fetchModels", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it("parses Retry-After as HTTP-date format", async () => {
+    const retryDate = new Date(Date.now() + 5000).toUTCString();
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        headers: new Headers({ "retry-after": retryDate }),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: rawModelSummaries }),
+      } as any);
+
+    const result = await fetchModels("test-key");
+    expect(result).toEqual(rawModelSummaries);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to exponential backoff when Retry-After is unparseable", async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        headers: new Headers({ "retry-after": "not-a-number" }),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: rawModelSummaries }),
+      } as any);
+
+    const result = await fetchModels("test-key");
+    expect(result).toEqual(rawModelSummaries);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("does not retry on 401 and returns null immediately", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
