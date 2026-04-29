@@ -31,6 +31,7 @@ import { fetchModels, streamChatCompletion } from "./api";
 import {
   CONTEXT_WINDOW_SAFETY_MARGIN,
   DEBUG_ENV_VAR,
+  MANAGE_COMMAND_ID,
   MODELS_CACHE_VERSION,
   MODELS_CACHE_VERSION_STATE_KEY,
   MODELS_STATE_KEY,
@@ -57,6 +58,50 @@ import {
 } from "./utils";
 
 const DEFAULT_MAX_TOKENS = 65536;
+
+interface StructuredError {
+  code: string;
+  cause: string;
+  action: string;
+}
+
+const ERROR_MESSAGES: Record<string, StructuredError> = {
+  auth_failed: {
+    code: "AUTH_FAILED",
+    cause: "API key is invalid or expired.",
+    action: "Update your API key via Command Palette > NVIDIA NIM: Manage API Key.",
+  },
+  rate_limited: {
+    code: "RATE_LIMITED",
+    cause: "Too many requests to NVIDIA NIM API.",
+    action: "Wait a moment and try again. Consider switching to a different model.",
+  },
+  server_error: {
+    code: "SERVER_ERROR",
+    cause: "NVIDIA NIM service is experiencing issues.",
+    action: "Wait a few minutes and try again.",
+  },
+  timeout: {
+    code: "STREAM_TIMEOUT",
+    cause: "The model took too long to respond.",
+    action: "Try again with a shorter prompt or switch to a faster model.",
+  },
+  token_limit: {
+    code: "TOKEN_LIMIT_EXCEEDED",
+    cause: "The conversation is too long for this model's context window.",
+    action: "Start a new chat or switch to a model with a larger context window.",
+  },
+};
+
+function formatStructuredError(key: string, detail?: string): string {
+  const err = ERROR_MESSAGES[key];
+  if (!err) return detail ?? "An unknown error occurred.";
+  return [
+    `[${err.code}] ${err.cause}`,
+    detail ? `Details: ${detail}` : "",
+    `Action: ${err.action}`,
+  ].filter(Boolean).join("\n");
+}
 
 interface NvidiaProviderConfiguration {
   apiKey?: string;
@@ -401,7 +446,9 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
 
       if (inputTokenCount > effectiveMaxInputTokens) {
         throw new Error(
-          `Message exceeds token limit (${inputTokenCount} > ${effectiveMaxInputTokens}). Try reducing the conversation history or switching to a model with a larger context window.`,
+          formatStructuredError("token_limit",
+            `Input tokens: ${inputTokenCount}, max: ${effectiveMaxInputTokens}`,
+          ),
         );
       }
 
@@ -946,6 +993,20 @@ export class OcGoChatModelProvider implements LanguageModelChatProvider {
   ): Promise<string | undefined> {
     let apiKey = configuredApiKey ?? (await this.secrets.get(SECRET_STORAGE_KEY));
     if (!apiKey && !silent) {
+      const configureAction = "Configure API Key";
+      const result = await vscode.window.showInformationMessage(
+        `${PROVIDER_DISPLAY_NAME} API key is not configured.`,
+        configureAction,
+      );
+      if (result === configureAction) {
+        await vscode.commands.executeCommand(MANAGE_COMMAND_ID);
+        apiKey = await this.secrets.get(SECRET_STORAGE_KEY);
+        if (!apiKey) {
+          return undefined;
+        }
+        return apiKey;
+      }
+
       const entered = await vscode.window.showInputBox({
         title: `${PROVIDER_DISPLAY_NAME} API Key`,
         prompt: `Enter your ${PROVIDER_DISPLAY_NAME} API key`,

@@ -40,6 +40,7 @@ jest.mock("vscode", () => ({
       dispose: jest.fn(),
     })),
     showInputBox: jest.fn(),
+    showInformationMessage: jest.fn().mockResolvedValue(undefined),
   },
   LanguageModelError: {
     NoPermissions: (msg: string) => new Error(msg),
@@ -939,7 +940,7 @@ describe("OcGoChatModelProvider", () => {
         progress,
         token as any,
       ),
-    ).rejects.toThrow("Message exceeds token limit");
+    ).rejects.toThrow("[TOKEN_LIMIT_EXCEEDED]");
   });
 
   it("caps max_tokens to the remaining context budget", async () => {

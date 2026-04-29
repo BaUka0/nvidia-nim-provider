@@ -150,16 +150,18 @@ export async function* streamChatCompletion(
 
   if (!response.ok) {
     const text = await response.text();
-    let message = `NVIDIA NIM API error: ${response.status} ${response.statusText}`;
+    let message: string;
     if (response.status === 401 || response.status === 403) {
-      message = `Authentication failed. Your API key may be invalid or expired.\n${message}`;
+      message = `[AUTH_FAILED] Authentication failed. Your API key may be invalid or expired.\n${text}`;
     } else if (response.status === 429) {
       const retryAfter = response.headers.get("retry-after");
-      message = `Rate limited. ${retryAfter ? `Retry after ${retryAfter}s. ` : ""}\n${message}`;
+      message = `[RATE_LIMITED] Rate limited.${retryAfter ? ` Retry after ${retryAfter}.` : ""}\n${text}`;
     } else if (response.status >= 500 && response.status < 600) {
-      message = `Server error. The NVIDIA NIM service may be experiencing issues.\n${message}`;
+      message = `[SERVER_ERROR] Server error. The NVIDIA NIM service may be experiencing issues.\n${text}`;
+    } else {
+      message = `NVIDIA NIM API error: ${response.status} ${response.statusText}\n${text}`;
     }
-    throw new Error(`${message}\n${text}`);
+    throw new Error(message);
   }
 
   if (!response.body) {

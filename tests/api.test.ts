@@ -217,7 +217,7 @@ describe("streamChatCompletion", () => {
     } as any);
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
-    await expect(gen.next()).rejects.toThrow("NVIDIA NIM API error: 500 Internal Server Error");
+    await expect(gen.next()).rejects.toThrow("[SERVER_ERROR] Server error.");
   });
 
   it("throws authentication error on 401", async () => {
@@ -230,7 +230,7 @@ describe("streamChatCompletion", () => {
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     await expect(gen.next()).rejects.toThrow(
-      "Authentication failed. Your API key may be invalid or expired.",
+      "[AUTH_FAILED] Authentication failed. Your API key may be invalid or expired.",
     );
   });
 
