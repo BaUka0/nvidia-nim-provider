@@ -42,7 +42,7 @@ export class DeepSeekAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0;
   readonly toolTemperature = 0;
   readonly toolSystemMessage =
-    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, either answer with normal user-facing text or emit a tool call. Do not reveal internal control tokens, protocol markers, JSON fences, planning text, or DSML/tool_call markers in the user-visible response.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, either answer with normal user-facing text or emit a tool call. Use the native tool call format (tool_calls array in the API response). Do NOT emit tool calls as inline text markers (tool_call_begin, 伏, 第), plain JSON blocks, or markdown code fences masquerading as tool calls. Do not reveal internal control tokens, protocol markers, JSON fences, planning text, or DSML/tool_call markers in the user-visible response.";
 }
 
 export class KimiAdapter extends BaseModelAdapter {
@@ -50,7 +50,7 @@ export class KimiAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0.2;
   readonly toolTemperature = 0.1;
   readonly toolSystemMessage =
-    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, answer with concise user-facing text or a valid tool call. Do not reveal chain-of-thought, reasoning scratchpads, or internal reasoning markers in the user-visible response.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, answer with concise user-facing text or a native tool call. Only emit tool calls through the designated tool_calls field; never write JSON arguments inline as markdown, backtick fences, or plain text. Every tool call must include ALL required arguments with correct types. Do not reveal chain-of-thought, reasoning scratchpads, or internal reasoning markers in the user-visible response.";
 
   applyMessagesWorkaround(messages: OcGoChatMessage[]): OcGoChatMessage[] {
     let patchedMessages: OcGoChatMessage[] | undefined;
@@ -134,7 +134,7 @@ export class ClaudeAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0.3;
   readonly toolTemperature = 0.2;
   readonly toolSystemMessage =
-    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. Prefer simple solutions. When tools are available, emit a valid tool call or respond with concise text. Do not include meta-commentary about your capabilities.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. Prefer simple solutions. When tools are available, emit a valid tool call with complete JSON arguments or respond with concise text. Ensure every required argument is present with the correct type. Do not include meta-commentary about your capabilities.";
 }
 
 export class GptAdapter extends BaseModelAdapter {
