@@ -43,3 +43,7 @@ export const STREAM_IDLE_TIMEOUT_MS = 120000;
 
 /** Frequency to check for cancellation during idle (ms) */
 export const STREAM_IDLE_POLL_MS = 500;
+
+export const STATUS_BAR_REFRESH_COMMAND_ID = "nvidia-nim.statusBarRefresh";
+export const STATUS_BAR_DEFAULT_TEXT = `$(loading~spin) NVIDIA NIM`;
+export const STATUS_BAR_ERROR_TEXT = `$(error) NVIDIA NIM`;
