@@ -27,6 +27,7 @@ export class StatusBarManager {
 
   showRefreshing(): void {
     this.item.text = STATUS_BAR_DEFAULT_TEXT;
+    this.item.command = REFRESH_MODELS_COMMAND_ID;
     this.item.tooltip = `Refreshing ${PROVIDER_DISPLAY_NAME} models...`;
     this.item.show();
   }
