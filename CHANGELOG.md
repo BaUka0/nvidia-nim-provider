@@ -1,5 +1,10 @@
 # Change Log
 
+## [0.2.8] - 2026-06-25
+
+### Added
+- **Think-Tag Reasoning Capture**: Reasoning emitted inline within ` think... /think` tags (used by Kimi models) is now intercepted and natively rendered as `LanguageModelThinkingPart` collapsible thinking blocks, instead of being stripped and discarded. A shared `emitReasoning` helper now unifies handling of both `reasoning_content` deltas and ` think`-tag content.
+
 ## [0.2.7] - 2026-06-25
 
 ### Added

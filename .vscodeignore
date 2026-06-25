@@ -1,8 +1,10 @@
 .git/**
 .github/**
+.gemini/**
 .vscode/**
 .vscode-test/**
 .venv/**
+task.md
 __mocks__/**
 docs/**
 src/**
