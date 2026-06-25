@@ -1,6 +1,8 @@
 # NVIDIA NIM Provider
 
-VS Code extension that adds an NVIDIA NIM provider to Copilot Chat.
+VS Code extension that adds an NVIDIA NIM provider to Copilot Chat, giving you
+access to advanced reasoning and agentic models (DeepSeek, Kimi, GLM, Nemotron,
+MiniMax, Stepfun) directly inside the Copilot Chat interface.
 
 ## Requirements
 
@@ -34,19 +36,61 @@ NVIDIA NIM models. The VS Code model settings flow is recommended for new setups
 
 ## Supported Models
 
-The extension dynamically fetches available models from `https://integrate.api.nvidia.com/v1/models`.
-It does not ship a hardcoded fallback model catalog; the Copilot Chat model picker shows the models
-returned by your NVIDIA NIM account.
+The extension fetches the model list from `https://integrate.api.nvidia.com/v1/models` and
+filters it down to a curated set of elite agentic models, each with a dedicated adapter that
+tunes temperature, tool-calling system prompts, and reasoning configuration:
+
+| Model | Reasoning Modes | Tool Calling | Vision |
+|-------|----------------|--------------|--------|
+| DeepSeek V4 Flash / Pro | None, High, Max | Yes | No |
+| Nemotron 3 Ultra 550B | None, Medium, High | Yes | No |
+| Kimi K2.6 | None, On | Yes | Yes |
+| MiniMax M3 | None, On | Yes | Yes |
+| GLM 5.1 | None, On | Yes | No |
+| Step 3.7 Flash | Always on | Yes | Yes |
 
 When NVIDIA's `/models` response omits tool-calling capability metadata, chat models are treated as
-tool-capable so they remain selectable in Copilot Chat Agent mode. Models that explicitly report
-`tool_calling: false` are still treated as non-tool models.
+tool-capable so they remain selectable in Copilot Chat Agent mode.
+
+## Reasoning
+
+The extension supports native reasoning token rendering via VS Code's proposed
+`LanguageModelThinkingPart` API. When a model emits reasoning — either through the
+`reasoning_content` stream field or inline ` think... /think` tags (used by Kimi) — it is
+captured and rendered as collapsible thinking blocks in the chat interface instead of being
+dumped as raw text.
+
+Configure reasoning effort per model via the **Copilot Chat model picker dropdown**. Each model
+exposes its supported reasoning modes (see the table above). The selected mode is sent to the
+NVIDIA NIM API using the appropriate parameters (`reasoning_effort`, `enable_thinking`, or
+`chat_template_kwargs` depending on the model).
+
+### Settings
+
+- `nvidia-nim.reasoningMode` — Default reasoning effort when a model doesn't explicitly pass a
+  mode via the dropdown. Defaults to `none`.
+- `nvidia-nim.showReasoning` — Show reasoning content as plain text in responses (fallback for
+  VS Code versions without `LanguageModelThinkingPart` support, or for debugging). Defaults to
+  `false`.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `NVIDIA NIM: Manage NVIDIA NIM API Key` | Configure or update the API key. |
+| `NVIDIA NIM: Refresh Models` | Re-fetch the model list from NVIDIA NIM. |
+| `NVIDIA NIM: Toggle Reasoning Content Display` | Toggle `showReasoning` at runtime. |
+| `NVIDIA NIM: Toggle Debug Logging` | Enable/disable verbose debug output. |
+| `NVIDIA NIM: Open Debug Log` | Open the debug log output channel. |
 
 ## Usage
 
 1. Open Copilot Chat (`Cmd/Ctrl + Alt + I`).
 2. Select **NVIDIA NIM** from the provider selector.
-3. Choose one of the dynamically discovered NVIDIA NIM models and start chatting.
+3. Choose one of the curated NVIDIA NIM models.
+4. (Optional) Use the model dropdown to set the reasoning effort.
+5. Start chatting — reasoning appears as collapsible thinking blocks, tool calls are emitted
+   natively, and text-embedded tool-call markers are parsed automatically.
 
 ## Development
 
@@ -61,13 +105,13 @@ Press `F5` in VS Code to launch the Extension Development Host.
 
 ### Available Scripts
 
-- `npm run compile` – TypeScript コンパイル
-- `npm run watch` – ファイル変更監視付きコンパイル
-- `npm run test` – テスト実行
-- `npm run lint` – ESLint チェック
-- `npm run lint:fix` – ESLint 自動修正
-- `npm run format` – Prettier フォーマット
-- `npm run package:vsix` – VSIX パッケージ作成
+- `npm run compile` – TypeScript compilation
+- `npm run watch` – Compile with file watching
+- `npm run test` – Run tests
+- `npm run lint` – ESLint check
+- `npm run lint:fix` – ESLint auto-fix
+- `npm run format` – Prettier formatting
+- `npm run package:vsix` – Build VSIX package
 
 ## Marketplace Packaging
 
