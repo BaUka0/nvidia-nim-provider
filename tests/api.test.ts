@@ -1,5 +1,5 @@
 import { fetchModels, streamChatCompletion } from "../src/api/client";
-import { STREAM_IDLE_TIMEOUT_MS } from "../src/constants";
+import { STREAM_IDLE_TIMEOUT_MS } from "../src/shared/constants";
 import { NvidiaModelSummary, NimStreamResponse } from "../src/types";
 
 const rawModelSummaries: NvidiaModelSummary[] = [

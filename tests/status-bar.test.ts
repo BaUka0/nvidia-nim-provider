@@ -24,13 +24,13 @@ describe("StatusBarManager", () => {
   });
 
   it("creates a status bar item on construction", async () => {
-    const { StatusBarManager } = await import("../src/status-bar");
+    const { StatusBarManager } = await import("../src/shared/status-bar");
     new StatusBarManager();
     expect(mockCreateStatusBarItem).toHaveBeenCalledWith(expect.any(Number), expect.any(Number));
   });
 
   it("shows model count when set to ok state", async () => {
-    const { StatusBarManager } = await import("../src/status-bar");
+    const { StatusBarManager } = await import("../src/shared/status-bar");
     const manager = new StatusBarManager();
     const item = mockCreateStatusBarItem.mock.results[0].value;
     manager.showOk(5);
@@ -40,7 +40,7 @@ describe("StatusBarManager", () => {
   });
 
   it("shows spinning icon when set to refreshing state", async () => {
-    const { StatusBarManager } = await import("../src/status-bar");
+    const { StatusBarManager } = await import("../src/shared/status-bar");
     const manager = new StatusBarManager();
     const item = mockCreateStatusBarItem.mock.results[0].value;
     manager.showRefreshing();
@@ -49,7 +49,7 @@ describe("StatusBarManager", () => {
   });
 
   it("shows error icon and tooltip when set to error state", async () => {
-    const { StatusBarManager } = await import("../src/status-bar");
+    const { StatusBarManager } = await import("../src/shared/status-bar");
     const manager = new StatusBarManager();
     const item = mockCreateStatusBarItem.mock.results[0].value;
     manager.showError("API key invalid");
@@ -59,7 +59,7 @@ describe("StatusBarManager", () => {
   });
 
   it("dispose removes the status bar item", async () => {
-    const { StatusBarManager } = await import("../src/status-bar");
+    const { StatusBarManager } = await import("../src/shared/status-bar");
     const manager = new StatusBarManager();
     const item = mockCreateStatusBarItem.mock.results[0].value;
     manager.dispose();

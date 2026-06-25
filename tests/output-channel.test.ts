@@ -21,7 +21,7 @@ describe("output-channel", () => {
   it("creates a NVIDIA NIM output channel and reads the NVIDIA debug env var", async () => {
     process.env.NVIDIA_NIM_DEBUG = "1";
 
-    const { debugEnabled, debugLog, getOutputChannel } = await import("../src/output-channel");
+    const { debugEnabled, debugLog, getOutputChannel } = await import("../src/shared/logging");
 
     expect(debugEnabled()).toBe(true);
 
@@ -35,7 +35,7 @@ describe("output-channel", () => {
   it("errorLog always writes to channel regardless of debug flag", async () => {
     delete process.env.NVIDIA_NIM_DEBUG;
 
-    const { errorLog, getOutputChannel } = await import("../src/output-channel");
+    const { errorLog, getOutputChannel } = await import("../src/shared/logging");
     getOutputChannel();
     errorLog("request", "API key not found");
 
@@ -45,7 +45,7 @@ describe("output-channel", () => {
   it("warnLog always writes to channel regardless of debug flag", async () => {
     delete process.env.NVIDIA_NIM_DEBUG;
 
-    const { warnLog, getOutputChannel } = await import("../src/output-channel");
+    const { warnLog, getOutputChannel } = await import("../src/shared/logging");
     getOutputChannel();
     warnLog("timeout", "Stream approaching idle timeout");
 
@@ -57,7 +57,7 @@ describe("output-channel", () => {
   it("errorLog and warnLog still work when debug is enabled", async () => {
     process.env.NVIDIA_NIM_DEBUG = "1";
 
-    const { errorLog, warnLog, getOutputChannel } = await import("../src/output-channel");
+    const { errorLog, warnLog, getOutputChannel } = await import("../src/shared/logging");
     getOutputChannel();
     mockAppendLine.mockClear();
     errorLog("test", "error msg");

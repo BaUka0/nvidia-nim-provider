@@ -1,4 +1,4 @@
-import { getModelAdapter } from "../src/adapters";
+import { getModelAdapter } from "../src/models/adapters";
 
 describe("getModelAdapter", () => {
   it.each([

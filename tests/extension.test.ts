@@ -1,5 +1,5 @@
 import { fetchModels } from "../src/api/client";
-import { OcGoChatModelProvider } from "../src/provider";
+import { NimChatModelProvider } from "../src/provider/chat-provider";
 
 const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
 const mockCreateOutputChannel = jest.fn(() => ({
@@ -296,7 +296,7 @@ describe("activate", () => {
     activate(context as never);
     await flushAsyncWork();
 
-    const providerInstance = (OcGoChatModelProvider as jest.Mock).mock.results[0]?.value;
+    const providerInstance = (NimChatModelProvider as jest.Mock).mock.results[0]?.value;
     const { version } = require("../package.json");
     expect(fetchModels).toHaveBeenCalledWith(
       "test-key",
@@ -854,7 +854,7 @@ describe("activate", () => {
     const { activate } = await import("../src/extension");
     activate(context as never);
 
-    const { StatusBarManager } = await import("../src/status-bar");
+    const { StatusBarManager } = await import("../src/shared/status-bar");
     expect(StatusBarManager).toHaveBeenCalled();
     const hasStatusBarDisposable = context.subscriptions.some(
       (s) => typeof s.dispose === "function",

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import * as vscode from "vscode";
 import { fetchModels, streamChatCompletion } from "../../src/api/client";
 import { CONTEXT_WINDOW_SAFETY_MARGIN } from "../../src/shared/constants";
-import { NimChatModelProvider as OcGoChatModelProvider } from "../../src/provider/chat-provider";
+import { NimChatModelProvider } from "../../src/provider/chat-provider";
 
 jest.mock("../../src/api/client", () => ({
   fetchModels: jest.fn(),
@@ -100,10 +100,10 @@ function loadProviderFixture<T>(fixtureName: string): T {
   ) as T;
 }
 
-describe("OcGoChatModelProvider", () => {
+describe("NimChatModelProvider", () => {
   let secrets: vscode.SecretStorage;
   let globalState: vscode.Memento;
-  let provider: OcGoChatModelProvider;
+  let provider: NimChatModelProvider;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -139,7 +139,7 @@ describe("OcGoChatModelProvider", () => {
       update: jest.fn(),
       keys: jest.fn(),
     } as unknown as vscode.Memento;
-    provider = new OcGoChatModelProvider(secrets, "test-ua", globalState);
+    provider = new NimChatModelProvider(secrets, "test-ua", globalState);
     ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue(undefined);
   });
 

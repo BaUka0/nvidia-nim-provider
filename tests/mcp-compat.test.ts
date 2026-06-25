@@ -1,6 +1,6 @@
-import { OcGoMcpClient } from "../src/mcp-compat";
+import { NimVisionClient } from "../src/tools/vision";
 
-describe("OcGoMcpClient", () => {
+describe("NimVisionClient", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -13,7 +13,7 @@ describe("OcGoMcpClient", () => {
     const secrets = {
       get: jest.fn(async () => undefined),
     };
-    const client = new OcGoMcpClient(secrets as never);
+    const client = new NimVisionClient(secrets as never);
 
     await expect(client.analyzeImage("data:image/png;base64,abc", "What is this?")).rejects.toThrow(
       "NVIDIA NIM API key not found",
@@ -43,7 +43,7 @@ describe("OcGoMcpClient", () => {
       ok: true,
       json: async () => ({ choices: [{ message: { content: "Image analysis" } }] }),
     } as any);
-    const client = new OcGoMcpClient(secrets as never, modelStorage as never);
+    const client = new NimVisionClient(secrets as never, modelStorage as never);
 
     const result = await client.analyzeImage("data:image/png;base64,abc", "What is this?");
 
@@ -64,7 +64,7 @@ describe("OcGoMcpClient", () => {
       get: jest.fn(() => []),
     };
     global.fetch = jest.fn();
-    const client = new OcGoMcpClient(secrets as never, modelStorage as never);
+    const client = new NimVisionClient(secrets as never, modelStorage as never);
 
     await expect(client.analyzeImage("data:image/png;base64,abc", "What is this?")).rejects.toThrow(
       "No NVIDIA NIM vision model is available",

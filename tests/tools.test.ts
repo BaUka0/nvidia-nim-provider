@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { OcGoAnalyzeImageTool, registerOcGoTools } from "../src/tools";
+import { NimAnalyzeImageTool, registerNimTools } from "../src/tools/vision";
 
 jest.mock("vscode", () => ({
   LanguageModelToolResult: class {
@@ -18,13 +18,13 @@ jest.mock("vscode", () => ({
 
 import { NimVisionClient } from "../src/tools/vision";
 
-describe("OcGoAnalyzeImageTool", () => {
-  let tool: OcGoAnalyzeImageTool;
+describe("NimAnalyzeImageTool", () => {
+  let tool: NimAnalyzeImageTool;
   let secrets: { get: jest.Mock };
 
   beforeEach(() => {
     secrets = { get: jest.fn() };
-    tool = new OcGoAnalyzeImageTool(secrets as any);
+    tool = new NimAnalyzeImageTool(secrets as any);
     jest.spyOn(NimVisionClient.prototype, "analyzeImage").mockResolvedValue("Analyzed result");
   });
   afterEach(() => {
@@ -49,7 +49,7 @@ describe("OcGoAnalyzeImageTool", () => {
 
   it("handles analyzeImage errors gracefully", async () => {
     jest.spyOn(NimVisionClient.prototype, "analyzeImage").mockRejectedValue(new Error("API down"));
-    const failingTool = new OcGoAnalyzeImageTool(secrets as any);
+    const failingTool = new NimAnalyzeImageTool(secrets as any);
     const result = await failingTool.invoke(
       {
         input: { image_data: "data:image/png;base64,abc", prompt: "What?" },
@@ -69,16 +69,16 @@ describe("OcGoAnalyzeImageTool", () => {
   });
 });
 
-describe("registerOcGoTools", () => {
+describe("registerNimTools", () => {
   it("returns a disposable", () => {
     const secrets = { get: jest.fn() } as any;
-    const disposable = registerOcGoTools(secrets);
+    const disposable = registerNimTools(secrets);
     expect(disposable).toBeDefined();
     expect(typeof disposable.dispose).toBe("function");
     expect(vscode.Disposable.from).toHaveBeenCalled();
     expect((vscode as any).lm.registerTool).toHaveBeenCalledWith(
       "nvidia_nim_analyze_image",
-      expect.any(OcGoAnalyzeImageTool),
+      expect.any(NimAnalyzeImageTool),
     );
   });
 });

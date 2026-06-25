@@ -1,4 +1,4 @@
-import { isNormalizedNvidiaModel, normalizeNvidiaModels } from "../src/model-catalog";
+import { isNormalizedNvidiaModel, normalizeNvidiaModels } from "../src/models/catalog";
 import type { NvidiaModelSummary } from "../src/types";
 
 describe("normalizeNvidiaModels", () => {

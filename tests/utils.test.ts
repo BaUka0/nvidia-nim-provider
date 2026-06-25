@@ -5,10 +5,12 @@ import {
   convertTools,
   estimateMessagesTokens,
   estimateTokens,
+} from "../src/messages/converter";
+import {
   filterThinkTagsFromChunk,
   flushThinkTagFilter,
   stripThinkTags,
-} from "../src/utils";
+} from "../src/messages/think-filter";
 
 describe("convertMessages", () => {
   it("converts user text message", () => {

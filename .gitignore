@@ -15,6 +15,9 @@ coverage/
 .vscode-test/
 *.vsix
 
+# Gemini CLI
+.gemini/
+
 # Misc
 .DS_Store
 *.log
