@@ -16,71 +16,41 @@ const NON_CHAT_MODEL_ID_PATTERNS = [
   /(^|[/_-])(clip|detector|embed|embedcode|embedqa|embedding|gliner|parse|rerank|retriever|reward)([-_/]|$)/i,
 ];
 
-const KNOWN_MODEL_OVERRIDES: Record<string, Partial<NormalizedNvidiaModel>> = {
-  // Meta Llama 4
-  "meta/llama-4-maverick-17b-128e-instruct": { displayName: "Llama 4 Maverick 17B 128E Instruct" },
-  "meta/llama-4-scout-17b-16e-instruct": { displayName: "Llama 4 Scout 17B 16E Instruct" },
-  
-  // Meta Llama 3.3 & 3.1
-  "meta/llama-3.3-70b-instruct": { displayName: "Llama 3.3 70B Instruct" },
-  "meta/llama-3.1-8b-instruct": { displayName: "Llama 3.1 8B Instruct" },
-  "meta/llama-3.1-70b-instruct": { displayName: "Llama 3.1 70B Instruct" },
-  "meta/llama-3.1-405b-instruct": { displayName: "Llama 3.1 405B Instruct" },
-  "meta/llama3-8b-instruct": { displayName: "Llama 3 8B Instruct" },
-  "meta/llama3-70b-instruct": { displayName: "Llama 3 70B Instruct" },
-
-  // NVIDIA Nemotron
-  "nvidia/nemotron-4-340b-instruct": { displayName: "Nemotron 4 340B Instruct" },
-  "nvidia/llama-3.1-nemotron-70b-instruct": { displayName: "Llama 3.1 Nemotron 70B Instruct" },
-  "nvidia/llama-3.1-nemotron-ultra-253b-v1": { displayName: "Llama 3.1 Nemotron Ultra 253B" },
-  "nvidia/llama-3.1-nemotron-ultra-253b-v1:awq-moe": { displayName: "Llama 3.1 Nemotron Ultra 253B (AWQ MoE)" },
-
-  // Mistral & Mixtral
-  "mistralai/mistral-large": { displayName: "Mistral Large" },
-  "mistralai/mistral-large-2407": { displayName: "Mistral Large 2407" },
-  "mistralai/mistral-large-2411": { displayName: "Mistral Large 2411" },
-  "mistralai/pixtral-large-2411": { displayName: "Pixtral Large 2411" },
-  "mistralai/mistral-7b-instruct-v0.3": { displayName: "Mistral 7B Instruct v0.3" },
-  "mistralai/mixtral-8x22b-instruct-v0.1": { displayName: "Mixtral 8x22B Instruct" },
-  "mistralai/mixtral-8x7b-instruct-v0.1": { displayName: "Mixtral 8x7B Instruct" },
-
-  // Qwen
-  "qwen/qwen2.5-72b-instruct": { displayName: "Qwen 2.5 72B Instruct" },
-  "qwen/qwen2.5-coder-32b-instruct": { displayName: "Qwen 2.5 Coder 32B Instruct" },
-  "qwen/qwen2.5-max": { displayName: "Qwen 2.5 Max" },
-  "qwen/qwq-32b-preview": { displayName: "QwQ 32B Preview" },
-  "qwen/qwen2-72b-instruct": { displayName: "Qwen 2 72B Instruct" },
-
-  // Microsoft Phi
-  "microsoft/phi-4": { displayName: "Phi 4" },
-  "microsoft/phi-4-mini-instruct": { displayName: "Phi 4 Mini Instruct" },
-  "microsoft/phi-3.5-mini-instruct": { displayName: "Phi 3.5 Mini Instruct" },
-  "microsoft/phi-3-mini-128k-instruct": { displayName: "Phi 3 Mini 128K Instruct" },
-
-  // DeepSeek
-  "deepseek-ai/deepseek-r1": { displayName: "DeepSeek R1" },
-  "deepseek-ai/deepseek-v3": { displayName: "DeepSeek V3" },
-  "deepseek-ai/deepseek-v3-0324": { displayName: "DeepSeek V3 0324" },
-
-  // Google Gemma
-  "google/gemma-3-27b-it": { displayName: "Gemma 3 27B IT" },
-  "google/gemma-3-12b-it": { displayName: "Gemma 3 12B IT" },
-  "google/gemma-2-27b-it": { displayName: "Gemma 2 27B IT" },
-  "google/gemma-2-9b-it": { displayName: "Gemma 2 9B IT" },
-  "google/gemma-7b-it": { displayName: "Gemma 7B IT" },
-  "google/gemma-2b-it": { displayName: "Gemma 2B IT" },
-
-  // Anthropic Claude (via NIM / Partner)
-  "anthropic/claude-3-5-sonnet": { displayName: "Claude 3.5 Sonnet" },
-  "anthropic/claude-3-5-haiku": { displayName: "Claude 3.5 Haiku" },
-  "anthropic/claude-3-opus": { displayName: "Claude 3 Opus" },
-
-  // Others
-  "01-ai/yi-large": { displayName: "Yi Large" },
-  "snowflake/arctic": { displayName: "Snowflake Arctic" },
-  "databricks/dbrx-instruct": { displayName: "DBRX Instruct" },
-  "cohere/command-r-plus": { displayName: "Command R+" },
-  "cohere/command-r": { displayName: "Command R" },
+const ELITE_MODELS_WHITELIST: Record<string, Partial<NormalizedNvidiaModel>> = {
+  "deepseek-ai/deepseek-v4-flash": {
+    displayName: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
+    contextWindow: 1000000,
+    maxOutputTokens: 384000,
+  },
+  "deepseek-ai/deepseek-v4-pro": {
+    displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+    contextWindow: 1000000,
+    maxOutputTokens: 384000,
+  },
+  "minimaxai/minimax-m3": {
+    displayName: "MiniMax M3 (1M Context, Reasoning, 100K Output, Multimodal)",
+    contextWindow: 1000000,
+    maxOutputTokens: 100000,
+    supportsVision: true,
+  },
+  "moonshotai/kimi-k2.6": {
+    displayName: "Kimi k2.6 (256K Context, Reasoning, Multimodal)",
+    contextWindow: 256000,
+    supportsVision: true,
+  },
+  "nvidia/nemotron-3-ultra-550b-a55b": {
+    displayName: "Nemotron 3 Ultra 550B (1M Context, Reasoning)",
+    contextWindow: 1000000,
+  },
+  "z-ai/glm-5.1": {
+    displayName: "GLM 5.1 (131K Context, Reasoning)",
+    contextWindow: 131072,
+  },
+  "stepfun-ai/step-3.7-flash": {
+    displayName: "Step 3.7 Flash (256K Context, Fast Reasoning, Multimodal)",
+    contextWindow: 256000,
+    supportsVision: true,
+  },
 };
 
 export function normalizeNvidiaModels(models: NvidiaModelSummary[]): NormalizedNvidiaModel[] {
@@ -88,7 +58,7 @@ export function normalizeNvidiaModels(models: NvidiaModelSummary[]): NormalizedN
   const normalizedModels: NormalizedNvidiaModel[] = [];
 
   for (const model of models) {
-    if (seenIds.has(model.id) || !isChatModel(model)) {
+    if (seenIds.has(model.id) || !(model.id in ELITE_MODELS_WHITELIST)) {
       continue;
     }
     seenIds.add(model.id);
@@ -115,22 +85,22 @@ export function isNormalizedNvidiaModel(value: unknown): value is NormalizedNvid
 }
 
 function normalizeNvidiaModel(model: NvidiaModelSummary): NormalizedNvidiaModel {
-  const override = KNOWN_MODEL_OVERRIDES[model.id];
+  const override = ELITE_MODELS_WHITELIST[model.id];
 
   return {
     id: model.id,
-    displayName: model.name ?? override?.displayName ?? deriveDisplayName(model.id),
+    displayName: override?.displayName ?? model.name ?? deriveDisplayName(model.id),
     contextWindow:
-      getPositiveNumber(model.metadata?.context_window) ??
       getPositiveNumber(override?.contextWindow) ??
+      getPositiveNumber(model.metadata?.context_window) ??
       DEFAULT_CONTEXT_WINDOW,
     maxOutputTokens:
+      getPositiveNumber(override?.maxOutputTokens) ??
       getPositiveNumber(model.metadata?.max_output_tokens) ??
       getPositiveNumber(model.metadata?.max_tokens) ??
-      getPositiveNumber(override?.maxOutputTokens) ??
       DEFAULT_MAX_OUTPUT_TOKENS,
-    supportsTools: model.capabilities?.tool_calling ?? override?.supportsTools ?? true,
-    supportsVision: model.capabilities?.vision ?? override?.supportsVision ?? false,
+    supportsTools: override?.supportsTools ?? model.capabilities?.tool_calling ?? true,
+    supportsVision: override?.supportsVision ?? model.capabilities?.vision ?? false,
   };
 }
 

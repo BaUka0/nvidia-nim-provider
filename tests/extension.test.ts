@@ -261,8 +261,8 @@ describe("activate", () => {
   it("refreshes cached models in the background on activation when an API key exists", async () => {
     const rawModels = [
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        name: "Llama 4 Maverick",
+        id: "deepseek-ai/deepseek-v4-pro",
+        name: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -306,10 +306,10 @@ describe("activate", () => {
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.rawModels", rawModels);
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        displayName: "Llama 4 Maverick",
-        contextWindow: 128000,
-        maxOutputTokens: 8192,
+        id: "deepseek-ai/deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        contextWindow: 1000000,
+        maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: true,
       },
@@ -321,8 +321,8 @@ describe("activate", () => {
   it("stores raw and normalized model caches when the refresh command succeeds", async () => {
     const rawModels = [
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        name: "Llama 4 Maverick",
+        id: "deepseek-ai/deepseek-v4-pro",
+        name: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -364,10 +364,10 @@ describe("activate", () => {
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.rawModels", rawModels);
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        displayName: "Llama 4 Maverick",
-        contextWindow: 128000,
-        maxOutputTokens: 8192,
+        id: "deepseek-ai/deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        contextWindow: 1000000,
+        maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: true,
       },
@@ -466,8 +466,8 @@ describe("activate", () => {
   it("rolls back the raw cache if normalized cache persistence fails", async () => {
     const rawModels = [
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        name: "Llama 4 Maverick",
+        id: "deepseek-ai/deepseek-v4-pro",
+        name: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -528,10 +528,10 @@ describe("activate", () => {
     expect(update).toHaveBeenNthCalledWith(1, "nvidia-nim.rawModels", rawModels);
     expect(update).toHaveBeenNthCalledWith(2, "nvidia-nim.models", [
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        displayName: "Llama 4 Maverick",
-        contextWindow: 128000,
-        maxOutputTokens: 8192,
+        id: "deepseek-ai/deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        contextWindow: 1000000,
+        maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: true,
       },
@@ -545,16 +545,16 @@ describe("activate", () => {
   it("waits for an in-flight refresh before starting another refresh", async () => {
     const firstRawModels = [
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        name: "Llama 4 Maverick",
+        id: "deepseek-ai/deepseek-v4-pro",
+        name: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
     ];
     const secondRawModels = [
       {
-        id: "meta/llama-3.1-8b-instruct",
-        name: "Llama 3.1 8B Instruct",
+        id: "deepseek-ai/deepseek-v4-flash",
+        name: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
         capabilities: { chat: true, tool_calling: false, vision: false },
         metadata: { context_window: 64000, max_output_tokens: 4096 },
       },
@@ -582,7 +582,7 @@ describe("activate", () => {
             (model) =>
               typeof model === "object" &&
               model !== null &&
-              (model as { id?: string }).id === "meta/llama-4-maverick-17b-128e-instruct",
+              (model as { id?: string }).id === "deepseek-ai/deepseek-v4-pro",
           )
         ) {
           return firstModelsWrite.promise;
@@ -618,8 +618,8 @@ describe("activate", () => {
   it("preserves the normalized cache write error when rollback also fails", async () => {
     const rawModels = [
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        name: "Llama 4 Maverick",
+        id: "deepseek-ai/deepseek-v4-pro",
+        name: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },

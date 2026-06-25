@@ -2,88 +2,66 @@ import { isNormalizedNvidiaModel, normalizeNvidiaModels } from "../src/model-cat
 import type { NvidiaModelSummary } from "../src/types";
 
 describe("normalizeNvidiaModels", () => {
-  it("keeps chat models and infers tool and vision support from explicit capabilities", () => {
+  it("keeps whitelisted models and applies overrides", () => {
     const raw: NvidiaModelSummary[] = [
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        capabilities: { chat: true, vision: true, tool_calling: true },
-        metadata: { context_window: 128000 },
+        id: "deepseek-ai/deepseek-v4-flash",
       },
       {
-        id: "nvidia/nv-embedqa-e5-v5",
-        capabilities: { chat: false },
-      },
-    ];
-
-    expect(normalizeNvidiaModels(raw)).toEqual([
-      expect.objectContaining({
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        displayName: "Llama 4 Maverick 17B 128E Instruct",
-        supportsVision: true,
-        supportsTools: true,
-        contextWindow: 128000,
-      }),
-    ]);
-  });
-
-  it("assumes chat models can use tools when the API omits capability metadata", () => {
-    const raw: NvidiaModelSummary[] = [
-      {
-        id: "meta/llama-3.1-8b-instruct",
+        id: "unknown/model-that-should-be-filtered",
       },
     ];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       {
-        id: "meta/llama-3.1-8b-instruct",
-        displayName: "Llama 3.1 8B Instruct",
-        contextWindow: 131072,
-        maxOutputTokens: 65536,
+        id: "deepseek-ai/deepseek-v4-flash",
+        displayName: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
+        contextWindow: 1000000,
+        maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
       },
     ]);
   });
 
-  it("uses metadata.max_tokens when max_output_tokens is absent", () => {
+  it("uses metadata.max_tokens when override maxOutputTokens is absent", () => {
+    // testing with nemotron because it doesn't have an override for maxOutputTokens
     const raw: NvidiaModelSummary[] = [
       {
-        id: "meta/llama-3.1-8b-instruct",
+        id: "nvidia/nemotron-3-ultra-550b-a55b",
         metadata: { max_tokens: 8192 },
       },
     ];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
-        id: "meta/llama-3.1-8b-instruct",
+        id: "nvidia/nemotron-3-ultra-550b-a55b",
         maxOutputTokens: 8192,
       }),
     ]);
   });
 
-  it("prefers the API name over a known override display name", () => {
+  it("prefers the override display name over the API name", () => {
     const raw: NvidiaModelSummary[] = [
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        name: "API Supplied Llama 4 Maverick",
+        id: "stepfun-ai/step-3.7-flash",
+        name: "API Supplied Step 3.7",
       },
     ];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        displayName: "API Supplied Llama 4 Maverick",
+        id: "stepfun-ai/step-3.7-flash",
+        displayName: "Step 3.7 Flash (256K Context, Fast Reasoning, Multimodal)",
       }),
     ]);
   });
 
-  it("filters obvious non-chat models when chat capability metadata is absent", () => {
+  it("filters non-whitelisted models completely", () => {
     const raw: NvidiaModelSummary[] = [
       { id: "baai/bge-m3" },
       { id: "nvidia/ai-synthetic-video-detector" },
-      { id: "nvidia/nemoretriever-parse" },
-      { id: "nvidia/nv-embedqa-e5-v5" },
-      { id: "nv-rerank-qa-mistral-4b:1" },
+      { id: "meta/llama-3.1-8b-instruct" }, // previously valid, now filtered
     ];
 
     expect(normalizeNvidiaModels(raw)).toEqual([]);
@@ -91,14 +69,14 @@ describe("normalizeNvidiaModels", () => {
 
   it("deduplicates exact duplicate model ids from the NVIDIA catalog", () => {
     const raw: NvidiaModelSummary[] = [
-      { id: "openai/gpt-oss-120b" },
-      { id: "openai/gpt-oss-120b" },
+      { id: "z-ai/glm-5.1" },
+      { id: "z-ai/glm-5.1" },
     ];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
-        id: "openai/gpt-oss-120b",
-        displayName: "gpt-oss-120b",
+        id: "z-ai/glm-5.1",
+        displayName: "GLM 5.1 (131K Context, Reasoning)",
       }),
     ]);
   });
@@ -106,20 +84,20 @@ describe("normalizeNvidiaModels", () => {
   it("detects whether cached values match the normalized NVIDIA model shape", () => {
     expect(
       isNormalizedNvidiaModel({
-        id: "kimi-k2.6",
-        displayName: "Kimi K2.6",
-        contextWindow: 262144,
-        maxOutputTokens: 262144,
+        id: "moonshotai/kimi-k2.6",
+        displayName: "Kimi k2.6",
+        contextWindow: 256000,
+        maxOutputTokens: 65536,
         supportsTools: true,
         supportsVision: true,
       }),
     ).toBe(true);
     expect(
       isNormalizedNvidiaModel({
-        id: "kimi-k2.6",
-        displayName: "Kimi K2.6",
-        contextWindow: 262144,
-        maxOutputTokens: "262144",
+        id: "moonshotai/kimi-k2.6",
+        displayName: "Kimi k2.6",
+        contextWindow: 256000,
+        maxOutputTokens: "65536", // invalid type
         supportsTools: true,
         supportsVision: true,
       }),

@@ -118,8 +118,8 @@ describe("OcGoChatModelProvider", () => {
                 supportsVision: true,
               },
               {
-                id: "meta/llama-4-maverick-17b-128e-instruct",
-                displayName: "Llama 4 Maverick 17B 128E Instruct",
+                id: "deepseek-ai/deepseek-v4-pro",
+                displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
                 contextWindow: 131072,
                 maxOutputTokens: 16384,
                 supportsTools: true,
@@ -156,7 +156,7 @@ describe("OcGoChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
     (fetchModels as jest.Mock).mockResolvedValue([
       {
-        id: "meta/llama-3.1-8b-instruct",
+        id: "deepseek-ai/deepseek-v4-flash",
         object: "model",
         owned_by: "integrate.api.nvidia.com",
       },
@@ -174,18 +174,18 @@ describe("OcGoChatModelProvider", () => {
     expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
-        id: "meta/llama-3.1-8b-instruct",
-        displayName: "Llama 3.1 8B Instruct",
-        contextWindow: 131072,
-        maxOutputTokens: 65536,
+        id: "deepseek-ai/deepseek-v4-flash",
+        displayName: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
+        contextWindow: 1000000,
+        maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
       },
     ]);
     expect(infos).toEqual([
       expect.objectContaining({
-        id: "meta/llama-3.1-8b-instruct",
-        name: "Llama 3.1 8B Instruct",
+        id: "deepseek-ai/deepseek-v4-flash",
+        name: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
         detail: "NVIDIA NIM",
         apiKey: "configured-key",
       }),
@@ -198,7 +198,7 @@ describe("OcGoChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue(undefined);
     (fetchModels as jest.Mock).mockResolvedValue([
       {
-        id: "meta/llama-3.1-8b-instruct",
+        id: "deepseek-ai/deepseek-v4-flash",
         object: "model",
         owned_by: "integrate.api.nvidia.com",
       },
@@ -217,7 +217,7 @@ describe("OcGoChatModelProvider", () => {
     expect(secrets.get).not.toHaveBeenCalledWith("nvidia-nim.apiKey");
     expect(infos).toEqual([
       expect.objectContaining({
-        id: "meta/llama-3.1-8b-instruct",
+        id: "deepseek-ai/deepseek-v4-flash",
         apiKey: "configured-key",
       }),
     ]);
@@ -229,7 +229,7 @@ describe("OcGoChatModelProvider", () => {
         return [
           {
             id: "deepseek-ai/deepseek-v4-pro",
-            displayName: "deepseek-v4-pro",
+            displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -263,7 +263,7 @@ describe("OcGoChatModelProvider", () => {
         return [
           {
             id: "deepseek-ai/deepseek-v4-pro",
-            displayName: "deepseek-v4-pro",
+            displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -316,7 +316,7 @@ describe("OcGoChatModelProvider", () => {
     expect(infos).toEqual([
       expect.objectContaining({
         id: "deepseek-ai/deepseek-v4-pro",
-        name: "deepseek-v4-pro",
+        name: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
         apiKey: "legacy-key",
         isUserSelectable: true,
       }),
@@ -329,7 +329,7 @@ describe("OcGoChatModelProvider", () => {
         return [
           {
             id: "deepseek-ai/deepseek-v4-pro",
-            displayName: "deepseek-v4-pro",
+            displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -374,8 +374,8 @@ describe("OcGoChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "meta/llama-3.1-8b-instruct",
-            displayName: "llama-3.1-8b-instruct",
+            id: "deepseek-ai/deepseek-v4-flash",
+            displayName: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -414,8 +414,8 @@ describe("OcGoChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "meta/llama-3.1-8b-instruct",
-            displayName: "llama-3.1-8b-instruct",
+            id: "deepseek-ai/deepseek-v4-flash",
+            displayName: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -454,8 +454,8 @@ describe("OcGoChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "meta/llama-3.1-8b-instruct",
-            displayName: "llama-3.1-8b-instruct",
+            id: "deepseek-ai/deepseek-v4-flash",
+            displayName: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -509,7 +509,7 @@ describe("OcGoChatModelProvider", () => {
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
     (fetchModels as jest.Mock).mockResolvedValue([
       {
-        id: "meta/llama-3.1-8b-instruct",
+        id: "deepseek-ai/deepseek-v4-flash",
         object: "model",
         owned_by: "integrate.api.nvidia.com",
       },
@@ -527,7 +527,7 @@ describe("OcGoChatModelProvider", () => {
     expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
     expect(infos[0]).toEqual(
       expect.objectContaining({
-        id: "meta/llama-3.1-8b-instruct",
+        id: "deepseek-ai/deepseek-v4-flash",
         isUserSelectable: true,
       }),
     );
@@ -647,8 +647,8 @@ describe("OcGoChatModelProvider", () => {
   it("does not advertise image input for non-vision normalized models", async () => {
     const cachedModels = [
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        displayName: "Llama 4 Maverick 17B 128E Instruct",
+        id: "deepseek-ai/deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
         contextWindow: 131072,
         maxOutputTokens: 16384,
         supportsTools: true,
