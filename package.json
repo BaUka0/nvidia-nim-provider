@@ -26,7 +26,7 @@
     "models"
   ],
   "engines": {
-    "vscode": "^1.104.0"
+    "vscode": "^1.125.0"
   },
   "categories": [
     "AI",
@@ -95,7 +95,7 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "bun run compile",
+    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -w -p ./",
     "test": "jest",
@@ -103,12 +103,12 @@
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "package:vsix": "bun run compile && vsce package --allow-missing-repository"
+    "package:vsix": "npm run compile && vsce package --allow-missing-repository"
   },
   "devDependencies": {
     "@types/jest": "^29.0.0",
     "@types/node": "^22.0.0",
-    "@types/vscode": "^1.104.0",
+    "@types/vscode": "^1.125.0",
     "@vscode/vsce": "^3.9.0",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",

@@ -4,7 +4,7 @@ VS Code extension that adds an NVIDIA NIM provider to Copilot Chat.
 
 ## Requirements
 
-- VS Code 1.104.0 or later
+- VS Code 1.125.0 or later
 - GitHub Copilot extension installed and active
 - An NVIDIA NIM API key from [build.nvidia.com/models](https://build.nvidia.com/models)
 
@@ -13,12 +13,12 @@ VS Code extension that adds an NVIDIA NIM provider to Copilot Chat.
 ### From Source
 
 1. Clone this repository.
-2. Run `bun install --ignore-scripts && bun run compile`.
+2. Run `npm install && npm run compile`.
 3. Press `F5` in VS Code to launch the Extension Development Host.
 
 ### From VSIX
 
-1. Run `bun install --ignore-scripts && bun run package:vsix`.
+1. Run `npm install && npm run package:vsix`.
 2. Install the generated `.vsix` file via the Extensions view (`Install from VSIX...`).
 
 ## Setup
@@ -51,28 +51,28 @@ tool-capable so they remain selectable in Copilot Chat Agent mode. Models that e
 ## Development
 
 ```bash
-bun install --ignore-scripts
-bun run compile
-bun run lint
-bun run test -- --runInBand
+npm install
+npm run compile
+npm run lint
+npm run test
 ```
 
 Press `F5` in VS Code to launch the Extension Development Host.
 
 ### Available Scripts
 
-- `bun run compile` – TypeScript コンパイル
-- `bun run watch` – ファイル変更監視付きコンパイル
-- `bun run test` – テスト実行
-- `bun run lint` – ESLint チェック
-- `bun run lint:fix` – ESLint 自動修正
-- `bun run format` – Prettier フォーマット
-- `bun run package:vsix` – VSIX パッケージ作成
+- `npm run compile` – TypeScript コンパイル
+- `npm run watch` – ファイル変更監視付きコンパイル
+- `npm run test` – テスト実行
+- `npm run lint` – ESLint チェック
+- `npm run lint:fix` – ESLint 自動修正
+- `npm run format` – Prettier フォーマット
+- `npm run package:vsix` – VSIX パッケージ作成
 
 ## Marketplace Packaging
 
 ```bash
-bun run package:vsix
+npm run package:vsix
 ```
 
 The command above produces a `.vsix` that can be uploaded in the VS Code Marketplace publisher portal.
