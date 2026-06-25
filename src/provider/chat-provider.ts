@@ -44,15 +44,20 @@ import {
   isNormalizedNvidiaModel,
   NormalizedNvidiaModel,
   normalizeNvidiaModels,
+  getFallbackModel,
 } from "../models/catalog";
+import { summarizeOldMessages, splitMessagesForSummarization } from "../models/summarizer";
 import { getModelAdapter } from "../models/adapters";
 import { debugLog, outputLog } from "../shared/logging";
+import { StatusBarManager } from "../shared/status-bar";
 import { NimChatMessage, NimChatRequest } from "../types";
 import {
   convertMessages,
   convertTools,
   estimateMessagesTokens,
   estimateTokens,
+  estimateNimMessagesTokens,
+  truncateMessagesForContext,
   LegacyPart,
 } from "../messages/converter";
 import { filterThinkTagsFromChunk, flushThinkTagFilter } from "../messages/think-filter";
@@ -136,6 +141,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     private readonly secrets: vscode.SecretStorage,
     private readonly userAgent: string,
     private readonly globalState?: vscode.Memento,
+    private readonly statusBar?: StatusBarManager,
   ) {}
 
   fireModelInfoChanged(): void {
@@ -434,11 +440,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       const effectiveMaxInputTokens = Math.max(1, maxInputTokens - CONTEXT_WINDOW_SAFETY_MARGIN);
 
       if (inputTokenCount > effectiveMaxInputTokens) {
-        throw new Error(
-          formatStructuredError(
-            "token_limit",
-            `Input tokens: ${inputTokenCount}, max: ${effectiveMaxInputTokens}`,
-          ),
+        debugLog(
+          "contextCompression",
+          `Input tokens ${inputTokenCount} exceed max ${effectiveMaxInputTokens}. Will attempt context compression.`,
         );
       }
 
@@ -493,6 +497,45 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           ),
           ...apiMessages,
         ];
+      }
+
+      const apiTokenCount = estimateNimMessagesTokens(apiMessages);
+      if (apiTokenCount > effectiveMaxInputTokens) {
+        debugLog(
+          "contextCompression",
+          `Converted messages ${apiTokenCount} tokens > ${effectiveMaxInputTokens} max. Compressing...`,
+        );
+        const { oldMessages, recentMessages } = splitMessagesForSummarization(
+          apiMessages,
+          Math.floor(effectiveMaxInputTokens * 0.4),
+        );
+        if (oldMessages.length > 0) {
+          const summaryMessage = await summarizeOldMessages(
+            oldMessages,
+            apiKey,
+            this.userAgent,
+            abortController.signal,
+          );
+          apiMessages = [summaryMessage, ...recentMessages];
+          const compressedTokenCount = estimateNimMessagesTokens(apiMessages);
+          debugLog(
+            "contextCompression",
+            `After compression: ${compressedTokenCount} tokens (was ${apiTokenCount}).`,
+          );
+          if (compressedTokenCount > effectiveMaxInputTokens) {
+            apiMessages = truncateMessagesForContext(apiMessages, effectiveMaxInputTokens);
+            const finalTokenCount = estimateNimMessagesTokens(apiMessages);
+            debugLog("contextCompression", `After truncation fallback: ${finalTokenCount} tokens.`);
+            if (finalTokenCount > effectiveMaxInputTokens) {
+              throw new Error(
+                formatStructuredError(
+                  "token_limit",
+                  `Even after compression and truncation: ${finalTokenCount} tokens, max: ${effectiveMaxInputTokens}`,
+                ),
+              );
+            }
+          }
+        }
       }
 
       const requestBody: NimChatRequest = {
@@ -579,6 +622,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       let totalAttempts = 0;
       let requestPreparationDurationMs: number | undefined;
       let toolParsingStateInitDurationMs: number | undefined;
+      let finalUsage:
+        | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+        | undefined;
+      let networkRetryCount = 0;
+      const MAX_NETWORK_RETRIES = 2;
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
         totalAttempts += 1;
@@ -708,173 +756,219 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           }
         };
 
-        for await (const chunk of streamChatCompletion(
-          apiKey,
-          activeRequestBody,
-          abortController.signal,
-          this.userAgent,
-          { maxOutputTokens: model.maxOutputTokens },
-        )) {
-          if (token.isCancellationRequested) {
+        try {
+          for await (const chunk of streamChatCompletion(
+            apiKey,
+            activeRequestBody,
+            abortController.signal,
+            this.userAgent,
+            { maxOutputTokens: model.maxOutputTokens },
+          )) {
+            if (token.isCancellationRequested) {
+              throw new vscode.CancellationError();
+            }
+
+            const choice = chunk.choices?.[0];
+
+            if (chunk.usage) {
+              lastUsage = chunk.usage;
+              finalUsage = chunk.usage;
+            }
+
+            if (choice?.delta?.content) {
+              markFirstResponse();
+              for (const segment of filterThinkTagsFromChunk(
+                choice.delta.content,
+                thinkTagFilterState,
+              )) {
+                if (segment.type === "thinking") {
+                  emitReasoning(segment.text);
+                } else {
+                  processFilteredText(segment.text);
+                }
+              }
+            }
+
+            const reasoningContent = (choice?.delta as { reasoning_content?: string })
+              ?.reasoning_content;
+            if (reasoningContent) {
+              emitReasoning(reasoningContent);
+            }
+
+            // Handle tool calls
+            if (choice?.delta?.tool_calls) {
+              markFirstResponse();
+              sawToolCall = true;
+              for (const tc of choice.delta.tool_calls) {
+                const idx = (tc as { index?: number }).index ?? 0;
+                if (completedToolCallIndices.has(idx)) {
+                  continue;
+                }
+
+                const buf = toolCallBuffers.get(idx) ?? { args: "" };
+                if (tc.id && typeof tc.id === "string") {
+                  buf.id = tc.id;
+                }
+                const func = tc.function;
+                if (func?.name && typeof func.name === "string") {
+                  buf.name = func.name;
+                }
+                if (typeof func?.arguments === "string") {
+                  buf.args += func.arguments;
+                }
+                toolCallBuffers.set(idx, buf);
+
+                if (buf.args.trim().length === 0) {
+                  continue;
+                }
+
+                // Emit immediately once arguments become valid JSON
+                try {
+                  const { emittedTextToolCallKeys, requestContext, toolSchemas } =
+                    getToolParsingState();
+                  const schema = toolSchemas.get(buf.name ?? "");
+                  const args = repairToolArguments(
+                    buf.name ?? "",
+                    buf.args ? JSON.parse(buf.args) : {},
+                    requestContext,
+                    schema,
+                  );
+                  if (
+                    buf.id &&
+                    buf.name &&
+                    isToolCallInput(args) &&
+                    hasRequiredToolArguments(args, schema)
+                  ) {
+                    const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
+                    if (emittedTextToolCallKeys.has(canonicalKey)) {
+                      completedToolCallIndices.add(idx);
+                      toolCallBuffers.delete(idx);
+                      continue;
+                    }
+                    flushPendingText();
+                    reportPart(new vscode.LanguageModelToolCallPart(buf.id, buf.name, args));
+                    emittedToolCall = true;
+                    if (!emittedFirstToolCall) {
+                      emittedFirstToolCall = true;
+                      firstToolCallAtMs = Date.now();
+                    }
+                    emittedTextToolCallKeys.add(canonicalKey);
+                    completedToolCallIndices.add(idx);
+                    toolCallBuffers.delete(idx);
+                  } else if (buf.id && buf.name) {
+                    skippedToolCalls.push({
+                      name: buf.name,
+                      required: schema?.required ?? [],
+                    });
+                    debugLog("Skipped invalid tool call", { id: buf.id, name: buf.name, args });
+                    completedToolCallIndices.add(idx);
+                    toolCallBuffers.delete(idx);
+                  }
+                } catch {
+                  // JSON incomplete — wait for next chunk
+                }
+              }
+            }
+          }
+
+          for (const segment of flushThinkTagFilter(thinkTagFilterState)) {
+            if (segment.type === "thinking") {
+              emitReasoning(segment.text);
+            } else {
+              processFilteredText(segment.text);
+            }
+          }
+
+          // Flush any remaining buffered tool calls at stream end
+          for (const [idx, buf] of Array.from(toolCallBuffers.entries())) {
+            if (completedToolCallIndices.has(idx)) {
+              continue;
+            }
+            try {
+              const { emittedTextToolCallKeys, requestContext, toolSchemas } =
+                getToolParsingState();
+              const schema = toolSchemas.get(buf.name ?? "");
+              const args = repairToolArguments(
+                buf.name ?? "",
+                buf.args ? JSON.parse(buf.args) : {},
+                requestContext,
+                schema,
+              );
+              if (
+                buf.id &&
+                buf.name &&
+                isToolCallInput(args) &&
+                hasRequiredToolArguments(args, schema)
+              ) {
+                const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
+                if (emittedTextToolCallKeys.has(canonicalKey)) {
+                  continue;
+                }
+                flushPendingText();
+                reportPart(new vscode.LanguageModelToolCallPart(buf.id, buf.name, args));
+                emittedToolCall = true;
+                if (!emittedFirstToolCall) {
+                  emittedFirstToolCall = true;
+                  firstToolCallAtMs = Date.now();
+                }
+                emittedTextToolCallKeys.add(canonicalKey);
+              } else if (buf.id && buf.name) {
+                skippedToolCalls.push({
+                  name: buf.name,
+                  required: schema?.required ?? [],
+                });
+                debugLog("Skipped invalid tool call at stream end", {
+                  id: buf.id,
+                  name: buf.name,
+                  args,
+                });
+              }
+            } catch {
+              // Ignore incomplete JSON at stream end
+            }
+          }
+        } catch (streamErr) {
+          if (
+            token.isCancellationRequested ||
+            (streamErr instanceof Error && streamErr.name === "AbortError")
+          ) {
             throw new vscode.CancellationError();
           }
 
-          const choice = chunk.choices?.[0];
+          const isNetworkError =
+            streamErr instanceof Error &&
+            (streamErr.name === "TypeError" ||
+              streamErr.message.includes("fetch") ||
+              streamErr.message.includes("network") ||
+              streamErr.message.includes("ECONNRESET") ||
+              streamErr.message.includes("socket"));
 
-          if (chunk.usage) {
-            lastUsage = chunk.usage;
-          }
-
-          if (choice?.delta?.content) {
-            markFirstResponse();
-            for (const segment of filterThinkTagsFromChunk(
-              choice.delta.content,
-              thinkTagFilterState,
-            )) {
-              if (segment.type === "thinking") {
-                emitReasoning(segment.text);
-              } else {
-                processFilteredText(segment.text);
-              }
-            }
-          }
-
-          const reasoningContent = (choice?.delta as { reasoning_content?: string })
-            ?.reasoning_content;
-          if (reasoningContent) {
-            emitReasoning(reasoningContent);
-          }
-
-          // Handle tool calls
-          if (choice?.delta?.tool_calls) {
-            markFirstResponse();
-            sawToolCall = true;
-            for (const tc of choice.delta.tool_calls) {
-              const idx = (tc as { index?: number }).index ?? 0;
-              if (completedToolCallIndices.has(idx)) {
-                continue;
-              }
-
-              const buf = toolCallBuffers.get(idx) ?? { args: "" };
-              if (tc.id && typeof tc.id === "string") {
-                buf.id = tc.id;
-              }
-              const func = tc.function;
-              if (func?.name && typeof func.name === "string") {
-                buf.name = func.name;
-              }
-              if (typeof func?.arguments === "string") {
-                buf.args += func.arguments;
-              }
-              toolCallBuffers.set(idx, buf);
-
-              if (buf.args.trim().length === 0) {
-                continue;
-              }
-
-              // Emit immediately once arguments become valid JSON
-              try {
-                const { emittedTextToolCallKeys, requestContext, toolSchemas } =
-                  getToolParsingState();
-                const schema = toolSchemas.get(buf.name ?? "");
-                const args = repairToolArguments(
-                  buf.name ?? "",
-                  buf.args ? JSON.parse(buf.args) : {},
-                  requestContext,
-                  schema,
-                );
-                if (
-                  buf.id &&
-                  buf.name &&
-                  isToolCallInput(args) &&
-                  hasRequiredToolArguments(args, schema)
-                ) {
-                  const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
-                  if (emittedTextToolCallKeys.has(canonicalKey)) {
-                    completedToolCallIndices.add(idx);
-                    toolCallBuffers.delete(idx);
-                    continue;
-                  }
-                  flushPendingText();
-                  reportPart(new vscode.LanguageModelToolCallPart(buf.id, buf.name, args));
-                  emittedToolCall = true;
-                  if (!emittedFirstToolCall) {
-                    emittedFirstToolCall = true;
-                    firstToolCallAtMs = Date.now();
-                  }
-                  emittedTextToolCallKeys.add(canonicalKey);
-                  completedToolCallIndices.add(idx);
-                  toolCallBuffers.delete(idx);
-                } else if (buf.id && buf.name) {
-                  skippedToolCalls.push({
-                    name: buf.name,
-                    required: schema?.required ?? [],
-                  });
-                  debugLog("Skipped invalid tool call", { id: buf.id, name: buf.name, args });
-                  completedToolCallIndices.add(idx);
-                  toolCallBuffers.delete(idx);
-                }
-              } catch {
-                // JSON incomplete — wait for next chunk
-              }
-            }
-          }
-        }
-
-        for (const segment of flushThinkTagFilter(thinkTagFilterState)) {
-          if (segment.type === "thinking") {
-            emitReasoning(segment.text);
-          } else {
-            processFilteredText(segment.text);
-          }
-        }
-
-        // Flush any remaining buffered tool calls at stream end
-        for (const [idx, buf] of Array.from(toolCallBuffers.entries())) {
-          if (completedToolCallIndices.has(idx)) {
+          if (
+            isNetworkError &&
+            !reportedContent &&
+            networkRetryCount < MAX_NETWORK_RETRIES &&
+            attempt < 2
+          ) {
+            networkRetryCount += 1;
+            debugLog(
+              "streamRetry",
+              `Network error during stream (retry ${networkRetryCount}/${MAX_NETWORK_RETRIES}): ${streamErr instanceof Error ? streamErr.message : String(streamErr)}`,
+            );
+            activeRequestBody = {
+              ...activeRequestBody,
+              messages: [
+                ...activeRequestBody.messages,
+                {
+                  role: "system",
+                  content:
+                    "Your previous response was interrupted by a network error. Please start over and provide a complete response.",
+                },
+              ],
+            };
             continue;
           }
-          try {
-            const { emittedTextToolCallKeys, requestContext, toolSchemas } = getToolParsingState();
-            const schema = toolSchemas.get(buf.name ?? "");
-            const args = repairToolArguments(
-              buf.name ?? "",
-              buf.args ? JSON.parse(buf.args) : {},
-              requestContext,
-              schema,
-            );
-            if (
-              buf.id &&
-              buf.name &&
-              isToolCallInput(args) &&
-              hasRequiredToolArguments(args, schema)
-            ) {
-              const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
-              if (emittedTextToolCallKeys.has(canonicalKey)) {
-                continue;
-              }
-              flushPendingText();
-              reportPart(new vscode.LanguageModelToolCallPart(buf.id, buf.name, args));
-              emittedToolCall = true;
-              if (!emittedFirstToolCall) {
-                emittedFirstToolCall = true;
-                firstToolCallAtMs = Date.now();
-              }
-              emittedTextToolCallKeys.add(canonicalKey);
-            } else if (buf.id && buf.name) {
-              skippedToolCalls.push({
-                name: buf.name,
-                required: schema?.required ?? [],
-              });
-              debugLog("Skipped invalid tool call at stream end", {
-                id: buf.id,
-                name: buf.name,
-                args,
-              });
-            }
-          } catch {
-            // Ignore incomplete JSON at stream end
-          }
+
+          throw streamErr;
         }
 
         if (pendingText && (!sawToolCall || emittedToolCall || pendingText.trim().length > 0)) {
@@ -983,10 +1077,60 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       if (deferredInvalidToolFallbackText) {
         progress.report(new vscode.LanguageModelTextPart(deferredInvalidToolFallbackText));
       }
+
+      if (this.statusBar) {
+        const shortName = model.name ?? model.id.split("/").at(-1) ?? model.id;
+        this.statusBar.showUsage(
+          shortName,
+          finalUsage?.prompt_tokens,
+          finalUsage?.completion_tokens,
+        );
+      }
     } catch (err) {
       if (token.isCancellationRequested || (err instanceof Error && err.name === "AbortError")) {
         throw new vscode.CancellationError();
       }
+
+      if (err instanceof Error && err.message.includes("[RATE_LIMITED]")) {
+        const fallbackModel = getFallbackModel(
+          model.id,
+          await this.getAvailableModels(getApiKeyFromModel(model)),
+        );
+        if (fallbackModel) {
+          const fallbackInfo: LanguageModelChatInformation = {
+            ...model,
+            id: fallbackModel.id,
+            name: fallbackModel.displayName,
+            maxInputTokens: Math.max(
+              1,
+              fallbackModel.contextWindow -
+                Math.min(fallbackModel.maxOutputTokens, DEFAULT_MAX_TOKENS),
+            ),
+            maxOutputTokens: fallbackModel.maxOutputTokens,
+            capabilities: {
+              toolCalling: fallbackModel.supportsTools ? 128 : false,
+              imageInput: fallbackModel.supportsVision,
+            },
+          };
+          const currentName = model.name ?? model.id;
+          vscode.window.showInformationMessage(
+            `Rate limited on ${currentName}. Falling back to ${fallbackModel.displayName}.`,
+          );
+          outputLog(
+            "fallback",
+            `Rate limited on ${model.id}, falling back to ${fallbackModel.id}.`,
+          );
+          await this.provideLanguageModelChatResponse(
+            fallbackInfo,
+            messages,
+            options,
+            progress,
+            token,
+          );
+          return;
+        }
+      }
+
       throw err;
     } finally {
       cancellationSubscription.dispose();

@@ -1170,4 +1170,102 @@ describe("NimChatModelProvider", () => {
       expect.objectContaining({ value: expect.stringContaining("NVIDIA NIM API key") }),
     );
   });
+
+  it("falls back to DeepSeek Flash on rate limit (429)", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (globalState.get as jest.Mock).mockImplementation((key: string) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "moonshotai/kimi-k2.6",
+              displayName: "Kimi k2.6",
+              contextWindow: 256000,
+              maxOutputTokens: 262144,
+              supportsTools: true,
+              supportsVision: true,
+            },
+            {
+              id: "deepseek-ai/deepseek-v4-flash",
+              displayName: "DeepSeek V4 Flash",
+              contextWindow: 1000000,
+              maxOutputTokens: 384000,
+              supportsTools: true,
+              supportsVision: false,
+            },
+          ]
+        : undefined,
+    );
+
+    const rateLimitError = new Error("[RATE_LIMITED] Rate limited.\nRetry after 30.");
+    const rateLimitedStream = async function* () {
+      throw rateLimitError;
+    };
+    const fallbackStream = async function* () {
+      yield { choices: [{ delta: { content: "Fallback response" } }] };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => rateLimitedStream())
+      .mockImplementationOnce(() => fallbackStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: "moonshotai/kimi-k2.6",
+        name: "Kimi k2.6",
+        maxInputTokens: 200000,
+        maxOutputTokens: 65536,
+      } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(fallbackRequest.model).toBe("deepseek-ai/deepseek-v4-flash");
+    expect((vscode as any).window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining("Falling back to DeepSeek V4 Flash"),
+    );
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Fallback response" }),
+    );
+  });
+
+  it("retries on network error during stream when no content was emitted", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const networkError = new TypeError("fetch failed");
+    const failingStream = async function* () {
+      throw networkError;
+    };
+    const successStream = async function* () {
+      yield { choices: [{ delta: { content: "Recovered" } }] };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => failingStream())
+      .mockImplementationOnce(() => successStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Recovered" }));
+  });
 });

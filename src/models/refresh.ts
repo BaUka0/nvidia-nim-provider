@@ -11,6 +11,7 @@ import {
 import { normalizeNvidiaModels } from "./catalog";
 import { debugLog } from "../shared/logging";
 import { NimChatModelProvider } from "../provider/chat-provider";
+import { StatusBarManager } from "../shared/status-bar";
 
 let _refreshQueue: Promise<void> = Promise.resolve();
 
@@ -19,6 +20,7 @@ export async function refreshModelsFromApi(
   ua: string,
   options: { showMessages: boolean; apiKey?: string },
   provider: NimChatModelProvider | null,
+  statusBar?: StatusBarManager,
 ): Promise<void> {
   const nextRefresh = _refreshQueue
     .catch(() => undefined)
@@ -31,6 +33,7 @@ export async function refreshModelsFromApi(
         return;
       }
 
+      statusBar?.showRefreshing();
       try {
         const rawModels = await fetchModels(apiKey, undefined, ua);
         if (Array.isArray(rawModels)) {
@@ -52,6 +55,7 @@ export async function refreshModelsFromApi(
           }
           await context.globalState.update(MODELS_CACHE_VERSION_STATE_KEY, MODELS_CACHE_VERSION);
           provider?.fireModelInfoChanged();
+          statusBar?.showOk(normalizedModels.length);
           debugLog(
             "refreshModels",
             `Refreshed ${normalizedModels.length} models from ${PROVIDER_DISPLAY_NAME} API.`,
@@ -64,6 +68,7 @@ export async function refreshModelsFromApi(
           return;
         }
 
+        statusBar?.showError("Model refresh failed");
         debugLog("refreshModels", "Model refresh failed or returned malformed data.");
         if (options.showMessages) {
           vscode.window.showWarningMessage(
@@ -71,14 +76,11 @@ export async function refreshModelsFromApi(
           );
         }
       } catch (error) {
-        debugLog(
-          "refreshModels",
-          `Model refresh failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        const msg = error instanceof Error ? error.message : String(error);
+        statusBar?.showError(msg);
+        debugLog("refreshModels", `Model refresh failed: ${msg}`);
         if (options.showMessages) {
-          vscode.window.showErrorMessage(
-            `Failed to refresh models: ${error instanceof Error ? error.message : String(error)}`,
-          );
+          vscode.window.showErrorMessage(`Failed to refresh models: ${msg}`);
         }
       }
     });

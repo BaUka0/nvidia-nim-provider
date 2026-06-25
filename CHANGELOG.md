@@ -1,5 +1,13 @@
 # Change Log
 
+## [0.3.0] - 2026-06-25
+
+### Added
+- **Token Usage Status Bar**: After each response, the status bar shows real-time token usage (`$(copilot) Model: 1.2k→850`) with compact k/M formatting. The status bar is now also wired to model refresh (shows model count, refreshing spinner, and errors).
+- **Auto-Fallback on Rate Limit**: When a model returns HTTP 429 (rate limited), the extension automatically retries with DeepSeek V4 Flash (the lightest model in the whitelist) and shows a notification. Prevents dead-end errors during heavy usage.
+- **Streaming Retry on Network Error**: If a streaming connection drops mid-response (network error, ECONNRESET, socket failure) and no content was emitted yet, the extension retries up to 2 times with a system message asking the model to start over.
+- **Context Compression via API Summarization**: Long conversations that exceed the model's context window are now automatically compressed instead of throwing a hard error. Old messages are summarized via a lightweight DeepSeek Flash API call, preserving key context (decisions, file paths, code references). Falls back to simple truncation if the summarization API call fails.
+
 ## [0.2.8] - 2026-06-25
 
 ### Added

@@ -452,3 +452,65 @@ export function estimateMessagesTokens(
   }
   return total;
 }
+
+/**
+ * Estimate token count for converted NimChatMessage[] (post-conversion).
+ */
+export function estimateNimMessagesTokens(messages: NimChatMessage[]): number {
+  let total = 0;
+  for (const m of messages) {
+    const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+    total += estimateTokens(content);
+  }
+  return total;
+}
+
+/**
+ * Truncate converted messages to fit within a token budget.
+ * Preserves all system messages + the most recent non-system messages.
+ * Drops older messages from the middle.
+ */
+export function truncateMessagesForContext(
+  messages: NimChatMessage[],
+  maxTokens: number,
+): NimChatMessage[] {
+  const systemMessages = messages.filter((m) => m.role === "system");
+  const nonSystemMessages = messages.filter((m) => m.role !== "system");
+
+  let systemTokens = 0;
+  for (const m of systemMessages) {
+    const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+    systemTokens += estimateTokens(content);
+  }
+
+  const budgetForNonSystem = Math.max(0, maxTokens - systemTokens);
+  const kept: NimChatMessage[] = [];
+  let usedTokens = 0;
+
+  for (let i = nonSystemMessages.length - 1; i >= 0; i -= 1) {
+    const msg = nonSystemMessages[i];
+    const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+    const msgTokens = estimateTokens(content);
+    if (usedTokens + msgTokens > budgetForNonSystem) {
+      break;
+    }
+    kept.unshift(msg);
+    usedTokens += msgTokens;
+  }
+
+  if (kept.length === 0 && nonSystemMessages.length > 0) {
+    kept.push(nonSystemMessages[nonSystemMessages.length - 1]);
+  }
+
+  const result: NimChatMessage[] = [
+    {
+      role: "system",
+      content:
+        "[Note: Earlier conversation context was truncated to fit the model's context window.]",
+    },
+    ...systemMessages,
+    ...kept,
+  ];
+
+  return result;
+}

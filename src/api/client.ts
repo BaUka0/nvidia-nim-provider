@@ -130,6 +130,34 @@ export async function fetchModels(
   }
 }
 
+export async function chatCompletion(
+  apiKey: string,
+  requestBody: NimChatRequest,
+  signal?: AbortSignal,
+  userAgent?: string,
+): Promise<string> {
+  const response = await fetchWithRetry(`${BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      ...(userAgent ? { "User-Agent": userAgent } : {}),
+    },
+    body: JSON.stringify({ ...requestBody, stream: false }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`NVIDIA NIM API error: ${response.status} ${response.statusText}\n${text}`);
+  }
+
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
 export async function* streamChatCompletion(
   apiKey: string,
   requestBody: NimChatRequest,

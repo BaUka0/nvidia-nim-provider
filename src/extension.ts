@@ -43,7 +43,11 @@ async function migrateLanguageModelProviderGroup(apiKey: string): Promise<boolea
   }
 }
 
-async function initializeStoredApiKey(context: vscode.ExtensionContext, ua: string): Promise<void> {
+async function initializeStoredApiKey(
+  context: vscode.ExtensionContext,
+  ua: string,
+  statusBar: StatusBarManager,
+): Promise<void> {
   const apiKey = await context.secrets.get(SECRET_STORAGE_KEY);
   if (!apiKey) {
     return;
@@ -53,10 +57,14 @@ async function initializeStoredApiKey(context: vscode.ExtensionContext, ua: stri
   if (!migrationDone && (await migrateLanguageModelProviderGroup(apiKey))) {
     await context.globalState.update(MIGRATION_DONE_KEY, true);
   }
-  await refreshModelsFromApi(context, ua, { showMessages: false, apiKey }, _provider);
+  await refreshModelsFromApi(context, ua, { showMessages: false, apiKey }, _provider, statusBar);
 }
 
-function registerCommands(context: vscode.ExtensionContext, ua: string): void {
+function registerCommands(
+  context: vscode.ExtensionContext,
+  ua: string,
+  statusBar: StatusBarManager,
+): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(MANAGE_COMMAND_ID, async () => {
       const existing = await context.secrets.get(SECRET_STORAGE_KEY);
@@ -92,7 +100,7 @@ function registerCommands(context: vscode.ExtensionContext, ua: string): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(REFRESH_MODELS_COMMAND_ID, async () => {
-      await refreshModelsFromApi(context, ua, { showMessages: true }, _provider);
+      await refreshModelsFromApi(context, ua, { showMessages: true }, _provider, statusBar);
     }),
   );
 
@@ -146,7 +154,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Create and register provider
-  const provider = new NimChatModelProvider(context.secrets, ua, context.globalState);
+  const provider = new NimChatModelProvider(context.secrets, ua, context.globalState, statusBar);
   _provider = provider;
 
   context.subscriptions.push(
@@ -162,10 +170,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register tools and commands
   context.subscriptions.push(registerNimTools(context.secrets, context.globalState));
-  registerCommands(context, ua);
+  registerCommands(context, ua, statusBar);
 
   // Initialize stored API key (async, fire-and-forget)
-  void initializeStoredApiKey(context, ua);
+  void initializeStoredApiKey(context, ua, statusBar);
 }
 
 export function deactivate() {

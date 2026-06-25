@@ -49,6 +49,18 @@ const ELITE_MODELS_WHITELIST: Record<string, Partial<NormalizedNvidiaModel>> = {
   },
 };
 
+export const FALLBACK_MODEL_ID = "deepseek-ai/deepseek-v4-flash";
+
+export function getFallbackModel(
+  currentModelId: string,
+  availableModels: NormalizedNvidiaModel[],
+): NormalizedNvidiaModel | undefined {
+  if (currentModelId === FALLBACK_MODEL_ID) {
+    return undefined;
+  }
+  return availableModels.find((m) => m.id === FALLBACK_MODEL_ID);
+}
+
 export function normalizeNvidiaModels(models: NvidiaModelSummary[]): NormalizedNvidiaModel[] {
   const seenIds = new Set<string>();
   const normalizedModels: NormalizedNvidiaModel[] = [];
