@@ -16,11 +16,7 @@ jest.mock("vscode", () => ({
   },
 }));
 
-jest.mock("../src/mcp-compat", () => ({
-  OcGoMcpClient: jest.fn().mockImplementation(() => ({
-    analyzeImage: jest.fn().mockResolvedValue("Analyzed result"),
-  })),
-}));
+import { NimVisionClient } from "../src/tools/vision";
 
 describe("OcGoAnalyzeImageTool", () => {
   let tool: OcGoAnalyzeImageTool;
@@ -29,6 +25,10 @@ describe("OcGoAnalyzeImageTool", () => {
   beforeEach(() => {
     secrets = { get: jest.fn() };
     tool = new OcGoAnalyzeImageTool(secrets as any);
+    jest.spyOn(NimVisionClient.prototype, "analyzeImage").mockResolvedValue("Analyzed result");
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it("has correct metadata", () => {
@@ -48,12 +48,7 @@ describe("OcGoAnalyzeImageTool", () => {
   });
 
   it("handles analyzeImage errors gracefully", async () => {
-    const { OcGoMcpClient } = jest.requireMock("../src/mcp-compat") as {
-      OcGoMcpClient: jest.Mock;
-    };
-    OcGoMcpClient.mockImplementationOnce(() => ({
-      analyzeImage: jest.fn().mockRejectedValue(new Error("API down")),
-    }));
+    jest.spyOn(NimVisionClient.prototype, "analyzeImage").mockRejectedValue(new Error("API down"));
     const failingTool = new OcGoAnalyzeImageTool(secrets as any);
     const result = await failingTool.invoke(
       {

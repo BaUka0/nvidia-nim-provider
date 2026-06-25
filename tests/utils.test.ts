@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { OcGoChatMessage } from "../src/types";
+import { NimChatMessage } from "../src/types";
 import {
   convertMessages,
   convertTools,
@@ -18,7 +18,7 @@ describe("convertMessages", () => {
       },
     ];
     const result = convertMessages(messages as any);
-    expect(result).toEqual<OcGoChatMessage[]>([{ role: "user", content: "Hello" }]);
+    expect(result).toEqual<NimChatMessage[]>([{ role: "user", content: "Hello" }]);
   });
 
   it("converts assistant text message", () => {
@@ -29,7 +29,7 @@ describe("convertMessages", () => {
       },
     ];
     const result = convertMessages(messages as any);
-    expect(result).toEqual<OcGoChatMessage[]>([{ role: "assistant", content: "Hi there" }]);
+    expect(result).toEqual<NimChatMessage[]>([{ role: "assistant", content: "Hi there" }]);
   });
 
   it("converts system text message", () => {
@@ -40,13 +40,13 @@ describe("convertMessages", () => {
       },
     ];
     const result = convertMessages(messages as any);
-    expect(result).toEqual<OcGoChatMessage[]>([{ role: "system", content: "Be helpful" }]);
+    expect(result).toEqual<NimChatMessage[]>([{ role: "system", content: "Be helpful" }]);
   });
 
   it("handles empty messages", () => {
     const messages = [{ role: vscode.LanguageModelChatMessageRole.User, content: [] }];
     const result = convertMessages(messages as any);
-    expect(result).toEqual<OcGoChatMessage[]>([{ role: "user", content: "(empty message)" }]);
+    expect(result).toEqual<NimChatMessage[]>([{ role: "user", content: "(empty message)" }]);
   });
 
   it("converts image parts to image_url for vision-capable models", () => {
@@ -77,7 +77,7 @@ describe("convertMessages", () => {
       },
     ];
     const result = convertMessages(messages as any, { supportsVision: false });
-    expect(result).toEqual<OcGoChatMessage[]>([{ role: "user", content: "Describe this image" }]);
+    expect(result).toEqual<NimChatMessage[]>([{ role: "user", content: "Describe this image" }]);
   });
 });
 

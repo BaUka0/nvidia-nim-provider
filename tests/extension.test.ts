@@ -1,4 +1,4 @@
-import { fetchModels } from "../src/api";
+import { fetchModels } from "../src/api/client";
 import { OcGoChatModelProvider } from "../src/provider";
 
 const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
@@ -20,18 +20,22 @@ const mockRegisterCommand = jest.fn(
 const mockExecuteCommand = jest.fn();
 const mockRegisterLanguageModelChatProvider = jest.fn(() => ({ dispose: jest.fn() }));
 
-jest.mock("../src/api", () => ({
+jest.mock("../src/api/client", () => ({
   fetchModels: jest.fn(),
 }));
 
-jest.mock("../src/provider", () => ({
-  OcGoChatModelProvider: jest.fn().mockImplementation(() => ({
-    fireModelInfoChanged: jest.fn(),
-  })),
+let providerInstance: any;
+jest.mock("../src/provider/chat-provider", () => ({
+  NimChatModelProvider: jest.fn().mockImplementation(() => {
+    providerInstance = {
+      fireModelInfoChanged: jest.fn(),
+    };
+    return providerInstance;
+  }),
 }));
 
-jest.mock("../src/tools", () => ({
-  registerOcGoTools: jest.fn(() => ({ dispose: jest.fn() })),
+jest.mock("../src/tools/vision", () => ({
+  registerNimTools: jest.fn(() => ({ dispose: jest.fn() })),
 }));
 
 const mockStatusBarOk = jest.fn();
@@ -39,7 +43,7 @@ const mockStatusBarRefresh = jest.fn();
 const mockStatusBarError = jest.fn();
 const mockStatusBarDispose = jest.fn();
 
-jest.mock("../src/status-bar", () => ({
+jest.mock("../src/shared/status-bar", () => ({
   StatusBarManager: jest.fn().mockImplementation(() => ({
     showOk: mockStatusBarOk,
     showRefreshing: mockStatusBarRefresh,
@@ -49,6 +53,14 @@ jest.mock("../src/status-bar", () => ({
 }));
 
 jest.mock("vscode", () => ({
+  SecretStorage: class {},
+  Disposable: {
+    from: jest.fn(),
+  },
+  EventEmitter: class {
+    event = jest.fn();
+    fire = jest.fn();
+  },
   version: "1.104.0",
   window: {
     createOutputChannel: mockCreateOutputChannel,
@@ -63,6 +75,10 @@ jest.mock("vscode", () => ({
   },
   lm: {
     registerLanguageModelChatProvider: mockRegisterLanguageModelChatProvider,
+  },
+  StatusBarAlignment: {
+    Left: 1,
+    Right: 2,
   },
 }));
 

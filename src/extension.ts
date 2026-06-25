@@ -1,31 +1,25 @@
 import * as vscode from "vscode";
-import { fetchModels } from "./api";
 import {
   DEBUG_ENV_VAR,
   DEBUG_STATE_KEY,
   EXTENSION_VERSION,
   MANAGE_COMMAND_ID,
   MIGRATION_DONE_KEY,
-  MODELS_CACHE_VERSION,
-  MODELS_CACHE_VERSION_STATE_KEY,
-  MODELS_STATE_KEY,
   OPEN_DEBUG_LOG_COMMAND_ID,
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
-  RAW_MODELS_STATE_KEY,
   REFRESH_MODELS_COMMAND_ID,
   SECRET_STORAGE_KEY,
   TOGGLE_DEBUG_LOGGING_COMMAND_ID,
   TOGGLE_SHOW_REASONING_COMMAND_ID,
-} from "./constants";
-import { normalizeNvidiaModels } from "./model-catalog";
-import { debugLog, getOutputChannel, outputLog } from "./output-channel";
-import { OcGoChatModelProvider } from "./provider";
-import { StatusBarManager } from "./status-bar";
-import { registerOcGoTools } from "./tools";
+} from "./shared/constants";
+import { debugLog, getOutputChannel, outputLog } from "./shared/logging";
+import { StatusBarManager } from "./shared/status-bar";
+import { NimChatModelProvider } from "./provider/chat-provider";
+import { registerNimTools } from "./tools/vision";
+import { refreshModelsFromApi, resetRefreshQueue } from "./models/refresh";
 
-let _provider: OcGoChatModelProvider | null = null;
-let _refreshQueue: Promise<void> = Promise.resolve();
+let _provider: NimChatModelProvider | null = null;
 
 async function migrateLanguageModelProviderGroup(apiKey: string): Promise<boolean> {
   try {
@@ -59,107 +53,10 @@ async function initializeStoredApiKey(context: vscode.ExtensionContext, ua: stri
   if (!migrationDone && (await migrateLanguageModelProviderGroup(apiKey))) {
     await context.globalState.update(MIGRATION_DONE_KEY, true);
   }
-  await refreshModelsFromApi(context, ua, { showMessages: false, apiKey });
+  await refreshModelsFromApi(context, ua, { showMessages: false, apiKey }, _provider);
 }
 
-async function refreshModelsFromApi(
-  context: vscode.ExtensionContext,
-  ua: string,
-  options: { showMessages: boolean; apiKey?: string },
-): Promise<void> {
-  const nextRefresh = _refreshQueue
-    .catch(() => undefined)
-    .then(async () => {
-      const apiKey = options.apiKey ?? (await context.secrets.get(SECRET_STORAGE_KEY));
-      if (!apiKey) {
-        if (options.showMessages) {
-          vscode.window.showWarningMessage(`No ${PROVIDER_DISPLAY_NAME} API key configured.`);
-        }
-        return;
-      }
-
-      try {
-        const rawModels = await fetchModels(apiKey, undefined, ua);
-        if (Array.isArray(rawModels)) {
-          const normalizedModels = normalizeNvidiaModels(rawModels);
-          const previousRawModels = context.globalState.get(RAW_MODELS_STATE_KEY);
-          await context.globalState.update(RAW_MODELS_STATE_KEY, rawModels);
-          try {
-            await context.globalState.update(MODELS_STATE_KEY, normalizedModels);
-          } catch (normalizedWriteError) {
-            try {
-              await context.globalState.update(RAW_MODELS_STATE_KEY, previousRawModels);
-            } catch (rollbackError) {
-              debugLog(
-                "refreshModels",
-                `Raw cache rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
-              );
-            }
-            throw normalizedWriteError;
-          }
-          await context.globalState.update(MODELS_CACHE_VERSION_STATE_KEY, MODELS_CACHE_VERSION);
-          _provider?.fireModelInfoChanged();
-          debugLog(
-            "refreshModels",
-            `Refreshed ${normalizedModels.length} models from ${PROVIDER_DISPLAY_NAME} API.`,
-          );
-          if (options.showMessages) {
-            vscode.window.showInformationMessage(
-              `Refreshed ${normalizedModels.length} ${PROVIDER_DISPLAY_NAME} models.`,
-            );
-          }
-          return;
-        }
-
-        debugLog("refreshModels", "Model refresh failed or returned malformed data.");
-        if (options.showMessages) {
-          vscode.window.showWarningMessage(
-            `Failed to refresh models from ${PROVIDER_DISPLAY_NAME} API.`,
-          );
-        }
-      } catch (error) {
-        debugLog(
-          "refreshModels",
-          `Model refresh failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        if (options.showMessages) {
-          vscode.window.showErrorMessage(
-            `Failed to refresh models: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
-    });
-
-  _refreshQueue = nextRefresh.catch(() => undefined);
-  return nextRefresh;
-}
-
-export function activate(context: vscode.ExtensionContext) {
-  const ua = `nvidia-nim-provider/${EXTENSION_VERSION} VSCode/${vscode.version}`;
-  const channel = getOutputChannel();
-  context.subscriptions.push(channel);
-  const statusBar = new StatusBarManager();
-  context.subscriptions.push(statusBar);
-  const debugEnabled = context.globalState.get<boolean>(DEBUG_STATE_KEY, false);
-  process.env[DEBUG_ENV_VAR] = debugEnabled ? "1" : "0";
-  debugLog(
-    "activate",
-    `Extension activated. Debug logging ${debugEnabled ? "enabled" : "disabled"}.`,
-  );
-  const provider = new OcGoChatModelProvider(context.secrets, ua, context.globalState);
-  _provider = provider;
-
-  context.subscriptions.push(
-    context.secrets.onDidChange((e) => {
-      if (e.key === SECRET_STORAGE_KEY) {
-        _provider?.fireModelInfoChanged();
-      }
-    }),
-  );
-
-  const registration = vscode.lm.registerLanguageModelChatProvider(PROVIDER_VENDOR, provider);
-  context.subscriptions.push(registration);
-  context.subscriptions.push(registerOcGoTools(context.secrets, context.globalState));
+function registerCommands(context: vscode.ExtensionContext, ua: string): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(MANAGE_COMMAND_ID, async () => {
       const existing = await context.secrets.get(SECRET_STORAGE_KEY);
@@ -195,7 +92,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(REFRESH_MODELS_COMMAND_ID, async () => {
-      await refreshModelsFromApi(context, ua, { showMessages: true });
+      await refreshModelsFromApi(context, ua, { showMessages: true }, _provider);
     }),
   );
 
@@ -229,11 +126,49 @@ export function activate(context: vscode.ExtensionContext) {
       );
     }),
   );
+}
 
+export function activate(context: vscode.ExtensionContext) {
+  const ua = `nvidia-nim-provider/${EXTENSION_VERSION} VSCode/${vscode.version}`;
+
+  // Initialize output channel and status bar
+  const channel = getOutputChannel();
+  context.subscriptions.push(channel);
+  const statusBar = new StatusBarManager();
+  context.subscriptions.push(statusBar);
+
+  // Initialize debug logging
+  const debugEnabled = context.globalState.get<boolean>(DEBUG_STATE_KEY, false);
+  process.env[DEBUG_ENV_VAR] = debugEnabled ? "1" : "0";
+  debugLog(
+    "activate",
+    `Extension activated. Debug logging ${debugEnabled ? "enabled" : "disabled"}.`,
+  );
+
+  // Create and register provider
+  const provider = new NimChatModelProvider(context.secrets, ua, context.globalState);
+  _provider = provider;
+
+  context.subscriptions.push(
+    context.secrets.onDidChange((e) => {
+      if (e.key === SECRET_STORAGE_KEY) {
+        _provider?.fireModelInfoChanged();
+      }
+    }),
+  );
+
+  const registration = vscode.lm.registerLanguageModelChatProvider(PROVIDER_VENDOR, provider);
+  context.subscriptions.push(registration);
+
+  // Register tools and commands
+  context.subscriptions.push(registerNimTools(context.secrets, context.globalState));
+  registerCommands(context, ua);
+
+  // Initialize stored API key (async, fire-and-forget)
   void initializeStoredApiKey(context, ua);
 }
 
 export function deactivate() {
   _provider = null;
-  _refreshQueue = Promise.resolve();
+  resetRefreshQueue();
 }
