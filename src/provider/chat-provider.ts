@@ -55,20 +55,19 @@ import {
   estimateTokens,
   LegacyPart,
 } from "../messages/converter";
-import {
-  filterThinkTagsFromChunk,
-  flushThinkTagFilter,
-} from "../messages/think-filter";
+import { filterThinkTagsFromChunk, flushThinkTagFilter } from "../messages/think-filter";
 
 const DEFAULT_MAX_TOKENS = 65536;
 
 interface NvidiaProviderConfiguration {
   apiKey?: string;
+  reasoningMode?: string;
 }
 
 interface NvidiaLanguageModelChatInformation extends LanguageModelChatInformation {
   apiKey?: string;
   isUserSelectable?: boolean;
+  configurationSchema?: any;
 }
 
 type SelectedModelRuntimeCapabilities = LanguageModelChatInformation & {
@@ -351,6 +350,36 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     apiKey?: string,
   ): NvidiaLanguageModelChatInformation[] {
     return models.map((info) => {
+      const adapter = getModelAdapter(info.id);
+      let configurationSchema = undefined;
+
+      if (adapter.applyReasoningMode) {
+        const enumValues = adapter.supportedReasoningModes ?? [
+          "none",
+          "on",
+          "medium",
+          "high",
+          "max",
+        ];
+        const enumItemLabels = enumValues.map((v) =>
+          v === "none" ? "None" : v.charAt(0).toUpperCase() + v.slice(1),
+        );
+
+        configurationSchema = {
+          properties: {
+            reasoningMode: {
+              type: "string",
+              title: "Reasoning Mode",
+              description: "Configure the reasoning effort mode sent to supported models.",
+              enum: enumValues,
+              enumItemLabels: enumItemLabels,
+              group: "navigation",
+              default: "none",
+            },
+          },
+        };
+      }
+
       return {
         id: info.id,
         name: info.displayName,
@@ -369,6 +398,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           imageInput: info.supportsVision,
         },
         ...(apiKey ? { apiKey } : {}),
+        ...(configurationSchema ? { configurationSchema } : {}),
       };
     });
   }
@@ -473,6 +503,26 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         temperature: temperatureVal,
       };
 
+      let reasoningMode =
+        (options as { modelConfiguration?: { reasoningMode?: string } }).modelConfiguration
+          ?.reasoningMode ?? "none";
+      if (reasoningMode === "none") {
+        const modes = adapter.supportedReasoningModes;
+        if (modes && modes.length > 0) {
+          reasoningMode = vscode.workspace
+            .getConfiguration("nvidia-nim")
+            .get<string>("reasoningMode", "none");
+
+          if (!modes.includes(reasoningMode)) {
+            reasoningMode = modes.includes("none") ? "none" : modes[0];
+          }
+        }
+      }
+
+      if (adapter.applyReasoningMode) {
+        adapter.applyReasoningMode(requestBody, reasoningMode);
+      }
+
       const modelOpts = options.modelOptions as Record<string, unknown>;
       if (typeof modelOpts?.top_p === "number") {
         requestBody.top_p = Math.min(1, Math.max(0, modelOpts.top_p));
@@ -570,6 +620,26 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           reportPart(new vscode.LanguageModelTextPart(pendingText));
           pendingText = "";
         };
+        const emitReasoning = (text: string): void => {
+          if (!text) {
+            return;
+          }
+          markFirstResponse();
+          flushPendingText();
+          const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+          if (ThinkingPart) {
+            reportPart(new ThinkingPart(text));
+          } else {
+            const showReasoning = vscode.workspace
+              .getConfiguration("nvidia-nim")
+              .get<boolean>("showReasoning", false);
+            if (showReasoning) {
+              reportPart(
+                new vscode.LanguageModelTextPart(text.startsWith(" ") ? text : ` ${text}`),
+              );
+            }
+          }
+        };
         const processFilteredText = (text: string): void => {
           if (!text) {
             return;
@@ -657,26 +727,22 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
           if (choice?.delta?.content) {
             markFirstResponse();
-            processFilteredText(
-              filterThinkTagsFromChunk(choice.delta.content, thinkTagFilterState),
-            );
+            for (const segment of filterThinkTagsFromChunk(
+              choice.delta.content,
+              thinkTagFilterState,
+            )) {
+              if (segment.type === "thinking") {
+                emitReasoning(segment.text);
+              } else {
+                processFilteredText(segment.text);
+              }
+            }
           }
 
           const reasoningContent = (choice?.delta as { reasoning_content?: string })
             ?.reasoning_content;
           if (reasoningContent) {
-            markFirstResponse();
-            const showReasoning = vscode.workspace
-              .getConfiguration("nvidia-nim")
-              .get<boolean>("showReasoning", false);
-            if (showReasoning) {
-              flushPendingText();
-              reportPart(
-                new vscode.LanguageModelTextPart(
-                  reasoningContent.startsWith(" ") ? reasoningContent : ` ${reasoningContent}`,
-                ),
-              );
-            }
+            emitReasoning(reasoningContent);
           }
 
           // Handle tool calls
@@ -755,7 +821,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           }
         }
 
-        processFilteredText(flushThinkTagFilter(thinkTagFilterState));
+        for (const segment of flushThinkTagFilter(thinkTagFilterState)) {
+          if (segment.type === "thinking") {
+            emitReasoning(segment.text);
+          } else {
+            processFilteredText(segment.text);
+          }
+        }
 
         // Flush any remaining buffered tool calls at stream end
         for (const [idx, buf] of Array.from(toolCallBuffers.entries())) {

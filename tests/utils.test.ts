@@ -6,6 +6,7 @@ import {
   estimateMessagesTokens,
   estimateTokens,
   filterThinkTagsFromChunk,
+  flushThinkTagFilter,
   stripThinkTags,
 } from "../src/utils";
 
@@ -352,30 +353,88 @@ describe("filterThinkTagsFromChunk cross-chunk handling", () => {
   it("buffers partial open tag and resolves in next chunk", () => {
     const state = { insideThinkBlock: false, pendingText: "" };
     const result1 = filterThinkTagsFromChunk("hello <thin", state);
-    expect(result1).toBe("hello ");
+    expect(result1).toEqual([{ type: "text", text: "hello " }]);
 
     const result2 = filterThinkTagsFromChunk("k>hidden</think> world", state);
-    expect(result2).toBe(" world");
+    expect(result2).toEqual([
+      { type: "thinking", text: "hidden" },
+      { type: "text", text: " world" },
+    ]);
     expect(state.insideThinkBlock).toBe(false);
   });
 
   it("buffers partial close tag inside think block across chunks", () => {
     const state = { insideThinkBlock: true, pendingText: "" };
     const result1 = filterThinkTagsFromChunk("text </thin", state);
-    expect(result1).toBe("");
+    expect(result1).toEqual([{ type: "thinking", text: "text " }]);
 
     const result2 = filterThinkTagsFromChunk("k> visible", state);
-    expect(result2).toBe(" visible");
+    expect(result2).toEqual([{ type: "text", text: " visible" }]);
     expect(state.insideThinkBlock).toBe(false);
   });
 
   it("buffers partial close tag starting with </ across chunks", () => {
     const state = { insideThinkBlock: true, pendingText: "" };
     const result1 = filterThinkTagsFromChunk("text </", state);
-    expect(result1).toBe("");
+    expect(result1).toEqual([{ type: "thinking", text: "text " }]);
 
     const result2 = filterThinkTagsFromChunk("think> visible", state);
-    expect(result2).toBe(" visible");
+    expect(result2).toEqual([{ type: "text", text: " visible" }]);
     expect(state.insideThinkBlock).toBe(false);
+  });
+});
+
+describe("flushThinkTagFilter", () => {
+  it("flushes pending text as a text segment when not inside a think block", () => {
+    const state = { insideThinkBlock: false, pendingText: "leftover" };
+    expect(flushThinkTagFilter(state)).toEqual([{ type: "text", text: "leftover" }]);
+    expect(state.pendingText).toBe("");
+    expect(state.insideThinkBlock).toBe(false);
+  });
+
+  it("discards a partial close tag when flushing inside a think block", () => {
+    const state = { insideThinkBlock: true, pendingText: "</thi" };
+    expect(flushThinkTagFilter(state)).toEqual([]);
+    expect(state.pendingText).toBe("");
+    expect(state.insideThinkBlock).toBe(false);
+  });
+
+  it("returns no segments when the state is already clean", () => {
+    const state = { insideThinkBlock: false, pendingText: "" };
+    expect(flushThinkTagFilter(state)).toEqual([]);
+  });
+});
+
+describe("filterThinkTagsFromChunk think-block capture", () => {
+  it("captures a complete think block as a thinking segment followed by text", () => {
+    const state = { insideThinkBlock: false, pendingText: "" };
+    const result = filterThinkTagsFromChunk("<think>reasoning</think>answer", state);
+    expect(result).toEqual([
+      { type: "thinking", text: "reasoning" },
+      { type: "text", text: "answer" },
+    ]);
+  });
+
+  it("emits thinking incrementally while inside a think block across chunks", () => {
+    const state = { insideThinkBlock: false, pendingText: "" };
+    const result1 = filterThinkTagsFromChunk("<think>part one ", state);
+    expect(result1).toEqual([{ type: "thinking", text: "part one " }]);
+
+    const result2 = filterThinkTagsFromChunk("part two</think>visible", state);
+    expect(result2).toEqual([
+      { type: "thinking", text: "part two" },
+      { type: "text", text: "visible" },
+    ]);
+    expect(state.insideThinkBlock).toBe(false);
+  });
+
+  it("preserves text before a think block", () => {
+    const state = { insideThinkBlock: false, pendingText: "" };
+    const result = filterThinkTagsFromChunk("before<think>inner</think>after", state);
+    expect(result).toEqual([
+      { type: "text", text: "before" },
+      { type: "thinking", text: "inner" },
+      { type: "text", text: "after" },
+    ]);
   });
 });

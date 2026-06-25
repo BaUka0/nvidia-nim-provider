@@ -42,6 +42,11 @@ jest.mock("vscode", () => ({
     showInputBox: jest.fn(),
     showInformationMessage: jest.fn().mockResolvedValue(undefined),
   },
+  workspace: {
+    getConfiguration: jest.fn(() => ({
+      get: jest.fn((key: string, defaultValue: any) => defaultValue),
+    })),
+  },
   LanguageModelError: {
     NoPermissions: (msg: string) => new Error(msg),
     NotFound: (msg: string) => new Error(msg),

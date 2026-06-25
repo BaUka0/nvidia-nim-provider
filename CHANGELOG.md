@@ -1,6 +1,80 @@
 # Change Log
 
-## [0.1.23] - 2026-04-27
+## [0.2.7] - 2026-06-25
+
+### Added
+- **Dynamic Reasoning Effort Picker**: Added full support for configuring the reasoning effort directly via the VS Code Copilot Chat dropdown menu (`LanguageModelChatInformation.configurationSchema`). The dropdown intelligently updates its options based on the selected model:
+  - **DeepSeek**: `None`, `High`, `Max`
+  - **Nemotron**: `None`, `Medium`, `High`
+  - **Kimi**, **MiniMax**, **GLM-5.1**: `None`, `On`
+  - **Stepfun-3.7-flash**: Unconditionally reasons by default (no manual toggle required).
+- **Native VS Code Reasoning UI**: Integrated the proposed `LanguageModelThinkingPart` API. When running in VS Code Insiders, the reasoning tokens (`reasoning_content`) emitted by the models will be captured and beautifully rendered as collapsible thinking blocks within the chat interface, instead of being dumped as raw text!
+- **Advanced Payload Configuration**: Implemented `chat_template_kwargs` to seamlessly inject advanced reasoning parameters into the NVIDIA NIM REST payload. This properly supports complex models like DeepSeek, GLM, and MiniMax that require nested arguments.
+
+### Changed
+- Refined the default label for reasoning toggles: renamed "Default (Off)" to "None" across the entire codebase to reduce ambiguity and align with standard terminology.
+- Simplified `Stepfun-3.7-flash` adapter by entirely removing the manual reasoning mode selectors to mirror upstream changes (the model automatically thinks without needing an explicit toggle).
+- Streamlined `nvidia-nim.reasoningMode` workspace setting defaults to dynamically map to the appropriate first valid state (`none`) instead of hardcoding `default`.
+- Bumped internal Node APIs and updated types to handle the experimental `languageModelThinkingPart` API proposals in `package.json`.
+
+### Fixed
+- **GLM-5.1 & MiniMax-M3 Crashes**: Fixed a critical `400 Bad Request` validation error (`Unsupported parameter(s): enable_thinking`) by correctly routing their reasoning config options through `chat_template_kwargs` rather than injecting it at the root of the API payload.
+- **DeepSeek Argument Compatibility**: Corrected DeepSeek's `thinking` and `reasoning_effort` API mapping. Now properly nests these parameters inside `chat_template_kwargs` so the NIM backend successfully activates DeepSeek-V4's advanced reasoning capabilities without throwing validation errors.
+
+## [0.2.6] - 2026-06-25
+
+### Added
+- Enabled experimental `LanguageModelThinkingPart` in `package.json`'s `enabledApiProposals` to prepare for native reasoning token rendering in VS Code Insiders.
+
+### Changed
+- Forced a version bump to bypass aggressive VS Code local VSIX caching. This ensures users installing the latest build actually receive the updated streaming code.
+
+## [0.2.5] - 2026-06-25
+
+### Added
+- Introduced explicit reasoning capabilities for **GLM-5.1**.
+
+### Removed
+- **Massive Codebase Refactoring**: Completely purged all non-core, outdated, or experimental model adapters to heavily streamline the provider. We have officially dropped support for:
+  - Mistral / Mixtral (all variants)
+  - Qwen (all variants)
+  - Phi (all variants)
+  - Yi (all variants)
+  - Gemma
+  - Llama-4 Scout
+  - Older Nemotron iterations (Nemotron 4, Nemotron Ultra)
+- The extension now strictly focuses on maintaining high-quality integrations for exactly 6 core reasoning models: **DeepSeek**, **Nemotron**, **Kimi**, **MiniMax**, **Stepfun**, and **GLM**.
+
+## [0.2.4] - 2026-06-25
+
+### Added
+- Implemented the foundational infrastructure to support the new `configurationSchema` property within the VS Code API. This allows model providers to inject custom dropdown selectors into the VS Code Copilot Chat UI.
+- Dynamically mapped adapter configurations (`supportedReasoningModes`) to the VS Code UI schema properties.
+
+## [0.2.3] - 2026-06-25
+
+### Fixed
+- Fixed internal test suite failures and updated `BaseModelAdapter` mocks to verify `applyReasoningMode` integration.
+- Corrected payload merging logic to ensure temperature and reasoning options don't conflict.
+
+## [0.2.2] - 2026-06-25
+
+### Added
+- Created the `applyReasoningMode` abstract method in the base adapter interface to enforce unified reasoning configurations.
+- Hooked up `DeepSeek`, `Kimi`, `MiniMax`, and `Nemotron` to correctly respond to the newly injected reasoning modes (`default`, `on`, `low`, `medium`, `high`, `max`).
+
+## [0.2.1] - 2026-06-25
+
+### Added
+- Added a fallback workspace configuration property: `nvidia-nim.reasoningMode`. If a model doesn't explicitly pass a UI configuration via the dropdown, it will gracefully fallback to the workspace default setting.
+
+## [0.2.0] - 2026-06-25
+
+### Added
+- **Major Feature Initialization**: Began implementing robust support for Model Reasoning (Thinking) configurations.
+- Added the `nvidia-nim.showReasoning` workspace setting to allow users to expose hidden `<think>`/`reasoning_content` tokens directly into the chat stream for debugging or deeper analysis.
+
+## [0.1.23] - 2026-04-29
 
 ### Changed
 

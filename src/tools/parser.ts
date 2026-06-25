@@ -461,9 +461,9 @@ export function extractChatRequestContext(
         part instanceof vscode.LanguageModelTextPart
           ? part.value
           : typeof part === "object" &&
-                part !== null &&
-                "value" in part &&
-                typeof (part as { value?: unknown }).value === "string"
+              part !== null &&
+              "value" in part &&
+              typeof (part as { value?: unknown }).value === "string"
             ? (part as { value: string }).value
             : undefined;
 

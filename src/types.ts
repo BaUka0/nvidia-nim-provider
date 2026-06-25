@@ -41,6 +41,9 @@ export interface NimChatRequest {
   presence_penalty?: number;
   tools?: NimTool[];
   tool_choice?: "auto" | "none" | "required" | { type: string; function: { name: string } };
+  reasoning_effort?: string;
+  enable_thinking?: boolean;
+  chat_template_kwargs?: Record<string, unknown>;
 }
 
 export interface NimStreamChoice {

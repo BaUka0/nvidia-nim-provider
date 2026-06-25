@@ -3,7 +3,7 @@
   "publisher": "HidenobuNagai",
   "displayName": "NVIDIA NIM Provider",
   "description": "Use NVIDIA NIM models in GitHub Copilot Chat for VS Code",
-  "version": "0.2.0",
+  "version": "0.2.7",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -24,6 +24,9 @@
     "ai",
     "llm",
     "models"
+  ],
+  "enabledApiProposals": [
+    "languageModelThinkingPart"
   ],
   "engines": {
     "vscode": "^1.125.0"
@@ -86,6 +89,18 @@
     "configuration": {
       "title": "NVIDIA NIM",
       "properties": {
+        "nvidia-nim.reasoningMode": {
+          "type": "string",
+          "enum": [
+            "none",
+            "on",
+            "medium",
+            "high",
+            "max"
+          ],
+          "default": "none",
+          "description": "Configure the default reasoning effort mode sent to supported models. 'none' disables reasoning. Models can override this via their Copilot Chat picker dropdown."
+        },
         "nvidia-nim.showReasoning": {
           "type": "boolean",
           "default": false,

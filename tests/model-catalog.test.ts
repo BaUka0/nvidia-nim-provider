@@ -68,10 +68,7 @@ describe("normalizeNvidiaModels", () => {
   });
 
   it("deduplicates exact duplicate model ids from the NVIDIA catalog", () => {
-    const raw: NvidiaModelSummary[] = [
-      { id: "z-ai/glm-5.1" },
-      { id: "z-ai/glm-5.1" },
-    ];
+    const raw: NvidiaModelSummary[] = [{ id: "z-ai/glm-5.1" }, { id: "z-ai/glm-5.1" }];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({

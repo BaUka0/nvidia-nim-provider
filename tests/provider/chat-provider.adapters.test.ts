@@ -42,6 +42,11 @@ jest.mock("vscode", () => ({
     showInputBox: jest.fn(),
     showInformationMessage: jest.fn().mockResolvedValue(undefined),
   },
+  workspace: {
+    getConfiguration: jest.fn(() => ({
+      get: jest.fn((key: string, defaultValue: any) => defaultValue),
+    })),
+  },
   LanguageModelError: {
     NoPermissions: (msg: string) => new Error(msg),
     NotFound: (msg: string) => new Error(msg),
@@ -118,8 +123,8 @@ describe("OcGoChatModelProvider", () => {
                 supportsVision: true,
               },
               {
-                id: "meta/llama-4-maverick-17b-128e-instruct",
-                displayName: "Llama 4 Maverick 17B 128E Instruct",
+                id: "nemotron-70b",
+                displayName: "Nemotron 70B",
                 contextWindow: 131072,
                 maxOutputTokens: 16384,
                 supportsTools: true,
@@ -1039,7 +1044,7 @@ describe("OcGoChatModelProvider", () => {
   it.each([
     ["kimi-k2.6", 0.1, "Do not reveal chain-of-thought"],
     ["zai-org/glm-4.5", 0.05, "strict JSON arguments"],
-    ["meta/llama-4-maverick-17b-128e-instruct", 0.1, "Do not emit pseudo tool syntax"],
+    ["nemotron-70b", 0.1, "Do not wrap tool arguments in markdown fences"],
   ])(
     "applies the provider request profile for %s when tools are enabled",
     async (modelId: string, expectedTemperature: number, expectedMessageSnippet: string) => {
@@ -1230,5 +1235,4 @@ describe("OcGoChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({ filePath: "/tmp/example.md" });
     expect(textReports).toHaveLength(0);
   });
-
 });

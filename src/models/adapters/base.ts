@@ -13,6 +13,8 @@ export interface ModelAdapter {
   getProfile(options: { toolsEnabled?: boolean }): NvidiaModelRequestProfile;
   applyMessagesWorkaround?(messages: NimChatMessage[]): NimChatMessage[];
   parseTextEmbeddedToolCalls?(text: string): ParsedTextToolCallResult;
+  applyReasoningMode?(request: import("../../types").NimChatRequest, mode: string): void;
+  readonly supportedReasoningModes?: string[];
 }
 
 export const DEFAULT_TEMPERATURE = 0.7;

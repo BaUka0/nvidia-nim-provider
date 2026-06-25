@@ -19,4 +19,14 @@ export class KimiAdapter extends BaseModelAdapter {
     }
     return patchedMessages ?? messages;
   }
+
+  readonly supportedReasoningModes = ["none", "on"];
+
+  applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
+    if (mode === "none") {
+      request.enable_thinking = false;
+    } else {
+      request.enable_thinking = true;
+    }
+  }
 }

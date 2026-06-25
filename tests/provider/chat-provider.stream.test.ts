@@ -33,6 +33,9 @@ jest.mock("vscode", () => ({
       public content: unknown[],
     ) {}
   },
+  LanguageModelThinkingPart: class {
+    constructor(public value: string) {}
+  },
   window: {
     createOutputChannel: jest.fn(() => ({
       appendLine: jest.fn(),
@@ -41,6 +44,11 @@ jest.mock("vscode", () => ({
     })),
     showInputBox: jest.fn(),
     showInformationMessage: jest.fn().mockResolvedValue(undefined),
+  },
+  workspace: {
+    getConfiguration: jest.fn(() => ({
+      get: jest.fn((key: string, defaultValue: any) => defaultValue),
+    })),
   },
   LanguageModelError: {
     NoPermissions: (msg: string) => new Error(msg),
@@ -194,12 +202,94 @@ describe("OcGoChatModelProvider", () => {
       token as any,
     );
 
-    expect(progress.report).toHaveBeenCalledTimes(1);
-    expect(progress.report).toHaveBeenCalledWith(
-      expect.objectContaining({ value: "表示テキスト" }),
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const textReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
     );
+    const thinkingReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof ThinkingPart,
+    );
+
+    expect(textReports).toHaveLength(1);
+    expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "表示テキスト" }));
+    expect(thinkingReports).toHaveLength(1);
+    expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "hidden" }));
   });
 
+  it("emits reasoning_content deltas as thinking parts", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Let me think" } }] };
+      yield { choices: [{ delta: { reasoning_content: " about it" } }] };
+      yield { choices: [{ delta: { content: "Answer" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const thinkingReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof ThinkingPart,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+    );
+
+    expect(thinkingReports).toHaveLength(2);
+    expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "Let me think" }));
+    expect(thinkingReports[1][0]).toEqual(expect.objectContaining({ value: " about it" }));
+    expect(textReports).toHaveLength(1);
+    expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "Answer" }));
+  });
+
+  it("emits think-tag content as a thinking part for kimi models", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "<think>my reasoning</think>visible answer" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const thinkingReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof ThinkingPart,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+    );
+
+    expect(thinkingReports).toHaveLength(1);
+    expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "my reasoning" }));
+    expect(textReports).toHaveLength(1);
+    expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "visible answer" }));
+  });
   it("does not fetch models during chat when the selected model already exposes capabilities", async () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
@@ -1119,5 +1209,4 @@ describe("OcGoChatModelProvider", () => {
       expect.objectContaining({ value: expect.stringContaining("NVIDIA NIM API key") }),
     );
   });
-
 });

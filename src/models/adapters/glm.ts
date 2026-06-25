@@ -6,4 +6,15 @@ export class GlmAdapter extends BaseModelAdapter {
   readonly toolTemperature = 0.05;
   readonly toolSystemMessage =
     "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When calling tools, emit strict JSON arguments only. Do not wrap tool arguments in markdown fences, backticks, or explanatory prose.";
+
+  readonly supportedReasoningModes = ["none", "on"];
+
+  applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
+    request.chat_template_kwargs = request.chat_template_kwargs || {};
+    if (mode === "none") {
+      request.chat_template_kwargs.enable_thinking = false;
+    } else {
+      request.chat_template_kwargs.enable_thinking = true;
+    }
+  }
 }
