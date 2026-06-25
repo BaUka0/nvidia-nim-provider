@@ -18,36 +18,36 @@ const NON_CHAT_MODEL_ID_PATTERNS = [
 
 const ELITE_MODELS_WHITELIST: Record<string, Partial<NormalizedNvidiaModel>> = {
   "deepseek-ai/deepseek-v4-flash": {
-    displayName: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
+    displayName: "DeepSeek V4 Flash",
     contextWindow: 1000000,
     maxOutputTokens: 384000,
   },
   "deepseek-ai/deepseek-v4-pro": {
-    displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+    displayName: "DeepSeek V4 Pro",
     contextWindow: 1000000,
     maxOutputTokens: 384000,
   },
   "minimaxai/minimax-m3": {
-    displayName: "MiniMax M3 (1M Context, Reasoning, 100K Output, Multimodal)",
+    displayName: "MiniMax M3",
     contextWindow: 1000000,
     maxOutputTokens: 100000,
     supportsVision: true,
   },
   "moonshotai/kimi-k2.6": {
-    displayName: "Kimi k2.6 (256K Context, Reasoning, Multimodal)",
+    displayName: "Kimi k2.6",
     contextWindow: 256000,
     supportsVision: true,
   },
   "nvidia/nemotron-3-ultra-550b-a55b": {
-    displayName: "Nemotron 3 Ultra 550B (1M Context, Reasoning)",
+    displayName: "Nemotron 3 Ultra 550B",
     contextWindow: 1000000,
   },
   "z-ai/glm-5.1": {
-    displayName: "GLM 5.1 (131K Context, Reasoning)",
+    displayName: "GLM 5.1",
     contextWindow: 131072,
   },
   "stepfun-ai/step-3.7-flash": {
-    displayName: "Step 3.7 Flash (256K Context, Fast Reasoning, Multimodal)",
+    displayName: "Step 3.7 Flash",
     contextWindow: 256000,
     supportsVision: true,
   },

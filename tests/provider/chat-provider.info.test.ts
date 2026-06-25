@@ -119,7 +119,7 @@ describe("OcGoChatModelProvider", () => {
               },
               {
                 id: "deepseek-ai/deepseek-v4-pro",
-                displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+                displayName: "DeepSeek V4 Pro",
                 contextWindow: 131072,
                 maxOutputTokens: 16384,
                 supportsTools: true,
@@ -175,7 +175,7 @@ describe("OcGoChatModelProvider", () => {
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
         id: "deepseek-ai/deepseek-v4-flash",
-        displayName: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
+        displayName: "DeepSeek V4 Flash",
         contextWindow: 1000000,
         maxOutputTokens: 384000,
         supportsTools: true,
@@ -185,7 +185,7 @@ describe("OcGoChatModelProvider", () => {
     expect(infos).toEqual([
       expect.objectContaining({
         id: "deepseek-ai/deepseek-v4-flash",
-        name: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
+        name: "DeepSeek V4 Flash",
         detail: "NVIDIA NIM",
         apiKey: "configured-key",
       }),
@@ -229,7 +229,7 @@ describe("OcGoChatModelProvider", () => {
         return [
           {
             id: "deepseek-ai/deepseek-v4-pro",
-            displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+            displayName: "DeepSeek V4 Pro",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -263,7 +263,7 @@ describe("OcGoChatModelProvider", () => {
         return [
           {
             id: "deepseek-ai/deepseek-v4-pro",
-            displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+            displayName: "DeepSeek V4 Pro",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -316,7 +316,7 @@ describe("OcGoChatModelProvider", () => {
     expect(infos).toEqual([
       expect.objectContaining({
         id: "deepseek-ai/deepseek-v4-pro",
-        name: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        name: "DeepSeek V4 Pro",
         apiKey: "legacy-key",
         isUserSelectable: true,
       }),
@@ -329,7 +329,7 @@ describe("OcGoChatModelProvider", () => {
         return [
           {
             id: "deepseek-ai/deepseek-v4-pro",
-            displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+            displayName: "DeepSeek V4 Pro",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -375,7 +375,7 @@ describe("OcGoChatModelProvider", () => {
         return [
           {
             id: "deepseek-ai/deepseek-v4-flash",
-            displayName: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
+            displayName: "DeepSeek V4 Flash",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -415,7 +415,7 @@ describe("OcGoChatModelProvider", () => {
         return [
           {
             id: "deepseek-ai/deepseek-v4-flash",
-            displayName: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
+            displayName: "DeepSeek V4 Flash",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -455,7 +455,7 @@ describe("OcGoChatModelProvider", () => {
         return [
           {
             id: "deepseek-ai/deepseek-v4-flash",
-            displayName: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
+            displayName: "DeepSeek V4 Flash",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -648,7 +648,7 @@ describe("OcGoChatModelProvider", () => {
     const cachedModels = [
       {
         id: "deepseek-ai/deepseek-v4-pro",
-        displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        displayName: "DeepSeek V4 Pro",
         contextWindow: 131072,
         maxOutputTokens: 16384,
         supportsTools: true,

@@ -262,7 +262,7 @@ describe("activate", () => {
     const rawModels = [
       {
         id: "deepseek-ai/deepseek-v4-pro",
-        name: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        name: "DeepSeek V4 Pro",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -307,7 +307,7 @@ describe("activate", () => {
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
         id: "deepseek-ai/deepseek-v4-pro",
-        displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        displayName: "DeepSeek V4 Pro",
         contextWindow: 1000000,
         maxOutputTokens: 384000,
         supportsTools: true,
@@ -322,7 +322,7 @@ describe("activate", () => {
     const rawModels = [
       {
         id: "deepseek-ai/deepseek-v4-pro",
-        name: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        name: "DeepSeek V4 Pro",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -365,7 +365,7 @@ describe("activate", () => {
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
         id: "deepseek-ai/deepseek-v4-pro",
-        displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        displayName: "DeepSeek V4 Pro",
         contextWindow: 1000000,
         maxOutputTokens: 384000,
         supportsTools: true,
@@ -467,7 +467,7 @@ describe("activate", () => {
     const rawModels = [
       {
         id: "deepseek-ai/deepseek-v4-pro",
-        name: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        name: "DeepSeek V4 Pro",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -529,7 +529,7 @@ describe("activate", () => {
     expect(update).toHaveBeenNthCalledWith(2, "nvidia-nim.models", [
       {
         id: "deepseek-ai/deepseek-v4-pro",
-        displayName: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        displayName: "DeepSeek V4 Pro",
         contextWindow: 1000000,
         maxOutputTokens: 384000,
         supportsTools: true,
@@ -546,7 +546,7 @@ describe("activate", () => {
     const firstRawModels = [
       {
         id: "deepseek-ai/deepseek-v4-pro",
-        name: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        name: "DeepSeek V4 Pro",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -554,7 +554,7 @@ describe("activate", () => {
     const secondRawModels = [
       {
         id: "deepseek-ai/deepseek-v4-flash",
-        name: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
+        name: "DeepSeek V4 Flash",
         capabilities: { chat: true, tool_calling: false, vision: false },
         metadata: { context_window: 64000, max_output_tokens: 4096 },
       },
@@ -619,7 +619,7 @@ describe("activate", () => {
     const rawModels = [
       {
         id: "deepseek-ai/deepseek-v4-pro",
-        name: "DeepSeek V4 Pro (1M Context, Reasoning, 384K Output)",
+        name: "DeepSeek V4 Pro",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },

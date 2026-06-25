@@ -15,7 +15,7 @@ describe("normalizeNvidiaModels", () => {
     expect(normalizeNvidiaModels(raw)).toEqual([
       {
         id: "deepseek-ai/deepseek-v4-flash",
-        displayName: "DeepSeek V4 Flash (1M Context, Reasoning, 384K Output)",
+        displayName: "DeepSeek V4 Flash",
         contextWindow: 1000000,
         maxOutputTokens: 384000,
         supportsTools: true,
@@ -52,7 +52,7 @@ describe("normalizeNvidiaModels", () => {
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
         id: "stepfun-ai/step-3.7-flash",
-        displayName: "Step 3.7 Flash (256K Context, Fast Reasoning, Multimodal)",
+        displayName: "Step 3.7 Flash",
       }),
     ]);
   });
@@ -76,7 +76,7 @@ describe("normalizeNvidiaModels", () => {
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
         id: "z-ai/glm-5.1",
-        displayName: "GLM 5.1 (131K Context, Reasoning)",
+        displayName: "GLM 5.1",
       }),
     ]);
   });
