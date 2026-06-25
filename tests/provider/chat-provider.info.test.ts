@@ -175,7 +175,7 @@ describe("OcGoChatModelProvider", () => {
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
         id: "meta/llama-3.1-8b-instruct",
-        displayName: "llama-3.1-8b-instruct",
+        displayName: "Llama 3.1 8B Instruct",
         contextWindow: 131072,
         maxOutputTokens: 65536,
         supportsTools: true,
@@ -185,7 +185,7 @@ describe("OcGoChatModelProvider", () => {
     expect(infos).toEqual([
       expect.objectContaining({
         id: "meta/llama-3.1-8b-instruct",
-        name: "llama-3.1-8b-instruct",
+        name: "Llama 3.1 8B Instruct",
         detail: "NVIDIA NIM",
         apiKey: "configured-key",
       }),

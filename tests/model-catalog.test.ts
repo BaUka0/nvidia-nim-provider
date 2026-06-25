@@ -36,7 +36,7 @@ describe("normalizeNvidiaModels", () => {
     expect(normalizeNvidiaModels(raw)).toEqual([
       {
         id: "meta/llama-3.1-8b-instruct",
-        displayName: "llama-3.1-8b-instruct",
+        displayName: "Llama 3.1 8B Instruct",
         contextWindow: 131072,
         maxOutputTokens: 65536,
         supportsTools: true,
