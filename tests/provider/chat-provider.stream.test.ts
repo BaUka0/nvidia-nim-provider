@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import * as vscode from "vscode";
 import { fetchModels, streamChatCompletion } from "../../src/api/client";
 import { CONTEXT_WINDOW_SAFETY_MARGIN } from "../../src/shared/constants";
@@ -62,43 +60,6 @@ jest.mock("vscode", () => ({
   },
   Memento: class {},
 }));
-
-interface StreamTextFixtureCase {
-  name: string;
-  chunks: string[];
-  expectedText: string;
-}
-
-interface MixedToolCallFixtureCase {
-  name: string;
-  chunks: string[];
-  expectedBefore: string;
-  expectedAfter: string;
-  expectedToolName: string;
-  expectedToolInput: Record<string, string>;
-}
-
-interface InvalidToolCallFixtureCase {
-  name: string;
-  chunks: string[];
-  expectedToolName: string;
-  expectedRequiredArgs: string[];
-}
-
-interface GenericInvalidToolCallFixtureCase {
-  name: string;
-  modelId: string;
-  chunks: string[];
-  expectedBefore: string;
-  expectedToolName: string;
-  forbiddenMarker: string;
-}
-
-function loadProviderFixture<T>(fixtureName: string): T {
-  return JSON.parse(
-    readFileSync(join(__dirname, "fixtures", "provider", fixtureName), "utf8"),
-  ) as T;
-}
 
 describe("NimChatModelProvider", () => {
   let secrets: vscode.SecretStorage;

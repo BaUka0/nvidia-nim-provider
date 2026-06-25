@@ -11,10 +11,6 @@ export interface NormalizedNvidiaModel {
 
 const DEFAULT_CONTEXT_WINDOW = 131072;
 const DEFAULT_MAX_OUTPUT_TOKENS = 65536;
-const NON_CHAT_MODEL_ID_PATTERNS = [
-  /(^|[/_-])bge([-_/]|$)/i,
-  /(^|[/_-])(clip|detector|embed|embedcode|embedqa|embedding|gliner|parse|rerank|retriever|reward)([-_/]|$)/i,
-];
 
 const ELITE_MODELS_WHITELIST: Record<string, Partial<NormalizedNvidiaModel>> = {
   "deepseek-ai/deepseek-v4-flash": {
@@ -102,22 +98,6 @@ function normalizeNvidiaModel(model: NvidiaModelSummary): NormalizedNvidiaModel 
     supportsTools: override?.supportsTools ?? model.capabilities?.tool_calling ?? true,
     supportsVision: override?.supportsVision ?? model.capabilities?.vision ?? false,
   };
-}
-
-function isChatModel(model: NvidiaModelSummary): boolean {
-  if (model.capabilities?.chat === true) {
-    return true;
-  }
-
-  if (model.capabilities?.chat === false) {
-    return false;
-  }
-
-  return !isClearlyNonChatModelId(model.id);
-}
-
-function isClearlyNonChatModelId(modelId: string): boolean {
-  return NON_CHAT_MODEL_ID_PATTERNS.some((pattern) => pattern.test(modelId));
 }
 
 function deriveDisplayName(modelId: string): string {

@@ -1,8 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as vscode from "vscode";
-import { fetchModels, streamChatCompletion } from "../../src/api/client";
-import { CONTEXT_WINDOW_SAFETY_MARGIN } from "../../src/shared/constants";
+import { streamChatCompletion } from "../../src/api/client";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
 
 jest.mock("../../src/api/client", () => ({
