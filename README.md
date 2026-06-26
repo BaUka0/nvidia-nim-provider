@@ -1,8 +1,6 @@
 # NVIDIA NIM Provider
 
-VS Code extension that adds an NVIDIA NIM provider to Copilot Chat, giving you
-access to advanced reasoning and agentic models (DeepSeek, Kimi, GLM, Nemotron,
-MiniMax, Stepfun) directly inside the Copilot Chat interface.
+VS Code extension that gives you access **exclusively** to the best, most powerful reasoning and agentic models available in NVIDIA NIM (DeepSeek, Kimi, GLM, Nemotron, MiniMax, Stepfun) directly inside the Copilot Chat interface.
 
 ## Requirements
 

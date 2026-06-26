@@ -1,8 +1,8 @@
 {
-  "name": "nvidia-nim-provider",
-  "publisher": "HidenobuNagai",
-  "displayName": "NVIDIA NIM Provider",
-  "description": "Use NVIDIA NIM models in GitHub Copilot Chat for VS Code",
+  "name": "nvidia-nim-agent",
+  "publisher": "neuraldock",
+  "displayName": "Nvidia NIM agent",
+  "description": "Use NVIDIA NIM elite agentic models in GitHub Copilot Chat for VS Code",
   "version": "0.4.0",
   "license": "MIT",
   "repository": {
