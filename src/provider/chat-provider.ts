@@ -651,6 +651,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         let emittedToolCall = false;
         let emittedFirstToolCall = false;
         let reportedContent = false;
+        let seenReasoningContent = false;
         let firstResponseAtMs: number | undefined;
         let firstToolCallAtMs: number | undefined;
         let lastUsage:
@@ -779,6 +780,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               finalUsage = chunk.usage;
             }
 
+            const reasoningContent = (choice?.delta as { reasoning_content?: string })
+              ?.reasoning_content;
+            if (reasoningContent) {
+              seenReasoningContent = true;
+              emitReasoning(reasoningContent);
+            }
+
             if (choice?.delta?.content) {
               markFirstResponse();
               for (const segment of filterThinkTagsFromChunk(
@@ -786,17 +794,14 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                 thinkTagFilterState,
               )) {
                 if (segment.type === "thinking") {
-                  emitReasoning(segment.text);
+                  if (!seenReasoningContent) {
+                    emitReasoning(segment.text);
+                  }
                 } else {
                   processFilteredText(segment.text);
                 }
               }
-            }
-
-            const reasoningContent = (choice?.delta as { reasoning_content?: string })
-              ?.reasoning_content;
-            if (reasoningContent) {
-              emitReasoning(reasoningContent);
+              flushPendingText();
             }
 
             // Handle tool calls

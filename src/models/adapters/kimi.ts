@@ -23,10 +23,11 @@ export class KimiAdapter extends BaseModelAdapter {
   readonly supportedReasoningModes = ["none", "on"];
 
   applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
+    request.chat_template_kwargs = request.chat_template_kwargs || {};
     if (mode === "none") {
-      request.enable_thinking = false;
+      request.chat_template_kwargs.thinking = false;
     } else {
-      request.enable_thinking = true;
+      request.chat_template_kwargs.thinking = true;
     }
   }
 }

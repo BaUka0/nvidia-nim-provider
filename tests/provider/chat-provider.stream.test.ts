@@ -134,8 +134,12 @@ describe("NimChatModelProvider", () => {
       "test-ua",
       { maxOutputTokens: 65536 },
     );
-    expect(progress.report).toHaveBeenCalledTimes(1);
-    expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Hello world" }));
+    expect(progress.report).toHaveBeenCalledTimes(2);
+    expect(progress.report).toHaveBeenNthCalledWith(1, expect.objectContaining({ value: "Hello" }));
+    expect(progress.report).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ value: " world" }),
+    );
   });
 
   it("strips think tags even when the stream splits tag boundaries", async () => {
@@ -216,6 +220,63 @@ describe("NimChatModelProvider", () => {
     expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "Answer" }));
   });
 
+  it("emits reasoning_content before content when both arrive in the same chunk", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Thinking" } }] };
+      yield {
+        choices: [
+          {
+            delta: {
+              reasoning_content: " final thought",
+              content: "Answer",
+            },
+          },
+        ],
+      };
+      yield { choices: [{ delta: { content: " continued" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "minimaxai/minimax-m3", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const allReports = progress.report.mock.calls.map((c: any) => c[0]);
+    const thinkingIndices = allReports
+      .map((r: any, i: number) => (r instanceof ThinkingPart ? i : -1))
+      .filter((i: number) => i !== -1);
+    const textIndices = allReports
+      .map((r: any, i: number) => (r instanceof vscode.LanguageModelTextPart ? i : -1))
+      .filter((i: number) => i !== -1);
+
+    expect(thinkingIndices).toHaveLength(2);
+    expect(textIndices).toHaveLength(2);
+
+    expect(allReports[thinkingIndices[0]]).toEqual(expect.objectContaining({ value: "Thinking" }));
+    expect(allReports[thinkingIndices[1]]).toEqual(
+      expect.objectContaining({ value: " final thought" }),
+    );
+    expect(allReports[textIndices[0]]).toEqual(expect.objectContaining({ value: "Answer" }));
+    expect(allReports[textIndices[1]]).toEqual(
+      expect.objectContaining({ value: " continued" }),
+    );
+
+    expect(thinkingIndices[1]).toBeLessThan(textIndices[0]);
+  });
+
   it("emits think-tag content as a thinking part for kimi models", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
@@ -248,6 +309,97 @@ describe("NimChatModelProvider", () => {
 
     expect(thinkingReports).toHaveLength(1);
     expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "my reasoning" }));
+    expect(textReports).toHaveLength(1);
+    expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "visible answer" }));
+  });
+
+  it("strips mm:think tags from content when reasoning_content is present", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Initial reasoning" } }] };
+      yield {
+        choices: [
+          {
+            delta: {
+              content: "Response before <mm:think>mid reasoning</mm:think> response after",
+            },
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "minimaxai/minimax-m3", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const thinkingReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof ThinkingPart,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+    );
+
+    expect(thinkingReports).toHaveLength(1);
+    expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "Initial reasoning" }));
+    const textContent = textReports.map((r: any) => r[0].value).join("");
+    expect(textContent).toBe("Response before  response after");
+    expect(textContent).not.toContain("mid reasoning");
+    expect(textContent).not.toContain("<mm:think>");
+  });
+
+  it("captures mm:think tags as thinking when reasoning_content is absent", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              content: "<mm:think>reasoning here</mm:think>visible answer",
+            },
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "minimaxai/minimax-m3", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const thinkingReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof ThinkingPart,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+    );
+
+    expect(thinkingReports).toHaveLength(1);
+    expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "reasoning here" }));
     expect(textReports).toHaveLength(1);
     expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "visible answer" }));
   });

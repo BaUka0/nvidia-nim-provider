@@ -1,11 +1,22 @@
 export interface ThinkTagFilterState {
   insideThinkBlock: boolean;
   pendingText: string;
+  closeTag?: string;
 }
 
 export type ThinkFilterSegment =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string };
+
+interface ThinkTagPair {
+  open: string;
+  close: string;
+}
+
+const THINK_TAG_PAIRS: ThinkTagPair[] = [
+  { open: "<think>", close: "</think>" },
+  { open: "<mm:think>", close: "</mm:think>" },
+];
 
 function findTrailingCaseInsensitivePrefixStart(text: string, token: string): number {
   const normalizedText = text.toLowerCase();
@@ -21,18 +32,54 @@ function findTrailingCaseInsensitivePrefixStart(text: string, token: string): nu
   return -1;
 }
 
+function findTrailingCaseInsensitivePrefixStartAny(
+  text: string,
+  tokens: readonly string[],
+): number {
+  let bestMatch = -1;
+
+  for (const token of tokens) {
+    const matchIndex = findTrailingCaseInsensitivePrefixStart(text, token);
+    if (matchIndex !== -1 && (bestMatch === -1 || matchIndex < bestMatch)) {
+      bestMatch = matchIndex;
+    }
+  }
+
+  return bestMatch;
+}
+
+function findEarliestCaseInsensitiveIndex(
+  text: string,
+  tokens: readonly string[],
+): { index: number; token: string } | undefined {
+  let bestIndex = -1;
+  let bestToken: string | undefined;
+
+  for (const token of tokens) {
+    const idx = text.toLowerCase().indexOf(token.toLowerCase());
+    if (idx !== -1 && (bestIndex === -1 || idx < bestIndex)) {
+      bestIndex = idx;
+      bestToken = token;
+    }
+  }
+
+  return bestToken !== undefined ? { index: bestIndex, token: bestToken } : undefined;
+}
+
 /**
- * Strip `think...</think>` blocks from streamed text.
+ * Strip `<think>...</think>` and `<mm:think>...</mm:think>` blocks from text.
  * Some reasoning models emit chain-of-thought wrapped in these tags
  * even when a separate reasoning_content field is present.
  */
 export function stripThinkTags(text: string): string {
-  return text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<mm:think>[\s\S]*?<\/mm:think>/gi, "");
 }
 
 /**
  * Split a streamed chunk into ordered text/thinking segments, capturing the
- * content inside `think...</think>` blocks as `thinking` segments
+ * content inside `<think>`/`<mm:think>` blocks as `thinking` segments
  * instead of discarding it. Partial tags are buffered in `state.pendingText`
  * and resolved across chunks.
  */
@@ -40,8 +87,8 @@ export function filterThinkTagsFromChunk(
   text: string,
   state: ThinkTagFilterState,
 ): ThinkFilterSegment[] {
-  const openTag = "<think>";
-  const closeTag = "</think>";
+  const openTags = THINK_TAG_PAIRS.map((p) => p.open);
+  const closeTagMap = new Map(THINK_TAG_PAIRS.map((p) => [p.open, p.close] as const));
   let remaining = state.pendingText + text;
   const segments: ThinkFilterSegment[] = [];
 
@@ -49,7 +96,8 @@ export function filterThinkTagsFromChunk(
 
   while (remaining.length > 0) {
     if (state.insideThinkBlock) {
-      const closeIndex = remaining.toLowerCase().indexOf(closeTag);
+      const closeTag = state.closeTag ?? "</think>";
+      const closeIndex = remaining.toLowerCase().indexOf(closeTag.toLowerCase());
       if (closeIndex === -1) {
         const partialCloseIndex = findTrailingCaseInsensitivePrefixStart(remaining, closeTag);
         if (partialCloseIndex === -1) {
@@ -70,12 +118,13 @@ export function filterThinkTagsFromChunk(
       }
       remaining = remaining.slice(closeIndex + closeTag.length);
       state.insideThinkBlock = false;
+      state.closeTag = undefined;
       continue;
     }
 
-    const openIndex = remaining.toLowerCase().indexOf(openTag);
-    if (openIndex === -1) {
-      const partialOpenIndex = findTrailingCaseInsensitivePrefixStart(remaining, openTag);
+    const openMatch = findEarliestCaseInsensitiveIndex(remaining, openTags);
+    if (openMatch === undefined) {
+      const partialOpenIndex = findTrailingCaseInsensitivePrefixStartAny(remaining, openTags);
       if (partialOpenIndex === -1) {
         if (remaining.length > 0) {
           segments.push({ type: "text", text: remaining });
@@ -89,11 +138,13 @@ export function filterThinkTagsFromChunk(
       return segments;
     }
 
+    const { index: openIndex, token: matchedOpenTag } = openMatch;
     if (openIndex > 0) {
       segments.push({ type: "text", text: remaining.slice(0, openIndex) });
     }
-    remaining = remaining.slice(openIndex + openTag.length);
+    remaining = remaining.slice(openIndex + matchedOpenTag.length);
     state.insideThinkBlock = true;
+    state.closeTag = closeTagMap.get(matchedOpenTag);
   }
 
   return segments;
@@ -106,5 +157,6 @@ export function flushThinkTagFilter(state: ThinkTagFilterState): ThinkFilterSegm
   }
   state.pendingText = "";
   state.insideThinkBlock = false;
+  state.closeTag = undefined;
   return segments;
 }

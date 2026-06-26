@@ -43,7 +43,7 @@ tunes temperature, tool-calling system prompts, and reasoning configuration:
 | DeepSeek V4 Flash / Pro | None, High, Max | Yes | No |
 | Nemotron 3 Ultra 550B | None, Medium, High | Yes | No |
 | Kimi K2.6 | None, On | Yes | Yes |
-| MiniMax M3 | None, On | Yes | Yes |
+| MiniMax M3 | None, On, Adaptive | Yes | Yes |
 | GLM 5.1 | None, On | Yes | No |
 | Step 3.7 Flash | Always on | Yes | Yes |
 

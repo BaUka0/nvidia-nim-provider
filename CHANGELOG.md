@@ -1,5 +1,18 @@
 # Change Log
 
+## [0.4.2] - 2026-06-27
+
+### Fixed
+- **MiniMax M3 & Kimi K2.6 Streaming Buffering**: Fixed a critical issue where MiniMax M3 and Kimi K2.6 responses were buffered entirely and only displayed at the end of the stream, instead of streaming token-by-token. The `pendingText` buffer is now flushed after every content chunk, ensuring real-time streaming for all models.
+- **Reasoning/Content Ordering in SSE Chunks**: When the NVIDIA NIM API sends `reasoning_content` and `content` in the same SSE chunk (common for MiniMax M3), the `reasoning_content` is now processed **before** `content`. Previously, processing `content` first caused reasoning text to be interleaved into the middle of the response, splitting the answer.
+- **MiniMax M3 Reasoning Configuration**: Fixed incorrect reasoning parameter — the adapter was sending `chat_template_kwargs.enable_thinking` (boolean), but the MiniMax M3 chat template expects `chat_template_kwargs.thinking_mode` (string: `"enabled"`/`"disabled"`/`"adaptive"`). Without the correct parameter, the model defaulted to adaptive thinking and ignored user-selected reasoning modes.
+- **Kimi K2.6 Reasoning Configuration**: Fixed incorrect reasoning parameter placement — the adapter was sending `enable_thinking` at the request root, but the Kimi K2.6 chat template expects `chat_template_kwargs.thinking` (boolean). The model could not see the reasoning toggle, causing it to always think (or never think) regardless of the user's reasoning mode selection.
+- **MiniMax M3 Think-Tag Handling**: When a model emits `reasoning_content` in the stream, `<think>`/`</think>` and `<mm:think>`/`</mm:think>` tags found in `content` are now stripped instead of being captured as separate thinking blocks. This prevents reasoning artifacts from splitting the response text. When `reasoning_content` is absent (e.g. Kimi), think-tags in `content` are still captured as thinking blocks as before.
+- **MiniMax M3 Think-Tag Capture**: Added support for MiniMax M3's `<mm:think>`/`</mm:think>` reasoning tags. Previously, only `<think>`/`</think>` tags were recognized; MiniMax's reasoning content wrapped in its native tags was not captured as `LanguageModelThinkingPart` collapsible thinking blocks.
+
+### Added
+- **MiniMax M3 Adaptive Reasoning Mode**: MiniMax M3 now exposes a third reasoning mode — **Adaptive** — in addition to None and On. In adaptive mode, the model dynamically decides whether to reason step-by-step based on query complexity.
+
 ## [0.4.0] - 2026-06-26
 
 ### Added

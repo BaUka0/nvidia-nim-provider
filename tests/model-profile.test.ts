@@ -1,4 +1,5 @@
 import { getModelAdapter } from "../src/models/adapters";
+import { NimChatRequest } from "../src/types";
 
 describe("getModelAdapter", () => {
   it.each([
@@ -48,5 +49,63 @@ describe("getModelAdapter", () => {
 
     expect(profile.defaultTemperature).toBe(0.7);
     expect(profile.extraSystemMessages).toEqual([]);
+  });
+});
+
+describe("applyReasoningMode", () => {
+  it("sets chat_template_kwargs.thinking_mode to disabled for MiniMax none", () => {
+    const adapter = getModelAdapter("minimaxai/minimax-m3");
+    const request: NimChatRequest = {
+      model: "minimaxai/minimax-m3",
+      messages: [],
+    };
+    adapter.applyReasoningMode!(request, "none");
+    expect(request.chat_template_kwargs).toEqual({ thinking_mode: "disabled" });
+  });
+
+  it("sets chat_template_kwargs.thinking_mode to enabled for MiniMax on", () => {
+    const adapter = getModelAdapter("minimaxai/minimax-m3");
+    const request: NimChatRequest = {
+      model: "minimaxai/minimax-m3",
+      messages: [],
+    };
+    adapter.applyReasoningMode!(request, "on");
+    expect(request.chat_template_kwargs).toEqual({ thinking_mode: "enabled" });
+  });
+
+  it("sets chat_template_kwargs.thinking_mode to adaptive for MiniMax adaptive", () => {
+    const adapter = getModelAdapter("minimaxai/minimax-m3");
+    const request: NimChatRequest = {
+      model: "minimaxai/minimax-m3",
+      messages: [],
+    };
+    adapter.applyReasoningMode!(request, "adaptive");
+    expect(request.chat_template_kwargs).toEqual({ thinking_mode: "adaptive" });
+  });
+
+  it("exposes adaptive in MiniMax supportedReasoningModes", () => {
+    const adapter = getModelAdapter("minimaxai/minimax-m3");
+    expect(adapter.supportedReasoningModes).toEqual(["none", "on", "adaptive"]);
+  });
+
+  it("sets chat_template_kwargs.thinking to false for Kimi none", () => {
+    const adapter = getModelAdapter("moonshotai/kimi-k2.6");
+    const request: NimChatRequest = {
+      model: "moonshotai/kimi-k2.6",
+      messages: [],
+    };
+    adapter.applyReasoningMode!(request, "none");
+    expect(request.chat_template_kwargs).toEqual({ thinking: false });
+    expect(request.enable_thinking).toBeUndefined();
+  });
+
+  it("sets chat_template_kwargs.thinking to true for Kimi on", () => {
+    const adapter = getModelAdapter("moonshotai/kimi-k2.6");
+    const request: NimChatRequest = {
+      model: "moonshotai/kimi-k2.6",
+      messages: [],
+    };
+    adapter.applyReasoningMode!(request, "on");
+    expect(request.chat_template_kwargs).toEqual({ thinking: true });
   });
 });

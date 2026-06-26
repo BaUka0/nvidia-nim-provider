@@ -848,8 +848,9 @@ describe("NimChatModelProvider", () => {
     );
 
     const textReports = progress.report.mock.calls.filter((c: any) => c[0]?.value);
-    expect(textReports).toHaveLength(1);
-    expect(textReports[0][0].value).toContain("filePath");
-    expect(textReports[0][0].value).toContain("read_file");
+    expect(textReports).toHaveLength(2);
+    expect(textReports[0][0].value).toBe(" ");
+    expect(textReports[1][0].value).toContain("filePath");
+    expect(textReports[1][0].value).toContain("read_file");
   });
 });
