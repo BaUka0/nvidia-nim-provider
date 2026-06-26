@@ -80,7 +80,7 @@ export function getTextPartValue(
   return undefined;
 }
 
-function getDataPartTextValue(
+export function getDataPartTextValue(
   part: vscode.LanguageModelInputPart | LegacyPart,
 ): string | undefined {
   if (typeof part !== "object" || part === null) {
@@ -147,7 +147,7 @@ function extractImageData(
   return undefined;
 }
 
-function getToolCallInfo(
+export function getToolCallInfo(
   part: vscode.LanguageModelInputPart | LegacyPart,
 ): { id?: string; name?: string; args?: Record<string, unknown> } | undefined {
   const p = part as { callId?: string; name?: string; input?: Record<string, unknown> };
@@ -157,7 +157,7 @@ function getToolCallInfo(
   return undefined;
 }
 
-function getToolResultTexts(part: vscode.LanguageModelInputPart | LegacyPart): string[] {
+export function getToolResultTexts(part: vscode.LanguageModelInputPart | LegacyPart): string[] {
   const results: string[] = [];
   const p = part as { callId?: string; content?: unknown[] };
   if (typeof p.callId === "string" && Array.isArray(p.content)) {
@@ -438,17 +438,174 @@ export function estimateTokens(text: string): number {
   return Math.ceil(cjkCount / 1.2 + otherCount / 3);
 }
 
+/**
+ * Estimate the token cost of a single message content part.
+ *
+ * Handles all part types VS Code passes in a heterogeneous `content` array:
+ * {@link vscode.LanguageModelTextPart}, text-mime {@link vscode.LanguageModelDataPart},
+ * {@link vscode.LanguageModelToolResultPart} (including structured/JSON/binary inner
+ * content), and {@link vscode.LanguageModelToolCallPart}. Non-textable parts (images,
+ * raw binary) use a size-aware heuristic. This is what VS Code calls to render the
+ * context-window token breakdown, so under-counting any part type makes the breakdown
+ * disappear for tool-heavy conversations.
+ */
+export function estimatePartTokens(part: vscode.LanguageModelInputPart | LegacyPart): number {
+  // Tool call: assistant requesting a tool invocation.
+  const toolCallInfo = getToolCallInfo(part);
+  if (toolCallInfo) {
+    const nameTokens = toolCallInfo.name ? estimateTokens(toolCallInfo.name) : 0;
+    const argsTokens = toolCallInfo.args ? estimateTokens(JSON.stringify(toolCallInfo.args)) : 0;
+    return nameTokens + argsTokens;
+  }
+
+  // Tool result: the outcome of a previous tool call. Its inner content array may hold
+  // text parts, structured objects, JSON data parts, etc. Extract every textable piece.
+  const toolResultPart = part as { callId?: unknown; content?: unknown[] };
+  if (typeof toolResultPart.callId === "string" && Array.isArray(toolResultPart.content)) {
+    const texts = getToolResultTexts(part);
+    const joined = texts.join("\n").trim();
+    return joined ? estimateTokens(joined) : 2;
+  }
+
+  // Text part or text-decodable data part.
+  const tv = getTextPartValue(part) ?? getDataPartTextValue(part);
+  if (tv !== undefined) {
+    return estimateTokens(tv);
+  }
+
+  // Image / binary data part: size-aware heuristic (~750 bytes per token).
+  const img = extractImageData(part);
+  if (img) {
+    return Math.max(4, Math.ceil(img.data.length / 750));
+  }
+
+  // Unknown part: rough placeholder so it still contributes to the breakdown.
+  return 2;
+}
+
+/**
+ * Estimate the token cost of a single chat message by summing its content parts.
+ */
+export function estimateMessageTokens(msg: {
+  content: (vscode.LanguageModelInputPart | LegacyPart)[];
+}): number {
+  let total = 0;
+  for (const part of msg.content) {
+    total += estimatePartTokens(part);
+  }
+  return total;
+}
+
 export function estimateMessagesTokens(
   messages: readonly { content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
 ): number {
   let total = 0;
   for (const m of messages) {
-    for (const part of m.content) {
-      const tv = getTextPartValue(part) ?? getDataPartTextValue(part);
-      if (tv !== undefined) {
-        total += estimateTokens(tv);
+    total += estimateMessageTokens(m);
+  }
+  return total;
+}
+
+export interface TokenCategoryBreakdown {
+  system: number;
+  user: number;
+  assistant: number;
+  toolCalls: number;
+  toolResults: number;
+  images: number;
+}
+
+function classifyPartTokens(
+  part: vscode.LanguageModelInputPart | LegacyPart,
+  breakdown: TokenCategoryBreakdown,
+): void {
+  const toolCallInfo = getToolCallInfo(part);
+  if (toolCallInfo) {
+    const nameTokens = toolCallInfo.name ? estimateTokens(toolCallInfo.name) : 0;
+    const argsTokens = toolCallInfo.args ? estimateTokens(JSON.stringify(toolCallInfo.args)) : 0;
+    breakdown.toolCalls += nameTokens + argsTokens;
+    return;
+  }
+
+  const toolResultPart = part as { callId?: unknown; content?: unknown[] };
+  if (typeof toolResultPart.callId === "string" && Array.isArray(toolResultPart.content)) {
+    const texts = getToolResultTexts(part);
+    const joined = texts.join("\n").trim();
+    breakdown.toolResults += joined ? estimateTokens(joined) : 2;
+    return;
+  }
+
+  const img = extractImageData(part);
+  if (img) {
+    breakdown.images += Math.max(4, Math.ceil(img.data.length / 750));
+    return;
+  }
+
+  const tv = getTextPartValue(part) ?? getDataPartTextValue(part);
+  if (tv !== undefined) {
+    return;
+  }
+
+  breakdown.images += 2;
+}
+
+export function estimateMessagesTokensByCategory(
+  messages: readonly {
+    role: number;
+    content: (vscode.LanguageModelInputPart | LegacyPart)[];
+  }[],
+): TokenCategoryBreakdown {
+  const breakdown: TokenCategoryBreakdown = {
+    system: 0,
+    user: 0,
+    assistant: 0,
+    toolCalls: 0,
+    toolResults: 0,
+    images: 0,
+  };
+
+  for (const msg of messages) {
+    const isUser = msg.role === vscode.LanguageModelChatMessageRole.User;
+    const isAssistant = msg.role === vscode.LanguageModelChatMessageRole.Assistant;
+
+    for (const part of msg.content) {
+      const toolCallInfo = getToolCallInfo(part);
+      const toolResultPart = part as { callId?: unknown; content?: unknown[] };
+      const isToolCall = Boolean(toolCallInfo);
+      const isToolResult =
+        typeof toolResultPart.callId === "string" && Array.isArray(toolResultPart.content);
+      const img = extractImageData(part);
+
+      if (isToolCall) {
+        classifyPartTokens(part, breakdown);
+      } else if (isToolResult) {
+        classifyPartTokens(part, breakdown);
+      } else if (img) {
+        classifyPartTokens(part, breakdown);
+      } else {
+        const tv = getTextPartValue(part) ?? getDataPartTextValue(part);
+        const tokens = tv !== undefined ? estimateTokens(tv) : 0;
+        if (isUser) {
+          breakdown.user += tokens;
+        } else if (isAssistant) {
+          breakdown.assistant += tokens;
+        } else {
+          breakdown.system += tokens;
+        }
       }
     }
+  }
+
+  return breakdown;
+}
+
+export function estimateToolsTokens(tools: readonly NimTool[]): number {
+  let total = 0;
+  for (const tool of tools) {
+    const name = tool.function.name;
+    const description = tool.function.description ?? "";
+    const params = JSON.stringify(tool.function.parameters ?? {});
+    total += estimateTokens(name) + estimateTokens(description) + estimateTokens(params);
   }
   return total;
 }

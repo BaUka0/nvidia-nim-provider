@@ -33,7 +33,7 @@ export class Disposable {
   constructor(public dispose: () => void) {}
 }
 
-export const LanguageModelChatMessageRole = { User: 1, Assistant: 2, System: 0 };
+export const LanguageModelChatMessageRole = { User: 1, Assistant: 2, System: 3 };
 
 export class LanguageModelTextPart {
   constructor(public value: string) {}
@@ -51,12 +51,40 @@ export class LanguageModelToolResultPart {
   constructor(public callId: string, public content: unknown[]) {}
 }
 
+export class LanguageModelDataPart {
+  constructor(public data: Uint8Array, public mimeType: string) {}
+}
+
 export class LanguageModelChatMessage {
   constructor(
     public role: number,
     public content: unknown[],
   ) {}
 }
+
+export class MarkdownString {
+  value = "";
+  isTrusted = false;
+  supportThemeIcons = false;
+  appendMarkdown(text: string): MarkdownString {
+    this.value += text;
+    return this;
+  }
+  appendText(text: string): MarkdownString {
+    this.value += text;
+    return this;
+  }
+  appendCodeblock(value: string, _language?: string): MarkdownString {
+    this.value += value;
+    return this;
+  }
+}
+
+export class ThemeColor {
+  constructor(public id: string) {}
+}
+
+export const StatusBarAlignment = { Left: 1, Right: 2 };
 
 export class LanguageModelToolResult {
   constructor(public content: unknown[]) {}

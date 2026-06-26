@@ -1,5 +1,23 @@
 # Change Log
 
+## [0.4.0-preview] - 2026-06-26
+
+### Added
+- **Token Breakdown in Status Bar**: After each response, the status bar now displays full context window utilization in `X/Y` format (e.g. `$(zap) Kimi K2.6: 25.5k/262.1k`). Hovering over the status bar item reveals a detailed Markdown tooltip with a per-category token breakdown table:
+  - System Prompt, Tools (definitions), User Messages, Assistant Messages, Tool Calls, Tool Results, Images/Media, Input Total, Output (completion), and Total Used.
+  - When actual `prompt_tokens` are available from the NVIDIA API, category estimates are proportionally scaled to match the real total (marked `*(actual)*`).
+  - Context usage color indicators: warning background at >80%, error background at >95% of the context window.
+- **Categorized Token Estimation**: New `estimateMessagesTokensByCategory` and `estimateToolsTokens` functions classify message content parts by role and type (text, tool calls, tool results, images, tool definitions), providing granular token attribution for the breakdown.
+- **New Status Bar Icon**: Replaced the `$(copilot)` icon with `$(zap)` (lightning bolt) across all status bar states to avoid visual duplication with the Copilot icon.
+
+### Fixed
+- **`provideTokenCount` Token Undercounting**: The provider's `provideTokenCount` method previously only extracted text from `LanguageModelTextPart` and string `.value` fields; all other part types (`LanguageModelToolResultPart`, `LanguageModelToolCallPart`, text-mime `LanguageModelDataPart`, image parts) were counted as a flat 2 tokens regardless of size. This caused VS Code's context-window token breakdown to disappear for tool-heavy agent conversations. The method now reuses the converter's part-extraction helpers (`getTextPartValue`, `getDataPartTextValue`, `getToolResultTexts`, `getToolCallInfo`) to accurately estimate tokens across all content-array part types. A `try/catch` guard resolves to `0` on any error to prevent hanging VS Code's breakdown UI.
+- **System Message Role Classification**: `estimateMessagesTokensByCategory` used a hardcoded `role === 0` check for system messages, but VS Code's internal `LanguageModelChatMessageRole.System` is `3` (from the proposed `languageModelSystem` API), not `0`. Fixed with a fallback logic matching `convertMessages`: any role that is not `User` (1) or `Assistant` (2) is classified as system, ensuring Copilot Chat's system prompt is correctly attributed in the breakdown.
+
+### Changed
+- **Status Bar Click Behavior**: Clicking the status bar item after a chat response no longer triggers model refresh (the `command` is set to `undefined`). Model refresh is still available via the Command Palette and the refresh lifecycle states (`showOk`, `showRefreshing`, `showError`).
+- **`estimateMessagesTokens` Refactor**: Now delegates to `estimateMessageTokens` / `estimatePartTokens`, improving input token estimation accuracy for tool-heavy conversations in the context compression logic.
+
 ## [0.3.0] - 2026-06-25
 
 ### Added

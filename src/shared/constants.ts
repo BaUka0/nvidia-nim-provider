@@ -39,4 +39,4 @@ export const STREAM_IDLE_TIMEOUT_MIN_MS = 60000;
 export const STREAM_IDLE_TIMEOUT_MAX_MS = 300000;
 
 export const STATUS_BAR_DEFAULT_TEXT = `$(loading~spin) NVIDIA NIM`;
-export const STATUS_BAR_ERROR_TEXT = `$(error) NVIDIA NIM`;
+export const STATUS_BAR_ERROR_TEXT = `$(zap) NVIDIA NIM`;

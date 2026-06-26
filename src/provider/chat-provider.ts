@@ -49,12 +49,15 @@ import {
 import { summarizeOldMessages, splitMessagesForSummarization } from "../models/summarizer";
 import { getModelAdapter } from "../models/adapters";
 import { debugLog, outputLog } from "../shared/logging";
-import { StatusBarManager } from "../shared/status-bar";
+import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
 import { NimChatMessage, NimChatRequest } from "../types";
 import {
   convertMessages,
   convertTools,
   estimateMessagesTokens,
+  estimateMessagesTokensByCategory,
+  estimateToolsTokens,
+  estimateMessageTokens,
   estimateTokens,
   estimateNimMessagesTokens,
   truncateMessagesForContext,
@@ -1080,11 +1083,31 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
       if (this.statusBar) {
         const shortName = model.name ?? model.id.split("/").at(-1) ?? model.id;
-        this.statusBar.showUsage(
-          shortName,
-          finalUsage?.prompt_tokens,
-          finalUsage?.completion_tokens,
+        const categoryBreakdown = estimateMessagesTokensByCategory(
+          messages as readonly {
+            role: number;
+            content: (vscode.LanguageModelInputPart | LegacyPart)[];
+          }[],
         );
+        const extraSystemTokens = requestProfile.extraSystemMessages.reduce(
+          (sum, content) => sum + estimateTokens(content),
+          0,
+        );
+        const toolsTokens = toolConfig.tools ? estimateToolsTokens(toolConfig.tools) : 0;
+        const breakdown: TokenBreakdown = {
+          modelName: shortName,
+          systemPrompt: categoryBreakdown.system + extraSystemTokens,
+          tools: toolsTokens,
+          userMessages: categoryBreakdown.user,
+          assistantMessages: categoryBreakdown.assistant,
+          toolCalls: categoryBreakdown.toolCalls,
+          toolResults: categoryBreakdown.toolResults,
+          images: categoryBreakdown.images,
+          actualPromptTokens: finalUsage?.prompt_tokens,
+          output: finalUsage?.completion_tokens ?? 0,
+          contextWindow,
+        };
+        this.statusBar.showTokenBreakdown(breakdown);
       }
     } catch (err) {
       if (token.isCancellationRequested || (err instanceof Error && err.name === "AbortError")) {
@@ -1142,25 +1165,19 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     text: string | LanguageModelChatRequestMessage,
     _token: CancellationToken,
   ): Promise<number> {
-    if (typeof text === "string") {
-      return Promise.resolve(estimateTokens(text));
-    }
-    let total = 0;
-    for (const part of text.content) {
-      if (part instanceof vscode.LanguageModelTextPart) {
-        total += estimateTokens(part.value);
-      } else if (
-        typeof part === "object" &&
-        part !== null &&
-        "value" in part &&
-        typeof (part as { value?: unknown }).value === "string"
-      ) {
-        total += estimateTokens((part as { value: string }).value);
-      } else {
-        total += 2; // rough estimate for non-text parts
+    try {
+      if (typeof text === "string") {
+        return Promise.resolve(estimateTokens(text));
       }
+      return Promise.resolve(
+        estimateMessageTokens(
+          text as unknown as { content: (vscode.LanguageModelInputPart | LegacyPart)[] },
+        ),
+      );
+    } catch {
+      // Never reject: a thrown token counter would hang VS Code's breakdown UI.
+      return Promise.resolve(0);
     }
-    return Promise.resolve(total);
   }
 
   private async ensureApiKey(
