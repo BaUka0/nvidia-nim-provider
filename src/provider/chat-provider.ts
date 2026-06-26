@@ -547,6 +547,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         stream: true,
         max_tokens: requestedMaxTokens,
         temperature: temperatureVal,
+        stream_options: { include_usage: true },
       };
 
       let reasoningMode =

@@ -44,6 +44,7 @@ export interface NimChatRequest {
   reasoning_effort?: string;
   enable_thinking?: boolean;
   chat_template_kwargs?: Record<string, unknown>;
+  stream_options?: { include_usage: boolean };
 }
 
 export interface NimStreamChoice {

@@ -1,6 +1,6 @@
 # Change Log
 
-## [0.4.0-preview] - 2026-06-26
+## [0.4.0] - 2026-06-26
 
 ### Added
 - **Token Breakdown in Status Bar**: After each response, the status bar now displays full context window utilization in `X/Y` format (e.g. `$(zap) Kimi K2.6: 25.5k/262.1k`). Hovering over the status bar item reveals a detailed Markdown tooltip with a per-category token breakdown table:
