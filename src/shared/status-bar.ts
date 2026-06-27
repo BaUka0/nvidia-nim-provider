@@ -132,7 +132,7 @@ export class StatusBarManager {
     md.appendMarkdown(`| Tool Results | ${cat.toolResults.toLocaleString()} |\n`);
     md.appendMarkdown(`| Images / Media | ${cat.images.toLocaleString()} |\n`);
     md.appendMarkdown(
-      `| **Input Total** | **${inputTokens.toLocaleString()}** |\n`,
+      `| **Input Total${hasActual ? " *(actual)*" : ""}** | **${inputTokens.toLocaleString()}** |\n`,
     );
     md.appendMarkdown(`| Output (completion) | ${breakdown.output.toLocaleString()} |\n`);
     md.appendMarkdown(`| **Total Used** | **${totalTokens.toLocaleString()}** |\n`);

@@ -48,7 +48,7 @@ import {
 } from "../models/catalog";
 import { summarizeOldMessages, splitMessagesForSummarization } from "../models/summarizer";
 import { getModelAdapter } from "../models/adapters";
-import { debugLog, outputLog } from "../shared/logging";
+import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
 import { NimChatMessage, NimChatRequest } from "../types";
 import {
@@ -66,6 +66,48 @@ import {
 import { filterThinkTagsFromChunk, flushThinkTagFilter } from "../messages/think-filter";
 
 const DEFAULT_MAX_TOKENS = 65536;
+
+const ORPHANED_CLOSE_TAGS = ["</" + "think>", "</" + "mm:think>"];
+
+function countCodeFenceParity(text: string): 0 | 1 {
+  let count = 0;
+  for (const line of text.split("\n")) {
+    if (/^\s*```/.test(line)) {
+      count++;
+    }
+  }
+  return (count % 2) as 0 | 1;
+}
+
+function findOrphanedCloseTag(text: string): { index: number; tag: string } | undefined {
+  let bestIndex = -1;
+  let bestTag: string | undefined;
+  for (const tag of ORPHANED_CLOSE_TAGS) {
+    const idx = text.toLowerCase().indexOf(tag.toLowerCase());
+    if (idx !== -1 && (bestIndex === -1 || idx < bestIndex)) {
+      bestIndex = idx;
+      bestTag = tag;
+    }
+  }
+  return bestTag !== undefined ? { index: bestIndex, tag: bestTag } : undefined;
+}
+
+function findPartialCloseTagEnd(text: string): number {
+  let bestMatch = -1;
+  for (const tag of ORPHANED_CLOSE_TAGS) {
+    const maxLen = Math.min(text.length, tag.length - 1);
+    for (let len = maxLen; len > 0; len -= 1) {
+      if (text.toLowerCase().endsWith(tag.slice(0, len).toLowerCase())) {
+        const matchStart = text.length - len;
+        if (bestMatch === -1 || matchStart < bestMatch) {
+          bestMatch = matchStart;
+        }
+        break;
+      }
+    }
+  }
+  return bestMatch;
+}
 
 interface NvidiaProviderConfiguration {
   apiKey?: string;
@@ -570,6 +612,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         adapter.applyReasoningMode(requestBody, reasoningMode);
       }
 
+      const reasoningContentExpected =
+        Boolean(adapter.applyReasoningMode) && reasoningMode !== "none";
+
       const modelOpts = options.modelOptions as Record<string, unknown>;
       if (typeof modelOpts?.top_p === "number") {
         requestBody.top_p = Math.min(1, Math.max(0, modelOpts.top_p));
@@ -652,6 +697,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         let emittedFirstToolCall = false;
         let reportedContent = false;
         let seenReasoningContent = false;
+        let reasoningBuffer = "";
         let firstResponseAtMs: number | undefined;
         let firstToolCallAtMs: number | undefined;
         let lastUsage:
@@ -670,15 +716,21 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           if (!pendingText) {
             return;
           }
+          flushReasoning(true);
           reportPart(new vscode.LanguageModelTextPart(pendingText));
           pendingText = "";
         };
-        const emitReasoning = (text: string): void => {
-          if (!text) {
+        const flushReasoning = (force: boolean = false): void => {
+          if (!reasoningBuffer) {
             return;
           }
-          markFirstResponse();
-          flushPendingText();
+          if (!force && countCodeFenceParity(reasoningBuffer) === 1) {
+            return;
+          }
+          let text = reasoningBuffer;
+          if (countCodeFenceParity(text) === 1) {
+            text += "\n```";
+          }
           const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
           if (ThinkingPart) {
             reportPart(new ThinkingPart(text));
@@ -691,6 +743,43 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                 new vscode.LanguageModelTextPart(text.startsWith(" ") ? text : ` ${text}`),
               );
             }
+          }
+          reasoningBuffer = "";
+        };
+        const emitReasoning = (text: string, checkOrphanedClose: boolean = false): void => {
+          if (!text) {
+            return;
+          }
+          markFirstResponse();
+          reasoningBuffer += text;
+
+          if (checkOrphanedClose) {
+            const closeMatch = findOrphanedCloseTag(reasoningBuffer);
+            if (closeMatch) {
+              const before = reasoningBuffer.slice(0, closeMatch.index);
+              const after = reasoningBuffer.slice(closeMatch.index + closeMatch.tag.length);
+              reasoningBuffer = before;
+              flushReasoning(true);
+              seenReasoningContent = true;
+              if (after) {
+                processFilteredText(after);
+                flushPendingText();
+              }
+              return;
+            }
+
+            const partialEnd = findPartialCloseTagEnd(reasoningBuffer);
+            if (partialEnd !== -1) {
+              const safePart = reasoningBuffer.slice(0, partialEnd);
+              const partialPart = reasoningBuffer.slice(partialEnd);
+              reasoningBuffer = safePart;
+              flushReasoning(false);
+              reasoningBuffer = partialPart;
+            } else {
+              flushReasoning(false);
+            }
+          } else {
+            flushReasoning(false);
           }
         };
         const processFilteredText = (text: string): void => {
@@ -782,6 +871,19 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
             const reasoningContent = (choice?.delta as { reasoning_content?: string })
               ?.reasoning_content;
+
+            if (debugEnabled()) {
+              const contentStr = choice?.delta?.content;
+              debugLog("stream chunk", {
+                rc: Boolean(reasoningContent),
+                rcTail: reasoningContent?.slice(-32),
+                content: Boolean(contentStr),
+                contentHead: contentStr?.slice(0, 64),
+                contentTail: contentStr?.slice(-32),
+                finish: choice?.finish_reason ?? null,
+              });
+            }
+
             if (reasoningContent) {
               seenReasoningContent = true;
               emitReasoning(reasoningContent);
@@ -797,11 +899,25 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                   if (!seenReasoningContent) {
                     emitReasoning(segment.text);
                   }
+                } else if (reasoningContentExpected && !seenReasoningContent) {
+                  emitReasoning(segment.text, true);
+                } else if (reasoningContentExpected && seenReasoningContent) {
+                  const closeMatch = findOrphanedCloseTag(segment.text);
+                  if (closeMatch) {
+                    const before = segment.text.slice(0, closeMatch.index);
+                    const after = segment.text.slice(closeMatch.index + closeMatch.tag.length);
+                    if (before) emitReasoning(before, false);
+                    if (after) processFilteredText(after);
+                  } else {
+                    processFilteredText(segment.text);
+                  }
                 } else {
                   processFilteredText(segment.text);
                 }
               }
-              flushPendingText();
+              if (!reasoningContentExpected || seenReasoningContent) {
+                flushPendingText();
+              }
             }
 
             // Handle tool calls
@@ -979,6 +1095,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
           throw streamErr;
         }
+
+        flushReasoning(true);
 
         if (pendingText && (!sawToolCall || emittedToolCall || pendingText.trim().length > 0)) {
           flushPendingText();

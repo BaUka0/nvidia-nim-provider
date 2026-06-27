@@ -181,7 +181,7 @@ describe("NimChatModelProvider", () => {
     expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "hidden" }));
   });
 
-  it("emits reasoning_content deltas as thinking parts", async () => {
+  it("emits reasoning_content deltas as live thinking parts", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -270,11 +270,406 @@ describe("NimChatModelProvider", () => {
       expect.objectContaining({ value: " final thought" }),
     );
     expect(allReports[textIndices[0]]).toEqual(expect.objectContaining({ value: "Answer" }));
-    expect(allReports[textIndices[1]]).toEqual(
-      expect.objectContaining({ value: " continued" }),
-    );
+    expect(allReports[textIndices[1]]).toEqual(expect.objectContaining({ value: " continued" }));
 
     expect(thinkingIndices[1]).toBeLessThan(textIndices[0]);
+  });
+
+  it("emits a single balanced thinking part when reasoning contains an unclosed code fence", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield {
+        choices: [{ delta: { reasoning_content: "Analyzing code:\n```python\ndef foo():" } }],
+      };
+      yield { choices: [{ delta: { reasoning_content: "\n    return 42" } }] };
+      yield { choices: [{ delta: { content: "The answer is 42" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "deepseek-ai/deepseek-v4", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const thinkingReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof ThinkingPart,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+    );
+
+    expect(thinkingReports).toHaveLength(1);
+    expect(thinkingReports[0][0]).toEqual(
+      expect.objectContaining({
+        value: "Analyzing code:\n```python\ndef foo():\n    return 42\n```",
+      }),
+    );
+    expect(textReports).toHaveLength(1);
+    expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "The answer is 42" }));
+  });
+
+  it("flushes buffered reasoning even when no content follows", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Only reasoning, no answer" } }] };
+      yield { choices: [{ delta: {}, finish_reason: "stop" }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "deepseek-ai/deepseek-v4", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const thinkingReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof ThinkingPart,
+    );
+
+    expect(thinkingReports).toHaveLength(1);
+    expect(thinkingReports[0][0]).toEqual(
+      expect.objectContaining({ value: "Only reasoning, no answer" }),
+    );
+  });
+
+  const closeTag = "</" + "think>";
+
+  it("splits content on orphaned think-close tag into reasoning and answer", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "English reasoning here" } }] };
+      yield { choices: [{ delta: { content: " more thinking" + closeTag } }] };
+      yield { choices: [{ delta: { content: "Russian answer here" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "z-ai/glm-5.1", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const allReports = progress.report.mock.calls.map((c: any) => c[0]);
+    const thinkingIndices = allReports
+      .map((r: any, i: number) => (r instanceof ThinkingPart ? i : -1))
+      .filter((i: number) => i !== -1);
+    const textIndices = allReports
+      .map((r: any, i: number) => (r instanceof vscode.LanguageModelTextPart ? i : -1))
+      .filter((i: number) => i !== -1);
+
+    const thinkingText = thinkingIndices.map((i: number) => allReports[i].value).join("");
+    expect(thinkingText).toContain("English reasoning here more thinking");
+
+    expect(textIndices).toHaveLength(1);
+    expect(allReports[textIndices[0]]).toEqual(
+      expect.objectContaining({ value: "Russian answer here" }),
+    );
+    expect(thinkingIndices[thinkingIndices.length - 1]).toBeLessThan(textIndices[0]);
+  });
+
+  it("splits orphaned think-close tag across chunks", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "reasoning part one" } }] };
+      yield { choices: [{ delta: { content: " reasoning part two" + closeTag } }] };
+      yield { choices: [{ delta: { content: "answer after split" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "z-ai/glm-5.1", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const textReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+    );
+
+    expect(textReports).toHaveLength(1);
+    expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "answer after split" }));
+  });
+
+  it("handles orphaned think-close tag after reasoning_content stopped (mid-stream leak)", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "proper reasoning start" } }] };
+      yield { choices: [{ delta: { content: "leaked reasoning continuation" + closeTag } }] };
+      yield { choices: [{ delta: { content: "actual answer text" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "z-ai/glm-5.1", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const allReports = progress.report.mock.calls.map((c: any) => c[0]);
+    const textIndices = allReports
+      .map((r: any, i: number) => (r instanceof vscode.LanguageModelTextPart ? i : -1))
+      .filter((i: number) => i !== -1);
+
+    expect(textIndices).toHaveLength(1);
+    expect(allReports[textIndices[0]]).toEqual(
+      expect.objectContaining({ value: "actual answer text" }),
+    );
+  });
+
+  it("logs raw stream chunk metadata when debug logging is enabled", async () => {
+    process.env.NVIDIA_NIM_DEBUG = "1";
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      const mockStream = async function* () {
+        yield { choices: [{ delta: { reasoning_content: "thinking part" } }] };
+        yield {
+          choices: [
+            { delta: { reasoning_content: " end", content: "answer" }, finish_reason: null },
+          ],
+        };
+        yield { choices: [{ delta: { content: " done" }, finish_reason: "stop" }] };
+      };
+      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+      const progress = { report: jest.fn() };
+      const token = {
+        isCancellationRequested: false,
+        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+      };
+
+      await provider.provideLanguageModelChatResponse(
+        { id: "deepseek-ai/deepseek-v4", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        [{ role: 1, content: [{ value: "Hi" }] }] as any,
+        { modelOptions: {} } as any,
+        progress,
+        token as any,
+      );
+
+      const chunkLogs = consoleSpy.mock.calls.filter((c: any) => c[0]?.includes?.("stream chunk"));
+      expect(chunkLogs.length).toBeGreaterThanOrEqual(3);
+      expect(chunkLogs[0][1]).toEqual(
+        expect.objectContaining({ rc: true, content: false, finish: null }),
+      );
+      expect(chunkLogs[1][1]).toEqual(
+        expect.objectContaining({ rc: true, content: true, finish: null }),
+      );
+      expect(chunkLogs[2][1]).toEqual(
+        expect.objectContaining({ rc: false, content: true, finish: "stop" }),
+      );
+    } finally {
+      consoleSpy.mockRestore();
+      delete process.env.NVIDIA_NIM_DEBUG;
+    }
+  });
+
+  it("routes untagged content to thinking when reasoning is expected but reasoning_content is absent", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "Now let me look" } }] };
+      yield { choices: [{ delta: { content: " at the code" } }] };
+      yield { choices: [{ delta: { content: " to understand" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "z-ai/glm-5.1", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const thinkingReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof ThinkingPart,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+    );
+
+    expect(thinkingReports.length).toBeGreaterThanOrEqual(1);
+    expect(textReports).toHaveLength(0);
+    const thinkingText = thinkingReports.map((r: any) => r[0].value).join("");
+    expect(thinkingText).toContain("Now let me look at the code to understand");
+  });
+
+  it("routes content to answer after reasoning_content arrives, even if content started before it", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "thinking without tags" } }] };
+      yield { choices: [{ delta: { reasoning_content: "proper reasoning" } }] };
+      yield { choices: [{ delta: { content: "final answer" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "z-ai/glm-5.1", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const allReports = progress.report.mock.calls.map((c: any) => c[0]);
+    const thinkingIndices = allReports
+      .map((r: any, i: number) => (r instanceof ThinkingPart ? i : -1))
+      .filter((i: number) => i !== -1);
+    const textIndices = allReports
+      .map((r: any, i: number) => (r instanceof vscode.LanguageModelTextPart ? i : -1))
+      .filter((i: number) => i !== -1);
+
+    expect(textIndices).toHaveLength(1);
+    expect(allReports[textIndices[0]]).toEqual(expect.objectContaining({ value: "final answer" }));
+
+    const thinkingText = thinkingIndices.map((i: number) => allReports[i].value).join("");
+    expect(thinkingText).toContain("thinking without tags");
+    expect(thinkingText).toContain("proper reasoning");
+    expect(thinkingIndices[thinkingIndices.length - 1]).toBeLessThan(textIndices[0]);
+  });
+
+  it("does not route content to thinking when reasoning mode is none", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "Direct answer without reasoning" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "z-ai/glm-5.1", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelConfiguration: { reasoningMode: "none" }, modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const thinkingReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof ThinkingPart,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+    );
+
+    expect(thinkingReports).toHaveLength(0);
+    expect(textReports).toHaveLength(1);
+    expect(textReports[0][0]).toEqual(
+      expect.objectContaining({ value: "Direct answer without reasoning" }),
+    );
+  });
+
+  it("does not route content to thinking for models without reasoning_content support", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "Answer from non-reasoning model" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: "meta/llama-4-maverick-17b-128e-instruct",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const thinkingReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof ThinkingPart,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+    );
+
+    expect(thinkingReports).toHaveLength(0);
+    expect(textReports).toHaveLength(1);
+    expect(textReports[0][0]).toEqual(
+      expect.objectContaining({ value: "Answer from non-reasoning model" }),
+    );
   });
 
   it("emits think-tag content as a thinking part for kimi models", async () => {
