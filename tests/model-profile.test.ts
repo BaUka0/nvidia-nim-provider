@@ -109,4 +109,24 @@ describe("applyReasoningMode", () => {
     adapter.applyReasoningMode!(request, "on");
     expect(request.chat_template_kwargs).toEqual({ thinking: true });
   });
+
+  it("sets chat_template_kwargs.enable_thinking to false for GLM none", () => {
+    const adapter = getModelAdapter("z-ai/glm-5.2");
+    const request: NimChatRequest = {
+      model: "z-ai/glm-5.2",
+      messages: [],
+    };
+    adapter.applyReasoningMode!(request, "none");
+    expect(request.chat_template_kwargs).toEqual({ enable_thinking: false });
+  });
+
+  it("sets chat_template_kwargs.enable_thinking and clear_thinking for GLM on", () => {
+    const adapter = getModelAdapter("z-ai/glm-5.2");
+    const request: NimChatRequest = {
+      model: "z-ai/glm-5.2",
+      messages: [],
+    };
+    adapter.applyReasoningMode!(request, "on");
+    expect(request.chat_template_kwargs).toEqual({ enable_thinking: true, clear_thinking: false });
+  });
 });

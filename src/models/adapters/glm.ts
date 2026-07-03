@@ -15,6 +15,7 @@ export class GlmAdapter extends BaseModelAdapter {
       request.chat_template_kwargs.enable_thinking = false;
     } else {
       request.chat_template_kwargs.enable_thinking = true;
+      request.chat_template_kwargs.clear_thinking = false;
     }
   }
 }

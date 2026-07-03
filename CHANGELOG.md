@@ -1,5 +1,11 @@
 # Change Log
 
+## [0.4.6] - 2026-07-03
+
+### Fixed
+
+- **Reasoning Toggle for GLM-5.2.** Fixed a bug where enabling the reasoning switch on `z-ai/glm-5.2` caused the NVIDIA NIM API to fail with an empty response/error. Included `"clear_thinking": false` in the request's `chat_template_kwargs` to align with the official NVIDIA NIM API parameters.
+
 ## [0.4.5] - 2026-07-03
 
 ### Changed
