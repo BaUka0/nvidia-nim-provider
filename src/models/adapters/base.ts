@@ -15,6 +15,7 @@ export interface ModelAdapter {
   parseTextEmbeddedToolCalls?(text: string): ParsedTextToolCallResult;
   applyReasoningMode?(request: import("../../types").NimChatRequest, mode: string): void;
   readonly supportedReasoningModes?: string[];
+  readonly alwaysReasons?: boolean;
 }
 
 export const DEFAULT_TEMPERATURE = 0.7;

@@ -38,9 +38,10 @@ const ELITE_MODELS_WHITELIST: Record<string, Partial<NormalizedNvidiaModel>> = {
     displayName: "Nemotron 3 Ultra 550B",
     contextWindow: 1000000,
   },
-  "z-ai/glm-5.1": {
-    displayName: "GLM 5.1",
-    contextWindow: 131072,
+  "z-ai/glm-5.2": {
+    displayName: "GLM 5.2",
+    contextWindow: 1000000,
+    maxOutputTokens: 128000,
   },
   "stepfun-ai/step-3.7-flash": {
     displayName: "Step 3.7 Flash",

@@ -614,6 +614,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
       const reasoningContentExpected =
         Boolean(adapter.applyReasoningMode) && reasoningMode !== "none";
+      const reasoningIsolationExpected = reasoningContentExpected || Boolean(adapter.alwaysReasons);
 
       const modelOpts = options.modelOptions as Record<string, unknown>;
       if (typeof modelOpts?.top_p === "number") {
@@ -697,7 +698,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         let emittedFirstToolCall = false;
         let reportedContent = false;
         let seenReasoningContent = false;
+        let reasoningContentFlushed = false;
+        let contentStartedBeforeReasoning = false;
+        let answerStarted = false;
         let reasoningBuffer = "";
+        let contentBuffer = "";
         let firstResponseAtMs: number | undefined;
         let firstToolCallAtMs: number | undefined;
         let lastUsage:
@@ -761,8 +766,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               reasoningBuffer = before;
               flushReasoning(true);
               seenReasoningContent = true;
+              answerStarted = true;
               if (after) {
-                processFilteredText(after);
+                processAnswerText(after);
                 flushPendingText();
               }
               return;
@@ -849,6 +855,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             }
           }
         };
+        const processAnswerText = (text: string): void => {
+          if (!text) {
+            return;
+          }
+          answerStarted = true;
+          processFilteredText(text);
+        };
 
         try {
           for await (const chunk of streamChatCompletion(
@@ -891,6 +904,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
             if (choice?.delta?.content) {
               markFirstResponse();
+              if (seenReasoningContent && !reasoningContentFlushed) {
+                flushReasoning(true);
+                reasoningContentFlushed = true;
+              }
+              if (!seenReasoningContent) {
+                contentStartedBeforeReasoning = true;
+              }
               for (const segment of filterThinkTagsFromChunk(
                 choice.delta.content,
                 thinkTagFilterState,
@@ -899,23 +919,35 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                   if (!seenReasoningContent) {
                     emitReasoning(segment.text);
                   }
-                } else if (reasoningContentExpected && !seenReasoningContent) {
-                  emitReasoning(segment.text, true);
-                } else if (reasoningContentExpected && seenReasoningContent) {
-                  const closeMatch = findOrphanedCloseTag(segment.text);
-                  if (closeMatch) {
-                    const before = segment.text.slice(0, closeMatch.index);
-                    const after = segment.text.slice(closeMatch.index + closeMatch.tag.length);
-                    if (before) emitReasoning(before, false);
-                    if (after) processFilteredText(after);
+                } else if (reasoningIsolationExpected && !answerStarted) {
+                  if (seenReasoningContent && !contentStartedBeforeReasoning) {
+                    contentBuffer += segment.text;
+                    const closeMatch = findOrphanedCloseTag(contentBuffer);
+                    if (closeMatch) {
+                      const before = contentBuffer.slice(0, closeMatch.index);
+                      const after = contentBuffer.slice(closeMatch.index + closeMatch.tag.length);
+                      if (before) {
+                        emitReasoning(before);
+                        flushReasoning(true);
+                      }
+                      answerStarted = true;
+                      contentBuffer = "";
+                      if (after) {
+                        processAnswerText(after);
+                      }
+                    } else if (contentBuffer.length > 150) {
+                      processAnswerText(contentBuffer);
+                      contentBuffer = "";
+                      answerStarted = true;
+                    }
                   } else {
-                    processFilteredText(segment.text);
+                    emitReasoning(segment.text, true);
                   }
                 } else {
-                  processFilteredText(segment.text);
+                  processAnswerText(segment.text);
                 }
               }
-              if (!reasoningContentExpected || seenReasoningContent) {
+              if (!reasoningIsolationExpected || answerStarted) {
                 flushPendingText();
               }
             }
@@ -1094,6 +1126,16 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           }
 
           throw streamErr;
+        }
+
+        if (contentBuffer) {
+          if (contentStartedBeforeReasoning) {
+            emitReasoning(contentBuffer);
+          } else {
+            processAnswerText(contentBuffer);
+          }
+          contentBuffer = "";
+          answerStarted = true;
         }
 
         flushReasoning(true);

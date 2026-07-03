@@ -1,5 +1,16 @@
 # Change Log
 
+## [0.4.4] - 2026-07-03
+
+### Added
+
+- **Integration for `z-ai/glm-5.2`.** Added full support for the new elite reasoning/agentic model `z-ai/glm-5.2`, featuring a 1,000,000 token context window and 128,000 token output capability.
+- **Improved Stream Routing for GLM/DeepSeek.** Added a `contentStartedBeforeReasoning` tracking mechanism and a 150-character buffer to cleanly separate models that stream reasoning in `content` from those using a distinct `reasoning_content` delta field. This fixes a critical bug where GLM 5.2's initial response text was incorrectly routed to and trapped in the collapsible thinking block.
+
+### Removed
+
+- **GLM 5.1 Model.** Removed the obsolete `z-ai/glm-5.1` model from the whitelist and all tests.
+
 ## [0.4.3] - 2026-06-27
 
 ### Fixed

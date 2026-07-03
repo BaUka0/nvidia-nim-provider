@@ -24,6 +24,25 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
+  it("normalizes z-ai/glm-5.2 correctly with its specific overrides", () => {
+    const raw: NvidiaModelSummary[] = [
+      {
+        id: "z-ai/glm-5.2",
+      },
+    ];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([
+      {
+        id: "z-ai/glm-5.2",
+        displayName: "GLM 5.2",
+        contextWindow: 1000000,
+        maxOutputTokens: 128000,
+        supportsTools: true,
+        supportsVision: false,
+      },
+    ]);
+  });
+
   it("uses metadata.max_tokens when override maxOutputTokens is absent", () => {
     // testing with nemotron because it doesn't have an override for maxOutputTokens
     const raw: NvidiaModelSummary[] = [
@@ -68,12 +87,12 @@ describe("normalizeNvidiaModels", () => {
   });
 
   it("deduplicates exact duplicate model ids from the NVIDIA catalog", () => {
-    const raw: NvidiaModelSummary[] = [{ id: "z-ai/glm-5.1" }, { id: "z-ai/glm-5.1" }];
+    const raw: NvidiaModelSummary[] = [{ id: "z-ai/glm-5.2" }, { id: "z-ai/glm-5.2" }];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
-        id: "z-ai/glm-5.1",
-        displayName: "GLM 5.1",
+        id: "z-ai/glm-5.2",
+        displayName: "GLM 5.2",
       }),
     ]);
   });

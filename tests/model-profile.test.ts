@@ -5,6 +5,7 @@ describe("getModelAdapter", () => {
   it.each([
     ["kimi-k2.6", 0.2, 0.1, "Do not reveal chain-of-thought"],
     ["zai-org/glm-4.5", 0.1, 0.05, "strict JSON arguments"],
+    ["z-ai/glm-5.2", 0.1, 0.05, "strict JSON arguments"],
     ["nemotron-70b", 0.2, 0.1, "Do not wrap tool arguments in markdown fences"],
   ])(
     "returns a specialized tool-enabled profile for %s",
