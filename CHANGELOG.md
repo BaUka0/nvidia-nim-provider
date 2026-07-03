@@ -1,5 +1,15 @@
 # Change Log
 
+## [0.4.5] - 2026-07-03
+
+### Changed
+
+- **Refactored `chat-provider.ts` code structure.** Extracted modular logic from the main provider file into dedicated classes to improve maintainability and testability:
+  - Extracted request options construction, token limit handling, and parameter profiling to `NimRequestBuilder`.
+  - Extracted streaming tool call schema matching, chunk buffering, and repair/aggregation logic to `ToolCallStreamAggregator` with lazy initialization.
+  - Delegated picker information mapping logic entirely to `NvidiaModelDiscoveryService` in `discovery.ts`.
+  - Cleaned up duplicate functions and unused imports inside `chat-provider.ts`.
+
 ## [0.4.4] - 2026-07-03
 
 ### Added

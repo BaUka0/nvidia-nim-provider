@@ -16,109 +16,45 @@ import {
   buildInvalidToolCallFallback,
   buildInvalidToolCallRetryMessage,
   buildToolCallCanonicalKey,
-  ChatRequestContext,
-  extractChatRequestContext,
-  getCompletedToolCallKeys,
-  getToolSchemaMap,
   hasRequiredToolArguments,
-  isToolCallInput,
   parseTextEmbeddedToolCalls,
   repairToolArguments,
   SkippedToolCall,
-  ToolSchema,
 } from "../tools/parser";
-import { fetchModels, streamChatCompletion } from "../api/client";
+import { streamChatCompletion } from "../api/client";
 import { formatStructuredError } from "../api/errors";
 import {
   CONTEXT_WINDOW_SAFETY_MARGIN,
   DEBUG_ENV_VAR,
   MANAGE_COMMAND_ID,
-  MODELS_CACHE_VERSION,
-  MODELS_CACHE_VERSION_STATE_KEY,
-  MODELS_STATE_KEY,
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
   SECRET_STORAGE_KEY,
 } from "../shared/constants";
-import {
-  isNormalizedNvidiaModel,
-  NormalizedNvidiaModel,
-  normalizeNvidiaModels,
-  getFallbackModel,
-} from "../models/catalog";
-import { summarizeOldMessages, splitMessagesForSummarization } from "../models/summarizer";
+import { getFallbackModel } from "../models/catalog";
 import { getModelAdapter } from "../models/adapters";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
 import { NimChatMessage, NimChatRequest } from "../types";
 import {
-  convertMessages,
-  convertTools,
-  estimateMessagesTokens,
   estimateMessagesTokensByCategory,
   estimateToolsTokens,
   estimateMessageTokens,
   estimateTokens,
-  estimateNimMessagesTokens,
-  truncateMessagesForContext,
   LegacyPart,
 } from "../messages/converter";
-import { filterThinkTagsFromChunk, flushThinkTagFilter } from "../messages/think-filter";
+import { ReasoningStreamRouter } from "../messages/reasoning-router";
+import { NvidiaModelDiscoveryService, NvidiaLanguageModelChatInformation } from "../models/discovery";
+import { NimRequestBuilder } from "./request-builder";
+import { ToolCallStreamAggregator } from "./tool-call-aggregator";
 
 const DEFAULT_MAX_TOKENS = 65536;
-
-const ORPHANED_CLOSE_TAGS = ["</" + "think>", "</" + "mm:think>"];
-
-function countCodeFenceParity(text: string): 0 | 1 {
-  let count = 0;
-  for (const line of text.split("\n")) {
-    if (/^\s*```/.test(line)) {
-      count++;
-    }
-  }
-  return (count % 2) as 0 | 1;
-}
-
-function findOrphanedCloseTag(text: string): { index: number; tag: string } | undefined {
-  let bestIndex = -1;
-  let bestTag: string | undefined;
-  for (const tag of ORPHANED_CLOSE_TAGS) {
-    const idx = text.toLowerCase().indexOf(tag.toLowerCase());
-    if (idx !== -1 && (bestIndex === -1 || idx < bestIndex)) {
-      bestIndex = idx;
-      bestTag = tag;
-    }
-  }
-  return bestTag !== undefined ? { index: bestIndex, tag: bestTag } : undefined;
-}
-
-function findPartialCloseTagEnd(text: string): number {
-  let bestMatch = -1;
-  for (const tag of ORPHANED_CLOSE_TAGS) {
-    const maxLen = Math.min(text.length, tag.length - 1);
-    for (let len = maxLen; len > 0; len -= 1) {
-      if (text.toLowerCase().endsWith(tag.slice(0, len).toLowerCase())) {
-        const matchStart = text.length - len;
-        if (bestMatch === -1 || matchStart < bestMatch) {
-          bestMatch = matchStart;
-        }
-        break;
-      }
-    }
-  }
-  return bestMatch;
-}
 
 interface NvidiaProviderConfiguration {
   apiKey?: string;
   reasoningMode?: string;
 }
 
-interface NvidiaLanguageModelChatInformation extends LanguageModelChatInformation {
-  apiKey?: string;
-  isUserSelectable?: boolean;
-  configurationSchema?: any;
-}
 
 type SelectedModelRuntimeCapabilities = LanguageModelChatInformation & {
   capabilities?: {
@@ -166,6 +102,7 @@ function buildMissingApiKeyFallback(): string {
 }
 
 export class NimChatModelProvider implements LanguageModelChatProvider {
+  private readonly discoveryService: NvidiaModelDiscoveryService;
   private readonly runtimeInfoCache = new Map<
     string,
     {
@@ -187,57 +124,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     private readonly userAgent: string,
     private readonly globalState?: vscode.Memento,
     private readonly statusBar?: StatusBarManager,
-  ) {}
+  ) {
+    this.discoveryService = new NvidiaModelDiscoveryService(secrets, userAgent, globalState);
+  }
 
   fireModelInfoChanged(): void {
     this.runtimeInfoCache.clear();
     this._onDidChangeLanguageModelChatInformation.fire();
-  }
-
-  private getNormalizedModels(): NormalizedNvidiaModel[] {
-    const storedModels = this.globalState?.get<unknown>(MODELS_STATE_KEY);
-    if (!Array.isArray(storedModels)) {
-      return [];
-    }
-
-    return storedModels.every(isNormalizedNvidiaModel) ? storedModels : [];
-  }
-
-  private async getAvailableModels(
-    apiKey?: string,
-    options: { refreshStaleCache?: boolean } = {},
-  ): Promise<NormalizedNvidiaModel[]> {
-    const cachedModels = this.getNormalizedModels();
-    const cacheVersion = this.globalState?.get<number>(MODELS_CACHE_VERSION_STATE_KEY);
-    if (
-      cachedModels.length > 0 &&
-      (cacheVersion === MODELS_CACHE_VERSION || !apiKey || !options.refreshStaleCache)
-    ) {
-      return cachedModels;
-    }
-
-    const refreshedModels = await this.fetchAvailableModels(apiKey);
-    return refreshedModels ?? cachedModels;
-  }
-
-  private async fetchAvailableModels(
-    configuredApiKey?: string,
-  ): Promise<NormalizedNvidiaModel[] | undefined> {
-    const apiKey = configuredApiKey ?? (await this.secrets.get(SECRET_STORAGE_KEY));
-    if (!apiKey) {
-      return undefined;
-    }
-
-    const rawModels = await fetchModels(apiKey, undefined, this.userAgent);
-    if (!Array.isArray(rawModels)) {
-      debugLog("modelPicker", "Unable to fetch models on demand.");
-      return undefined;
-    }
-
-    const normalizedModels = normalizeNvidiaModels(rawModels);
-    await this.globalState?.update(MODELS_STATE_KEY, normalizedModels);
-    await this.globalState?.update(MODELS_CACHE_VERSION_STATE_KEY, MODELS_CACHE_VERSION);
-    return normalizedModels;
   }
 
   private async resolveChatModelRuntimeInfo(
@@ -254,7 +147,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       return cachedRuntimeInfo;
     }
 
-    const cachedModel = this.getNormalizedModels().find((entry) => entry.id === model.id);
+    const cachedModel = this.discoveryService.getNormalizedModels().find((entry) => entry.id === model.id);
     if (cachedModel) {
       const runtimeInfo = {
         supportsTools: cachedModel.supportsTools,
@@ -278,7 +171,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       return runtimeInfo;
     }
 
-    const fetchedModel = (await this.getAvailableModels(apiKey)).find(
+    const fetchedModel = (await this.discoveryService.getAvailableModels(apiKey)).find(
       (entry) => entry.id === model.id,
     );
     const runtimeInfo = {
@@ -293,49 +186,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     return runtimeInfo;
   }
 
-  private calculateMaxToolResultChars(contextWindow: number): number {
-    if (contextWindow >= 500000) {
-      return 50000;
-    }
-    if (contextWindow >= 200000) {
-      return 30000;
-    }
-    if (contextWindow >= 100000) {
-      return 20000;
-    }
-    return 10000;
-  }
 
-  private calculateRequestedMaxTokens(options: {
-    requestedMaxTokens: number;
-    modelMaxOutputTokens: number;
-    contextWindow: number;
-    inputTokenCount: number;
-  }): number {
-    const availableCompletionTokens = Math.max(
-      1,
-      options.contextWindow - options.inputTokenCount - CONTEXT_WINDOW_SAFETY_MARGIN,
-    );
-
-    return Math.min(
-      options.requestedMaxTokens,
-      options.modelMaxOutputTokens,
-      availableCompletionTokens,
-    );
-  }
-
-  /** Return true if any message contains image input parts. */
-  private hasImageInput(messages: readonly LanguageModelChatMessage[]): boolean {
-    for (const msg of messages) {
-      for (const part of msg.content) {
-        const p = part as { mimeType?: unknown; data?: unknown };
-        if (typeof p.mimeType === "string" && p.mimeType.startsWith("image/")) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
 
   async provideLanguageModelChatInformation(
     options: PrepareLanguageModelChatModelOptions,
@@ -371,8 +222,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       return [];
     }
 
-    const models = await this.getAvailableModels(apiKey, { refreshStaleCache: true });
-    const chatInformation = this._mapToChatInformation(models, apiKey);
+    const models = await this.discoveryService.getAvailableModels(apiKey, { refreshStaleCache: true });
+    const chatInformation = this.discoveryService.mapToChatInformation(models, apiKey);
     let duplicateCount = 0;
     for (const model of chatInformation) {
       if (this._selectableModelIdsInCycle.has(model.id)) {
@@ -394,64 +245,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       `call #${callNum}: returning ${models.length} models for ${providerContext} using ${keySource}${duplicateNote}`,
     );
     return chatInformation;
-  }
-
-  private _mapToChatInformation(
-    models: readonly NormalizedNvidiaModel[],
-    apiKey?: string,
-  ): NvidiaLanguageModelChatInformation[] {
-    return models.map((info) => {
-      const adapter = getModelAdapter(info.id);
-      let configurationSchema = undefined;
-
-      if (adapter.applyReasoningMode) {
-        const enumValues = adapter.supportedReasoningModes ?? [
-          "none",
-          "on",
-          "medium",
-          "high",
-          "max",
-        ];
-        const enumItemLabels = enumValues.map((v) =>
-          v === "none" ? "None" : v.charAt(0).toUpperCase() + v.slice(1),
-        );
-
-        configurationSchema = {
-          properties: {
-            reasoningMode: {
-              type: "string",
-              title: "Reasoning Mode",
-              description: "Configure the reasoning effort mode sent to supported models.",
-              enum: enumValues,
-              enumItemLabels: enumItemLabels,
-              group: "navigation",
-              default: "none",
-            },
-          },
-        };
-      }
-
-      return {
-        id: info.id,
-        name: info.displayName,
-        detail: PROVIDER_DISPLAY_NAME,
-        tooltip: `${PROVIDER_DISPLAY_NAME} ${info.displayName}`,
-        family: PROVIDER_VENDOR,
-        version: "1.0.0",
-        maxInputTokens: Math.max(
-          1,
-          info.contextWindow - Math.min(info.maxOutputTokens, DEFAULT_MAX_TOKENS),
-        ),
-        maxOutputTokens: info.maxOutputTokens,
-        isUserSelectable: true,
-        capabilities: {
-          toolCalling: info.supportsTools ? 128 : false,
-          imageInput: info.supportsVision,
-        },
-        ...(apiKey ? { apiKey } : {}),
-        ...(configurationSchema ? { configurationSchema } : {}),
-      };
-    });
   }
 
   async provideLanguageModelChatResponse(
@@ -476,34 +269,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       const requestPreparationStartedAtMs =
         process.env[DEBUG_ENV_VAR] === "1" ? Date.now() : undefined;
 
-      const inputTokenCount = estimateMessagesTokens(
-        messages as readonly { content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
-      );
-      const maxInputTokens = model.maxInputTokens;
-
-      // Apply safety margin to maxInputTokens to prevent context overflow
-      const effectiveMaxInputTokens = Math.max(1, maxInputTokens - CONTEXT_WINDOW_SAFETY_MARGIN);
-
-      if (inputTokenCount > effectiveMaxInputTokens) {
-        debugLog(
-          "contextCompression",
-          `Input tokens ${inputTokenCount} exceed max ${effectiveMaxInputTokens}. Will attempt context compression.`,
-        );
-      }
-
       const { supportsTools, supportsVision, contextWindow, runtimeMetadataSource } =
         await this.resolveChatModelRuntimeInfo(model, apiKey);
-      const maxTokensVal = (options.modelOptions as Record<string, unknown>)?.max_tokens;
-      const requestedMaxTokens = this.calculateRequestedMaxTokens({
-        requestedMaxTokens:
-          typeof maxTokensVal === "number" && maxTokensVal > 0 ? maxTokensVal : DEFAULT_MAX_TOKENS,
-        modelMaxOutputTokens: model.maxOutputTokens,
-        contextWindow,
-        inputTokenCount,
-      });
 
-      const hasImages = this.hasImageInput(messages);
-      if (hasImages && !supportsVision) {
+      if (NimRequestBuilder.hasImageInput(messages) && !supportsVision) {
         progress.report(
           new vscode.LanguageModelTextPart(
             "The selected NVIDIA NIM model does not support image input.",
@@ -512,159 +281,27 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         return;
       }
 
-      const maxToolResultChars = this.calculateMaxToolResultChars(contextWindow);
-
-      const toolConfig = supportsTools ? convertTools(options) : {};
-      const toolsEnabled = Boolean(toolConfig.tools?.length);
-      const adapter = getModelAdapter(model.id);
-      const requestProfile = adapter.getProfile({
+      const {
+        requestBody,
+        reasoningIsolationExpected,
+        inputTokenCount,
+        requestedMaxTokens,
+        temperatureVal,
         toolsEnabled,
-      });
-      const userTemperature = (options.modelOptions as Record<string, unknown>)?.temperature;
-      const profileTemperature =
-        toolsEnabled && requestProfile.toolTemperature !== undefined
-          ? requestProfile.toolTemperature
-          : requestProfile.defaultTemperature;
-      const temperatureVal =
-        typeof userTemperature === "number" ? userTemperature : profileTemperature;
-
-      let apiMessages = convertMessages(messages, {
-        maxToolResultChars,
+        extraSystemMessages,
+        tools,
+      } = await NimRequestBuilder.prepareRequest({
+        model,
+        messages,
+        options,
+        contextWindow,
+        supportsTools,
         supportsVision,
+        apiKey,
+        userAgent: this.userAgent,
+        signal: abortController.signal,
       });
-      apiMessages = adapter.applyMessagesWorkaround
-        ? adapter.applyMessagesWorkaround(apiMessages)
-        : apiMessages;
-      if (requestProfile.extraSystemMessages.length > 0) {
-        apiMessages = [
-          ...requestProfile.extraSystemMessages.map(
-            (content): NimChatMessage => ({ role: "system", content }),
-          ),
-          ...apiMessages,
-        ];
-      }
 
-      const apiTokenCount = estimateNimMessagesTokens(apiMessages);
-      if (apiTokenCount > effectiveMaxInputTokens) {
-        debugLog(
-          "contextCompression",
-          `Converted messages ${apiTokenCount} tokens > ${effectiveMaxInputTokens} max. Compressing...`,
-        );
-        const { oldMessages, recentMessages } = splitMessagesForSummarization(
-          apiMessages,
-          Math.floor(effectiveMaxInputTokens * 0.4),
-        );
-        if (oldMessages.length > 0) {
-          const summaryMessage = await summarizeOldMessages(
-            oldMessages,
-            apiKey,
-            this.userAgent,
-            abortController.signal,
-          );
-          apiMessages = [summaryMessage, ...recentMessages];
-          const compressedTokenCount = estimateNimMessagesTokens(apiMessages);
-          debugLog(
-            "contextCompression",
-            `After compression: ${compressedTokenCount} tokens (was ${apiTokenCount}).`,
-          );
-          if (compressedTokenCount > effectiveMaxInputTokens) {
-            apiMessages = truncateMessagesForContext(apiMessages, effectiveMaxInputTokens);
-            const finalTokenCount = estimateNimMessagesTokens(apiMessages);
-            debugLog("contextCompression", `After truncation fallback: ${finalTokenCount} tokens.`);
-            if (finalTokenCount > effectiveMaxInputTokens) {
-              throw new Error(
-                formatStructuredError(
-                  "token_limit",
-                  `Even after compression and truncation: ${finalTokenCount} tokens, max: ${effectiveMaxInputTokens}`,
-                ),
-              );
-            }
-          }
-        }
-      }
-
-      const requestBody: NimChatRequest = {
-        model: model.id,
-        messages: apiMessages,
-        stream: true,
-        max_tokens: requestedMaxTokens,
-        temperature: temperatureVal,
-        stream_options: { include_usage: true },
-      };
-
-      let reasoningMode =
-        (options as { modelConfiguration?: { reasoningMode?: string } }).modelConfiguration
-          ?.reasoningMode ?? "none";
-      if (reasoningMode === "none") {
-        const modes = adapter.supportedReasoningModes;
-        if (modes && modes.length > 0) {
-          reasoningMode = vscode.workspace
-            .getConfiguration("nvidia-nim")
-            .get<string>("reasoningMode", "none");
-
-          if (!modes.includes(reasoningMode)) {
-            reasoningMode = modes.includes("none") ? "none" : modes[0];
-          }
-        }
-      }
-
-      if (adapter.applyReasoningMode) {
-        adapter.applyReasoningMode(requestBody, reasoningMode);
-      }
-
-      const reasoningContentExpected =
-        Boolean(adapter.applyReasoningMode) && reasoningMode !== "none";
-      const reasoningIsolationExpected = reasoningContentExpected || Boolean(adapter.alwaysReasons);
-
-      const modelOpts = options.modelOptions as Record<string, unknown>;
-      if (typeof modelOpts?.top_p === "number") {
-        requestBody.top_p = Math.min(1, Math.max(0, modelOpts.top_p));
-      }
-      if (typeof modelOpts?.frequency_penalty === "number") {
-        requestBody.frequency_penalty = Math.min(2, Math.max(-2, modelOpts.frequency_penalty));
-      }
-      if (typeof modelOpts?.presence_penalty === "number") {
-        requestBody.presence_penalty = Math.min(2, Math.max(-2, modelOpts.presence_penalty));
-      }
-      const stopVal = modelOpts?.stop;
-      if (typeof stopVal === "string" || (Array.isArray(stopVal) && stopVal.length > 0)) {
-        requestBody.stop = stopVal as string | string[];
-      }
-
-      if (toolConfig.tools) {
-        requestBody.tools = toolConfig.tools;
-      }
-      if (toolConfig.tool_choice) {
-        requestBody.tool_choice = toolConfig.tool_choice;
-      }
-
-      debugLog("Outgoing request messages", requestBody.messages);
-
-      type ToolParsingState = {
-        toolSchemas: Map<string, ToolSchema>;
-        requestContext: ChatRequestContext | undefined;
-        emittedTextToolCallKeys: Set<string>;
-      };
-      let toolParsingState: ToolParsingState | undefined;
-      const getToolParsingState = (): ToolParsingState => {
-        if (toolParsingState) {
-          return toolParsingState;
-        }
-
-        const toolParsingStateStartedAtMs =
-          process.env[DEBUG_ENV_VAR] === "1" ? Date.now() : undefined;
-        const toolSchemas = getToolSchemaMap(options);
-        const requestContext = extractChatRequestContext(messages);
-        toolParsingState = {
-          toolSchemas,
-          requestContext,
-          emittedTextToolCallKeys: getCompletedToolCallKeys(messages, requestContext, toolSchemas),
-        };
-        if (toolParsingStateStartedAtMs !== undefined) {
-          toolParsingStateInitDurationMs = Date.now() - toolParsingStateStartedAtMs;
-        }
-        return toolParsingState;
-      };
       let activeRequestBody = requestBody;
       let deferredInvalidToolFallbackText: string | undefined;
       let retryReason: "invalid_tool_call" | undefined;
@@ -687,27 +324,19 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         ) {
           requestPreparationDurationMs = attemptStartedAtMs - requestPreparationStartedAtMs;
         }
-        const toolCallBuffers = new Map<number, { id?: string; name?: string; args: string }>();
-        const completedToolCallIndices = new Set<number>();
+
         const skippedToolCalls: SkippedToolCall[] = [];
-        const thinkTagFilterState = { insideThinkBlock: false, pendingText: "" };
         let pendingTextEmbeddedContent = "";
         let pendingText = "";
         let sawToolCall = false;
         let emittedToolCall = false;
-        let emittedFirstToolCall = false;
         let reportedContent = false;
-        let seenReasoningContent = false;
-        let reasoningContentFlushed = false;
-        let contentStartedBeforeReasoning = false;
-        let answerStarted = false;
-        let reasoningBuffer = "";
-        let contentBuffer = "";
         let firstResponseAtMs: number | undefined;
         let firstToolCallAtMs: number | undefined;
         let lastUsage:
           | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
           | undefined;
+
         const markFirstResponse = (): void => {
           if (firstResponseAtMs === undefined) {
             firstResponseAtMs = Date.now();
@@ -721,73 +350,65 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           if (!pendingText) {
             return;
           }
-          flushReasoning(true);
           reportPart(new vscode.LanguageModelTextPart(pendingText));
           pendingText = "";
         };
-        const flushReasoning = (force: boolean = false): void => {
-          if (!reasoningBuffer) {
-            return;
-          }
-          if (!force && countCodeFenceParity(reasoningBuffer) === 1) {
-            return;
-          }
-          let text = reasoningBuffer;
-          if (countCodeFenceParity(text) === 1) {
-            text += "\n```";
-          }
-          const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-          if (ThinkingPart) {
-            reportPart(new ThinkingPart(text));
-          } else {
-            const showReasoning = vscode.workspace
-              .getConfiguration("nvidia-nim")
-              .get<boolean>("showReasoning", false);
-            if (showReasoning) {
-              reportPart(
-                new vscode.LanguageModelTextPart(text.startsWith(" ") ? text : ` ${text}`),
-              );
-            }
-          }
-          reasoningBuffer = "";
-        };
-        const emitReasoning = (text: string, checkOrphanedClose: boolean = false): void => {
-          if (!text) {
-            return;
-          }
-          markFirstResponse();
-          reasoningBuffer += text;
 
-          if (checkOrphanedClose) {
-            const closeMatch = findOrphanedCloseTag(reasoningBuffer);
-            if (closeMatch) {
-              const before = reasoningBuffer.slice(0, closeMatch.index);
-              const after = reasoningBuffer.slice(closeMatch.index + closeMatch.tag.length);
-              reasoningBuffer = before;
-              flushReasoning(true);
-              seenReasoningContent = true;
-              answerStarted = true;
-              if (after) {
-                processAnswerText(after);
-                flushPendingText();
+        let toolAggregator: ToolCallStreamAggregator | undefined;
+        const getToolAggregator = (): ToolCallStreamAggregator => {
+          if (toolAggregator) {
+            return toolAggregator;
+          }
+          const toolParsingStateStartedAtMs =
+            process.env[DEBUG_ENV_VAR] === "1" ? Date.now() : undefined;
+
+          toolAggregator = new ToolCallStreamAggregator({
+            options,
+            messages,
+            onEmitToolCall: (id, name, args) => {
+              flushPendingText();
+              reportPart(new vscode.LanguageModelToolCallPart(id, name, args));
+              emittedToolCall = true;
+              if (firstToolCallAtMs === undefined) {
+                firstToolCallAtMs = Date.now();
               }
-              return;
-            }
+            },
+            onSkipToolCall: (name, required) => {
+              skippedToolCalls.push({ name, required });
+            },
+          });
 
-            const partialEnd = findPartialCloseTagEnd(reasoningBuffer);
-            if (partialEnd !== -1) {
-              const safePart = reasoningBuffer.slice(0, partialEnd);
-              const partialPart = reasoningBuffer.slice(partialEnd);
-              reasoningBuffer = safePart;
-              flushReasoning(false);
-              reasoningBuffer = partialPart;
-            } else {
-              flushReasoning(false);
-            }
-          } else {
-            flushReasoning(false);
+          if (toolParsingStateStartedAtMs !== undefined) {
+            toolParsingStateInitDurationMs = Date.now() - toolParsingStateStartedAtMs;
           }
+          return toolAggregator;
         };
+
+        const router = new ReasoningStreamRouter({
+          reasoningIsolationExpected,
+          onThinking: (text) => {
+            const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+            if (ThinkingPart) {
+              reportPart(new ThinkingPart(text));
+            } else {
+              const showReasoning = vscode.workspace
+                .getConfiguration("nvidia-nim")
+                .get<boolean>("showReasoning", false);
+              if (showReasoning) {
+                reportPart(
+                  new vscode.LanguageModelTextPart(text.startsWith(" ") ? text : ` ${text}`),
+                );
+              }
+            }
+          },
+          onText: (text) => {
+            processAnswerText(text);
+          },
+          onFirstResponse: () => {
+            markFirstResponse();
+          },
+        });
+
         const processFilteredText = (text: string): void => {
           if (!text) {
             return;
@@ -806,8 +427,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
             if (segment.type === "invalidToolCall") {
               sawToolCall = true;
-              const { toolSchemas } = getToolParsingState();
-              const schema = toolSchemas.get(segment.name);
+              const schema = getToolAggregator().getToolSchemas().get(segment.name);
               skippedToolCalls.push({
                 name: segment.name,
                 required: schema?.required ?? [],
@@ -818,16 +438,15 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
             const toolCall = segment.toolCall;
             sawToolCall = true;
-            const { emittedTextToolCallKeys, requestContext, toolSchemas } = getToolParsingState();
-            const schema = toolSchemas.get(toolCall.name);
+            const schema = getToolAggregator().getToolSchemas().get(toolCall.name);
             const repairedArgs = repairToolArguments(
               toolCall.name,
               toolCall.args,
-              requestContext,
+              getToolAggregator().getRequestContext(),
               schema,
             );
             const canonicalKey = buildToolCallCanonicalKey(toolCall.name, repairedArgs);
-            if (emittedTextToolCallKeys.has(canonicalKey)) {
+            if (getToolAggregator().getEmittedTextToolCallKeys().has(canonicalKey)) {
               continue;
             }
 
@@ -841,11 +460,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                 ),
               );
               emittedToolCall = true;
-              if (!emittedFirstToolCall) {
-                emittedFirstToolCall = true;
+              if (firstToolCallAtMs === undefined) {
                 firstToolCallAtMs = Date.now();
               }
-              emittedTextToolCallKeys.add(canonicalKey);
+              getToolAggregator().getEmittedTextToolCallKeys().add(canonicalKey);
             } else {
               skippedToolCalls.push({
                 name: toolCall.name,
@@ -859,7 +477,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           if (!text) {
             return;
           }
-          answerStarted = true;
+          markFirstResponse();
           processFilteredText(text);
         };
 
@@ -898,56 +516,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             }
 
             if (reasoningContent) {
-              seenReasoningContent = true;
-              emitReasoning(reasoningContent);
+              router.handleReasoningContent(reasoningContent);
             }
 
             if (choice?.delta?.content) {
-              markFirstResponse();
-              if (seenReasoningContent && !reasoningContentFlushed) {
-                flushReasoning(true);
-                reasoningContentFlushed = true;
-              }
-              if (!seenReasoningContent) {
-                contentStartedBeforeReasoning = true;
-              }
-              for (const segment of filterThinkTagsFromChunk(
-                choice.delta.content,
-                thinkTagFilterState,
-              )) {
-                if (segment.type === "thinking") {
-                  if (!seenReasoningContent) {
-                    emitReasoning(segment.text);
-                  }
-                } else if (reasoningIsolationExpected && !answerStarted) {
-                  if (seenReasoningContent && !contentStartedBeforeReasoning) {
-                    contentBuffer += segment.text;
-                    const closeMatch = findOrphanedCloseTag(contentBuffer);
-                    if (closeMatch) {
-                      const before = contentBuffer.slice(0, closeMatch.index);
-                      const after = contentBuffer.slice(closeMatch.index + closeMatch.tag.length);
-                      if (before) {
-                        emitReasoning(before);
-                        flushReasoning(true);
-                      }
-                      answerStarted = true;
-                      contentBuffer = "";
-                      if (after) {
-                        processAnswerText(after);
-                      }
-                    } else if (contentBuffer.length > 150) {
-                      processAnswerText(contentBuffer);
-                      contentBuffer = "";
-                      answerStarted = true;
-                    }
-                  } else {
-                    emitReasoning(segment.text, true);
-                  }
-                } else {
-                  processAnswerText(segment.text);
-                }
-              }
-              if (!reasoningIsolationExpected || answerStarted) {
+              router.handleContent(choice.delta.content);
+              if (!reasoningIsolationExpected || router.isAnswerStarted()) {
                 flushPendingText();
               }
             }
@@ -956,133 +530,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             if (choice?.delta?.tool_calls) {
               markFirstResponse();
               sawToolCall = true;
-              for (const tc of choice.delta.tool_calls) {
-                const idx = (tc as { index?: number }).index ?? 0;
-                if (completedToolCallIndices.has(idx)) {
-                  continue;
-                }
-
-                const buf = toolCallBuffers.get(idx) ?? { args: "" };
-                if (tc.id && typeof tc.id === "string") {
-                  buf.id = tc.id;
-                }
-                const func = tc.function;
-                if (func?.name && typeof func.name === "string") {
-                  buf.name = func.name;
-                }
-                if (typeof func?.arguments === "string") {
-                  buf.args += func.arguments;
-                }
-                toolCallBuffers.set(idx, buf);
-
-                if (buf.args.trim().length === 0) {
-                  continue;
-                }
-
-                // Emit immediately once arguments become valid JSON
-                try {
-                  const { emittedTextToolCallKeys, requestContext, toolSchemas } =
-                    getToolParsingState();
-                  const schema = toolSchemas.get(buf.name ?? "");
-                  const args = repairToolArguments(
-                    buf.name ?? "",
-                    buf.args ? JSON.parse(buf.args) : {},
-                    requestContext,
-                    schema,
-                  );
-                  if (
-                    buf.id &&
-                    buf.name &&
-                    isToolCallInput(args) &&
-                    hasRequiredToolArguments(args, schema)
-                  ) {
-                    const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
-                    if (emittedTextToolCallKeys.has(canonicalKey)) {
-                      completedToolCallIndices.add(idx);
-                      toolCallBuffers.delete(idx);
-                      continue;
-                    }
-                    flushPendingText();
-                    reportPart(new vscode.LanguageModelToolCallPart(buf.id, buf.name, args));
-                    emittedToolCall = true;
-                    if (!emittedFirstToolCall) {
-                      emittedFirstToolCall = true;
-                      firstToolCallAtMs = Date.now();
-                    }
-                    emittedTextToolCallKeys.add(canonicalKey);
-                    completedToolCallIndices.add(idx);
-                    toolCallBuffers.delete(idx);
-                  } else if (buf.id && buf.name) {
-                    skippedToolCalls.push({
-                      name: buf.name,
-                      required: schema?.required ?? [],
-                    });
-                    debugLog("Skipped invalid tool call", { id: buf.id, name: buf.name, args });
-                    completedToolCallIndices.add(idx);
-                    toolCallBuffers.delete(idx);
-                  }
-                } catch {
-                  // JSON incomplete — wait for next chunk
-                }
-              }
-            }
-          }
-
-          for (const segment of flushThinkTagFilter(thinkTagFilterState)) {
-            if (segment.type === "thinking") {
-              emitReasoning(segment.text);
-            } else {
-              processFilteredText(segment.text);
+              getToolAggregator().handleToolCalls(choice.delta.tool_calls);
             }
           }
 
           // Flush any remaining buffered tool calls at stream end
-          for (const [idx, buf] of Array.from(toolCallBuffers.entries())) {
-            if (completedToolCallIndices.has(idx)) {
-              continue;
-            }
-            try {
-              const { emittedTextToolCallKeys, requestContext, toolSchemas } =
-                getToolParsingState();
-              const schema = toolSchemas.get(buf.name ?? "");
-              const args = repairToolArguments(
-                buf.name ?? "",
-                buf.args ? JSON.parse(buf.args) : {},
-                requestContext,
-                schema,
-              );
-              if (
-                buf.id &&
-                buf.name &&
-                isToolCallInput(args) &&
-                hasRequiredToolArguments(args, schema)
-              ) {
-                const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
-                if (emittedTextToolCallKeys.has(canonicalKey)) {
-                  continue;
-                }
-                flushPendingText();
-                reportPart(new vscode.LanguageModelToolCallPart(buf.id, buf.name, args));
-                emittedToolCall = true;
-                if (!emittedFirstToolCall) {
-                  emittedFirstToolCall = true;
-                  firstToolCallAtMs = Date.now();
-                }
-                emittedTextToolCallKeys.add(canonicalKey);
-              } else if (buf.id && buf.name) {
-                skippedToolCalls.push({
-                  name: buf.name,
-                  required: schema?.required ?? [],
-                });
-                debugLog("Skipped invalid tool call at stream end", {
-                  id: buf.id,
-                  name: buf.name,
-                  args,
-                });
-              }
-            } catch {
-              // Ignore incomplete JSON at stream end
-            }
+          if (toolAggregator) {
+            toolAggregator.flushRemaining();
           }
         } catch (streamErr) {
           if (
@@ -1127,18 +581,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
           throw streamErr;
         }
-
-        if (contentBuffer) {
-          if (contentStartedBeforeReasoning) {
-            emitReasoning(contentBuffer);
-          } else {
-            processAnswerText(contentBuffer);
-          }
-          contentBuffer = "";
-          answerStarted = true;
-        }
-
-        flushReasoning(true);
+        router.flush();
 
         if (pendingText && (!sawToolCall || emittedToolCall || pendingText.trim().length > 0)) {
           flushPendingText();
@@ -1255,11 +698,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             content: (vscode.LanguageModelInputPart | LegacyPart)[];
           }[],
         );
-        const extraSystemTokens = requestProfile.extraSystemMessages.reduce(
+        const extraSystemTokens = extraSystemMessages.reduce(
           (sum, content) => sum + estimateTokens(content),
           0,
         );
-        const toolsTokens = toolConfig.tools ? estimateToolsTokens(toolConfig.tools) : 0;
+        const toolsTokens = tools ? estimateToolsTokens(tools) : 0;
         const breakdown: TokenBreakdown = {
           modelName: shortName,
           systemPrompt: categoryBreakdown.system + extraSystemTokens,
@@ -1283,7 +726,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       if (err instanceof Error && err.message.includes("[RATE_LIMITED]")) {
         const fallbackModel = getFallbackModel(
           model.id,
-          await this.getAvailableModels(getApiKeyFromModel(model)),
+          await this.discoveryService.getAvailableModels(getApiKeyFromModel(model)),
         );
         if (fallbackModel) {
           const fallbackInfo: LanguageModelChatInformation = {
