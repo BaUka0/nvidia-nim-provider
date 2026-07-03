@@ -1,4 +1,4 @@
-# NVIDIA NIM Provider
+# NVIDIA NIM Agent
 
 VS Code extension that gives you access **exclusively** to the best, most powerful reasoning and agentic models available in NVIDIA NIM (DeepSeek, Kimi, GLM, Nemotron, MiniMax, Stepfun) directly inside the Copilot Chat interface.
 
@@ -44,7 +44,7 @@ tunes temperature, tool-calling system prompts, and reasoning configuration:
 | Nemotron 3 Ultra 550B | None, Medium, High | Yes | No |
 | Kimi K2.6 | None, On | Yes | Yes |
 | MiniMax M3 | None, On, Adaptive | Yes | Yes |
-| GLM 5.1 | None, On | Yes | No |
+| GLM 5.2 | None, On | Yes | No |
 | Step 3.7 Flash | Always on | Yes | Yes |
 
 When NVIDIA's `/models` response omits tool-calling capability metadata, chat models are treated as
@@ -54,7 +54,7 @@ tool-capable so they remain selectable in Copilot Chat Agent mode.
 
 The extension supports native reasoning token rendering via VS Code's proposed
 `LanguageModelThinkingPart` API. When a model emits reasoning — either through the
-`reasoning_content` stream field or inline ` think... /think` tags (used by Kimi) — it is
+`reasoning_content` stream field or inline `think... /think` tags (used by Kimi) — it is
 captured and rendered as collapsible thinking blocks in the chat interface instead of being
 dumped as raw text.
 
