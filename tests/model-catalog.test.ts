@@ -43,6 +43,25 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
+  it("normalizes thinkingmachines/inkling with its multimodal million-token limits", () => {
+    const raw: NvidiaModelSummary[] = [
+      {
+        id: "thinkingmachines/inkling",
+      },
+    ];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([
+      {
+        id: "thinkingmachines/inkling",
+        displayName: "Inkling",
+        contextWindow: 1000000,
+        maxOutputTokens: 65536,
+        supportsTools: true,
+        supportsVision: true,
+      },
+    ]);
+  });
+
   it("uses metadata.max_tokens when override maxOutputTokens is absent", () => {
     // testing with nemotron because it doesn't have an override for maxOutputTokens
     const raw: NvidiaModelSummary[] = [

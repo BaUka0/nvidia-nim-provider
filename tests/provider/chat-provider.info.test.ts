@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { fetchModels } from "../../src/api/client";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
+import { MODELS_CACHE_VERSION } from "../../src/shared/constants";
 
 jest.mock("../../src/api/client", () => ({
   fetchModels: jest.fn(),
@@ -203,7 +204,7 @@ describe("NimChatModelProvider", () => {
         ];
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 3;
+        return MODELS_CACHE_VERSION;
       }
       return undefined;
     });
@@ -237,7 +238,7 @@ describe("NimChatModelProvider", () => {
         ];
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 3;
+        return MODELS_CACHE_VERSION;
       }
       return undefined;
     });
@@ -303,7 +304,7 @@ describe("NimChatModelProvider", () => {
         ];
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 3;
+        return MODELS_CACHE_VERSION;
       }
       return undefined;
     });
@@ -349,7 +350,7 @@ describe("NimChatModelProvider", () => {
         ];
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 3;
+        return MODELS_CACHE_VERSION;
       }
       return undefined;
     });
@@ -389,7 +390,7 @@ describe("NimChatModelProvider", () => {
         ];
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 3;
+        return MODELS_CACHE_VERSION;
       }
       return undefined;
     });
@@ -429,7 +430,7 @@ describe("NimChatModelProvider", () => {
         ];
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 3;
+        return MODELS_CACHE_VERSION;
       }
       return undefined;
     });
@@ -553,7 +554,7 @@ describe("NimChatModelProvider", () => {
         return cachedModels;
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 3;
+        return MODELS_CACHE_VERSION;
       }
       return undefined;
     });
@@ -625,7 +626,7 @@ describe("NimChatModelProvider", () => {
         return cachedModels;
       }
       if (key === "nvidia-nim.modelsCacheVersion") {
-        return 3;
+        return MODELS_CACHE_VERSION;
       }
       return undefined;
     });

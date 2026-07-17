@@ -1,6 +1,6 @@
 # NVIDIA NIM Agent
 
-VS Code extension that gives you access **exclusively** to the best, most powerful reasoning and agentic models available in NVIDIA NIM (DeepSeek, Kimi, GLM, Nemotron, MiniMax, Stepfun) directly inside the Copilot Chat interface.
+VS Code extension that gives you access **exclusively** to the best, most powerful reasoning and agentic models available in NVIDIA NIM (DeepSeek, Kimi, GLM, Nemotron, MiniMax, Stepfun, Inkling) directly inside the Copilot Chat interface.
 
 ## Requirements
 
@@ -35,8 +35,8 @@ NVIDIA NIM models. The VS Code model settings flow is recommended for new setups
 ## Supported Models
 
 The extension fetches the model list from `https://integrate.api.nvidia.com/v1/models` and
-filters it down to a curated set of elite agentic models, each with a dedicated adapter that
-tunes temperature, tool-calling system prompts, and reasoning configuration:
+filters it down to a curated set of elite agentic models. Model-specific adapters tune temperature,
+tool-calling system prompts, and reasoning configuration where required:
 
 | Model | Reasoning Modes | Tool Calling | Vision |
 |-------|----------------|--------------|--------|
@@ -46,6 +46,7 @@ tunes temperature, tool-calling system prompts, and reasoning configuration:
 | MiniMax M3 | None, On, Adaptive | Yes | Yes |
 | GLM 5.2 | None, On | Yes | No |
 | Step 3.7 Flash | Always on | Yes | Yes |
+| Inkling | Provider default | Yes | Yes |
 
 When NVIDIA's `/models` response omits tool-calling capability metadata, chat models are treated as
 tool-capable so they remain selectable in Copilot Chat Agent mode.

@@ -48,6 +48,12 @@ const ELITE_MODELS_WHITELIST: Record<string, Partial<NormalizedNvidiaModel>> = {
     contextWindow: 256000,
     supportsVision: true,
   },
+  "thinkingmachines/inkling": {
+    displayName: "Inkling",
+    contextWindow: 1000000,
+    maxOutputTokens: 65536,
+    supportsVision: true,
+  },
 };
 
 export const FALLBACK_MODEL_ID = "deepseek-ai/deepseek-v4-flash";

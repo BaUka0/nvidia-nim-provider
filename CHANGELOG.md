@@ -1,5 +1,15 @@
 # Change Log
 
+## [0.4.7] - 2026-07-17
+
+### Added
+
+- **Integration for `thinkingmachines/inkling`.** Added Inkling to the curated NVIDIA NIM model catalog with a 1,000,000-token context window, a configured 65,536-token maximum output, vision support, and tool calling.
+
+### Changed
+
+- **Model catalog cache refresh.** Bumped the model cache version so existing installations refresh their cached catalog and discover Inkling without requiring a manual reset.
+
 ## [0.4.6] - 2026-07-03
 
 ### Fixed
