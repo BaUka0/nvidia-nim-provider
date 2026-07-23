@@ -1,5 +1,11 @@
 # Change Log
 
+## [0.4.9] - 2026-07-23
+
+### Fixed
+
+- **VSIX package size.** Excluded the development-only `.mimocode` directory from Marketplace packages, reducing the extension archive from roughly 12 MB to under 600 KB.
+
 ## [0.4.8] - 2026-07-23
 
 ### Added
