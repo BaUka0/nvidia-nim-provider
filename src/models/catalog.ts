@@ -54,6 +54,11 @@ const ELITE_MODELS_WHITELIST: Record<string, Partial<NormalizedNvidiaModel>> = {
     maxOutputTokens: 65536,
     supportsVision: true,
   },
+  "poolside/laguna-xs-2.1": {
+    displayName: "Laguna XS 2.1",
+    contextWindow: 262144,
+    maxOutputTokens: 16384,
+  },
 };
 
 export const FALLBACK_MODEL_ID = "deepseek-ai/deepseek-v4-flash";

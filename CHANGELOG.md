@@ -1,5 +1,22 @@
 # Change Log
 
+## [0.4.8] - 2026-07-23
+
+### Added
+
+- **Laguna XS 2.1 support.** Added `poolside/laguna-xs-2.1` with a 262,144-token context window, 16,384-token maximum output, and model-specific reasoning controls (`None` / `On`).
+- **Laguna and Inkling model adapters.** Added model-specific request configuration and streaming response handling for reasoning, tool calls, and control markers.
+
+### Fixed
+
+- **Laguna responses were incorrectly hidden as thinking.** Plain content-only responses now render as assistant text when no separate reasoning stream is present.
+- **Reasoning boundary parsing.** Preserved `<think>` blocks and orphaned `</think>` boundaries while preventing control markers from leaking into final answers.
+- **Unavailable model errors.** NVIDIA `404` responses now identify the unavailable model and distinguish endpoint access problems from Copilot status indicators.
+
+### Tests
+
+- Added regression coverage for Laguna content-only responses, reasoning boundaries, model profiles, and unavailable-model API errors.
+
 ## [0.4.7] - 2026-07-17
 
 ### Added

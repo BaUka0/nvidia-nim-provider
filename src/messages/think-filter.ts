@@ -2,6 +2,7 @@ export interface ThinkTagFilterState {
   insideThinkBlock: boolean;
   pendingText: string;
   closeTag?: string;
+  closedThinkBlock?: boolean;
 }
 
 export type ThinkFilterSegment =
@@ -119,6 +120,7 @@ export function filterThinkTagsFromChunk(
       remaining = remaining.slice(closeIndex + closeTag.length);
       state.insideThinkBlock = false;
       state.closeTag = undefined;
+      state.closedThinkBlock = true;
       continue;
     }
 

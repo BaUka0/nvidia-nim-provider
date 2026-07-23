@@ -100,6 +100,26 @@ export class ReasoningStreamRouter {
         if (!this.seenReasoningContent) {
           this.emitReasoning(segment.text);
         }
+      } else if (this.thinkTagFilterState.closedThinkBlock) {
+        this.thinkTagFilterState.closedThinkBlock = false;
+        this.answerStarted = true;
+        this.onText(segment.text);
+      } else if (!this.reasoningIsolationExpected) {
+        const closeMatch = findOrphanedCloseTag(segment.text);
+        if (closeMatch) {
+          const before = segment.text.slice(0, closeMatch.index);
+          const after = segment.text.slice(closeMatch.index + closeMatch.tag.length);
+          if (before) {
+            this.emitReasoning(before);
+          }
+          this.answerStarted = true;
+          if (after) {
+            this.onText(after);
+          }
+        } else {
+          this.answerStarted = true;
+          this.onText(segment.text);
+        }
       } else if (this.reasoningIsolationExpected && !this.answerStarted) {
         if (this.seenReasoningContent && !this.contentStartedBeforeReasoning) {
           this.contentBuffer += segment.text;
@@ -134,6 +154,10 @@ export class ReasoningStreamRouter {
     for (const segment of flushThinkTagFilter(this.thinkTagFilterState)) {
       if (segment.type === "thinking") {
         this.emitReasoning(segment.text);
+      } else if (this.thinkTagFilterState.closedThinkBlock) {
+        this.thinkTagFilterState.closedThinkBlock = false;
+        this.answerStarted = true;
+        this.onText(segment.text);
       } else if (this.reasoningIsolationExpected && !this.answerStarted) {
         this.emitReasoning(segment.text, true);
       } else {

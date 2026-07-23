@@ -129,4 +129,45 @@ describe("applyReasoningMode", () => {
     adapter.applyReasoningMode!(request, "on");
     expect(request.chat_template_kwargs).toEqual({ enable_thinking: true, clear_thinking: false });
   });
+
+  it("exposes Inkling reasoning effort modes and sends the selected mode", () => {
+    const adapter = getModelAdapter("thinkingmachines/inkling");
+    const request: NimChatRequest = {
+      model: "thinkingmachines/inkling",
+      messages: [],
+    };
+
+    expect(adapter.supportedReasoningModes).toEqual([
+      "none",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+
+    adapter.applyReasoningMode!(request, "high");
+    expect(request.reasoning_effort).toBe("high");
+
+    adapter.applyReasoningMode!(request, "none");
+    expect(request.reasoning_effort).toBe("none");
+  });
+
+  it("toggles Laguna reasoning through chat_template_kwargs", () => {
+    const adapter = getModelAdapter("poolside/laguna-xs-2.1");
+    const request: NimChatRequest = {
+      model: "poolside/laguna-xs-2.1",
+      messages: [],
+    };
+
+    expect(adapter.supportedReasoningModes).toEqual(["none", "on"]);
+    expect(adapter.getProfile({ toolsEnabled: true }).defaultTemperature).toBe(1);
+
+    adapter.applyReasoningMode!(request, "on");
+    expect(request.chat_template_kwargs).toEqual({ enable_thinking: true });
+
+    adapter.applyReasoningMode!(request, "none");
+    expect(request.chat_template_kwargs).toEqual({ enable_thinking: false });
+  });
 });

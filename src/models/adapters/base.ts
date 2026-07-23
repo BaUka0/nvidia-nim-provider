@@ -14,7 +14,9 @@ export interface ModelAdapter {
   applyMessagesWorkaround?(messages: NimChatMessage[]): NimChatMessage[];
   parseTextEmbeddedToolCalls?(text: string): ParsedTextToolCallResult;
   applyReasoningMode?(request: import("../../types").NimChatRequest, mode: string): void;
+  sanitizeResponseText?(text: string): string;
   readonly supportedReasoningModes?: string[];
+  readonly isolateUntaggedReasoning?: boolean;
   readonly alwaysReasons?: boolean;
 }
 

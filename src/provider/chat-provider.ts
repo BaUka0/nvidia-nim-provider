@@ -22,20 +22,16 @@ import {
   SkippedToolCall,
 } from "../tools/parser";
 import { streamChatCompletion } from "../api/client";
-import { formatStructuredError } from "../api/errors";
 import {
-  CONTEXT_WINDOW_SAFETY_MARGIN,
   DEBUG_ENV_VAR,
   MANAGE_COMMAND_ID,
   PROVIDER_DISPLAY_NAME,
-  PROVIDER_VENDOR,
   SECRET_STORAGE_KEY,
 } from "../shared/constants";
 import { getFallbackModel } from "../models/catalog";
 import { getModelAdapter } from "../models/adapters";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
-import { NimChatMessage, NimChatRequest } from "../types";
 import {
   estimateMessagesTokensByCategory,
   estimateToolsTokens,
@@ -271,6 +267,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
       const { supportsTools, supportsVision, contextWindow, runtimeMetadataSource } =
         await this.resolveChatModelRuntimeInfo(model, apiKey);
+      const adapter = getModelAdapter(model.id);
 
       if (NimRequestBuilder.hasImageInput(messages) && !supportsVision) {
         progress.report(
@@ -502,15 +499,18 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
             const reasoningContent = (choice?.delta as { reasoning_content?: string })
               ?.reasoning_content;
+            const rawContent = choice?.delta?.content;
+            const content = rawContent
+              ? (adapter.sanitizeResponseText?.(rawContent) ?? rawContent)
+              : rawContent;
 
             if (debugEnabled()) {
-              const contentStr = choice?.delta?.content;
               debugLog("stream chunk", {
                 rc: Boolean(reasoningContent),
                 rcTail: reasoningContent?.slice(-32),
-                content: Boolean(contentStr),
-                contentHead: contentStr?.slice(0, 64),
-                contentTail: contentStr?.slice(-32),
+                content: Boolean(content),
+                contentHead: content?.slice(0, 64),
+                contentTail: content?.slice(-32),
                 finish: choice?.finish_reason ?? null,
               });
             }
@@ -519,8 +519,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               router.handleReasoningContent(reasoningContent);
             }
 
-            if (choice?.delta?.content) {
-              router.handleContent(choice.delta.content);
+            if (content) {
+              router.handleContent(content);
               if (!reasoningIsolationExpected || router.isAnswerStarted()) {
                 flushPendingText();
               }

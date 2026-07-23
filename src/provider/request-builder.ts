@@ -210,7 +210,9 @@ export class NimRequestBuilder {
 
     const reasoningContentExpected =
       Boolean(adapter.applyReasoningMode) && reasoningMode !== "none";
-    const reasoningIsolationExpected = reasoningContentExpected || Boolean(adapter.alwaysReasons);
+    const reasoningIsolationExpected =
+      (reasoningContentExpected && adapter.isolateUntaggedReasoning !== false) ||
+      Boolean(adapter.alwaysReasons);
 
     const modelOpts = responseOptions.modelOptions as Record<string, unknown>;
     if (typeof modelOpts?.top_p === "number") {

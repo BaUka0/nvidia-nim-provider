@@ -62,6 +62,25 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
+  it("normalizes poolside/laguna-xs-2.1 with its documented limits", () => {
+    const raw: NvidiaModelSummary[] = [
+      {
+        id: "poolside/laguna-xs-2.1",
+      },
+    ];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([
+      {
+        id: "poolside/laguna-xs-2.1",
+        displayName: "Laguna XS 2.1",
+        contextWindow: 262144,
+        maxOutputTokens: 16384,
+        supportsTools: true,
+        supportsVision: false,
+      },
+    ]);
+  });
+
   it("uses metadata.max_tokens when override maxOutputTokens is absent", () => {
     // testing with nemotron because it doesn't have an override for maxOutputTokens
     const raw: NvidiaModelSummary[] = [

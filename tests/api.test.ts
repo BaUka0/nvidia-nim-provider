@@ -237,6 +237,24 @@ describe("streamChatCompletion", () => {
     );
   });
 
+  it("identifies an unavailable model on 404", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      text: async () => "Model not found",
+    } as any);
+
+    const gen = streamChatCompletion("key", {
+      model: "thinkingmachines/inkling",
+      messages: [],
+      stream: true,
+    });
+    await expect(gen.next()).rejects.toThrow(
+      '[MODEL_UNAVAILABLE] NVIDIA NIM model "thinkingmachines/inkling" is not available',
+    );
+  });
+
   it("retries on 429 and eventually throws after exhausting retries", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,

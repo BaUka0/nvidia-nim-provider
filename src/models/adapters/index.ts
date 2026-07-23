@@ -5,6 +5,8 @@ import { GlmAdapter } from "./glm";
 import { NemotronAdapter } from "./nemotron";
 import { MinimaxAdapter } from "./minimax";
 import { StepfunAdapter } from "./stepfun";
+import { InklingAdapter } from "./inkling";
+import { LagunaAdapter } from "./laguna";
 
 export { ModelAdapter, NvidiaModelRequestProfile, BaseModelAdapter } from "./base";
 export { DeepSeekAdapter } from "./deepseek";
@@ -13,6 +15,8 @@ export { GlmAdapter } from "./glm";
 export { NemotronAdapter } from "./nemotron";
 export { MinimaxAdapter } from "./minimax";
 export { StepfunAdapter } from "./stepfun";
+export { InklingAdapter } from "./inkling";
+export { LagunaAdapter } from "./laguna";
 
 class DefaultAdapter extends BaseModelAdapter {
   readonly idPattern = /.*/;
@@ -29,6 +33,8 @@ const ADAPTERS: ModelAdapter[] = [
   new NemotronAdapter(),
   new MinimaxAdapter(),
   new StepfunAdapter(),
+  new InklingAdapter(),
+  new LagunaAdapter(),
 ];
 
 const DEFAULT_ADAPTER = new DefaultAdapter();

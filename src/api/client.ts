@@ -181,6 +181,9 @@ export async function* streamChatCompletion(
     let message: string;
     if (response.status === 401 || response.status === 403) {
       message = `[AUTH_FAILED] Authentication failed. Your API key may be invalid or expired.\n${text}`;
+    } else if (response.status === 404) {
+      message =
+        `[MODEL_UNAVAILABLE] NVIDIA NIM model "${requestBody.model}" is not available for this API key or endpoint.\n${text}`;
     } else if (response.status === 429) {
       const retryAfter = response.headers.get("retry-after");
       message = `[RATE_LIMITED] Rate limited.${retryAfter ? ` Retry after ${retryAfter}.` : ""}\n${text}`;
