@@ -23,6 +23,7 @@ docs/**
 __mocks__/**
 .vscode/**
 .playwright-mcp/**
+.mimocode/**
 .github/
 node_modules/**
 *.vsix
