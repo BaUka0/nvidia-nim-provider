@@ -1,8 +1,5 @@
 import * as vscode from "vscode";
-import {
-  CONTEXT_WINDOW_SAFETY_MARGIN,
-  DEFAULT_MAX_OUTPUT_TOKENS,
-} from "../shared/constants";
+import { CONTEXT_WINDOW_SAFETY_MARGIN, DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 import {
   convertMessages,
   convertTools,
@@ -83,7 +80,17 @@ export class NimRequestBuilder {
     userAgent: string;
     signal?: AbortSignal;
   }): Promise<PreparedRequest> {
-    const { model, messages, options: responseOptions, contextWindow, supportsTools, supportsVision, apiKey, userAgent, signal } = options;
+    const {
+      model,
+      messages,
+      options: responseOptions,
+      contextWindow,
+      supportsTools,
+      supportsVision,
+      apiKey,
+      userAgent,
+      signal,
+    } = options;
 
     const inputTokenCount = estimateMessagesTokens(
       messages as readonly { content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
@@ -101,7 +108,9 @@ export class NimRequestBuilder {
     const maxTokensVal = (responseOptions.modelOptions as Record<string, unknown>)?.max_tokens;
     const requestedMaxTokens = this.calculateRequestedMaxTokens({
       requestedMaxTokens:
-        typeof maxTokensVal === "number" && maxTokensVal > 0 ? maxTokensVal : DEFAULT_MAX_OUTPUT_TOKENS,
+        typeof maxTokensVal === "number" && maxTokensVal > 0
+          ? maxTokensVal
+          : DEFAULT_MAX_OUTPUT_TOKENS,
       modelMaxOutputTokens: model.maxOutputTokens,
       contextWindow,
       inputTokenCount,
@@ -151,12 +160,7 @@ export class NimRequestBuilder {
         Math.floor(effectiveMaxInputTokens * 0.4),
       );
       if (oldMessages.length > 0) {
-        const summaryMessage = await summarizeOldMessages(
-          oldMessages,
-          apiKey,
-          userAgent,
-          signal,
-        );
+        const summaryMessage = await summarizeOldMessages(oldMessages, apiKey, userAgent, signal);
         apiMessages = [summaryMessage, ...recentMessages];
         const compressedTokenCount = estimateNimMessagesTokens(apiMessages);
         debugLog(

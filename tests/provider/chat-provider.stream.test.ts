@@ -862,8 +862,7 @@ describe("NimChatModelProvider", () => {
     const textReports = progress.report.mock.calls.filter(
       (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
     );
-    expect(textReports.map((c: any) => c[0].value).join(""))
-      .toBe("Привет! Я могу помочь.");
+    expect(textReports.map((c: any) => c[0].value).join("")).toBe("Привет! Я могу помочь.");
   });
 
   it("emits think-tag content as a thinking part for kimi models", async () => {

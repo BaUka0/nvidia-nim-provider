@@ -82,7 +82,10 @@ export class NvidiaModelDiscoveryService {
       }
       return normalized;
     } catch (err) {
-      outputLog("error", `Failed to fetch models from API: ${err instanceof Error ? err.message : String(err)}`);
+      outputLog(
+        "error",
+        `Failed to fetch models from API: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return undefined;
     }
   }

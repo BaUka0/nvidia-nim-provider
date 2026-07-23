@@ -40,7 +40,10 @@ import {
   LegacyPart,
 } from "../messages/converter";
 import { ReasoningStreamRouter } from "../messages/reasoning-router";
-import { NvidiaModelDiscoveryService, NvidiaLanguageModelChatInformation } from "../models/discovery";
+import {
+  NvidiaModelDiscoveryService,
+  NvidiaLanguageModelChatInformation,
+} from "../models/discovery";
 import { NimRequestBuilder } from "./request-builder";
 import { ToolCallStreamAggregator } from "./tool-call-aggregator";
 
@@ -50,7 +53,6 @@ interface NvidiaProviderConfiguration {
   apiKey?: string;
   reasoningMode?: string;
 }
-
 
 type SelectedModelRuntimeCapabilities = LanguageModelChatInformation & {
   capabilities?: {
@@ -143,7 +145,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       return cachedRuntimeInfo;
     }
 
-    const cachedModel = this.discoveryService.getNormalizedModels().find((entry) => entry.id === model.id);
+    const cachedModel = this.discoveryService
+      .getNormalizedModels()
+      .find((entry) => entry.id === model.id);
     if (cachedModel) {
       const runtimeInfo = {
         supportsTools: cachedModel.supportsTools,
@@ -182,8 +186,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     return runtimeInfo;
   }
 
-
-
   async provideLanguageModelChatInformation(
     options: PrepareLanguageModelChatModelOptions,
     token: CancellationToken,
@@ -218,7 +220,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       return [];
     }
 
-    const models = await this.discoveryService.getAvailableModels(apiKey, { refreshStaleCache: true });
+    const models = await this.discoveryService.getAvailableModels(apiKey, {
+      refreshStaleCache: true,
+    });
     const chatInformation = this.discoveryService.mapToChatInformation(models, apiKey);
     let duplicateCount = 0;
     for (const model of chatInformation) {

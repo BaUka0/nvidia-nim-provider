@@ -36,11 +36,14 @@ export class ToolCallStreamAggregator {
   private sawToolCall = false;
   private emittedToolCall = false;
 
-
   constructor(options: ToolCallStreamAggregatorOptions) {
     this.toolSchemas = getToolSchemaMap(options.options);
     this.requestContext = extractChatRequestContext(options.messages);
-    this.emittedTextToolCallKeys = getCompletedToolCallKeys(options.messages, this.requestContext, this.toolSchemas);
+    this.emittedTextToolCallKeys = getCompletedToolCallKeys(
+      options.messages,
+      this.requestContext,
+      this.toolSchemas,
+    );
     this.onEmitToolCall = options.onEmitToolCall;
     this.onSkipToolCall = options.onSkipToolCall;
   }
@@ -52,8 +55,6 @@ export class ToolCallStreamAggregator {
   public getEmittedToolCall(): boolean {
     return this.emittedToolCall;
   }
-
-
 
   public getToolSchemas(): Map<string, ToolSchema> {
     return this.toolSchemas;
@@ -100,12 +101,7 @@ export class ToolCallStreamAggregator {
           this.requestContext,
           schema,
         );
-        if (
-          buf.id &&
-          buf.name &&
-          isToolCallInput(args) &&
-          hasRequiredToolArguments(args, schema)
-        ) {
+        if (buf.id && buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
           const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
           if (this.emittedTextToolCallKeys.has(canonicalKey)) {
             this.completedToolCallIndices.add(idx);
@@ -143,12 +139,7 @@ export class ToolCallStreamAggregator {
           this.requestContext,
           schema,
         );
-        if (
-          buf.id &&
-          buf.name &&
-          isToolCallInput(args) &&
-          hasRequiredToolArguments(args, schema)
-        ) {
+        if (buf.id && buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
           const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
           if (this.emittedTextToolCallKeys.has(canonicalKey)) {
             continue;
