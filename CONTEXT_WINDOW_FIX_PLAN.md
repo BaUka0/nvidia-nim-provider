@@ -4,6 +4,22 @@
 
 Prevent long VS Code Copilot Chat sessions from failing when NVIDIA NIM enforces a smaller context window than the curated model metadata or model card suggests.
 
+## Observed error
+
+The implementation must recognize errors in this form and extract both limits:
+
+```text
+Sorry, your request failed.
+Client Request Id: f8d09830-96ff-489a-b67e-7ac61d1c77a2
+Reason: NVIDIA NIM API error: 400 Bad Request {"message":"This model's maximum context length is 262144 tokens. However, your messages resulted in 270981 tokens. Please reduce the length of the messages.","type":"Bad Request","code":400}: Error: NVIDIA NIM API error: 400 Bad Request {"message":"This model's maximum context length is 262144 tokens. However, your messages resulted in 270981 tokens. Please reduce the length of the messages.","type":"Bad Request","code":400} at streamChatCompletion
+```
+
+Expected parsed values:
+
+- `reportedMaximumContextTokens`: `262144`
+- `actualPromptTokens`: `270981`
+- excess: `8837` tokens before reserving output space
+
 ## Scope
 
 - Handle NVIDIA NIM `400` responses that explicitly report a maximum context length.
