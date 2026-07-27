@@ -24,6 +24,7 @@
 ### Tests
 
 - Added a public `/v1/models` metadata probe and calibrated context-window probes for 262,144, 500,000, and 1,048,576 tokens.
+- Recorded live probe outcomes: confirmed 202,752 for GLM 5.2, 524,288 for MiniMax M3, and 1,000,000 for Nemotron 3 Ultra; Inkling and both DeepSeek V4 variants returned service errors, while Kimi K2.6 returned an account-level 404. See `CONTEXT_WINDOW_PLAN.md` for the long-session overrun analysis plan.
 - Expanded regression coverage for API-key resolution, model capabilities and refresh, request building, streaming adapters, tool parsing, cancellation, token accounting, summarization, and extension activation.
 - Verified TypeScript compilation, formatting, packaging, all 443 Jest tests, isolated VSIX installation, and a real VS Code Extension Host activation smoke test.
 
