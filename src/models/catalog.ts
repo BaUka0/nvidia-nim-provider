@@ -56,7 +56,7 @@ export const ELITE_MODELS_WHITELIST: Record<string, NvidiaModelCatalogEntry> = {
   },
   "nvidia/nemotron-3-ultra-550b-a55b": {
     displayName: "Nemotron 3 Ultra 550B",
-    contextWindow: 1048576,
+    contextWindow: 1000000,
     maxOutputTokens: 65536,
     supportsTools: true,
     supportsVision: false,

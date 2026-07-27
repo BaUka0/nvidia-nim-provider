@@ -157,7 +157,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     modelId: "nvidia/nemotron-3-ultra-550b-a55b",
     catalog: {
       displayName: "Nemotron 3 Ultra 550B",
-      contextWindow: 1048576,
+      contextWindow: 1000000,
       maxOutputTokens: 65536,
       supportsTools: true,
       supportsVision: false,
