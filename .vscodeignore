@@ -3,6 +3,7 @@
 .agents/**
 .codex/**
 .gemini/**
+.opencode/**
 .vscode/**
 .vscode-test/**
 .venv/**
