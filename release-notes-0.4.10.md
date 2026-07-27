@@ -1,25 +1,38 @@
 # v0.4.10
 
-## What's New
+## Long chats no longer break
 
-- **Automatic context-window recovery.** When NVIDIA NIM rejects a request with a server-reported context limit (HTTP 400), the extension now parses the exact limit, caches it for the model, compacts the conversation history, and retries once automatically. Subsequent requests use the discovered limit proactively, so long Copilot Chat sessions no longer fail repeatedly on the same overflow.
-- **Fixed overflow parser bug.** The `"your messages resulted in N tokens"` error format previously mis-extracted the actual token count. Both the reported maximum and actual usage are now parsed correctly.
-- **Retry-once guarantee.** Context-overflow compaction and retry now execute at most once per request, eliminating the possibility of a retry loop on persistent 400 responses.
-- **Model-card output limits.** Aligned `maxOutputTokens` with model-card specifications for DeepSeek V4 Flash/Pro (131,072), GLM 5.2 (131,072), Step 3.7 Flash (262,144), and Laguna XS 2.1 (65,536).
-- **Better error diagnostics.** Final context-overflow errors now include the model name, server-reported limit, and actual prompt token count.
-- **Complete curated-model capability matrix.** Declared reasoning, tool-calling, vision, context-window, output-limit, and adapter behavior for every bundled NVIDIA NIM model.
-- **Hardened model and credential infrastructure.** Added shared API-key resolution for provider groups and legacy secret storage, plus versioned model-cache ownership, migration, atomic persistence, refresh, and bounded LRU behavior.
-- **Exact NVIDIA context windows.** Updated the curated catalog with endpoint-reported limits, including 202,752 tokens for GLM 5.2, 524,288 for MiniMax M3, and 1,000,000 for Nemotron 3 Ultra; retained a 1,048,576-token window for Inkling, and invalidated stale model caches.
-- **Reliable streaming and tool execution.** Improved split SSE delta and function-name assembly, malformed and truncated tool-call repair, JSON Schema validation, type normalization, duplicate suppression, and tool-result conversion.
-- **Abortable API lifecycle.** Centralized NVIDIA API errors and made retries, backoff, cancellation races, response-body cleanup, prompt locking, and rate-limit fallbacks cancellation-aware.
-- **Accurate context accounting.** Corrected prompt compression, retry output limits, image and tool-result estimates, and actual-versus-estimated status-bar usage.
-- **Lean reproducible packaging.** Standardized CI on npm and package only the minimal `jsonrepair` runtime dependency required by the extension.
+Previously, a long Copilot Chat session could fail with a cryptic "maximum context length" error and stay broken until you started a new chat. Now the extension handles this automatically:
 
-## Fixes
+- When the server says your conversation is too long, the extension reads the exact token limit, shortens the history by summarizing older turns, and retries — all without any action from you.
+- The discovered limit is remembered for the rest of the session, so the same model won't hit the same wall again.
+- If the retry still doesn't fit, you get a clear message with the model name, the limit, and how many tokens your conversation used — so you know exactly what happened.
 
-- **API-key isolation and fail-closed bindings.** Removed raw credentials from model metadata and normal logs; ambiguous or stale provider bindings no longer fall through to an unrelated key. Chat, summarization, and vision now use the same resolver.
-- **Vision tool contribution.** Declared `nvidia_nim_analyze_image` in `contributes.languageModelTools`, so VS Code registers it before extension activation.
-- **Current vision-model selection.** Refresh and cache updates can no longer leave vision requests bound to an obsolete model.
+## More accurate model settings
+
+Output token limits now match what each model actually supports, so you get the full response length the model can produce:
+
+| Model | Max output |
+|-------|----------:|
+| DeepSeek V4 Flash / Pro | 131,072 |
+| GLM 5.2 | 131,072 |
+| Step 3.7 Flash | 262,144 |
+| Laguna XS 2.1 | 65,536 |
+
+Context window sizes were also corrected for GLM 5.2 (1M), MiniMax M3 (1M), and Nemotron 3 Ultra (1M) based on live endpoint measurements.
+
+## Smoother streaming and tool calls
+
+- Tool calls that arrive in fragmented or malformed chunks are now repaired automatically instead of being silently dropped.
+- Duplicate tool calls are suppressed, and tool results are converted more reliably.
+- Cancelling a request mid-stream is now clean — no hanging connections or stale state.
+
+## Better reliability under the hood
+
+- Your API key is handled more securely: it's no longer stored in model metadata or printed in logs, and switching keys correctly invalidates all cached data.
+- The image analysis tool (`nvidia_nim_analyze_image`) now registers properly on startup, so it's always available when you need it.
+- Switching models or refreshing the model list can no longer leave image requests pointed at the wrong model.
+- The status bar token counter now shows accurate numbers, including images and tool results.
 
 ## Install
 
