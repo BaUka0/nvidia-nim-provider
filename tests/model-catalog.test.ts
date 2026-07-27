@@ -16,7 +16,7 @@ describe("normalizeNvidiaModels", () => {
       {
         id: "deepseek-ai/deepseek-v4-flash",
         displayName: "DeepSeek V4 Flash",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
@@ -35,7 +35,7 @@ describe("normalizeNvidiaModels", () => {
       {
         id: "z-ai/glm-5.2",
         displayName: "GLM 5.2",
-        contextWindow: 1000000,
+        contextWindow: 202752,
         maxOutputTokens: 128000,
         supportsTools: true,
         supportsVision: false,
@@ -54,7 +54,7 @@ describe("normalizeNvidiaModels", () => {
       {
         id: "thinkingmachines/inkling",
         displayName: "Inkling",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
         supportsVision: true,

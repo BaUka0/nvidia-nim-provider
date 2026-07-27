@@ -151,6 +151,10 @@
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "probe:models": "node scripts/nim-models-probe.mjs",
+    "probe:context:262k": "node scripts/probe-context-262k.mjs",
+    "probe:context:500k": "node scripts/probe-context-500k.mjs",
+    "probe:context:1048k": "node scripts/probe-context-1048k.mjs",
     "package:vsix": "npm run compile && vsce package --no-dependencies --allow-missing-repository"
   },
   "devDependencies": {

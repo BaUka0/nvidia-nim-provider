@@ -9,6 +9,7 @@
 
 ### Changed
 
+- **Exact NVIDIA context windows.** Updated the curated catalog with endpoint-reported limits, including 202,752 tokens for GLM 5.2 and 524,288 for MiniMax M3, retained a 1,048,576-token window for Inkling, and invalidated stale model caches.
 - **Reliable streaming and tool execution.** Improved split SSE delta and function-name assembly, malformed and truncated tool-call repair, JSON Schema validation, type normalization, duplicate suppression, and tool-result conversion.
 - **Abortable API lifecycle.** Centralized NVIDIA API errors and made retries, backoff, cancellation races, response-body cleanup, prompt locking, and rate-limit fallbacks cancellation-aware.
 - **Accurate context accounting.** Corrected prompt compression, retry output limits, image and tool-result estimates, and actual-versus-estimated status-bar usage.
@@ -22,6 +23,7 @@
 
 ### Tests
 
+- Added a public `/v1/models` metadata probe and calibrated context-window probes for 262,144, 500,000, and 1,048,576 tokens.
 - Expanded regression coverage for API-key resolution, model capabilities and refresh, request building, streaming adapters, tool parsing, cancellation, token accounting, summarization, and extension activation.
 - Verified TypeScript compilation, formatting, packaging, all 443 Jest tests, isolated VSIX installation, and a real VS Code Extension Host activation smoke test.
 
@@ -117,6 +119,7 @@
 ## [0.4.0] - 2026-06-26
 
 ### Added
+
 - **Token Breakdown in Status Bar**: After each response, the status bar now displays full context window utilization in `X/Y` format (e.g. `$(zap) Kimi K2.6: 25.5k/262.1k`). Hovering over the status bar item reveals a detailed Markdown tooltip with a per-category token breakdown table:
   - System Prompt, Tools (definitions), User Messages, Assistant Messages, Tool Calls, Tool Results, Images/Media, Input Total, Output (completion), and Total Used.
   - When actual `prompt_tokens` are available from the NVIDIA API, category estimates are proportionally scaled to match the real total (marked `*(actual)*`).
@@ -125,16 +128,19 @@
 - **New Status Bar Icon**: Replaced the `$(copilot)` icon with `$(zap)` (lightning bolt) across all status bar states to avoid visual duplication with the Copilot icon.
 
 ### Fixed
+
 - **`provideTokenCount` Token Undercounting**: The provider's `provideTokenCount` method previously only extracted text from `LanguageModelTextPart` and string `.value` fields; all other part types (`LanguageModelToolResultPart`, `LanguageModelToolCallPart`, text-mime `LanguageModelDataPart`, image parts) were counted as a flat 2 tokens regardless of size. This caused VS Code's context-window token breakdown to disappear for tool-heavy agent conversations. The method now reuses the converter's part-extraction helpers (`getTextPartValue`, `getDataPartTextValue`, `getToolResultTexts`, `getToolCallInfo`) to accurately estimate tokens across all content-array part types. A `try/catch` guard resolves to `0` on any error to prevent hanging VS Code's breakdown UI.
 - **System Message Role Classification**: `estimateMessagesTokensByCategory` used a hardcoded `role === 0` check for system messages, but VS Code's internal `LanguageModelChatMessageRole.System` is `3` (from the proposed `languageModelSystem` API), not `0`. Fixed with a fallback logic matching `convertMessages`: any role that is not `User` (1) or `Assistant` (2) is classified as system, ensuring Copilot Chat's system prompt is correctly attributed in the breakdown.
 
 ### Changed
+
 - **Status Bar Click Behavior**: Clicking the status bar item after a chat response no longer triggers model refresh (the `command` is set to `undefined`). Model refresh is still available via the Command Palette and the refresh lifecycle states (`showOk`, `showRefreshing`, `showError`).
 - **`estimateMessagesTokens` Refactor**: Now delegates to `estimateMessageTokens` / `estimatePartTokens`, improving input token estimation accuracy for tool-heavy conversations in the context compression logic.
 
 ## [0.3.0] - 2026-06-25
 
 ### Added
+
 - **Token Usage Status Bar**: After each response, the status bar shows real-time token usage (`$(copilot) Model: 1.2k→850`) with compact k/M formatting. The status bar is now also wired to model refresh (shows model count, refreshing spinner, and errors).
 - **Auto-Fallback on Rate Limit**: When a model returns HTTP 429 (rate limited), the extension automatically retries with DeepSeek V4 Flash (the lightest model in the whitelist) and shows a notification. Prevents dead-end errors during heavy usage.
 - **Streaming Retry on Network Error**: If a streaming connection drops mid-response (network error, ECONNRESET, socket failure) and no content was emitted yet, the extension retries up to 2 times with a system message asking the model to start over.
@@ -143,11 +149,13 @@
 ## [0.2.8] - 2026-06-25
 
 ### Added
+
 - **Think-Tag Reasoning Capture**: Reasoning emitted inline within ` think... /think` tags (used by Kimi models) is now intercepted and natively rendered as `LanguageModelThinkingPart` collapsible thinking blocks, instead of being stripped and discarded. A shared `emitReasoning` helper now unifies handling of both `reasoning_content` deltas and ` think`-tag content.
 
 ## [0.2.7] - 2026-06-25
 
 ### Added
+
 - **Dynamic Reasoning Effort Picker**: Added full support for configuring the reasoning effort directly via the VS Code Copilot Chat dropdown menu (`LanguageModelChatInformation.configurationSchema`). The dropdown intelligently updates its options based on the selected model:
   - **DeepSeek**: `None`, `High`, `Max`
   - **Nemotron**: `None`, `Medium`, `High`
@@ -157,29 +165,35 @@
 - **Advanced Payload Configuration**: Implemented `chat_template_kwargs` to seamlessly inject advanced reasoning parameters into the NVIDIA NIM REST payload. This properly supports complex models like DeepSeek, GLM, and MiniMax that require nested arguments.
 
 ### Changed
+
 - Refined the default label for reasoning toggles: renamed "Default (Off)" to "None" across the entire codebase to reduce ambiguity and align with standard terminology.
 - Simplified `Stepfun-3.7-flash` adapter by entirely removing the manual reasoning mode selectors to mirror upstream changes (the model automatically thinks without needing an explicit toggle).
 - Streamlined `nvidia-nim.reasoningMode` workspace setting defaults to dynamically map to the appropriate first valid state (`none`) instead of hardcoding `default`.
 - Bumped internal Node APIs and updated types to handle the experimental `languageModelThinkingPart` API proposals in `package.json`.
 
 ### Fixed
+
 - **GLM-5.1 & MiniMax-M3 Crashes**: Fixed a critical `400 Bad Request` validation error (`Unsupported parameter(s): enable_thinking`) by correctly routing their reasoning config options through `chat_template_kwargs` rather than injecting it at the root of the API payload.
 - **DeepSeek Argument Compatibility**: Corrected DeepSeek's `thinking` and `reasoning_effort` API mapping. Now properly nests these parameters inside `chat_template_kwargs` so the NIM backend successfully activates DeepSeek-V4's advanced reasoning capabilities without throwing validation errors.
 
 ## [0.2.6] - 2026-06-25
 
 ### Added
+
 - Enabled experimental `LanguageModelThinkingPart` in `package.json`'s `enabledApiProposals` to prepare for native reasoning token rendering in VS Code Insiders.
 
 ### Changed
+
 - Forced a version bump to bypass aggressive VS Code local VSIX caching. This ensures users installing the latest build actually receive the updated streaming code.
 
 ## [0.2.5] - 2026-06-25
 
 ### Added
+
 - Introduced explicit reasoning capabilities for **GLM-5.1**.
 
 ### Removed
+
 - **Massive Codebase Refactoring**: Completely purged all non-core, outdated, or experimental model adapters to heavily streamline the provider. We have officially dropped support for:
   - Mistral / Mixtral (all variants)
   - Qwen (all variants)
@@ -193,29 +207,34 @@
 ## [0.2.4] - 2026-06-25
 
 ### Added
+
 - Implemented the foundational infrastructure to support the new `configurationSchema` property within the VS Code API. This allows model providers to inject custom dropdown selectors into the VS Code Copilot Chat UI.
 - Dynamically mapped adapter configurations (`supportedReasoningModes`) to the VS Code UI schema properties.
 
 ## [0.2.3] - 2026-06-25
 
 ### Fixed
+
 - Fixed internal test suite failures and updated `BaseModelAdapter` mocks to verify `applyReasoningMode` integration.
 - Corrected payload merging logic to ensure temperature and reasoning options don't conflict.
 
 ## [0.2.2] - 2026-06-25
 
 ### Added
+
 - Created the `applyReasoningMode` abstract method in the base adapter interface to enforce unified reasoning configurations.
 - Hooked up `DeepSeek`, `Kimi`, `MiniMax`, and `Nemotron` to correctly respond to the newly injected reasoning modes (`default`, `on`, `low`, `medium`, `high`, `max`).
 
 ## [0.2.1] - 2026-06-25
 
 ### Added
+
 - Added a fallback workspace configuration property: `nvidia-nim.reasoningMode`. If a model doesn't explicitly pass a UI configuration via the dropdown, it will gracefully fallback to the workspace default setting.
 
 ## [0.2.0] - 2026-06-25
 
 ### Added
+
 - **Major Feature Initialization**: Began implementing robust support for Model Reasoning (Thinking) configurations.
 - Added the `nvidia-nim.showReasoning` workspace setting to allow users to expose hidden `<think>`/`reasoning_content` tokens directly into the chat stream for debugging or deeper analysis.
 

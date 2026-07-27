@@ -143,7 +143,7 @@ describe("NimChatModelProvider", () => {
       {
         id: "deepseek-ai/deepseek-v4-flash",
         displayName: "DeepSeek V4 Flash",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
@@ -583,7 +583,7 @@ describe("NimChatModelProvider", () => {
       {
         id: "deepseek-ai/deepseek-v4-flash",
         displayName: "DeepSeek V4 Flash",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
@@ -625,7 +625,7 @@ describe("NimChatModelProvider", () => {
       {
         id: "deepseek-ai/deepseek-v4-flash",
         displayName: "DeepSeek V4 Flash",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
@@ -664,7 +664,7 @@ describe("NimChatModelProvider", () => {
       {
         id: "deepseek-ai/deepseek-v4-flash",
         displayName: "DeepSeek V4 Flash",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
@@ -788,7 +788,7 @@ describe("NimChatModelProvider", () => {
       {
         id: "deepseek-ai/deepseek-v4-flash",
         displayName: "DeepSeek V4 Flash",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
@@ -834,7 +834,7 @@ describe("NimChatModelProvider", () => {
       {
         id: "deepseek-ai/deepseek-v4-flash",
         displayName: "DeepSeek V4 Flash",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
@@ -1005,7 +1005,7 @@ describe("NimChatModelProvider", () => {
     cacheHarness.setRuntimeInfoCache("deepseek-ai/deepseek-v4-flash", {
       supportsTools: true,
       supportsVision: false,
-      contextWindow: 1000000,
+      contextWindow: 1048576,
       runtimeMetadataSource: "cache",
     });
 

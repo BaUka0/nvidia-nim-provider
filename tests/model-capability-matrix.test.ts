@@ -59,7 +59,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     modelId: "deepseek-ai/deepseek-v4-flash",
     catalog: {
       displayName: "DeepSeek V4 Flash",
-      contextWindow: 1000000,
+      contextWindow: 1048576,
       maxOutputTokens: 384000,
       supportsTools: true,
       supportsVision: false,
@@ -78,7 +78,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     modelId: "deepseek-ai/deepseek-v4-pro",
     catalog: {
       displayName: "DeepSeek V4 Pro",
-      contextWindow: 1000000,
+      contextWindow: 1048576,
       maxOutputTokens: 384000,
       supportsTools: true,
       supportsVision: false,
@@ -97,7 +97,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     modelId: "minimaxai/minimax-m3",
     catalog: {
       displayName: "MiniMax M3",
-      contextWindow: 1000000,
+      contextWindow: 524288,
       maxOutputTokens: 100000,
       supportsTools: true,
       supportsVision: true,
@@ -129,7 +129,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     modelId: "moonshotai/kimi-k2.6",
     catalog: {
       displayName: "Kimi k2.6",
-      contextWindow: 256000,
+      contextWindow: 262144,
       maxOutputTokens: 65536,
       supportsTools: true,
       supportsVision: true,
@@ -157,7 +157,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     modelId: "nvidia/nemotron-3-ultra-550b-a55b",
     catalog: {
       displayName: "Nemotron 3 Ultra 550B",
-      contextWindow: 1000000,
+      contextWindow: 1048576,
       maxOutputTokens: 65536,
       supportsTools: true,
       supportsVision: false,
@@ -180,7 +180,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     modelId: "z-ai/glm-5.2",
     catalog: {
       displayName: "GLM 5.2",
-      contextWindow: 1000000,
+      contextWindow: 202752,
       maxOutputTokens: 128000,
       supportsTools: true,
       supportsVision: false,
@@ -210,7 +210,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     modelId: "stepfun-ai/step-3.7-flash",
     catalog: {
       displayName: "Step 3.7 Flash",
-      contextWindow: 256000,
+      contextWindow: 262144,
       maxOutputTokens: 65536,
       supportsTools: true,
       supportsVision: true,
@@ -229,7 +229,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     modelId: "thinkingmachines/inkling",
     catalog: {
       displayName: "Inkling",
-      contextWindow: 1000000,
+      contextWindow: 1048576,
       maxOutputTokens: 65536,
       supportsTools: true,
       supportsVision: true,

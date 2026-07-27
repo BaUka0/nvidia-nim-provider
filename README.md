@@ -38,16 +38,16 @@ The extension fetches the model list from `https://integrate.api.nvidia.com/v1/m
 filters it down to a curated set of elite agentic models. Model-specific adapters tune temperature,
 tool-calling system prompts, and reasoning configuration where required:
 
-| Model | Reasoning Modes | Tool Calling | Vision |
-|-------|----------------|--------------|--------|
-| DeepSeek V4 Flash / Pro | None, High, Max | Yes | No |
-| Nemotron 3 Ultra 550B | None, Medium, High | Yes | No |
-| Kimi K2.6 | None, On | Yes | Yes |
-| MiniMax M3 | None, On, Adaptive | Yes | Yes |
-| GLM 5.2 | None, On | Yes | No |
-| Step 3.7 Flash | Always on | Yes | Yes |
-| Inkling | None, Minimal, Low, Medium, High, XHigh, Max | Yes | Yes |
-| Laguna XS 2.1 | None, On | Yes | No |
+| Model                   | Reasoning Modes                              | Tool Calling | Vision |
+| ----------------------- | -------------------------------------------- | ------------ | ------ |
+| DeepSeek V4 Flash / Pro | None, High, Max                              | Yes          | No     |
+| Nemotron 3 Ultra 550B   | None, Medium, High                           | Yes          | No     |
+| Kimi K2.6               | None, On                                     | Yes          | Yes    |
+| MiniMax M3              | None, On, Adaptive                           | Yes          | Yes    |
+| GLM 5.2                 | None, On                                     | Yes          | No     |
+| Step 3.7 Flash          | Always on                                    | Yes          | Yes    |
+| Inkling                 | None, Minimal, Low, Medium, High, XHigh, Max | Yes          | Yes    |
+| Laguna XS 2.1           | None, On                                     | Yes          | No     |
 
 When NVIDIA's `/models` response omits tool-calling capability metadata, chat models are treated as
 tool-capable so they remain selectable in Copilot Chat Agent mode.
@@ -75,13 +75,13 @@ NVIDIA NIM API using the appropriate parameters (`reasoning_effort`, `enable_thi
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `NVIDIA NIM: Manage NVIDIA NIM API Key` | Configure or update the API key. |
-| `NVIDIA NIM: Refresh Models` | Re-fetch the model list from NVIDIA NIM. |
-| `NVIDIA NIM: Toggle Reasoning Content Display` | Toggle `showReasoning` at runtime. |
-| `NVIDIA NIM: Toggle Debug Logging` | Enable/disable verbose debug output. |
-| `NVIDIA NIM: Open Debug Log` | Open the debug log output channel. |
+| Command                                        | Description                              |
+| ---------------------------------------------- | ---------------------------------------- |
+| `NVIDIA NIM: Manage NVIDIA NIM API Key`        | Configure or update the API key.         |
+| `NVIDIA NIM: Refresh Models`                   | Re-fetch the model list from NVIDIA NIM. |
+| `NVIDIA NIM: Toggle Reasoning Content Display` | Toggle `showReasoning` at runtime.       |
+| `NVIDIA NIM: Toggle Debug Logging`             | Enable/disable verbose debug output.     |
+| `NVIDIA NIM: Open Debug Log`                   | Open the debug log output channel.       |
 
 ## Usage
 
@@ -112,6 +112,31 @@ Press `F5` in VS Code to launch the Extension Development Host.
 - `npm run lint:fix` – ESLint auto-fix
 - `npm run format` – Prettier formatting
 - `npm run package:vsix` – Build VSIX package
+
+## NVIDIA API Diagnostics
+
+The public model-list endpoint can be checked without an API key:
+
+```bash
+npm run probe:models
+```
+
+Context probes require `NIM_API_KEY` (also accepts `NVIDIA_API_KEY`, `NVIDIA_NIM_API_KEY`, or
+`NGC_API_KEY`) and a model ID passed as the final argument or through
+`NVIDIA_NIM_MODEL`. Each probe performs two small calibration requests and one large request with
+`max_tokens: 1`. Large probes consume billable input tokens.
+
+```bash
+npm run probe:context:262k -- poolside/laguna-xs-2.1
+npm run probe:context:500k -- thinkingmachines/inkling
+npm run probe:context:1048k -- deepseek-ai/deepseek-v4-flash
+```
+
+Set `NVIDIA_NIM_BASE_URL` to test a compatible endpoint other than
+`https://integrate.api.nvidia.com/v1`. A context rejection exits with status `2` and prints the
+maximum and actual token counts parsed from the NVIDIA error response.
+Transient `429` and `5xx` responses are retried with bounded exponential backoff. Set
+`NVIDIA_NIM_PROBE_RETRIES` to change the default of four retries.
 
 ## Marketplace Packaging
 

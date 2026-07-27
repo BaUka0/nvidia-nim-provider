@@ -1120,7 +1120,7 @@ describe("NimChatModelProvider", () => {
           {
             id: "deepseek-ai/deepseek-v4-flash",
             displayName: "DeepSeek V4 Flash",
-            contextWindow: 1000000,
+            contextWindow: 1048576,
             maxOutputTokens: 384000,
             supportsTools: true,
             supportsVision: false,
@@ -1172,7 +1172,7 @@ describe("NimChatModelProvider", () => {
       {
         id: "deepseek-ai/deepseek-v4-pro",
         displayName: "DeepSeek V4 Pro",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
@@ -1217,7 +1217,7 @@ describe("NimChatModelProvider", () => {
       {
         id: "minimaxai/minimax-m3",
         displayName: "MiniMax M3",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 100000,
         supportsTools: true,
         supportsVision: true,
@@ -2059,7 +2059,7 @@ describe("NimChatModelProvider", () => {
             {
               id: "moonshotai/kimi-k2.6",
               displayName: "Kimi k2.6",
-              contextWindow: 256000,
+              contextWindow: 262144,
               maxOutputTokens: 262144,
               supportsTools: true,
               supportsVision: true,
@@ -2067,7 +2067,7 @@ describe("NimChatModelProvider", () => {
             {
               id: "deepseek-ai/deepseek-v4-flash",
               displayName: "DeepSeek V4 Flash",
-              contextWindow: 1000000,
+              contextWindow: 1048576,
               maxOutputTokens: 384000,
               supportsTools: true,
               supportsVision: false,
@@ -2231,7 +2231,7 @@ describe("NimChatModelProvider", () => {
             {
               id: "moonshotai/kimi-k2.6",
               displayName: "Kimi k2.6",
-              contextWindow: 256000,
+              contextWindow: 262144,
               maxOutputTokens: 65536,
               supportsTools: true,
               supportsVision: true,

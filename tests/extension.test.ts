@@ -325,7 +325,7 @@ describe("activate", () => {
       {
         id: "deepseek-ai/deepseek-v4-pro",
         displayName: "DeepSeek V4 Pro",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
@@ -383,7 +383,7 @@ describe("activate", () => {
       {
         id: "deepseek-ai/deepseek-v4-pro",
         displayName: "DeepSeek V4 Pro",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
@@ -551,7 +551,7 @@ describe("activate", () => {
       {
         id: "deepseek-ai/deepseek-v4-pro",
         displayName: "DeepSeek V4 Pro",
-        contextWindow: 1000000,
+        contextWindow: 1048576,
         maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
