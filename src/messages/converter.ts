@@ -5,8 +5,8 @@ import { Json, JsonObject, NimChatMessage, NimContentPart, NimTool } from "../ty
 export interface LegacyPart {
   type?: string;
   mimeType?: string;
-  bytes?: Uint8Array | number[];
-  data?: Uint8Array | number[];
+  bytes?: Uint8Array | number[] | string;
+  data?: Uint8Array | number[] | string;
   buffer?: ArrayBuffer;
   value?: string;
   [key: string]: unknown;
@@ -142,6 +142,17 @@ function extractImageData(
   }
   if (Array.isArray(p.data) && p.data.length > 0) {
     return { mimeType, data: new Uint8Array(p.data) };
+  }
+
+  if (typeof p.data === "string" && p.data.trim().length > 0) {
+    const raw = p.data.trim();
+    const payload = raw.startsWith("data:") ? raw.slice(raw.indexOf(",") + 1) : raw;
+    if (/^[A-Za-z0-9+/\s]+={0,2}$/.test(payload)) {
+      const decoded = Buffer.from(payload.replace(/\s/g, ""), "base64");
+      if (decoded.length > 0) {
+        return { mimeType, data: new Uint8Array(decoded) };
+      }
+    }
   }
 
   return undefined;
@@ -614,12 +625,91 @@ export function estimateToolsTokens(tools: readonly NimTool[]): number {
  * Estimate token count for converted NimChatMessage[] (post-conversion).
  */
 export function estimateNimMessagesTokens(messages: NimChatMessage[]): number {
-  let total = 0;
-  for (const m of messages) {
-    const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-    total += estimateTokens(content);
+  const breakdown = estimateNimMessagesTokensByCategory(messages);
+  return (
+    breakdown.system +
+    breakdown.user +
+    breakdown.assistant +
+    breakdown.toolCalls +
+    breakdown.toolResults +
+    breakdown.images
+  );
+}
+
+export interface NimTokenCategoryBreakdown {
+  system: number;
+  user: number;
+  assistant: number;
+  toolCalls: number;
+  toolResults: number;
+  images: number;
+}
+
+function estimateImageUrlTokens(url: string): number {
+  if (url.startsWith("data:")) {
+    const separatorIndex = url.indexOf(",");
+    if (separatorIndex !== -1) {
+      const payload = url.slice(separatorIndex + 1).replace(/\s/g, "");
+      const isBase64 = url.slice(0, separatorIndex).toLowerCase().includes(";base64");
+      const byteEstimate = isBase64 ? Math.ceil((payload.length * 3) / 4) : payload.length;
+      return Math.max(4, Math.ceil(byteEstimate / 750));
+    }
   }
-  return total;
+  return Math.max(4, estimateTokens(url));
+}
+
+/**
+ * Estimate categories from the exact converted payload sent to NIM. These
+ * values remain estimates because the tokenizer is model-specific, but they
+ * include tool calls, tool results, reasoning content, and image payloads.
+ */
+export function estimateNimMessagesTokensByCategory(
+  messages: readonly NimChatMessage[],
+): NimTokenCategoryBreakdown {
+  const breakdown: NimTokenCategoryBreakdown = {
+    system: 0,
+    user: 0,
+    assistant: 0,
+    toolCalls: 0,
+    toolResults: 0,
+    images: 0,
+  };
+
+  for (const message of messages) {
+    const category =
+      message.role === "system"
+        ? "system"
+        : message.role === "assistant"
+          ? "assistant"
+          : message.role === "tool"
+            ? "toolResults"
+            : "user";
+
+    if (typeof message.content === "string") {
+      breakdown[category] += estimateTokens(message.content);
+    } else {
+      for (const part of message.content) {
+        if (part.type === "image_url") {
+          breakdown.images += estimateImageUrlTokens(part.image_url?.url ?? "image");
+        } else if (typeof part.text === "string") {
+          breakdown[category] += estimateTokens(part.text);
+        } else {
+          breakdown[category] += estimateTokens(JSON.stringify(part));
+        }
+      }
+    }
+
+    if (message.reasoning_content) {
+      breakdown.assistant += estimateTokens(message.reasoning_content);
+    }
+
+    for (const toolCall of message.tool_calls ?? []) {
+      breakdown.toolCalls +=
+        estimateTokens(toolCall.function.name) + estimateTokens(toolCall.function.arguments);
+    }
+  }
+
+  return breakdown;
 }
 
 /**
@@ -636,24 +726,58 @@ export function truncateMessagesForContext(
 
   let systemTokens = 0;
   for (const m of systemMessages) {
-    const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-    systemTokens += estimateTokens(content);
+    systemTokens += estimateNimMessagesTokens([m]);
   }
 
   const budgetForNonSystem = Math.max(0, maxTokens - systemTokens);
-  const kept: NimChatMessage[] = [];
+  let kept: NimChatMessage[] = [];
   let usedTokens = 0;
 
   for (let i = nonSystemMessages.length - 1; i >= 0; i -= 1) {
     const msg = nonSystemMessages[i];
-    const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
-    const msgTokens = estimateTokens(content);
+    const msgTokens = estimateNimMessagesTokens([msg]);
     if (usedTokens + msgTokens > budgetForNonSystem) {
       break;
     }
     kept.unshift(msg);
     usedTokens += msgTokens;
   }
+
+  // Keep assistant tool-call messages paired with their tool results (and
+  // vice versa). Sending an orphan `tool_call_id` is rejected by many
+  // OpenAI-compatible endpoints even when the text budget itself fits.
+  const selected = new Set(kept);
+  let pairChanged = true;
+  while (pairChanged) {
+    pairChanged = false;
+    for (const message of nonSystemMessages) {
+      if (message.role === "tool" && selected.has(message) && message.tool_call_id) {
+        const owner = nonSystemMessages.find(
+          (candidate) =>
+            candidate.role === "assistant" &&
+            candidate.tool_calls?.some((call) => call.id === message.tool_call_id),
+        );
+        if (owner && !selected.has(owner)) {
+          selected.add(owner);
+          pairChanged = true;
+        }
+      }
+      if (message.role === "assistant" && selected.has(message) && message.tool_calls?.length) {
+        for (const result of nonSystemMessages) {
+          if (
+            result.role === "tool" &&
+            result.tool_call_id &&
+            message.tool_calls.some((call) => call.id === result.tool_call_id) &&
+            !selected.has(result)
+          ) {
+            selected.add(result);
+            pairChanged = true;
+          }
+        }
+      }
+    }
+  }
+  kept = nonSystemMessages.filter((message) => selected.has(message));
 
   if (kept.length === 0 && nonSystemMessages.length > 0) {
     kept.push(nonSystemMessages[nonSystemMessages.length - 1]);

@@ -81,8 +81,8 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
-  it("uses metadata.max_tokens when override maxOutputTokens is absent", () => {
-    // testing with nemotron because it doesn't have an override for maxOutputTokens
+  it("uses the curated max output limit instead of an API-supplied override", () => {
+    // Curated limits are stable across API metadata changes.
     const raw: NvidiaModelSummary[] = [
       {
         id: "nvidia/nemotron-3-ultra-550b-a55b",
@@ -93,7 +93,7 @@ describe("normalizeNvidiaModels", () => {
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
         id: "nvidia/nemotron-3-ultra-550b-a55b",
-        maxOutputTokens: 8192,
+        maxOutputTokens: 65536,
       }),
     ]);
   });

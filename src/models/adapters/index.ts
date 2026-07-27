@@ -1,4 +1,9 @@
-import { ModelAdapter, BaseModelAdapter, DEFAULT_TEMPERATURE } from "./base";
+import {
+  ModelAdapter,
+  BaseModelAdapter,
+  DEFAULT_TEMPERATURE,
+  ModelAdapterCapabilityContract,
+} from "./base";
 import { DeepSeekAdapter } from "./deepseek";
 import { KimiAdapter } from "./kimi";
 import { GlmAdapter } from "./glm";
@@ -8,7 +13,15 @@ import { StepfunAdapter } from "./stepfun";
 import { InklingAdapter } from "./inkling";
 import { LagunaAdapter } from "./laguna";
 
-export { ModelAdapter, NvidiaModelRequestProfile, BaseModelAdapter } from "./base";
+export {
+  ModelAdapter,
+  NvidiaModelRequestProfile,
+  BaseModelAdapter,
+  ModelAdapterCapabilityContract,
+  ReasoningParameterFormat,
+  ToolCallProtocol,
+  ReasoningRouting,
+} from "./base";
 export { DeepSeekAdapter } from "./deepseek";
 export { KimiAdapter } from "./kimi";
 export { GlmAdapter } from "./glm";
@@ -59,4 +72,8 @@ export function getModelAdapter(modelId: string): ModelAdapter {
   }
   adapterCache.set(modelId, result);
   return result;
+}
+
+export function getModelCapabilityContract(modelId: string): ModelAdapterCapabilityContract {
+  return getModelAdapter(modelId).getCapabilityContract();
 }

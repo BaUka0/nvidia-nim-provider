@@ -2,6 +2,13 @@ import * as vscode from "vscode";
 import { fetchModels, streamChatCompletion } from "../../src/api/client";
 import { CONTEXT_WINDOW_SAFETY_MARGIN } from "../../src/shared/constants";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
+import { NvidiaApiError } from "../../src/api/errors";
+import { getApiKeyFingerprint } from "../../src/api/key-resolver";
+import {
+  MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY,
+  MODELS_CACHE_VERSION,
+  MODELS_CACHE_VERSION_STATE_KEY,
+} from "../../src/shared/constants";
 
 jest.mock("../../src/api/client", () => ({
   fetchModels: jest.fn(),
@@ -102,6 +109,9 @@ describe("NimChatModelProvider", () => {
     } as unknown as vscode.Memento;
     provider = new NimChatModelProvider(secrets, "test-ua", globalState);
     ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((_key: string, defaultValue: unknown) => defaultValue),
+    }));
   });
 
   it("provideLanguageModelChatResponse streams text parts", async () => {
@@ -681,6 +691,11 @@ describe("NimChatModelProvider", () => {
 
   it("does not route content to thinking when reasoning mode is none", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn((key: string, defaultValue: unknown) =>
+        key === "reasoningMode" ? "on" : defaultValue,
+      ),
+    });
 
     const mockStream = async function* () {
       yield { choices: [{ delta: { content: "Direct answer without reasoning" } }] };
@@ -713,6 +728,15 @@ describe("NimChatModelProvider", () => {
     expect(textReports).toHaveLength(1);
     expect(textReports[0][0]).toEqual(
       expect.objectContaining({ value: "Direct answer without reasoning" }),
+    );
+    expect(streamChatCompletion).toHaveBeenCalledWith(
+      "test-key",
+      expect.objectContaining({
+        chat_template_kwargs: expect.objectContaining({ enable_thinking: false }),
+      }),
+      expect.any(AbortSignal),
+      "test-ua",
+      { maxOutputTokens: 65536 },
     );
   });
 
@@ -996,7 +1020,7 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
-      yield { choices: [{ delta: { content: "English reasoning" } }] };
+      yield { choices: [{ delta: { content: "<think>English reasoning" } }] };
       yield { choices: [{ delta: { content: " still thinking" + closeTag } }] };
       yield { choices: [{ delta: { content: "Ответ на русском" } }] };
     };
@@ -1088,14 +1112,68 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("does not trust stale provider model capabilities after a cache refresh", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "deepseek-ai/deepseek-v4-flash",
+            displayName: "DeepSeek V4 Flash",
+            contextWindow: 1000000,
+            maxOutputTokens: 384000,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === MODELS_CACHE_VERSION_STATE_KEY) return MODELS_CACHE_VERSION;
+      if (key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY) {
+        return getApiKeyFingerprint("test-key");
+      }
+      return undefined;
+    });
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: "moonshotai/kimi-k2.6",
+        name: "Kimi k2.6",
+        detail: "NVIDIA NIM",
+        family: "nvidia-nim",
+        maxInputTokens: 200000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: true },
+      } as any,
+      [
+        {
+          role: 1,
+          content: [{ mimeType: "image/png", data: new Uint8Array([1, 2, 3]) }],
+        },
+      ] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    expect(streamChatCompletion).not.toHaveBeenCalled();
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: expect.stringContaining("does not support image input") }),
+    );
+  });
+
   it("reports unsupported image input for non-vision normalized models", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (globalState.get as jest.Mock).mockReturnValue([
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        displayName: "Llama 4 Maverick 17B 128E Instruct",
-        contextWindow: 131072,
-        maxOutputTokens: 16384,
+        id: "deepseek-ai/deepseek-v4-pro",
+        displayName: "DeepSeek V4 Pro",
+        contextWindow: 1000000,
+        maxOutputTokens: 384000,
         supportsTools: true,
         supportsVision: false,
       },
@@ -1109,9 +1187,9 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
+        id: "deepseek-ai/deepseek-v4-pro",
         maxInputTokens: 100000,
-        maxOutputTokens: 16384,
+        maxOutputTokens: 384000,
       } as any,
       [
         {
@@ -1137,10 +1215,10 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (globalState.get as jest.Mock).mockReturnValue([
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
-        displayName: "Llama 4 Maverick 17B 128E Instruct",
-        contextWindow: 131072,
-        maxOutputTokens: 16384,
+        id: "minimaxai/minimax-m3",
+        displayName: "MiniMax M3",
+        contextWindow: 1000000,
+        maxOutputTokens: 100000,
         supportsTools: true,
         supportsVision: true,
       },
@@ -1159,9 +1237,9 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
+        id: "minimaxai/minimax-m3",
         maxInputTokens: 100000,
-        maxOutputTokens: 16384,
+        maxOutputTokens: 100000,
       } as any,
       [
         {
@@ -1178,7 +1256,7 @@ describe("NimChatModelProvider", () => {
     );
 
     const requestBody = (streamChatCompletion as jest.Mock).mock.calls[0][1];
-    expect(requestBody.model).toBe("meta/llama-4-maverick-17b-128e-instruct");
+    expect(requestBody.model).toBe("minimaxai/minimax-m3");
     expect(requestBody.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1224,7 +1302,7 @@ describe("NimChatModelProvider", () => {
       key === "nvidia-nim.models"
         ? [
             {
-              id: "kimi-k2.6",
+              id: "moonshotai/kimi-k2.6",
               displayName: "Kimi K2.6",
               contextWindow: 70000,
               maxOutputTokens: 200000,
@@ -1248,7 +1326,7 @@ describe("NimChatModelProvider", () => {
     const prompt = "a".repeat(900);
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 5000, maxOutputTokens: 200000 } as any,
+      { id: "moonshotai/kimi-k2.6", maxInputTokens: 5000, maxOutputTokens: 200000 } as any,
       [{ role: 1, content: [{ value: prompt }] }] as any,
       { modelOptions: { max_tokens: 120000 } } as any,
       progress,
@@ -1415,9 +1493,13 @@ describe("NimChatModelProvider", () => {
 
       await provider.provideLanguageModelChatResponse(
         {
-          id: "kimi-k2.6",
+          id: "moonshotai/kimi-k2.6",
           maxInputTokens: 100000,
           maxOutputTokens: 65536,
+          capabilities: {
+            toolCalling: 128,
+            imageInput: false,
+          },
         } as unknown as vscode.LanguageModelChatInformation,
         [
           { role: 1, content: [{ value: "Read the file" }] },
@@ -1666,9 +1748,13 @@ describe("NimChatModelProvider", () => {
     try {
       await provider.provideLanguageModelChatResponse(
         {
-          id: "kimi-k2.6",
+          id: "moonshotai/kimi-k2.6",
           maxInputTokens: 100000,
           maxOutputTokens: 65536,
+          capabilities: {
+            toolCalling: 128,
+            imageInput: false,
+          },
         } as unknown as vscode.LanguageModelChatInformation,
         [
           { role: 1, content: [{ value: "Read the file" }] },
@@ -1859,7 +1945,7 @@ describe("NimChatModelProvider", () => {
     const mockStream = async function* () {
       yield { choices: [{ delta: { content: "Hello from NVIDIA NIM" } }] };
     };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+    (streamChatCompletion as jest.Mock).mockImplementation(() => mockStream());
 
     const progress = { report: jest.fn() };
     const token = {
@@ -1887,6 +1973,20 @@ describe("NimChatModelProvider", () => {
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Hello from NVIDIA NIM" }),
     );
+
+    // The same picker model may retain an old provider-group binding after a
+    // key was removed. A key entered interactively must rebind that model so
+    // the next request reuses it instead of opening another prompt.
+    await provider.provideLanguageModelChatResponse(
+      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi again" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    expect((vscode as any).window.showInputBox).toHaveBeenCalledTimes(1);
+    expect((streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[0]).toBe("new-api-key");
   });
 
   it("uses the API key carried by the configured model for chat requests", async () => {
@@ -1973,7 +2073,11 @@ describe("NimChatModelProvider", () => {
               supportsVision: false,
             },
           ]
-        : undefined,
+        : key === MODELS_CACHE_VERSION_STATE_KEY
+          ? MODELS_CACHE_VERSION
+          : key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY
+            ? getApiKeyFingerprint("test-key")
+            : undefined,
     );
 
     const rateLimitError = new Error("[RATE_LIMITED] Rate limited.\nRetry after 30.");
@@ -2017,12 +2121,431 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it.each([
+    ["deepseek-ai/deepseek-v4-flash", false],
+    ["deepseek-ai/deepseek-v4-pro", false],
+    ["minimaxai/minimax-m3", true],
+    ["moonshotai/kimi-k2.6", true],
+    ["nvidia/nemotron-3-ultra-550b-a55b", false],
+    ["z-ai/glm-5.2", false],
+    ["stepfun-ai/step-3.7-flash", true],
+    ["thinkingmachines/inkling", true],
+    ["poolside/laguna-xs-2.1", false],
+  ] as const)("enforces the curated vision capability for %s", async (modelId, supportsVision) => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "Vision response" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: modelId,
+        name: modelId,
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: supportsVision },
+      } as any,
+      [
+        {
+          role: 1,
+          content: [
+            { value: "Describe this" },
+            { mimeType: "image/png", data: new Uint8Array([1, 2, 3]) },
+          ],
+        },
+      ] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    if (!supportsVision) {
+      expect(streamChatCompletion).not.toHaveBeenCalled();
+      expect(progress.report).toHaveBeenCalledWith(
+        expect.objectContaining({ value: expect.stringContaining("does not support image input") }),
+      );
+      return;
+    }
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    const requestBody = (streamChatCompletion as jest.Mock).mock.calls[0][1];
+    expect(requestBody.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: expect.arrayContaining([expect.objectContaining({ type: "image_url" })]),
+        }),
+      ]),
+    );
+  });
+
+  it("does not start a rate-limit fallback after user-visible content was emitted", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const rateLimitError = new Error("[RATE_LIMITED] Rate limited.\nRetry after 30.");
+    const partialStream = async function* () {
+      yield { choices: [{ delta: { content: "Partial response" } }] };
+      throw rateLimitError;
+    };
+    (streamChatCompletion as jest.Mock).mockImplementation(() => partialStream());
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        {
+          id: "moonshotai/kimi-k2.6",
+          name: "Kimi k2.6",
+          maxInputTokens: 200000,
+          maxOutputTokens: 65536,
+          capabilities: { toolCalling: 128, imageInput: true },
+        } as any,
+        [{ role: 1, content: [{ value: "Hi" }] }] as any,
+        { modelOptions: {} } as any,
+        progress,
+        token as any,
+      ),
+    ).rejects.toThrow("[RATE_LIMITED]");
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Partial response" }),
+    );
+    expect((vscode as any).window.showInformationMessage).not.toHaveBeenCalledWith(
+      expect.stringContaining("Falling back"),
+    );
+  });
+
+  it("does not fall back on rate limit when DeepSeek Flash is unavailable", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (globalState.get as jest.Mock).mockImplementation((key: string) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "moonshotai/kimi-k2.6",
+              displayName: "Kimi k2.6",
+              contextWindow: 256000,
+              maxOutputTokens: 65536,
+              supportsTools: true,
+              supportsVision: true,
+            },
+          ]
+        : key === MODELS_CACHE_VERSION_STATE_KEY
+          ? MODELS_CACHE_VERSION
+          : key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY
+            ? getApiKeyFingerprint("test-key")
+            : undefined,
+    );
+    const rateLimitedStream = async function* () {
+      throw new Error("[RATE_LIMITED] Rate limited.\nRetry after 30.");
+    };
+    (streamChatCompletion as jest.Mock).mockImplementation(() => rateLimitedStream());
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        {
+          id: "moonshotai/kimi-k2.6",
+          name: "Kimi k2.6",
+          maxInputTokens: 200000,
+          maxOutputTokens: 65536,
+          capabilities: { toolCalling: 128, imageInput: true },
+        } as any,
+        [{ role: 1, content: [{ value: "Hi" }] }] as any,
+        { modelOptions: {} } as any,
+        { report: jest.fn() },
+        {
+          isCancellationRequested: false,
+          onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+        } as any,
+      ),
+    ).rejects.toThrow("[RATE_LIMITED]");
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+  });
+
   it("retries on network error during stream when no content was emitted", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const networkError = new TypeError("fetch failed");
     const failingStream = async function* () {
       throw networkError;
+    };
+    const successStream = async function* () {
+      yield { choices: [{ delta: { content: "Recovered" } }] };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => failingStream())
+      .mockImplementationOnce(() => successStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: "moonshotai/kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: true },
+      } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Recovered" }));
+  });
+
+  it("recalculates max_tokens after adding network retry guidance", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (globalState.get as jest.Mock).mockImplementation((key: string) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "moonshotai/kimi-k2.6",
+              displayName: "Kimi K2.6",
+              contextWindow: 5000,
+              maxOutputTokens: 1000,
+              supportsTools: true,
+              supportsVision: true,
+            },
+          ]
+        : undefined,
+    );
+
+    const failingStream = async function* () {
+      throw new TypeError("fetch failed");
+    };
+    const successStream = async function* () {
+      yield { choices: [{ delta: { content: "Recovered" } }] };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => failingStream())
+      .mockImplementationOnce(() => successStream());
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: "moonshotai/kimi-k2.6",
+        maxInputTokens: 5000,
+        maxOutputTokens: 1000,
+        capabilities: { toolCalling: 128, imageInput: true },
+      } as any,
+      [{ role: 1, content: [{ value: "a".repeat(900) }] }] as any,
+      { modelOptions: { max_tokens: 1000 } } as any,
+      { report: jest.fn() },
+      {
+        isCancellationRequested: false,
+        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+      } as any,
+    );
+
+    const firstRequest = (streamChatCompletion as jest.Mock).mock.calls[0][1];
+    const retryRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(retryRequest.messages).toHaveLength(firstRequest.messages.length + 1);
+    expect(retryRequest.max_tokens).toBeLessThan(firstRequest.max_tokens);
+  });
+
+  it("does not retry a network failure after user-visible content was emitted", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const partialStream = async function* () {
+      yield { choices: [{ delta: { content: "Partial response" } }] };
+      throw new TypeError("fetch failed");
+    };
+    (streamChatCompletion as jest.Mock).mockImplementation(() => partialStream());
+    const progress = { report: jest.fn() };
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        {
+          id: "moonshotai/kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+          capabilities: { toolCalling: 128, imageInput: true },
+        } as any,
+        [{ role: 1, content: [{ value: "Hi" }] }] as any,
+        { modelOptions: {} } as any,
+        progress,
+        {
+          isCancellationRequested: false,
+          onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+        } as any,
+      ),
+    ).rejects.toThrow("fetch failed");
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Partial response" }),
+    );
+  });
+
+  it("shares one interactive API-key prompt across parallel chat requests", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue(undefined);
+    let resolvePrompt!: (value: string | undefined) => void;
+    const promptResult = new Promise<string | undefined>((resolve) => {
+      resolvePrompt = resolve;
+    });
+    ((vscode as any).window.showInputBox as jest.Mock).mockReturnValue(promptResult);
+    (streamChatCompletion as jest.Mock).mockImplementation(() =>
+      (async function* () {
+        yield { choices: [{ delta: { content: "done" } }] };
+      })(),
+    );
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const makeRequest = () =>
+      provider.provideLanguageModelChatResponse(
+        {
+          id: "moonshotai/kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+          capabilities: { toolCalling: 128, imageInput: true },
+        } as any,
+        [{ role: 1, content: [{ value: "Hi" }] }] as any,
+        { modelOptions: {} } as any,
+        { report: jest.fn() },
+        token as any,
+      );
+
+    const requests = [makeRequest(), makeRequest()];
+    for (
+      let attempt = 0;
+      attempt < 10 && !((vscode as any).window.showInputBox as jest.Mock).mock.calls.length;
+      attempt += 1
+    ) {
+      await Promise.resolve();
+    }
+
+    expect((vscode as any).window.showInputBox).toHaveBeenCalledTimes(1);
+    resolvePrompt("shared-key");
+    await Promise.all(requests);
+
+    expect(secrets.store).toHaveBeenCalledTimes(1);
+    expect((streamChatCompletion as jest.Mock).mock.calls.map((call) => call[0])).toEqual([
+      "shared-key",
+      "shared-key",
+    ]);
+  });
+
+  it("cancels an active provider stream without retrying", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    let streamSignal: AbortSignal | undefined;
+    (streamChatCompletion as jest.Mock).mockImplementation(
+      (_apiKey: string, _request: unknown, signal: AbortSignal) => {
+        streamSignal = signal;
+        return (async function* () {
+          await new Promise<void>((_resolve, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => {
+                const error = new Error("aborted");
+                error.name = "AbortError";
+                reject(error);
+              },
+              { once: true },
+            );
+          });
+        })();
+      },
+    );
+    let cancelled = false;
+    let cancelListener: (() => void) | undefined;
+    const token = {
+      get isCancellationRequested() {
+        return cancelled;
+      },
+      onCancellationRequested: jest.fn((listener: () => void) => {
+        cancelListener = listener;
+        return { dispose: jest.fn() };
+      }),
+    };
+
+    const request = provider.provideLanguageModelChatResponse(
+      {
+        id: "moonshotai/kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: true },
+      } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      { report: jest.fn() },
+      token as any,
+    );
+
+    for (let attempt = 0; attempt < 10 && !streamSignal; attempt += 1) {
+      await Promise.resolve();
+    }
+    await Promise.resolve();
+    cancelled = true;
+    cancelListener?.();
+
+    await expect(request).rejects.toBeInstanceOf((vscode as any).CancellationError);
+    expect(streamSignal?.aborted).toBe(true);
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry when cancellation races with a network stream failure", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    let cancelListener: (() => void) | undefined;
+    let streamCalls = 0;
+    (streamChatCompletion as jest.Mock).mockImplementation(
+      (_apiKey: string, _request: unknown, _signal: AbortSignal) => {
+        streamCalls += 1;
+        return (async function* () {
+          // Exercise the abort-controller path even when the token's
+          // isCancellationRequested flag has not observed the race yet.
+          cancelListener?.();
+          throw new TypeError("fetch failed");
+        })();
+      },
+    );
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn((listener: () => void) => {
+        cancelListener = listener;
+        return { dispose: jest.fn() };
+      }),
+    };
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        {
+          id: "moonshotai/kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+          capabilities: { toolCalling: 128, imageInput: true },
+        } as any,
+        [{ role: 1, content: [{ value: "Hi" }] }] as any,
+        { modelOptions: {} } as any,
+        { report: jest.fn() },
+        token as any,
+      ),
+    ).rejects.toBeInstanceOf((vscode as any).CancellationError);
+
+    expect(streamCalls).toBe(1);
+  });
+
+  it("retries when the stream error has already been classified as a network API error", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const classifiedNetworkError = new NvidiaApiError("network_error", "network down", {
+      operation: "stream",
+    });
+    const failingStream = async function* () {
+      throw classifiedNetworkError;
     };
     const successStream = async function* () {
       yield { choices: [{ delta: { content: "Recovered" } }] };

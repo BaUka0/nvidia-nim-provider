@@ -21,6 +21,13 @@
     "expectedText": "Let me inspect the workspace.\n\n"
   },
   {
+    "name": "openai-tool-call-body-truncated-name-without-arguments-at-stream-end",
+    "chunks": [
+      "Let me inspect the workspace.\n\n<|tool_call_begin|>read_file"
+    ],
+    "expectedText": "Let me inspect the workspace.\n\n"
+  },
+  {
     "name": "deepseek-tool-call-body-truncated-at-stream-end",
     "chunks": [
       "Let me inspect the workspace.\n\n<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>read_file\n```json\n{\"filePath\":\"/tmp/exa"

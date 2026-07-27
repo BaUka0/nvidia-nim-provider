@@ -1,5 +1,4 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pkg = require("../../package.json") as { version: string };
+import packageJson from "../../package.json";
 
 export const PROVIDER_VENDOR = "nvidia-nim";
 export const PROVIDER_DISPLAY_NAME = "NVIDIA NIM";
@@ -7,7 +6,8 @@ export const SECRET_STORAGE_KEY = "nvidia-nim.apiKey";
 export const RAW_MODELS_STATE_KEY = "nvidia-nim.rawModels";
 export const MODELS_STATE_KEY = "nvidia-nim.models";
 export const MODELS_CACHE_VERSION_STATE_KEY = "nvidia-nim.modelsCacheVersion";
-export const MODELS_CACHE_VERSION = 5;
+export const MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY = "nvidia-nim.modelsCacheKeyFingerprint";
+export const MODELS_CACHE_VERSION = 6;
 export const MIGRATION_DONE_KEY = "nvidia-nim.legacyMigrationDone";
 export const DEBUG_STATE_KEY = "nvidia-nim.debug";
 export const DEBUG_ENV_VAR = "NVIDIA_NIM_DEBUG";
@@ -18,7 +18,7 @@ export const OPEN_DEBUG_LOG_COMMAND_ID = "nvidia-nim.openDebugLog";
 export const TOGGLE_SHOW_REASONING_COMMAND_ID = "nvidia-nim.toggleShowReasoning";
 
 export const BASE_URL = "https://integrate.api.nvidia.com/v1";
-export const EXTENSION_VERSION: string = pkg.version;
+export const EXTENSION_VERSION: string = packageJson.version;
 
 /** Safety margin for context window calculations (in tokens) */
 export const CONTEXT_WINDOW_SAFETY_MARGIN = 4096;

@@ -345,7 +345,7 @@ describe("NimChatModelProvider", () => {
       ({ name, chunks, expectedText }) => [name, chunks, expectedText] as const,
     ),
   )(
-    "suppresses truncated control text at stream end: %s",
+    "handles truncated control text at stream end: %s",
     async (_fixtureName: string, chunks: string[], expectedText: string) => {
       (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
@@ -397,8 +397,14 @@ describe("NimChatModelProvider", () => {
           typeof call[0] === "object" && call[0] !== null && "value" in (call[0] as object),
       );
 
-      expect(textReports).toHaveLength(1);
+      const bodyWasTruncated = _fixtureName.includes("body-truncated");
+      expect(textReports).toHaveLength(bodyWasTruncated ? 2 : 1);
       expect(textReports[0][0]).toEqual(expect.objectContaining({ value: expectedText }));
+      if (bodyWasTruncated) {
+        expect(textReports[1][0]).toEqual(
+          expect.objectContaining({ value: expect.stringContaining("read_file") }),
+        );
+      }
     },
   );
 
@@ -1041,9 +1047,9 @@ describe("NimChatModelProvider", () => {
   });
 
   it.each([
-    ["kimi-k2.6", 0.1, "Do not reveal chain-of-thought"],
-    ["zai-org/glm-4.5", 0.05, "strict JSON arguments"],
-    ["nemotron-70b", 0.1, "Do not wrap tool arguments in markdown fences"],
+    ["moonshotai/kimi-k2.6", 0.1, "Do not reveal chain-of-thought"],
+    ["z-ai/glm-5.2", 0.05, "strict JSON arguments"],
+    ["nvidia/nemotron-3-ultra-550b-a55b", 0.1, "Do not wrap tool arguments in markdown fences"],
   ])(
     "applies the provider request profile for %s when tools are enabled",
     async (modelId: string, expectedTemperature: number, expectedMessageSnippet: string) => {

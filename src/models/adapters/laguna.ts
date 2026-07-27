@@ -4,6 +4,7 @@ export class LagunaAdapter extends BaseModelAdapter {
   readonly idPattern = /(^|[\/_-])laguna([\/_-]|$)/i;
   readonly defaultTemperature = 1;
   readonly supportedReasoningModes = ["none", "on"];
+  readonly reasoningParameterFormat = "chat_template_kwargs" as const;
   // Laguna exposes reasoning separately when available. Plain content is a
   // user-visible answer and must not be hidden as thinking when no reasoning
   // field is present in a response.

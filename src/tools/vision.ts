@@ -1,31 +1,46 @@
 import * as vscode from "vscode";
 import { fetchWithRetry } from "../api/client";
+import { classifyApiError } from "../api/errors";
 import {
   BASE_URL,
   EXTENSION_VERSION,
+  MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY,
   MODELS_STATE_KEY,
   PROVIDER_DISPLAY_NAME,
-  SECRET_STORAGE_KEY,
 } from "../shared/constants";
-import { isNormalizedNvidiaModel } from "../models/catalog";
+import { ELITE_MODELS_WHITELIST, isNormalizedNvidiaModel } from "../models/catalog";
+import { NvidiaApiKeyResolver } from "../api/key-resolver";
 
 /**
  * Image-analysis client that uses a cached NVIDIA NIM vision-capable model.
  */
 export class NimVisionClient {
   constructor(
-    private readonly secrets: vscode.SecretStorage,
+    secrets: vscode.SecretStorage,
     private readonly modelStorage?: vscode.Memento,
+    private readonly keyResolver = new NvidiaApiKeyResolver(secrets),
   ) {}
 
   private async getApiKey(): Promise<string> {
-    return (await this.secrets.get(SECRET_STORAGE_KEY)) ?? "";
+    const storedFingerprint = this.modelStorage?.get<unknown>(
+      MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY,
+    );
+    const cacheKeyFingerprint =
+      typeof storedFingerprint === "string" ? storedFingerprint : undefined;
+    const resolved = await this.keyResolver.resolveForTool({ cacheKeyFingerprint });
+    return resolved?.value ?? "";
   }
 
   private getVisionModelId(): string {
     const cachedModels = this.modelStorage?.get<unknown>(MODELS_STATE_KEY);
     const visionModel = Array.isArray(cachedModels)
-      ? cachedModels.find((model) => isNormalizedNvidiaModel(model) && model.supportsVision)
+      ? cachedModels.find(
+          (model) =>
+            isNormalizedNvidiaModel(model) &&
+            Object.prototype.hasOwnProperty.call(ELITE_MODELS_WHITELIST, model.id) &&
+            ELITE_MODELS_WHITELIST[model.id].supportsVision &&
+            model.supportsVision,
+        )
       : undefined;
 
     if (!visionModel || !isNormalizedNvidiaModel(visionModel)) {
@@ -37,7 +52,10 @@ export class NimVisionClient {
     return visionModel.id;
   }
 
-  async analyzeImage(imageData: string, prompt: string): Promise<string> {
+  async analyzeImage(imageData: string, prompt: string, signal?: AbortSignal): Promise<string> {
+    if (signal?.aborted) {
+      throw createAbortError();
+    }
     const apiKey = await this.getApiKey();
     if (!apiKey) {
       throw new Error(`${PROVIDER_DISPLAY_NAME} API key not found`);
@@ -45,38 +63,52 @@ export class NimVisionClient {
     const model = this.getVisionModelId();
     const ua = `nvidia-nim-provider/${EXTENSION_VERSION} VSCode/${vscode.version}`;
 
-    const response = await fetchWithRetry(`${BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "User-Agent": ua,
+    const response = await fetchWithRetry(
+      `${BASE_URL}/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          "User-Agent": ua,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                { type: "image_url", image_url: { url: imageData } },
+              ],
+            },
+          ],
+          max_tokens: 2000,
+        }),
+        signal,
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              { type: "image_url", image_url: { url: imageData } },
-            ],
-          },
-        ],
-        max_tokens: 2000,
-      }),
-    });
+      3,
+      { operation: "vision", model },
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Vision API error: ${response.status} ${errorText}`);
+      throw classifyApiError(new Error(`HTTP ${response.status} ${response.statusText}`), {
+        operation: "vision",
+        status: response.status,
+        detail: errorText,
+      });
     }
 
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
+    try {
+      const data = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
 
-    return data.choices?.[0]?.message?.content ?? "Failed to analyze image";
+      return data.choices?.[0]?.message?.content ?? "Failed to analyze image";
+    } catch (error) {
+      throw classifyApiError(error, { operation: "vision", model });
+    }
   }
 }
 
@@ -116,23 +148,47 @@ export class NimAnalyzeImageTool implements vscode.LanguageModelTool<{
 
   private readonly visionClient: NimVisionClient;
 
-  constructor(secrets: vscode.SecretStorage, modelStorage?: vscode.Memento) {
-    this.visionClient = new NimVisionClient(secrets, modelStorage);
+  constructor(
+    secrets: vscode.SecretStorage,
+    modelStorage?: vscode.Memento,
+    keyResolver?: NvidiaApiKeyResolver,
+  ) {
+    this.visionClient = new NimVisionClient(secrets, modelStorage, keyResolver);
   }
 
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<{ image_data: string; prompt: string }>,
-    _token: vscode.CancellationToken,
+    token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
     const { image_data, prompt } = options.input;
+    const abortController = new AbortController();
+    const cancellationSubscription =
+      typeof token.onCancellationRequested === "function"
+        ? token.onCancellationRequested(() => abortController.abort())
+        : undefined;
     try {
-      const result = await this.visionClient.analyzeImage(image_data, prompt);
+      if (token.isCancellationRequested) {
+        throw createAbortError();
+      }
+      const result = await this.visionClient.analyzeImage(
+        image_data,
+        prompt,
+        abortController.signal,
+      );
       return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(result)]);
     } catch (error) {
+      if (
+        token.isCancellationRequested ||
+        (error instanceof Error && error.name === "AbortError")
+      ) {
+        throw createVisionCancellationError();
+      }
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       return new vscode.LanguageModelToolResult([
         new vscode.LanguageModelTextPart(`Failed to analyze image: ${errorMessage}`),
       ]);
+    } finally {
+      cancellationSubscription?.dispose();
     }
   }
 
@@ -155,7 +211,20 @@ export class NimAnalyzeImageTool implements vscode.LanguageModelTool<{
 export function registerNimTools(
   secrets: vscode.SecretStorage,
   modelStorage?: vscode.Memento,
+  keyResolver?: NvidiaApiKeyResolver,
 ): vscode.Disposable {
-  const analyzeImageTool = new NimAnalyzeImageTool(secrets, modelStorage);
+  const analyzeImageTool = new NimAnalyzeImageTool(secrets, modelStorage, keyResolver);
   return vscode.Disposable.from(vscode.lm.registerTool(NimAnalyzeImageTool.id, analyzeImageTool));
+}
+
+function createAbortError(): Error {
+  const error = new Error("The operation was aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function createVisionCancellationError(): Error {
+  const CancellationError = (vscode as typeof vscode & { CancellationError?: new () => Error })
+    .CancellationError;
+  return CancellationError ? new CancellationError() : createAbortError();
 }

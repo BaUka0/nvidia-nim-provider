@@ -16,6 +16,7 @@ import {
   buildInvalidToolCallFallback,
   buildInvalidToolCallRetryMessage,
   buildToolCallCanonicalKey,
+  getIncompleteTextToolCallName,
   hasRequiredToolArguments,
   parseTextEmbeddedToolCalls,
   repairToolArguments,
@@ -23,9 +24,11 @@ import {
 } from "../tools/parser";
 import { streamChatCompletion } from "../api/client";
 import {
+  CONTEXT_WINDOW_SAFETY_MARGIN,
   DEBUG_ENV_VAR,
   MANAGE_COMMAND_ID,
   PROVIDER_DISPLAY_NAME,
+  PROVIDER_VENDOR,
   SECRET_STORAGE_KEY,
 } from "../shared/constants";
 import { getFallbackModel } from "../models/catalog";
@@ -33,7 +36,8 @@ import { getModelAdapter } from "../models/adapters";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
 import {
-  estimateMessagesTokensByCategory,
+  estimateNimMessagesTokens,
+  estimateNimMessagesTokensByCategory,
   estimateToolsTokens,
   estimateMessageTokens,
   estimateTokens,
@@ -44,10 +48,13 @@ import {
   NvidiaModelDiscoveryService,
   NvidiaLanguageModelChatInformation,
 } from "../models/discovery";
+import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver";
+import { formatStructuredError, NvidiaApiError } from "../api/errors";
 import { NimRequestBuilder } from "./request-builder";
 import { ToolCallStreamAggregator } from "./tool-call-aggregator";
 
 const DEFAULT_MAX_TOKENS = 65536;
+const MAX_RUNTIME_INFO_CACHE_SIZE = 64;
 
 interface NvidiaProviderConfiguration {
   apiKey?: string;
@@ -68,10 +75,6 @@ function getApiKeyFromConfiguration(
 ): string | undefined {
   const configuration = (options as { configuration?: NvidiaProviderConfiguration }).configuration;
   return getNonEmptyApiKey(configuration?.apiKey);
-}
-
-function getApiKeyFromModel(model: LanguageModelChatInformation): string | undefined {
-  return getNonEmptyApiKey((model as NvidiaLanguageModelChatInformation).apiKey);
 }
 
 function getProviderGroupName(options: PrepareLanguageModelChatModelOptions): string | undefined {
@@ -101,6 +104,7 @@ function buildMissingApiKeyFallback(): string {
 
 export class NimChatModelProvider implements LanguageModelChatProvider {
   private readonly discoveryService: NvidiaModelDiscoveryService;
+  private readonly apiKeyResolver: NvidiaApiKeyResolver;
   private readonly runtimeInfoCache = new Map<
     string,
     {
@@ -113,7 +117,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
   private readonly _onDidChangeLanguageModelChatInformation = new EventEmitter<void>();
   /** Cleared at the start of each VS Code resolution cycle (groupless call). */
   private readonly _selectableModelIdsInCycle = new Set<string>();
+  private readonly _resolutionKeyFingerprintsByGroup = new Map<string, string>();
   private _infoCallCounter = 0;
+  private _apiKeyPrompt: Promise<string | undefined> | undefined;
   readonly onDidChangeLanguageModelChatInformation: Event<void> =
     this._onDidChangeLanguageModelChatInformation.event;
 
@@ -122,12 +128,26 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     private readonly userAgent: string,
     private readonly globalState?: vscode.Memento,
     private readonly statusBar?: StatusBarManager,
+    apiKeyResolver?: NvidiaApiKeyResolver,
   ) {
-    this.discoveryService = new NvidiaModelDiscoveryService(secrets, userAgent, globalState);
+    this.apiKeyResolver = apiKeyResolver ?? new NvidiaApiKeyResolver(secrets);
+    this.discoveryService = new NvidiaModelDiscoveryService(
+      secrets,
+      userAgent,
+      globalState,
+      this.apiKeyResolver,
+    );
   }
 
-  fireModelInfoChanged(): void {
+  fireModelInfoChanged(options: { invalidateModelCache?: boolean } = {}): void {
     this.runtimeInfoCache.clear();
+    if (options.invalidateModelCache !== false) {
+      this.apiKeyResolver.clearRuntimeBindings();
+      this._resolutionKeyFingerprintsByGroup.clear();
+      this.discoveryService.invalidateCache();
+    } else {
+      this.discoveryService.markCacheFresh();
+    }
     this._onDidChangeLanguageModelChatInformation.fire();
   }
 
@@ -142,6 +162,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
   }> {
     const cachedRuntimeInfo = this.runtimeInfoCache.get(model.id);
     if (cachedRuntimeInfo) {
+      this.runtimeInfoCache.delete(model.id);
+      this.runtimeInfoCache.set(model.id, cachedRuntimeInfo);
       return cachedRuntimeInfo;
     }
 
@@ -155,8 +177,39 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         contextWindow: cachedModel.contextWindow,
         runtimeMetadataSource: "cache" as const,
       };
-      this.runtimeInfoCache.set(model.id, runtimeInfo);
+      this.setRuntimeInfoCache(model.id, runtimeInfo);
       return runtimeInfo;
+    }
+
+    const providerModelInfo = model as LanguageModelChatInformation & {
+      detail?: unknown;
+      family?: unknown;
+    };
+    if (
+      providerModelInfo.detail === PROVIDER_DISPLAY_NAME ||
+      providerModelInfo.family === PROVIDER_VENDOR
+    ) {
+      // A picker entry can outlive a refresh. Do not trust its copied
+      // capabilities when the current curated cache no longer contains it.
+      const currentModels = await this.discoveryService.getAvailableModels(apiKey);
+      const currentModel = currentModels.find((entry) => entry.id === model.id);
+      if (currentModel) {
+        const runtimeInfo = {
+          supportsTools: currentModel.supportsTools,
+          supportsVision: currentModel.supportsVision,
+          contextWindow: currentModel.contextWindow,
+          runtimeMetadataSource: "fetched-model" as const,
+        };
+        this.setRuntimeInfoCache(model.id, runtimeInfo);
+        return runtimeInfo;
+      }
+
+      return {
+        supportsTools: false,
+        supportsVision: false,
+        contextWindow: model.maxInputTokens + Math.min(model.maxOutputTokens, DEFAULT_MAX_TOKENS),
+        runtimeMetadataSource: "fetched-model" as const,
+      };
     }
 
     const capabilities = (model as SelectedModelRuntimeCapabilities).capabilities;
@@ -167,7 +220,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         contextWindow: model.maxInputTokens + Math.min(model.maxOutputTokens, DEFAULT_MAX_TOKENS),
         runtimeMetadataSource: "selected-model" as const,
       };
-      this.runtimeInfoCache.set(model.id, runtimeInfo);
+      this.setRuntimeInfoCache(model.id, runtimeInfo);
       return runtimeInfo;
     }
 
@@ -182,8 +235,29 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         model.maxInputTokens + Math.min(model.maxOutputTokens, DEFAULT_MAX_TOKENS),
       runtimeMetadataSource: "fetched-model" as const,
     };
-    this.runtimeInfoCache.set(model.id, runtimeInfo);
+    this.setRuntimeInfoCache(model.id, runtimeInfo);
     return runtimeInfo;
+  }
+
+  private setRuntimeInfoCache(
+    modelId: string,
+    runtimeInfo: {
+      supportsTools: boolean;
+      supportsVision: boolean;
+      contextWindow: number;
+      runtimeMetadataSource: ChatRuntimeMetadataSource;
+    },
+  ): void {
+    if (
+      !this.runtimeInfoCache.has(modelId) &&
+      this.runtimeInfoCache.size >= MAX_RUNTIME_INFO_CACHE_SIZE
+    ) {
+      const oldestKey = this.runtimeInfoCache.keys().next().value;
+      if (typeof oldestKey === "string") {
+        this.runtimeInfoCache.delete(oldestKey);
+      }
+    }
+    this.runtimeInfoCache.set(modelId, runtimeInfo);
   }
 
   async provideLanguageModelChatInformation(
@@ -205,25 +279,58 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         `call #${callNum}: groupless - new resolution cycle, resetting duplicate guard`,
       );
       this._selectableModelIdsInCycle.clear();
+      this.runtimeInfoCache.clear();
+      this.apiKeyResolver.clearRuntimeBindings();
+      this._resolutionKeyFingerprintsByGroup.clear();
       return [];
     }
 
-    const legacyApiKey = configuredApiKey ? undefined : await this.secrets.get(SECRET_STORAGE_KEY);
-    const apiKey = configuredApiKey ?? legacyApiKey;
-
-    if (!apiKey) {
+    const resolvedApiKey = await this.apiKeyResolver.resolveConfiguredOrLegacy(configuredApiKey);
+    if (!resolvedApiKey) {
       const groupLabel = groupName ? ` "${groupName}"` : "";
+      const resolutionGroupKey = groupName ?? "<configured-provider-group>";
+      // A previously resolved group can lose both its configured and legacy
+      // keys without a model-info event. Drop only that group's binding so
+      // other configured groups continue resolving their own selected models.
+      this.runtimeInfoCache.clear();
+      this.apiKeyResolver.clearRuntimeBindings(resolutionGroupKey);
+      this._resolutionKeyFingerprintsByGroup.delete(resolutionGroupKey);
+      this.discoveryService.invalidateCache();
       outputLog(
         "resolution",
         `call #${callNum}: provider group${groupLabel} has no configured or legacy API key`,
       );
       return [];
     }
+    const apiKey = resolvedApiKey.value;
 
+    const keyFingerprint = getApiKeyFingerprint(apiKey);
+    const resolutionGroupKey = groupName ?? "<configured-provider-group>";
+    const previousGroupFingerprint = this._resolutionKeyFingerprintsByGroup.get(resolutionGroupKey);
+    const keyChanged =
+      previousGroupFingerprint !== undefined && previousGroupFingerprint !== keyFingerprint;
+    if (keyChanged) {
+      this.runtimeInfoCache.clear();
+      this.apiKeyResolver.clearRuntimeBindings(resolutionGroupKey);
+      this.discoveryService.invalidateCache();
+      // A changed key in the same provider group starts a new selectable
+      // model set. Otherwise every returned ID would be hidden as a duplicate
+      // of the entries bound to the previous key.
+      this._selectableModelIdsInCycle.clear();
+    }
+    this.apiKeyResolver.rememberRuntimeKey(apiKey, resolutionGroupKey);
+    this._resolutionKeyFingerprintsByGroup.set(resolutionGroupKey, keyFingerprint);
+
+    // A fresh cache still avoids a network call inside discovery; enabling
+    // stale-version refresh here is required for migrations when the key is
+    // unchanged (key changes already invalidate the cache above).
     const models = await this.discoveryService.getAvailableModels(apiKey, {
       refreshStaleCache: true,
     });
-    const chatInformation = this.discoveryService.mapToChatInformation(models, apiKey);
+    const chatInformation = this.discoveryService.mapToChatInformation(models);
+    for (const model of chatInformation) {
+      this.apiKeyResolver.registerModelKey(model, apiKey, resolutionGroupKey);
+    }
     let duplicateCount = 0;
     for (const model of chatInformation) {
       if (this._selectableModelIdsInCycle.has(model.id)) {
@@ -234,7 +341,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       this._selectableModelIdsInCycle.add(model.id);
     }
 
-    const keySource = configuredApiKey ? "configured API key" : "legacy API key fallback";
+    const keySource =
+      resolvedApiKey.source === "configured" ? "configured API key" : "legacy API key fallback";
     const duplicateNote =
       duplicateCount > 0
         ? `; hid ${duplicateCount} duplicate picker entr${duplicateCount === 1 ? "y" : "ies"}`
@@ -258,9 +366,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     const cancellationSubscription = token.onCancellationRequested(() => {
       abortController.abort();
     });
+    let hasReportedContent = false;
 
     try {
-      const apiKey = await this.ensureApiKey(false, getApiKeyFromModel(model));
+      const apiKey = await this.ensureApiKey(false, model);
       if (!apiKey) {
         progress.report(new vscode.LanguageModelTextPart(buildMissingApiKeyFallback()));
         return;
@@ -289,7 +398,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         requestedMaxTokens,
         temperatureVal,
         toolsEnabled,
-        extraSystemMessages,
         tools,
       } = await NimRequestBuilder.prepareRequest({
         model,
@@ -304,6 +412,35 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       });
 
       let activeRequestBody = requestBody;
+      const recalculateActiveRequestBudget = (): void => {
+        const sentTools = activeRequestBody.tools ?? tools;
+        const payloadInputTokenCount =
+          estimateNimMessagesTokens(activeRequestBody.messages) +
+          (sentTools ? estimateToolsTokens(sentTools) : 0);
+        const maximumInputTokens = Math.max(1, contextWindow - CONTEXT_WINDOW_SAFETY_MARGIN);
+        if (payloadInputTokenCount > maximumInputTokens) {
+          throw new Error(
+            formatStructuredError(
+              "token_limit",
+              `Retry payload exceeds context: ${payloadInputTokenCount} tokens, max: ${maximumInputTokens}`,
+            ),
+          );
+        }
+
+        const currentMaxTokens =
+          typeof activeRequestBody.max_tokens === "number" && activeRequestBody.max_tokens > 0
+            ? activeRequestBody.max_tokens
+            : requestedMaxTokens;
+        activeRequestBody = {
+          ...activeRequestBody,
+          max_tokens: NimRequestBuilder.calculateRequestedMaxTokens({
+            requestedMaxTokens: currentMaxTokens,
+            modelMaxOutputTokens: model.maxOutputTokens,
+            contextWindow,
+            inputTokenCount: payloadInputTokenCount,
+          }),
+        };
+      };
       let deferredInvalidToolFallbackText: string | undefined;
       let retryReason: "invalid_tool_call" | undefined;
       const retryReasonHistory: string[] = [];
@@ -318,6 +455,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
         totalAttempts += 1;
+        // Usage belongs to the final attempt. A retry can change the payload
+        // (for example by adding invalid-tool guidance), so never reuse usage
+        // from an earlier response in the final status-bar breakdown.
+        finalUsage = undefined;
         const attemptStartedAtMs = Date.now();
         if (
           requestPreparationDurationMs === undefined &&
@@ -346,6 +487,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         const reportPart = (part: LanguageModelResponsePart): void => {
           progress.report(part);
           reportedContent = true;
+          hasReportedContent = true;
         };
         const flushPendingText = (): void => {
           if (!pendingText) {
@@ -388,7 +530,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         const router = new ReasoningStreamRouter({
           reasoningIsolationExpected,
           onThinking: (text) => {
-            const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+            type ThinkingPartConstructor = new (value: string) => LanguageModelResponsePart;
+            const ThinkingPart = (
+              vscode as unknown as { LanguageModelThinkingPart?: ThinkingPartConstructor }
+            ).LanguageModelThinkingPart;
             if (ThinkingPart) {
               reportPart(new ThinkingPart(text));
             } else {
@@ -415,7 +560,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             return;
           }
 
-          const { segments, incompleteText } = parseTextEmbeddedToolCalls(
+          const parseEmbeddedToolCalls =
+            adapter.parseTextEmbeddedToolCalls ?? parseTextEmbeddedToolCalls;
+          const { segments, incompleteText } = parseEmbeddedToolCalls(
             pendingTextEmbeddedContent + text,
           );
           pendingTextEmbeddedContent = incompleteText;
@@ -545,20 +692,23 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         } catch (streamErr) {
           if (
             token.isCancellationRequested ||
+            abortController.signal.aborted ||
             (streamErr instanceof Error && streamErr.name === "AbortError")
           ) {
             throw new vscode.CancellationError();
           }
 
           const isNetworkError =
-            streamErr instanceof Error &&
-            (streamErr.name === "TypeError" ||
-              streamErr.message.includes("fetch") ||
-              streamErr.message.includes("network") ||
-              streamErr.message.includes("ECONNRESET") ||
-              streamErr.message.includes("socket"));
+            (streamErr instanceof NvidiaApiError && streamErr.kind === "network_error") ||
+            (streamErr instanceof Error &&
+              (streamErr.name === "TypeError" ||
+                streamErr.message.includes("fetch") ||
+                streamErr.message.includes("network") ||
+                streamErr.message.includes("ECONNRESET") ||
+                streamErr.message.includes("socket")));
 
           if (
+            !abortController.signal.aborted &&
             isNetworkError &&
             !reportedContent &&
             networkRetryCount < MAX_NETWORK_RETRIES &&
@@ -580,6 +730,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                 },
               ],
             };
+            recalculateActiveRequestBudget();
             continue;
           }
 
@@ -587,7 +738,23 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         }
         router.flush();
 
-        if (pendingText && (!sawToolCall || emittedToolCall || pendingText.trim().length > 0)) {
+        const incompleteTextToolName = getIncompleteTextToolCallName(pendingTextEmbeddedContent);
+        if (incompleteTextToolName) {
+          sawToolCall = true;
+          const schema = getToolAggregator().getToolSchemas().get(incompleteTextToolName);
+          skippedToolCalls.push({
+            name: incompleteTextToolName,
+            required: schema?.required ?? [],
+          });
+          debugLog("Skipped truncated text tool call", { name: incompleteTextToolName });
+        }
+        // Incomplete control text is protocol noise. Do not leak it into the
+        // assistant response after it has been classified or suppressed.
+        pendingTextEmbeddedContent = "";
+
+        // Preserve all user-visible text, including whitespace emitted before a
+        // rejected tool call. The fallback is reported separately below.
+        if (pendingText) {
           flushPendingText();
         }
 
@@ -677,6 +844,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                 },
               ],
             };
+            recalculateActiveRequestBudget();
             continue;
           }
           if (fallbackText) {
@@ -696,20 +864,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
       if (this.statusBar) {
         const shortName = model.name ?? model.id.split("/").at(-1) ?? model.id;
-        const categoryBreakdown = estimateMessagesTokensByCategory(
-          messages as readonly {
-            role: number;
-            content: (vscode.LanguageModelInputPart | LegacyPart)[];
-          }[],
-        );
-        const extraSystemTokens = extraSystemMessages.reduce(
-          (sum, content) => sum + estimateTokens(content),
-          0,
-        );
-        const toolsTokens = tools ? estimateToolsTokens(tools) : 0;
+        const sentTools = activeRequestBody.tools ?? tools;
+        const categoryBreakdown = estimateNimMessagesTokensByCategory(activeRequestBody.messages);
+        const toolsTokens = sentTools ? estimateToolsTokens(sentTools) : 0;
         const breakdown: TokenBreakdown = {
           modelName: shortName,
-          systemPrompt: categoryBreakdown.system + extraSystemTokens,
+          systemPrompt: categoryBreakdown.system,
           tools: toolsTokens,
           userMessages: categoryBreakdown.user,
           assistantMessages: categoryBreakdown.assistant,
@@ -717,7 +877,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           toolResults: categoryBreakdown.toolResults,
           images: categoryBreakdown.images,
           actualPromptTokens: finalUsage?.prompt_tokens,
-          output: finalUsage?.completion_tokens ?? 0,
+          actualCompletionTokens: finalUsage?.completion_tokens,
+          output: finalUsage?.completion_tokens,
           contextWindow,
         };
         this.statusBar.showTokenBreakdown(breakdown);
@@ -727,10 +888,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         throw new vscode.CancellationError();
       }
 
-      if (err instanceof Error && err.message.includes("[RATE_LIMITED]")) {
+      if (!hasReportedContent && err instanceof Error && err.message.includes("[RATE_LIMITED]")) {
+        const modelApiKey = (await this.apiKeyResolver.resolveForModel(model))?.value;
         const fallbackModel = getFallbackModel(
           model.id,
-          await this.discoveryService.getAvailableModels(getApiKeyFromModel(model)),
+          await this.discoveryService.getAvailableModels(modelApiKey),
         );
         if (fallbackModel) {
           const fallbackInfo: LanguageModelChatInformation = {
@@ -795,35 +957,66 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
   private async ensureApiKey(
     silent: boolean,
-    configuredApiKey?: string,
+    model: LanguageModelChatInformation,
   ): Promise<string | undefined> {
-    let apiKey = configuredApiKey ?? (await this.secrets.get(SECRET_STORAGE_KEY));
-    if (!apiKey && !silent) {
-      const configureAction = "Configure API Key";
-      const result = await vscode.window.showInformationMessage(
-        `${PROVIDER_DISPLAY_NAME} API key is not configured.`,
-        configureAction,
-      );
-      if (result === configureAction) {
-        await vscode.commands.executeCommand(MANAGE_COMMAND_ID);
-        apiKey = await this.secrets.get(SECRET_STORAGE_KEY);
-        if (!apiKey) {
-          return undefined;
-        }
-        return apiKey;
-      }
-
-      const entered = await vscode.window.showInputBox({
-        title: `${PROVIDER_DISPLAY_NAME} API Key`,
-        prompt: `Enter your ${PROVIDER_DISPLAY_NAME} API key`,
-        ignoreFocusOut: true,
-        password: true,
-      });
-      if (entered && entered.trim()) {
-        apiKey = entered.trim();
-        await this.secrets.store(SECRET_STORAGE_KEY, apiKey);
-      }
+    const resolved = await this.apiKeyResolver.resolveForModel(model);
+    if (resolved) {
+      return resolved.value;
     }
-    return apiKey;
+    if (silent) {
+      return undefined;
+    }
+
+    if (this._apiKeyPrompt) {
+      const promptedKey = await this._apiKeyPrompt;
+      if (promptedKey) {
+        this.apiKeyResolver.registerModelKey(model, promptedKey);
+      }
+      return promptedKey;
+    }
+
+    this._apiKeyPrompt = this.promptForApiKey();
+    try {
+      const promptedKey = await this._apiKeyPrompt;
+      if (promptedKey) {
+        // A picker model may carry a binding token for a provider group whose
+        // key was removed. Rebind that exact model after an interactive key
+        // entry so subsequent requests do not reopen the prompt.
+        this.apiKeyResolver.registerModelKey(model, promptedKey);
+      }
+      return promptedKey;
+    } finally {
+      this._apiKeyPrompt = undefined;
+    }
+  }
+
+  private async promptForApiKey(): Promise<string | undefined> {
+    const configureAction = "Configure API Key";
+    const result = await vscode.window.showInformationMessage(
+      `${PROVIDER_DISPLAY_NAME} API key is not configured.`,
+      configureAction,
+    );
+    if (result === configureAction) {
+      await vscode.commands.executeCommand(MANAGE_COMMAND_ID);
+      const apiKey = await this.apiKeyResolver.resolveLegacy();
+      if (!apiKey) {
+        return undefined;
+      }
+      return apiKey;
+    }
+
+    const entered = await vscode.window.showInputBox({
+      title: `${PROVIDER_DISPLAY_NAME} API Key`,
+      prompt: `Enter your ${PROVIDER_DISPLAY_NAME} API key`,
+      ignoreFocusOut: true,
+      password: true,
+    });
+    if (entered && entered.trim()) {
+      const apiKey = entered.trim();
+      await this.secrets.store(SECRET_STORAGE_KEY, apiKey);
+      this.apiKeyResolver.rememberRuntimeKey(apiKey);
+      return apiKey;
+    }
+    return undefined;
   }
 }

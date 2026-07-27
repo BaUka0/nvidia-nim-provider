@@ -59,6 +59,38 @@
         }
       }
     ],
+    "languageModelTools": [
+      {
+        "name": "nvidia_nim_analyze_image",
+        "toolReferenceName": "nvidia_nim_analyze_image",
+        "displayName": "NVIDIA NIM Image Analysis",
+        "userDescription": "Analyze an image with a NVIDIA NIM vision model.",
+        "modelDescription": "Analyze an image, describe its contents, extract text, or answer a question about visual content.",
+        "tags": [
+          "vision",
+          "image",
+          "ocr",
+          "analysis"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "image_data": {
+              "type": "string",
+              "description": "Base64-encoded image data URL."
+            },
+            "prompt": {
+              "type": "string",
+              "description": "The question or instruction about the image."
+            }
+          },
+          "required": [
+            "image_data",
+            "prompt"
+          ]
+        }
+      }
+    ],
     "commands": [
       {
         "command": "nvidia-nim.manage",
@@ -112,13 +144,14 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
+    "postcompile": "node scripts/copy-runtime-dependencies.mjs",
     "watch": "tsc -w -p ./",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "package:vsix": "npm run compile && vsce package --allow-missing-repository"
+    "package:vsix": "npm run compile && vsce package --no-dependencies --allow-missing-repository"
   },
   "devDependencies": {
     "@types/jest": "^29.0.0",

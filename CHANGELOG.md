@@ -1,5 +1,30 @@
 # Change Log
 
+## [Unreleased]
+
+### Added
+
+- **Complete curated-model capability matrix.** Declared reasoning, tool-calling, vision, context-window, output-limit, and adapter behavior for every bundled NVIDIA NIM model.
+- **Hardened model and credential infrastructure.** Added shared API-key resolution for provider groups and legacy secret storage, plus versioned model-cache ownership, migration, atomic persistence, refresh, and bounded LRU behavior.
+
+### Changed
+
+- **Reliable streaming and tool execution.** Improved split SSE delta and function-name assembly, malformed and truncated tool-call repair, JSON Schema validation, type normalization, duplicate suppression, and tool-result conversion.
+- **Abortable API lifecycle.** Centralized NVIDIA API errors and made retries, backoff, cancellation races, response-body cleanup, prompt locking, and rate-limit fallbacks cancellation-aware.
+- **Accurate context accounting.** Corrected prompt compression, retry output limits, image and tool-result estimates, and actual-versus-estimated status-bar usage.
+- **Lean reproducible packaging.** Standardized CI on npm and package only the minimal `jsonrepair` runtime dependency required by the extension.
+
+### Fixed
+
+- **API-key isolation and fail-closed bindings.** Removed raw credentials from model metadata and normal logs; ambiguous or stale provider bindings no longer fall through to an unrelated key. Chat, summarization, and vision now use the same resolver.
+- **Vision tool contribution.** Declared `nvidia_nim_analyze_image` in `contributes.languageModelTools`, so VS Code registers it before extension activation.
+- **Current vision-model selection.** Refresh and cache updates can no longer leave vision requests bound to an obsolete model.
+
+### Tests
+
+- Expanded regression coverage for API-key resolution, model capabilities and refresh, request building, streaming adapters, tool parsing, cancellation, token accounting, summarization, and extension activation.
+- Verified TypeScript compilation, formatting, packaging, all 443 Jest tests, isolated VSIX installation, and a real VS Code Extension Host activation smoke test.
+
 ## [0.4.9] - 2026-07-23
 
 ### Fixed

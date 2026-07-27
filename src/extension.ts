@@ -18,6 +18,7 @@ import { StatusBarManager } from "./shared/status-bar";
 import { NimChatModelProvider } from "./provider/chat-provider";
 import { registerNimTools } from "./tools/vision";
 import { refreshModelsFromApi, resetRefreshQueue } from "./models/refresh";
+import { NvidiaApiKeyResolver } from "./api/key-resolver";
 
 let _provider: NimChatModelProvider | null = null;
 
@@ -47,6 +48,7 @@ async function initializeStoredApiKey(
   context: vscode.ExtensionContext,
   ua: string,
   statusBar: StatusBarManager,
+  keyResolver: NvidiaApiKeyResolver,
 ): Promise<void> {
   const apiKey = await context.secrets.get(SECRET_STORAGE_KEY);
   if (!apiKey) {
@@ -57,13 +59,21 @@ async function initializeStoredApiKey(
   if (!migrationDone && (await migrateLanguageModelProviderGroup(apiKey))) {
     await context.globalState.update(MIGRATION_DONE_KEY, true);
   }
-  await refreshModelsFromApi(context, ua, { showMessages: false, apiKey }, _provider, statusBar);
+  await refreshModelsFromApi(
+    context,
+    ua,
+    { showMessages: false, apiKey },
+    _provider,
+    statusBar,
+    keyResolver,
+  );
 }
 
 function registerCommands(
   context: vscode.ExtensionContext,
   ua: string,
   statusBar: StatusBarManager,
+  keyResolver: NvidiaApiKeyResolver,
 ): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(MANAGE_COMMAND_ID, async () => {
@@ -100,7 +110,14 @@ function registerCommands(
 
   context.subscriptions.push(
     vscode.commands.registerCommand(REFRESH_MODELS_COMMAND_ID, async () => {
-      await refreshModelsFromApi(context, ua, { showMessages: true }, _provider, statusBar);
+      await refreshModelsFromApi(
+        context,
+        ua,
+        { showMessages: true },
+        _provider,
+        statusBar,
+        keyResolver,
+      );
     }),
   );
 
@@ -154,7 +171,14 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Create and register provider
-  const provider = new NimChatModelProvider(context.secrets, ua, context.globalState, statusBar);
+  const keyResolver = new NvidiaApiKeyResolver(context.secrets);
+  const provider = new NimChatModelProvider(
+    context.secrets,
+    ua,
+    context.globalState,
+    statusBar,
+    keyResolver,
+  );
   _provider = provider;
 
   context.subscriptions.push(
@@ -169,11 +193,11 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(registration);
 
   // Register tools and commands
-  context.subscriptions.push(registerNimTools(context.secrets, context.globalState));
-  registerCommands(context, ua, statusBar);
+  context.subscriptions.push(registerNimTools(context.secrets, context.globalState, keyResolver));
+  registerCommands(context, ua, statusBar, keyResolver);
 
   // Initialize stored API key (async, fire-and-forget)
-  void initializeStoredApiKey(context, ua, statusBar);
+  void initializeStoredApiKey(context, ua, statusBar, keyResolver);
 }
 
 export function deactivate() {

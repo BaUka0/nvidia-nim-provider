@@ -11,12 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
         with:
-          bun-version: latest
-      - run: bun install --ignore-scripts
-      - run: bun run lint
-      - run: bun run compile
-      - run: bun run test -- --runInBand
+          node-version: 22.x
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run compile
+      - run: npm test -- --runInBand
+      - run: npm run package:vsix
       - name: Type Check
-        run: npx tsc --noEmit
+        run: npm exec -- tsc --noEmit

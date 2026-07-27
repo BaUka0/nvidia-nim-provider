@@ -1,4 +1,11 @@
-import { fetchModels, streamChatCompletion } from "../src/api/client";
+import {
+  chatCompletion,
+  fetchModels,
+  fetchModelsOrThrow,
+  fetchWithRetry,
+  streamChatCompletion,
+} from "../src/api/client";
+import { classifyApiError } from "../src/api/errors";
 import { STREAM_IDLE_TIMEOUT_MS } from "../src/shared/constants";
 import { NvidiaModelSummary, NimStreamResponse } from "../src/types";
 
@@ -17,6 +24,181 @@ const rawModelSummaries: NvidiaModelSummary[] = [
     },
   },
 ];
+
+describe("fetchWithRetry", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
+  it("releases a retryable response body before the next attempt", async () => {
+    jest.spyOn(Math, "random").mockReturnValue(0);
+    const order: string[] = [];
+    const firstBody = {
+      cancel: jest.fn(async () => {
+        order.push("cancel");
+      }),
+    };
+    global.fetch = jest
+      .fn()
+      .mockImplementationOnce(async () => {
+        order.push("fetch-1");
+        return {
+          ok: false,
+          status: 503,
+          statusText: "Service Unavailable",
+          headers: { get: () => null },
+          body: firstBody,
+        } as any;
+      })
+      .mockImplementationOnce(async () => {
+        order.push("fetch-2");
+        return { ok: true, status: 200, statusText: "OK" } as any;
+      });
+
+    const response = await fetchWithRetry("https://example.test", { method: "GET" }, 2);
+
+    expect(response.ok).toBe(true);
+    expect(firstBody.cancel).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["fetch-1", "cancel", "fetch-2"]);
+  });
+
+  it("aborts promptly while waiting between retry attempts", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(Math, "random").mockReturnValue(1);
+    const controller = new AbortController();
+    const body = { cancel: jest.fn().mockResolvedValue(undefined) };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      headers: { get: () => null },
+      body,
+    } as any);
+
+    const request = fetchWithRetry(
+      "https://example.test",
+      { method: "GET", signal: controller.signal },
+      3,
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    controller.abort();
+
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("observes an abort that races with retry-wait listener registration", async () => {
+    jest.spyOn(Math, "random").mockReturnValue(1);
+    let abortedReads = 0;
+    const signal = {
+      get aborted() {
+        abortedReads += 1;
+        return abortedReads >= 3;
+      },
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+    } as unknown as AbortSignal;
+    const body = { cancel: jest.fn().mockResolvedValue(undefined) };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      headers: { get: () => null },
+      body,
+    } as any);
+
+    await expect(
+      fetchWithRetry("https://example.test", { method: "GET", signal }, 3),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(signal.addEventListener).toHaveBeenCalledWith("abort", expect.any(Function), {
+      once: true,
+    });
+    expect(signal.removeEventListener).toHaveBeenCalledWith("abort", expect.any(Function));
+  });
+
+  it("classifies the final retryable HTTP status", async () => {
+    jest.spyOn(Math, "random").mockReturnValue(0);
+    const body = { cancel: jest.fn().mockResolvedValue(undefined) };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: "Too Many Requests",
+      headers: { get: () => null },
+      body,
+    } as any);
+
+    await expect(
+      fetchWithRetry("https://example.test", { method: "GET" }, 2),
+    ).rejects.toMatchObject({
+      name: "NvidiaApiError",
+      code: "RATE_LIMITED",
+      status: 429,
+    });
+    expect(body.cancel).toHaveBeenCalledTimes(2);
+  });
+
+  it("classifies a final network failure with an actionable message", async () => {
+    global.fetch = jest.fn().mockRejectedValue(new TypeError("fetch failed"));
+
+    const error = await fetchWithRetry("https://example.test", { method: "GET" }, 1, {
+      operation: "completion",
+      model: "test-model",
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      name: "NvidiaApiError",
+      kind: "network_error",
+      code: "NETWORK_ERROR",
+      operation: "completion",
+    });
+    expect((error as Error).message).toContain(
+      "[NETWORK_ERROR] The request could not reach NVIDIA NIM.",
+    );
+    expect((error as Error).message).toContain(
+      "Action: Check your network connection and try again.",
+    );
+  });
+});
+
+describe("classifyApiError", () => {
+  it.each([
+    [401, "AUTH_FAILED"],
+    [404, "MODEL_UNAVAILABLE"],
+    [429, "RATE_LIMITED"],
+    [503, "SERVER_ERROR"],
+  ])("maps HTTP %s to %s", (status, code) => {
+    const error = classifyApiError(new Error(`HTTP ${status}`), {
+      status,
+      model: "test-model",
+      operation: "stream",
+    }) as Error & { code?: string };
+    expect(error.code).toBe(code);
+  });
+});
+
+describe("chatCompletion", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("uses the shared authentication error classification", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      text: async () => "Invalid key",
+    } as any);
+
+    await expect(
+      chatCompletion("bad-key", { model: "test-model", messages: [] }),
+    ).rejects.toMatchObject({ code: "AUTH_FAILED" });
+  });
+});
 
 describe("fetchModels", () => {
   afterEach(() => {
@@ -168,6 +350,21 @@ describe("fetchModels", () => {
     const result = await fetchModels("bad-key");
     expect(result).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves structured errors for strict model-list callers", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      text: async () => "Invalid key",
+    } as any);
+
+    await expect(fetchModelsOrThrow("bad-key")).rejects.toMatchObject({
+      name: "NvidiaApiError",
+      code: "AUTH_FAILED",
+      operation: "models",
+    });
   });
 });
 
@@ -369,6 +566,41 @@ describe("streamChatCompletion", () => {
     }
 
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("observes an abort that races with stream listener registration", async () => {
+    let abortedReads = 0;
+    const signal = {
+      get aborted() {
+        abortedReads += 1;
+        return abortedReads >= 3;
+      },
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+    } as unknown as AbortSignal;
+    const reader = {
+      read: jest.fn(() => new Promise(() => undefined)),
+      cancel: jest.fn().mockResolvedValue(undefined),
+      releaseLock: jest.fn(),
+    };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as any);
+
+    const gen = streamChatCompletion(
+      "key",
+      { model: "kimi-k2.6", messages: [], stream: true },
+      signal,
+    );
+
+    await expect(gen.next()).rejects.toMatchObject({ name: "AbortError" });
+    expect(reader.cancel).toHaveBeenCalledTimes(1);
+    expect(reader.read).not.toHaveBeenCalled();
+    expect(signal.addEventListener).toHaveBeenCalledWith("abort", expect.any(Function), {
+      once: true,
+    });
+    expect(signal.removeEventListener).toHaveBeenCalledWith("abort", expect.any(Function));
   });
 
   it("cancels the reader when the stream idle timeout elapses", async () => {

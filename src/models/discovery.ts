@@ -1,17 +1,28 @@
 import * as vscode from "vscode";
 import {
+  MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY,
   MODELS_CACHE_VERSION,
   MODELS_CACHE_VERSION_STATE_KEY,
   MODELS_STATE_KEY,
-  SECRET_STORAGE_KEY,
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
   DEFAULT_MAX_OUTPUT_TOKENS,
 } from "../shared/constants";
-import { isNormalizedNvidiaModel, NormalizedNvidiaModel } from "./catalog";
-import { fetchModels } from "../api/client";
+import {
+  ELITE_MODELS_WHITELIST,
+  isNormalizedNvidiaModel,
+  normalizeNvidiaModels,
+  NormalizedNvidiaModel,
+} from "./catalog";
+import { fetchModels, fetchModelsOrThrow } from "../api/client";
 import { outputLog } from "../shared/logging";
 import { getModelAdapter } from "./adapters";
+import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver";
+import {
+  reportMissingCuratedModels,
+  runSerializedModelCacheOperation,
+  writeModelCacheAtomically,
+} from "./cache";
 
 export interface ChatRuntimeMetadata {
   supportsTools: boolean;
@@ -20,66 +31,141 @@ export interface ChatRuntimeMetadata {
   runtimeMetadataSource: "catalog" | "api" | "fallback";
 }
 
+export interface NvidiaConfigurationProperty {
+  type: "string" | "number" | "boolean" | "object" | "array";
+  title?: string;
+  description?: string;
+  enum?: readonly string[];
+  enumItemLabels?: readonly string[];
+  group?: string;
+  default?: string | number | boolean;
+  [key: string]: unknown;
+}
+
+export interface NvidiaConfigurationSchema {
+  properties: Record<string, NvidiaConfigurationProperty>;
+  [key: string]: unknown;
+}
+
 export interface NvidiaLanguageModelChatInformation extends vscode.LanguageModelChatInformation {
   readonly id: string;
   readonly contextWindow: number;
   readonly maxOutputTokens: number;
   isUserSelectable: boolean;
-  apiKey?: string;
-  configurationSchema?: any;
+  configurationSchema?: NvidiaConfigurationSchema;
+}
+
+function isCachedCuratedModel(value: unknown): value is NormalizedNvidiaModel {
+  return (
+    isNormalizedNvidiaModel(value) &&
+    Object.prototype.hasOwnProperty.call(ELITE_MODELS_WHITELIST, value.id)
+  );
 }
 
 export class NvidiaModelDiscoveryService {
   constructor(
-    private readonly secrets: vscode.SecretStorage,
+    secrets: vscode.SecretStorage,
     private readonly userAgent: string,
     private readonly globalState?: vscode.Memento,
+    private readonly keyResolver = new NvidiaApiKeyResolver(secrets),
   ) {}
+
+  private cacheInvalidated = false;
+
+  public invalidateCache(): void {
+    this.cacheInvalidated = true;
+  }
+
+  public markCacheFresh(): void {
+    this.cacheInvalidated = false;
+  }
 
   public getNormalizedModels(): NormalizedNvidiaModel[] {
     const storedModels = this.globalState?.get<unknown>(MODELS_STATE_KEY);
     if (!Array.isArray(storedModels)) {
       return [];
     }
-    return storedModels.every(isNormalizedNvidiaModel) ? storedModels : [];
+    return storedModels.filter(isCachedCuratedModel);
+  }
+
+  private hasNormalizedModelsCache(): boolean {
+    const storedModels = this.globalState?.get<unknown>(MODELS_STATE_KEY);
+    return Array.isArray(storedModels) && storedModels.every(isCachedCuratedModel);
   }
 
   public async getAvailableModels(
     apiKey?: string,
     options: { refreshStaleCache?: boolean } = {},
   ): Promise<NormalizedNvidiaModel[]> {
-    const cachedModels = this.getNormalizedModels();
+    const cachedModels = this.getNormalizedModels().filter(isCachedCuratedModel);
     const cacheVersion = this.globalState?.get<number>(MODELS_CACHE_VERSION_STATE_KEY);
-    if (
-      cachedModels.length > 0 &&
-      (cacheVersion === MODELS_CACHE_VERSION || !apiKey || !options.refreshStaleCache)
-    ) {
+    const cachedKeyFingerprint = this.globalState?.get<string>(
+      MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY,
+    );
+    const currentKeyFingerprint = apiKey ? getApiKeyFingerprint(apiKey) : undefined;
+    // A cache created before key fingerprints were introduced has no reliable
+    // ownership information. Treat it as stale whenever a runtime key is
+    // available instead of silently serving models fetched with another key.
+    const hasCachedKeyFingerprint =
+      typeof cachedKeyFingerprint === "string" && cachedKeyFingerprint.length > 0;
+    const keyChanged =
+      currentKeyFingerprint !== undefined &&
+      (!hasCachedKeyFingerprint || currentKeyFingerprint !== cachedKeyFingerprint);
+    const cacheVersionStale = cacheVersion !== MODELS_CACHE_VERSION;
+    // The option only controls whether a stale cache version may be used as a
+    // fallback. Explicit invalidation and key changes always require refresh.
+    const refreshStaleCache = options.refreshStaleCache !== false;
+    const shouldRefresh =
+      this.cacheInvalidated || keyChanged || (cacheVersionStale && refreshStaleCache);
+    if (this.hasNormalizedModelsCache() && (!apiKey || !shouldRefresh)) {
       return cachedModels;
     }
 
     const refreshedModels = await this.fetchAvailableModels(apiKey);
-    return refreshedModels ?? cachedModels;
+    // A cache owned by a previous key is not safe to expose after a key
+    // change, even when the refresh request fails. Same-key refreshes may
+    // continue using the last known curated list for resilience.
+    return refreshedModels ?? (keyChanged ? [] : cachedModels);
   }
 
   public async fetchAvailableModels(
     configuredApiKey?: string,
   ): Promise<NormalizedNvidiaModel[] | undefined> {
-    const apiKey = configuredApiKey ?? (await this.secrets.get(SECRET_STORAGE_KEY));
-    if (!apiKey) {
+    return runSerializedModelCacheOperation(() =>
+      this.fetchAvailableModelsInternal(configuredApiKey),
+    );
+  }
+
+  private async fetchAvailableModelsInternal(
+    configuredApiKey?: string,
+  ): Promise<NormalizedNvidiaModel[] | undefined> {
+    const resolved = await this.keyResolver.resolveConfiguredOrLegacy(configuredApiKey);
+    if (!resolved) {
       return undefined;
     }
+    const apiKey = resolved.value;
 
     try {
-      const rawModels = await fetchModels(apiKey, undefined, this.userAgent);
+      // Keep compatibility with test/extension hosts that only expose the
+      // nullable legacy fetchModels function while production uses the
+      // structured-error variant.
+      const fetchModelsRequest =
+        typeof fetchModelsOrThrow === "function" ? fetchModelsOrThrow : fetchModels;
+      const rawModels = await fetchModelsRequest(apiKey, undefined, this.userAgent);
       if (!Array.isArray(rawModels)) {
         return undefined;
       }
-      const { normalizeNvidiaModels } = require("./catalog");
+      reportMissingCuratedModels(rawModels);
       const normalized = normalizeNvidiaModels(rawModels);
-      if (normalized.length > 0 && this.globalState) {
-        await this.globalState.update(MODELS_STATE_KEY, normalized);
-        await this.globalState.update(MODELS_CACHE_VERSION_STATE_KEY, MODELS_CACHE_VERSION);
+      if (this.globalState) {
+        await writeModelCacheAtomically(
+          this.globalState,
+          rawModels,
+          normalized,
+          getApiKeyFingerprint(apiKey),
+        );
       }
+      this.cacheInvalidated = false;
       return normalized;
     } catch (err) {
       outputLog(
@@ -92,13 +178,15 @@ export class NvidiaModelDiscoveryService {
 
   public mapToChatInformation(
     models: readonly NormalizedNvidiaModel[],
-    apiKey?: string,
   ): NvidiaLanguageModelChatInformation[] {
     const info: NvidiaLanguageModelChatInformation[] = [];
 
     for (const model of models) {
+      if (!isCachedCuratedModel(model)) {
+        continue;
+      }
       const adapter = getModelAdapter(model.id);
-      let configurationSchema = undefined;
+      let configurationSchema: NvidiaConfigurationSchema | undefined;
 
       if (adapter.applyReasoningMode) {
         const enumValues = adapter.supportedReasoningModes ?? [
@@ -145,7 +233,6 @@ export class NvidiaModelDiscoveryService {
           toolCalling: model.supportsTools ? 128 : false,
           imageInput: model.supportsVision ?? false,
         },
-        ...(apiKey ? { apiKey } : {}),
         ...(configurationSchema ? { configurationSchema } : {}),
       });
     }

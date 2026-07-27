@@ -13,6 +13,7 @@ import {
   NimChatRequest,
   NimStreamResponse,
 } from "../types";
+import { classifyApiError, isRetryableApiStatus, NvidiaApiError } from "./errors";
 
 /**
  * Determine whether an HTTP status code is safe to retry.
@@ -20,14 +21,14 @@ import {
  * Never retries on 400, 401, 403, 404, 422 (client errors).
  */
 function isRetryableHttpError(status: number): boolean {
-  return status === 429 || status === 502 || status === 503 || status === 504;
+  return isRetryableApiStatus(status);
 }
 
 /**
  * Read Retry-After header value (seconds or HTTP-date) if present.
  */
 function getRetryAfterMs(response: Response): number | undefined {
-  const raw = response.headers.get("retry-after");
+  const raw = response.headers?.get("retry-after");
   if (!raw) return undefined;
 
   const seconds = Number.parseInt(raw, 10);
@@ -61,19 +62,111 @@ function calculateRetryDelay(attempt: number, retryAfter?: number): number {
   return Math.round(Math.random() * cappedDelay);
 }
 
+function createAbortError(): Error {
+  const error = new Error("The operation was aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+}
+
+function waitForRetry(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
+  if (delayMs <= 0) {
+    throwIfAborted(signal);
+    return Promise.resolve();
+  }
+  if (signal?.aborted) {
+    return Promise.reject(createAbortError());
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+
+    function cleanup(): void {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", onAbort);
+    }
+    function resolveOnce(): void {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    }
+    function rejectOnce(error: Error): void {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    }
+    function onAbort(): void {
+      rejectOnce(createAbortError());
+    }
+
+    const timeoutId = setTimeout(resolveOnce, delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    // The signal can be aborted between the pre-subscription check above and
+    // registering the listener. Re-check after subscribing so that narrow
+    // race cannot leave the retry sleeping until the full backoff expires.
+    if (signal?.aborted) {
+      onAbort();
+    }
+  });
+}
+
+async function discardResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // Cleanup must never mask the original retryable failure.
+  }
+}
+
+async function readResponseDetail(response: Response): Promise<string | undefined> {
+  try {
+    const detail = await response.text();
+    return detail || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function classifyResponseError(
+  response: Response,
+  context: { operation: string; model?: string },
+): Promise<Error> {
+  const detail = await readResponseDetail(response);
+  return classifyApiError(new Error(`HTTP ${response.status} ${response.statusText}`), {
+    ...context,
+    status: response.status,
+    detail,
+  });
+}
+
 export async function fetchWithRetry(
   url: string,
   init: RequestInit,
   retries = 3,
+  errorContext: { operation?: string; model?: string } = {},
 ): Promise<Response> {
   let lastError: Error | undefined;
+  const signal = init.signal ?? undefined;
+  const classificationContext = {
+    operation: errorContext.operation ?? "request",
+    ...(errorContext.model ? { model: errorContext.model } : {}),
+  };
   for (let i = 0; i < retries; i++) {
+    throwIfAborted(signal);
     try {
       const response = await fetch(url, init);
       if (response.ok || !isRetryableHttpError(response.status)) {
         return response;
       }
       lastError = new Error(`HTTP ${response.status} ${response.statusText}`);
+      await discardResponseBody(response);
       if (i < retries - 1) {
         const retryAfter = getRetryAfterMs(response);
         const delay = calculateRetryDelay(i, retryAfter);
@@ -81,11 +174,16 @@ export async function fetchWithRetry(
           "fetchWithRetry",
           `Attempt ${i + 1} failed with ${response.status}, retrying after ${delay}ms`,
         );
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await waitForRetry(delay, signal);
+      } else {
+        throw classifyApiError(lastError, { status: response.status, ...classificationContext });
       }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      if (lastError.name === "AbortError") {
+      if (lastError.name === "AbortError" || signal?.aborted) {
+        throw lastError;
+      }
+      if (lastError instanceof NvidiaApiError) {
         throw lastError;
       }
       if (i < retries - 1) {
@@ -94,11 +192,16 @@ export async function fetchWithRetry(
           "fetchWithRetry",
           `Attempt ${i + 1} failed with network error, retrying after ${delay}ms`,
         );
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await waitForRetry(delay, signal);
+      } else {
+        throw classifyApiError(lastError, classificationContext);
       }
     }
   }
-  throw lastError ?? new Error("Network request failed after retries");
+  throw classifyApiError(
+    lastError ?? new Error("Network request failed after retries"),
+    classificationContext,
+  );
 }
 
 export async function fetchModels(
@@ -107,7 +210,29 @@ export async function fetchModels(
   userAgent?: string,
 ): Promise<NvidiaModelSummary[] | null> {
   try {
-    const response = await fetchWithRetry(`${BASE_URL}/models`, {
+    return await fetchModelsOrThrow(apiKey, signal, userAgent);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw error;
+    }
+    debugLog("fetchModels", classifyApiError(error, { operation: "models" }));
+    return null;
+  }
+}
+
+/**
+ * Fetch the model list while preserving structured API failures for callers
+ * such as manual refresh. `fetchModels` remains the nullable compatibility
+ * wrapper used by older integrations.
+ */
+export async function fetchModelsOrThrow(
+  apiKey: string,
+  signal?: AbortSignal,
+  userAgent?: string,
+): Promise<NvidiaModelSummary[]> {
+  const response = await fetchWithRetry(
+    `${BASE_URL}/models`,
+    {
       method: "GET",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -115,18 +240,22 @@ export async function fetchModels(
         ...(userAgent ? { "User-Agent": userAgent } : {}),
       },
       signal,
-    });
-    if (!response.ok) {
-      return null;
-    }
+    },
+    3,
+    { operation: "models" },
+  );
+  if (!response.ok) {
+    throw await classifyResponseError(response, { operation: "models" });
+  }
+
+  try {
     const data = (await response.json()) as NvidiaModelListResponse;
-    return Array.isArray(data.data) ? data.data : null;
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw error;
+    if (!Array.isArray(data.data)) {
+      throw new Error("NVIDIA NIM models response did not contain a data array");
     }
-    debugLog("fetchModels", error);
-    return null;
+    return data.data;
+  } catch (error) {
+    throw classifyApiError(error, { operation: "models" });
   }
 }
 
@@ -136,26 +265,37 @@ export async function chatCompletion(
   signal?: AbortSignal,
   userAgent?: string,
 ): Promise<string> {
-  const response = await fetchWithRetry(`${BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      ...(userAgent ? { "User-Agent": userAgent } : {}),
+  const response = await fetchWithRetry(
+    `${BASE_URL}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        ...(userAgent ? { "User-Agent": userAgent } : {}),
+      },
+      body: JSON.stringify({ ...requestBody, stream: false }),
+      signal,
     },
-    body: JSON.stringify({ ...requestBody, stream: false }),
-    signal,
-  });
+    3,
+    { operation: "completion", model: requestBody.model },
+  );
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`NVIDIA NIM API error: ${response.status} ${response.statusText}\n${text}`);
+    throw await classifyResponseError(response, {
+      operation: "completion",
+      model: requestBody.model,
+    });
   }
 
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  return data.choices?.[0]?.message?.content ?? "";
+  try {
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    return data.choices?.[0]?.message?.content ?? "";
+  } catch (error) {
+    throw classifyApiError(error, { operation: "completion", model: requestBody.model });
+  }
 }
 
 export async function* streamChatCompletion(
@@ -165,37 +305,34 @@ export async function* streamChatCompletion(
   userAgent?: string,
   options?: { maxOutputTokens?: number },
 ): AsyncGenerator<NimStreamResponse, void, unknown> {
-  const response = await fetchWithRetry(`${BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      ...(userAgent ? { "User-Agent": userAgent } : {}),
+  const response = await fetchWithRetry(
+    `${BASE_URL}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        ...(userAgent ? { "User-Agent": userAgent } : {}),
+      },
+      body: JSON.stringify(requestBody),
+      signal,
     },
-    body: JSON.stringify(requestBody),
-    signal,
-  });
+    3,
+    { operation: "stream", model: requestBody.model },
+  );
 
   if (!response.ok) {
-    const text = await response.text();
-    let message: string;
-    if (response.status === 401 || response.status === 403) {
-      message = `[AUTH_FAILED] Authentication failed. Your API key may be invalid or expired.\n${text}`;
-    } else if (response.status === 404) {
-      message = `[MODEL_UNAVAILABLE] NVIDIA NIM model "${requestBody.model}" is not available for this API key or endpoint.\n${text}`;
-    } else if (response.status === 429) {
-      const retryAfter = response.headers.get("retry-after");
-      message = `[RATE_LIMITED] Rate limited.${retryAfter ? ` Retry after ${retryAfter}.` : ""}\n${text}`;
-    } else if (response.status >= 500 && response.status < 600) {
-      message = `[SERVER_ERROR] Server error. The NVIDIA NIM service may be experiencing issues.\n${text}`;
-    } else {
-      message = `NVIDIA NIM API error: ${response.status} ${response.statusText}\n${text}`;
-    }
-    throw new Error(message);
+    throw await classifyResponseError(response, {
+      operation: "stream",
+      model: requestBody.model,
+    });
   }
 
   if (!response.body) {
-    throw new Error("No response body from NVIDIA NIM API");
+    throw classifyApiError(new Error("No response body from NVIDIA NIM API"), {
+      operation: "stream",
+      model: requestBody.model,
+    });
   }
 
   const reader = response.body.getReader();
@@ -212,6 +349,10 @@ export async function* streamChatCompletion(
   let lastChunkTime = Date.now();
 
   function readWithTimeout() {
+    if (signal?.aborted) {
+      return Promise.reject(createAbortError());
+    }
+
     return new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve, reject) => {
       let settled = false;
       const resolveOnce = (result: Awaited<ReturnType<typeof reader.read>>) => {
@@ -220,6 +361,7 @@ export async function* streamChatCompletion(
         }
         settled = true;
         clearTimeout(timeoutId);
+        signal?.removeEventListener("abort", onAbort);
         resolve(result);
       };
       const rejectOnce = (error: unknown) => {
@@ -228,8 +370,15 @@ export async function* streamChatCompletion(
         }
         settled = true;
         clearTimeout(timeoutId);
+        signal?.removeEventListener("abort", onAbort);
         reject(error);
       };
+
+      const onAbort = (): void => {
+        void reader.cancel(createAbortError()).catch(() => undefined);
+        rejectOnce(createAbortError());
+      };
+
       const timeoutId = setTimeout(() => {
         const idleSec = Math.round((Date.now() - lastChunkTime) / 1000);
         const err = new Error(`Stream idle timeout: no data for ${idleSec}s`);
@@ -237,6 +386,15 @@ export async function* streamChatCompletion(
         void reader.cancel(err).catch(() => undefined);
         rejectOnce(err);
       }, idleTimeoutMs);
+
+      signal?.addEventListener("abort", onAbort, { once: true });
+      // Close the same check/subscribe race as waitForRetry(): an abort that
+      // happens just before listener registration must still cancel the read
+      // immediately instead of waiting for the idle timeout.
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
 
       reader.read().then(
         (result) => {
@@ -293,11 +451,18 @@ export async function* streamChatCompletion(
   } catch (error) {
     if (error instanceof Error && error.name === "TimeoutError") {
       const idleSec = Math.round((Date.now() - lastChunkTime) / 1000);
-      throw new Error(
-        `NVIDIA NIM streaming timeout: no data received for ${idleSec}s. The model may be stalled.`,
+      throw classifyApiError(
+        new Error(`NVIDIA NIM streaming timeout: no data received for ${idleSec}s`),
+        {
+          operation: "stream",
+          model: requestBody.model,
+        },
       );
     }
-    throw error;
+    if (error instanceof Error && error.name === "AbortError") {
+      throw error;
+    }
+    throw classifyApiError(error, { operation: "stream", model: requestBody.model });
   } finally {
     reader.releaseLock();
   }

@@ -239,6 +239,11 @@ describe("activate", () => {
             required?: string[];
           };
         }>;
+        languageModelTools?: Array<{
+          name?: string;
+          toolReferenceName?: string;
+          inputSchema?: { required?: string[] };
+        }>;
       };
     };
 
@@ -256,6 +261,18 @@ describe("activate", () => {
       }),
     );
     expect(providerContribution?.configuration?.required).toContain("apiKey");
+
+    expect(packageJson.contributes?.languageModelTools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "nvidia_nim_analyze_image",
+          toolReferenceName: "nvidia_nim_analyze_image",
+          inputSchema: expect.objectContaining({
+            required: expect.arrayContaining(["image_data", "prompt"]),
+          }),
+        }),
+      ]),
+    );
   });
 
   it("refreshes cached models in the background on activation when an API key exists", async () => {
@@ -311,7 +328,7 @@ describe("activate", () => {
         contextWindow: 1000000,
         maxOutputTokens: 384000,
         supportsTools: true,
-        supportsVision: true,
+        supportsVision: false,
       },
     ]);
     expect(providerInstance.fireModelInfoChanged).toHaveBeenCalled();
@@ -369,9 +386,13 @@ describe("activate", () => {
         contextWindow: 1000000,
         maxOutputTokens: 384000,
         supportsTools: true,
-        supportsVision: true,
+        supportsVision: false,
       },
     ]);
+    expect(globalState.update).toHaveBeenCalledWith(
+      "nvidia-nim.modelsCacheKeyFingerprint",
+      expect.stringMatching(/^[a-f0-9]{64}$/),
+    );
     expect(mockShowInformationMessage).toHaveBeenCalledWith("Refreshed 1 NVIDIA NIM models.");
   });
 
@@ -533,7 +554,7 @@ describe("activate", () => {
         contextWindow: 1000000,
         maxOutputTokens: 384000,
         supportsTools: true,
-        supportsVision: true,
+        supportsVision: false,
       },
     ]);
     expect(update).toHaveBeenNthCalledWith(3, "nvidia-nim.rawModels", previousRawModels);

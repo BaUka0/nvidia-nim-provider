@@ -1,6 +1,7 @@
 import { NimChatMessage } from "../src/types";
+import { chatCompletion } from "../src/api/client";
 import { estimateNimMessagesTokens, truncateMessagesForContext } from "../src/messages/converter";
-import { splitMessagesForSummarization } from "../src/models/summarizer";
+import { splitMessagesForSummarization, summarizeOldMessages } from "../src/models/summarizer";
 
 jest.mock("../src/api/client", () => ({
   chatCompletion: jest.fn(),
@@ -88,5 +89,105 @@ describe("splitMessagesForSummarization", () => {
     const { oldMessages, recentMessages } = splitMessagesForSummarization(messages, 1000);
     expect(oldMessages.length).toBeGreaterThanOrEqual(0);
     expect(recentMessages.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it("does not split an assistant tool call from its tool result", () => {
+    const messages: NimChatMessage[] = [
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "read_file", arguments: '{"path":"src/index.ts"}' },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_1", content: "file contents" },
+      { role: "user", content: "Continue" },
+    ];
+
+    const { oldMessages, recentMessages } = splitMessagesForSummarization(messages, 8);
+
+    expect(oldMessages).toHaveLength(0);
+    expect(recentMessages.map((message) => message.role)).toEqual(["assistant", "tool", "user"]);
+  });
+});
+
+describe("summarizeOldMessages", () => {
+  it("preserves reasoning and tool-call metadata in summarization input", async () => {
+    const completionMock = chatCompletion as jest.Mock;
+    completionMock.mockResolvedValueOnce("Summary");
+
+    await summarizeOldMessages(
+      [
+        {
+          role: "assistant",
+          content: "I will inspect the repository.",
+          reasoning_content: "The user asked for a code change.",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name: "read_file", arguments: '{"path":"src/index.ts"}' },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_1",
+          content: "file contents",
+        },
+      ],
+      "test-key",
+      "test-agent",
+    );
+
+    const request = completionMock.mock.calls.at(-1)?.[1];
+    const userMessage = request?.messages.find(
+      (message: NimChatMessage) => message.role === "user",
+    );
+    expect(userMessage?.content).toEqual(
+      expect.stringContaining("[reasoning]: The user asked for a code change."),
+    );
+    expect(userMessage?.content).toEqual(expect.stringContaining('"name":"read_file"'));
+    expect(userMessage?.content).toEqual(expect.stringContaining("[tool_call_id]: call_1"));
+  });
+
+  it("keeps the summarization payload within its character budget", async () => {
+    const completionMock = chatCompletion as jest.Mock;
+    completionMock.mockResolvedValueOnce("Summary");
+
+    await summarizeOldMessages(
+      [{ role: "user", content: "x".repeat(100000) }],
+      "test-key",
+      "test-agent",
+    );
+
+    const request = completionMock.mock.calls.at(-1)?.[1];
+    const userMessage = request?.messages.find(
+      (message: NimChatMessage) => message.role === "user",
+    );
+    expect(userMessage?.content.length).toBeLessThanOrEqual(48000);
+    expect(userMessage?.content).toContain("Earlier content clipped");
+  });
+
+  it("propagates summarizer cancellation instead of silently truncating", async () => {
+    const cancellation = new Error("aborted");
+    cancellation.name = "AbortError";
+    const completionMock = chatCompletion as jest.Mock;
+    completionMock.mockRejectedValueOnce(cancellation);
+    const controller = new AbortController();
+
+    await expect(
+      summarizeOldMessages(
+        [{ role: "user", content: "old context" }],
+        "test-key",
+        "test-agent",
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(completionMock.mock.calls.at(-1)?.[2]).toBe(controller.signal);
   });
 });

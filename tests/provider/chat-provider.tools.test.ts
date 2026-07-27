@@ -83,7 +83,7 @@ describe("NimChatModelProvider", () => {
                 supportsVision: true,
               },
               {
-                id: "meta/llama-4-maverick-17b-128e-instruct",
+                id: "deepseek-ai/deepseek-v4-pro",
                 displayName: "Llama 4 Maverick 17B 128E Instruct",
                 contextWindow: 131072,
                 maxOutputTokens: 16384,
@@ -104,7 +104,7 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (globalState.get as jest.Mock).mockReturnValue([
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
+        id: "deepseek-ai/deepseek-v4-pro",
         displayName: "Llama 4 Maverick 17B 128E Instruct",
         contextWindow: 131072,
         maxOutputTokens: 16384,
@@ -141,7 +141,7 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       {
-        id: "meta/llama-4-maverick-17b-128e-instruct",
+        id: "deepseek-ai/deepseek-v4-pro",
         maxInputTokens: 100000,
         maxOutputTokens: 16384,
       } as any,
@@ -157,7 +157,7 @@ describe("NimChatModelProvider", () => {
     expect(streamChatCompletion).toHaveBeenCalledWith(
       "test-key",
       expect.objectContaining({
-        model: "meta/llama-4-maverick-17b-128e-instruct",
+        model: "deepseek-ai/deepseek-v4-pro",
         tools: expect.any(Array),
       }),
       expect.any(AbortSignal),
@@ -273,6 +273,20 @@ describe("NimChatModelProvider", () => {
 
   it("sends required tool choice when tool mode requires a tool", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (globalState.get as jest.Mock).mockImplementation((key: string) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "moonshotai/kimi-k2.6",
+              displayName: "Kimi K2.6",
+              contextWindow: 262144,
+              maxOutputTokens: 262144,
+              supportsTools: true,
+              supportsVision: true,
+            },
+          ]
+        : undefined,
+    );
 
     const mockStream = async function* () {
       yield { choices: [{ delta: { content: "done" } }] };
@@ -286,7 +300,7 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      { id: "moonshotai/kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
       [{ role: 1, content: [{ value: "Hi" }] }] as any,
       {
         modelOptions: {},

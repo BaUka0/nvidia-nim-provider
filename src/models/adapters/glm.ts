@@ -8,6 +8,7 @@ export class GlmAdapter extends BaseModelAdapter {
     "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When calling tools, emit strict JSON arguments only. Do not wrap tool arguments in markdown fences, backticks, or explanatory prose.";
 
   readonly supportedReasoningModes = ["none", "on"];
+  readonly reasoningParameterFormat = "chat_template_kwargs" as const;
 
   applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
     request.chat_template_kwargs = request.chat_template_kwargs || {};

@@ -21,6 +21,10 @@ export class KimiAdapter extends BaseModelAdapter {
   }
 
   readonly supportedReasoningModes = ["none", "on"];
+  readonly reasoningParameterFormat = "chat_template_kwargs" as const;
+  // Native tool_calls are preferred, while OpenAI-style text control tokens
+  // remain accepted as a compatibility/recovery fallback.
+  readonly toolCallProtocol = "native-and-text" as const;
 
   applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
     request.chat_template_kwargs = request.chat_template_kwargs || {};

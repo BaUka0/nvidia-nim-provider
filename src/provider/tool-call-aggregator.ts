@@ -6,10 +6,14 @@ import {
   buildToolCallCanonicalKey,
   isToolCallInput,
   hasRequiredToolArguments,
+  parseToolArguments,
+  parseToolArgumentsStrict,
   repairToolArguments,
+  ChatRequestContext,
   ToolSchema,
 } from "../tools/parser";
 import { debugLog } from "../shared/logging";
+import { NimToolCall } from "../types";
 
 export interface SkippedToolCall {
   name: string;
@@ -25,7 +29,7 @@ export interface ToolCallStreamAggregatorOptions {
 
 export class ToolCallStreamAggregator {
   private toolSchemas: Map<string, ToolSchema>;
-  private requestContext: any;
+  private requestContext: ChatRequestContext | undefined;
   private emittedTextToolCallKeys: Set<string>;
   private onEmitToolCall: (id: string, name: string, args: Record<string, unknown>) => void;
   private onSkipToolCall: (name: string, required: string[]) => void;
@@ -60,7 +64,7 @@ export class ToolCallStreamAggregator {
     return this.toolSchemas;
   }
 
-  public getRequestContext(): any {
+  public getRequestContext(): ChatRequestContext | undefined {
     return this.requestContext;
   }
 
@@ -68,7 +72,7 @@ export class ToolCallStreamAggregator {
     return this.emittedTextToolCallKeys;
   }
 
-  public handleToolCalls(deltas: any[]): void {
+  public handleToolCalls(deltas: readonly NimToolCall[]): void {
     this.sawToolCall = true;
     for (const tc of deltas) {
       const idx = (tc as { index?: number }).index ?? 0;
@@ -82,7 +86,27 @@ export class ToolCallStreamAggregator {
       }
       const func = tc.function;
       if (func?.name && typeof func.name === "string") {
-        buf.name = func.name;
+        if (!buf.name || buf.name === func.name) {
+          buf.name = func.name;
+        } else if (func.name.startsWith(buf.name)) {
+          // Some providers repeat a cumulative prefix as the name arrives.
+          buf.name = func.name;
+        } else if (buf.name.startsWith(func.name)) {
+          // Keep the longer prefix when a provider repeats an earlier fragment.
+        } else if (this.hasToolNameCandidate(`${buf.name}${func.name}`)) {
+          // A complete tool name can itself be a prefix of another tool name.
+          // Prefer the concatenated candidate while it still matches a known
+          // name or prefix (for example, `read` + `_file` => `read_file`).
+          buf.name += func.name;
+        } else if (this.toolSchemas.has(func.name)) {
+          buf.name = func.name;
+        } else if (this.toolSchemas.has(buf.name)) {
+          // A complete known name followed by an unrelated fragment should
+          // not turn into a different tool name.
+        } else {
+          // OpenAI-compatible streams may split function names across deltas.
+          buf.name += func.name;
+        }
       }
       if (typeof func?.arguments === "string") {
         buf.args += func.arguments;
@@ -93,11 +117,56 @@ export class ToolCallStreamAggregator {
         continue;
       }
 
+      // Only emit early when the current buffer is strict JSON and already
+      // satisfies its schema. Incomplete JSON and syntactically valid but
+      // incomplete required arguments stay buffered until the stream ends.
       try {
         const schema = this.toolSchemas.get(buf.name ?? "");
         const args = repairToolArguments(
           buf.name ?? "",
-          buf.args ? JSON.parse(buf.args) : {},
+          parseToolArgumentsStrict(buf.args),
+          this.requestContext,
+          schema,
+        );
+        if (buf.id && buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
+          const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
+          if (this.emittedTextToolCallKeys.has(canonicalKey)) {
+            this.completedToolCallIndices.add(idx);
+            this.toolCallBuffers.delete(idx);
+            continue;
+          }
+          this.onEmitToolCall(buf.id, buf.name, args);
+          this.emittedToolCall = true;
+          this.emittedTextToolCallKeys.add(canonicalKey);
+          this.completedToolCallIndices.add(idx);
+          this.toolCallBuffers.delete(idx);
+        }
+      } catch {
+        // JSON is incomplete or fails schema validation; flushRemaining() will
+        // repair and validate the complete buffer at stream end.
+      }
+    }
+  }
+
+  private hasToolNameCandidate(name: string): boolean {
+    for (const knownName of this.toolSchemas.keys()) {
+      if (knownName === name || knownName.startsWith(name)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public flushRemaining(): void {
+    for (const [idx, buf] of Array.from(this.toolCallBuffers.entries())) {
+      if (this.completedToolCallIndices.has(idx)) {
+        continue;
+      }
+      try {
+        const schema = this.toolSchemas.get(buf.name ?? "");
+        const args = repairToolArguments(
+          buf.name ?? "",
+          buf.args ? parseToolArguments(buf.args) : {},
           this.requestContext,
           schema,
         );
@@ -112,52 +181,29 @@ export class ToolCallStreamAggregator {
           this.emittedToolCall = true;
 
           this.emittedTextToolCallKeys.add(canonicalKey);
-          this.completedToolCallIndices.add(idx);
-          this.toolCallBuffers.delete(idx);
-        } else if (buf.id && buf.name) {
-          this.onSkipToolCall(buf.name, schema?.required ?? []);
-          debugLog("Skipped invalid tool call", { id: buf.id, name: buf.name, args });
-          this.completedToolCallIndices.add(idx);
-          this.toolCallBuffers.delete(idx);
-        }
-      } catch {
-        // JSON incomplete — wait for next chunk
-      }
-    }
-  }
-
-  public flushRemaining(): void {
-    for (const [idx, buf] of Array.from(this.toolCallBuffers.entries())) {
-      if (this.completedToolCallIndices.has(idx)) {
-        continue;
-      }
-      try {
-        const schema = this.toolSchemas.get(buf.name ?? "");
-        const args = repairToolArguments(
-          buf.name ?? "",
-          buf.args ? JSON.parse(buf.args) : {},
-          this.requestContext,
-          schema,
-        );
-        if (buf.id && buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
-          const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
-          if (this.emittedTextToolCallKeys.has(canonicalKey)) {
-            continue;
-          }
-          this.onEmitToolCall(buf.id, buf.name, args);
-          this.emittedToolCall = true;
-
-          this.emittedTextToolCallKeys.add(canonicalKey);
-        } else if (buf.id && buf.name) {
-          this.onSkipToolCall(buf.name, schema?.required ?? []);
+        } else if (buf.name || buf.id || buf.args) {
+          this.onSkipToolCall(buf.name ?? "unknown_tool", schema?.required ?? []);
           debugLog("Skipped invalid tool call at stream end", {
             id: buf.id,
             name: buf.name,
             args,
           });
         }
+        this.completedToolCallIndices.add(idx);
+        this.toolCallBuffers.delete(idx);
       } catch {
-        // Ignore incomplete JSON at stream end
+        if (buf.name || buf.id || buf.args) {
+          this.onSkipToolCall(
+            buf.name ?? "unknown_tool",
+            this.toolSchemas.get(buf.name ?? "")?.required ?? [],
+          );
+        }
+        debugLog("Skipped truncated tool call at stream end", {
+          id: buf.id,
+          name: buf.name,
+        });
+        this.completedToolCallIndices.add(idx);
+        this.toolCallBuffers.delete(idx);
       }
     }
   }

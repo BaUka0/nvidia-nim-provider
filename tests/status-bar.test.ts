@@ -277,5 +277,26 @@ describe("StatusBarManager", () => {
       const md = item.tooltip as { value: string };
       expect(md.value).not.toContain("*(actual)*");
     });
+
+    it("marks completion usage as unavailable when the API does not report it", async () => {
+      const { StatusBarManager } = await import("../src/shared/status-bar");
+      const manager = new StatusBarManager();
+      const item = mockCreateStatusBarItem.mock.results[0].value;
+      manager.showTokenBreakdown({
+        modelName: "Inkling",
+        systemPrompt: 100,
+        tools: 0,
+        userMessages: 200,
+        assistantMessages: 0,
+        toolCalls: 0,
+        toolResults: 0,
+        images: 0,
+        contextWindow: 1000000,
+      });
+
+      const md = item.tooltip as { value: string };
+      expect(md.value).toContain("Output (completion) | Not reported");
+      expect(md.value).toContain("Total Used** | **Not available");
+    });
   });
 });

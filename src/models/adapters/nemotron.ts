@@ -8,6 +8,7 @@ export class NemotronAdapter extends BaseModelAdapter {
     "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, answer with concise user-facing text or a valid tool call. Do not wrap tool arguments in markdown fences, backticks, or explanatory prose.";
 
   readonly supportedReasoningModes = ["none", "medium", "high"];
+  readonly reasoningParameterFormat = "reasoning_effort" as const;
 
   applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
     if (mode === "none") {

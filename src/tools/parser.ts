@@ -1,22 +1,51 @@
 import * as vscode from "vscode";
 import { LanguageModelChatMessage, ProvideLanguageModelChatResponseOptions } from "vscode";
+import { jsonrepair } from "jsonrepair";
 
-function safeJsonParse(text: string): unknown {
+function safeJsonParse(text: string): Record<string, unknown> {
   if (!text) return {};
   try {
-    const value = JSON.parse(text);
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      return value;
-    }
+    return parseToolArgumentsStrict(text);
   } catch {
-    // ignore
+    // Repair is deliberately attempted only after strict JSON parsing fails.
   }
-  throw new Error("Failed to parse JSON");
+
+  try {
+    return parseJsonObject(JSON.parse(jsonrepair(text)));
+  } catch {
+    throw new Error("Failed to parse JSON");
+  }
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  throw new Error("Tool arguments must be a JSON object");
+}
+
+export function parseToolArguments(text: string): Record<string, unknown> {
+  return safeJsonParse(text);
+}
+
+export function parseToolArgumentsStrict(text: string): Record<string, unknown> {
+  return parseJsonObject(JSON.parse(text));
+}
+
+export type ToolSchemaType = "string" | "number" | "integer" | "boolean" | "object" | "array";
+
+export interface ToolPropertySchema {
+  type?: ToolSchemaType;
+  enum?: unknown[];
+  required?: string[];
+  properties?: Record<string, ToolPropertySchema>;
+  items?: ToolPropertySchema;
 }
 
 export interface ToolSchema {
   required?: string[];
   enumValues?: Record<string, string[]>;
+  properties?: Record<string, ToolPropertySchema>;
 }
 
 export interface SkippedToolCall {
@@ -62,7 +91,21 @@ export interface ChatRequestContext {
 }
 
 export function buildToolCallCanonicalKey(name: string, args: unknown): string {
-  return `${name}:${JSON.stringify(args)}`;
+  return `${name}:${JSON.stringify(sortObjectKeys(args))}`;
+}
+
+function sortObjectKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortObjectKeys);
+  }
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => [key, sortObjectKeys(child)]),
+  );
 }
 
 export function getCompletedToolCallKeys(
@@ -136,43 +179,195 @@ export function getToolSchemaMap(
           (value): value is string => typeof value === "string" && value.length > 0,
         )
       : undefined;
+    const properties = normalizeProperties(inputSchema?.properties);
     const enumValues: Record<string, string[]> = {};
-    const properties =
-      typeof inputSchema?.properties === "object" && inputSchema.properties !== null
-        ? (inputSchema.properties as Record<string, unknown>)
-        : {};
-    for (const [name, value] of Object.entries(properties)) {
-      const propertySchema =
-        typeof value === "object" && value !== null && !Array.isArray(value)
-          ? (value as { enum?: unknown })
-          : undefined;
-      if (Array.isArray(propertySchema?.enum)) {
-        const allowed = propertySchema.enum.filter(
-          (item): item is string => typeof item === "string",
-        );
-        if (allowed.length > 0) {
-          enumValues[name] = allowed;
-        }
+    for (const [name, propertySchema] of Object.entries(properties)) {
+      const allowed = propertySchema.enum?.filter(
+        (item): item is string => typeof item === "string",
+      );
+      if (allowed && allowed.length > 0) {
+        enumValues[name] = allowed;
       }
     }
-    map.set(tool.name, { required, enumValues });
+    map.set(tool.name, {
+      required,
+      enumValues,
+      properties,
+    });
   }
   return map;
 }
 
-export function hasRequiredToolArguments(args: unknown, schema: ToolSchema | undefined): boolean {
-  const required = schema?.required ?? [];
-  if (required.length === 0) {
-    return true;
+function normalizeProperties(value: unknown): Record<string, ToolPropertySchema> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
   }
-  if (typeof args !== "object" || args === null || Array.isArray(args)) {
+
+  const properties: Record<string, ToolPropertySchema> = {};
+  for (const [name, rawSchema] of Object.entries(value)) {
+    if (typeof rawSchema !== "object" || rawSchema === null || Array.isArray(rawSchema)) {
+      continue;
+    }
+
+    const schema = rawSchema as {
+      type?: unknown;
+      enum?: unknown;
+      required?: unknown;
+      properties?: unknown;
+      items?: unknown;
+    };
+    const type =
+      schema.type === "string" ||
+      schema.type === "number" ||
+      schema.type === "integer" ||
+      schema.type === "boolean" ||
+      schema.type === "object" ||
+      schema.type === "array"
+        ? schema.type
+        : undefined;
+    const property: ToolPropertySchema = {
+      ...(type ? { type } : {}),
+      ...(Array.isArray(schema.enum) ? { enum: schema.enum } : {}),
+      ...(Array.isArray(schema.required)
+        ? {
+            required: schema.required.filter(
+              (item): item is string => typeof item === "string" && item.length > 0,
+            ),
+          }
+        : {}),
+    };
+    const nestedProperties = normalizeProperties(schema.properties);
+    if (Object.keys(nestedProperties).length > 0) {
+      property.properties = nestedProperties;
+    }
+    const nestedItems = normalizePropertySchema(schema.items);
+    if (nestedItems) {
+      property.items = nestedItems;
+    }
+    properties[name] = property;
+  }
+  return properties;
+}
+
+function normalizePropertySchema(value: unknown): ToolPropertySchema | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const normalized = normalizeProperties({ value });
+  return normalized.value;
+}
+
+function normalizeScalar(value: unknown, schema: ToolPropertySchema): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (schema.type === "boolean") {
+    if (["true", "yes", "1"].includes(trimmed.toLowerCase())) return true;
+    if (["false", "no", "0"].includes(trimmed.toLowerCase())) return false;
+  }
+  if (schema.type === "number" || schema.type === "integer") {
+    const numberValue = Number(trimmed);
+    if (trimmed.length > 0 && Number.isFinite(numberValue)) return numberValue;
+  }
+  return value;
+}
+
+function normalizeValue(value: unknown, schema: ToolPropertySchema): unknown {
+  const normalized = normalizeScalar(value, schema);
+  if (
+    schema.type === "object" &&
+    typeof normalized === "object" &&
+    normalized !== null &&
+    !Array.isArray(normalized)
+  ) {
+    return normalizeArguments(normalized as Record<string, unknown>, {
+      properties: schema.properties,
+    });
+  }
+  if (schema.type === "array" && Array.isArray(normalized) && schema.items) {
+    return normalized.map((item) => normalizeValue(item, schema.items!));
+  }
+  return normalized;
+}
+
+function normalizeArguments(
+  args: Record<string, unknown>,
+  schema: ToolSchema,
+): Record<string, unknown> {
+  const properties = schema.properties ?? {};
+  const normalized: Record<string, unknown> = { ...args };
+  for (const [name, propertySchema] of Object.entries(properties)) {
+    if (name in normalized) {
+      normalized[name] = normalizeValue(normalized[name], propertySchema);
+    }
+  }
+  return normalized;
+}
+
+function valuesEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  return typeof left === "object" && left !== null && typeof right === "object" && right !== null
+    ? JSON.stringify(left) === JSON.stringify(right)
+    : false;
+}
+
+function isSchemaValueValid(value: unknown, schema: ToolPropertySchema): boolean {
+  if (schema.enum && !schema.enum.some((allowed) => valuesEqual(value, allowed))) {
+    return false;
+  }
+
+  switch (schema.type) {
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "integer":
+      return typeof value === "number" && Number.isInteger(value);
+    case "boolean":
+      return typeof value === "boolean";
+    case "array":
+      return (
+        Array.isArray(value) &&
+        (!schema.items || value.every((item) => isSchemaValueValid(item, schema.items!)))
+      );
+    case "object":
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+      return validateToolArguments(value, {
+        required: schema.required,
+        properties: schema.properties,
+      });
+    default:
+      return true;
+  }
+}
+
+export function validateToolArguments(args: unknown, schema: ToolSchema | undefined): boolean {
+  if (!schema || typeof args !== "object" || args === null || Array.isArray(args)) {
     return false;
   }
   const record = args as Record<string, unknown>;
-  return required.every(
-    (key) =>
-      key in record && record[key] !== undefined && record[key] !== null && record[key] !== "",
-  );
+  for (const key of schema.required ?? []) {
+    const value = record[key];
+    if (
+      value === undefined ||
+      value === null ||
+      (typeof value === "string" && value.trim() === "")
+    ) {
+      return false;
+    }
+  }
+  for (const [name, propertySchema] of Object.entries(schema.properties ?? {})) {
+    if (name in record && !isSchemaValueValid(record[name], propertySchema)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function hasRequiredToolArguments(args: unknown, schema: ToolSchema | undefined): boolean {
+  return validateToolArguments(args, schema);
 }
 
 export function buildInvalidToolCallFallback(
@@ -401,7 +596,7 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
       if (parsedToolCallContent) {
         try {
           const parsedArgs = parsedToolCallContent.argsText
-            ? JSON.parse(parsedToolCallContent.argsText)
+            ? parseToolArgumentsStrict(parsedToolCallContent.argsText)
             : {};
           segments.push({
             type: "toolCall",
@@ -436,7 +631,7 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
     try {
       segments.push({
         type: "toolCall",
-        toolCall: { name, args: safeJsonParse(argsText) },
+        toolCall: { name, args: parseToolArgumentsStrict(argsText) },
       });
     } catch {
       segments.push({ type: "invalidToolCall", name });
@@ -444,6 +639,40 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
   }
 
   return { segments, incompleteText };
+}
+
+/**
+ * Return the tool name from a text call that was cut off before its closing
+ * control token. A partial control prefix without a name is treated as
+ * display noise and remains suppressible by the stream parser.
+ */
+export function getIncompleteTextToolCallName(text: string): string | undefined {
+  const openaiBeginToken = "<|tool_call_begin|>";
+  const openaiArgumentToken = "<|tool_call_argument_begin|>";
+  const openaiBeginIndex = text.indexOf(openaiBeginToken);
+  if (openaiBeginIndex !== -1) {
+    const callText = text.slice(openaiBeginIndex + openaiBeginToken.length);
+    const argumentIndex = callText.indexOf(openaiArgumentToken);
+    if (argumentIndex !== -1) {
+      const name = callText.slice(0, argumentIndex).trim();
+      return name || "unknown_tool";
+    }
+    // A stream can end after the function name but before the argument
+    // marker. Preserve the name so the provider emits a controlled fallback
+    // instead of silently dropping the incomplete tool request.
+    const name = callText.split(/[\s<|]/u, 1)[0]?.trim();
+    return name || undefined;
+  }
+
+  const deepSeekBeginToken = "<｜tool▁call▁begin｜>";
+  const deepSeekBeginIndex = text.indexOf(deepSeekBeginToken);
+  if (deepSeekBeginIndex !== -1) {
+    const callText = text.slice(deepSeekBeginIndex + deepSeekBeginToken.length);
+    const parsed = parseDeepSeekTextEmbeddedToolCallContent(callText);
+    return parsed?.name || undefined;
+  }
+
+  return undefined;
 }
 
 export function extractChatRequestContext(
@@ -526,19 +755,17 @@ export function repairToolArguments(
   const needsNumberField = (value: unknown, field: string): boolean =>
     required.has(field) && typeof value !== "number";
 
-  const repaired: Record<string, unknown> = { ...record };
+  const repaired: Record<string, unknown> = normalizeArguments({ ...record }, schema ?? {});
 
-  if (schema?.required) {
-    for (const key of schema.required) {
-      const val = repaired[key];
-      if (typeof val === "string") {
-        const lower = val.toLowerCase().trim();
-        if (lower === "true" || lower === "yes" || lower === "1") {
-          repaired[key] = true;
-        } else if (lower === "false" || lower === "no" || lower === "0") {
-          repaired[key] = false;
-        }
-      }
+  const argumentsSchema = schema?.properties?.arguments;
+  if (
+    typeof repaired.arguments === "string" &&
+    (!argumentsSchema || argumentsSchema.type === "object")
+  ) {
+    try {
+      repaired.arguments = safeJsonParse(repaired.arguments);
+    } catch {
+      // Leave an invalid nested value for schema validation to reject.
     }
   }
 
@@ -549,11 +776,13 @@ export function repairToolArguments(
   ) {
     const inner = repaired.arguments as Record<string, unknown>;
     const outerRequiredKeys = schema?.required ?? [];
-    const hasRequiredInInner = outerRequiredKeys.every((k) => k in inner);
-    if (hasRequiredInInner && outerRequiredKeys.length > 0) {
-      for (const key of outerRequiredKeys) {
-        if (!(key in repaired) && key in inner) {
-          repaired[key] = inner[key];
+    const knownPropertyNames = Object.keys(schema?.properties ?? {});
+    const hasRequiredInInner = outerRequiredKeys.some((k) => k in inner);
+    const hasKnownPropertyInInner = knownPropertyNames.some((k) => k in inner);
+    if (!schema?.properties?.arguments && (hasRequiredInInner || hasKnownPropertyInInner)) {
+      for (const [key, value] of Object.entries(inner)) {
+        if (!(key in repaired)) {
+          repaired[key] = value;
         }
       }
       delete repaired.arguments;
@@ -562,30 +791,38 @@ export function repairToolArguments(
 
   const context = requestContext;
   if (!context) {
-    return repaired;
+    return normalizeArguments(repaired, schema ?? {});
   }
 
   if (toolName === "read_file") {
-    return {
-      ...repaired,
-      ...(needsStringField(repaired.filePath, "filePath") && context.filePath
-        ? { filePath: context.filePath }
-        : {}),
-      ...(needsNumberField(repaired.startLine, "startLine")
-        ? { startLine: context.startLine ?? 1 }
-        : {}),
-      ...(needsNumberField(repaired.endLine, "endLine") ? { endLine: context.endLine ?? 200 } : {}),
-    };
+    return normalizeArguments(
+      {
+        ...repaired,
+        ...(needsStringField(repaired.filePath, "filePath") && context.filePath
+          ? { filePath: context.filePath }
+          : {}),
+        ...(needsNumberField(repaired.startLine, "startLine")
+          ? { startLine: context.startLine ?? 1 }
+          : {}),
+        ...(needsNumberField(repaired.endLine, "endLine")
+          ? { endLine: context.endLine ?? 200 }
+          : {}),
+      },
+      schema ?? {},
+    );
   }
 
   if (toolName === "list_dir") {
-    return {
-      ...repaired,
-      ...(needsStringField(repaired.path, "path") && context.cwd ? { path: context.cwd } : {}),
-    };
+    return normalizeArguments(
+      {
+        ...repaired,
+        ...(needsStringField(repaired.path, "path") && context.cwd ? { path: context.cwd } : {}),
+      },
+      schema ?? {},
+    );
   }
 
-  return repaired;
+  return normalizeArguments(repaired, schema ?? {});
 }
 
 export function isToolCallInput(args: unknown): args is Record<string, unknown> {

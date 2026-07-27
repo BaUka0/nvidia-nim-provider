@@ -5,6 +5,7 @@ export class MinimaxAdapter extends BaseModelAdapter {
   readonly defaultTemperature = 0.7;
 
   readonly supportedReasoningModes = ["none", "on", "adaptive"];
+  readonly reasoningParameterFormat = "chat_template_kwargs" as const;
 
   applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
     request.chat_template_kwargs = request.chat_template_kwargs || {};

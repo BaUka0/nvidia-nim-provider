@@ -26,7 +26,8 @@ export interface TokenBreakdown {
   toolResults: number;
   images: number;
   actualPromptTokens?: number;
-  output: number;
+  actualCompletionTokens?: number;
+  output?: number;
   contextWindow: number;
 }
 
@@ -93,7 +94,8 @@ export class StatusBarManager {
       breakdown.toolResults +
       breakdown.images;
     const inputTokens = breakdown.actualPromptTokens ?? estimatedInput;
-    const totalTokens = inputTokens + breakdown.output;
+    const outputTokens = breakdown.actualCompletionTokens ?? breakdown.output;
+    const totalTokens = outputTokens === undefined ? undefined : inputTokens + outputTokens;
     const contextWindow = breakdown.contextWindow;
     const percentage = contextWindow > 0 ? (inputTokens / contextWindow) * 100 : 0;
 
@@ -124,18 +126,31 @@ export class StatusBarManager {
     );
     md.appendMarkdown(`| Category | Tokens |\n`);
     md.appendMarkdown(`|---|---|\n`);
-    md.appendMarkdown(`| System Prompt | ${cat.systemPrompt.toLocaleString()} |\n`);
-    md.appendMarkdown(`| Tools (definitions) | ${cat.tools.toLocaleString()} |\n`);
-    md.appendMarkdown(`| User Messages | ${cat.userMessages.toLocaleString()} |\n`);
-    md.appendMarkdown(`| Assistant Messages | ${cat.assistantMessages.toLocaleString()} |\n`);
-    md.appendMarkdown(`| Tool Calls | ${cat.toolCalls.toLocaleString()} |\n`);
-    md.appendMarkdown(`| Tool Results | ${cat.toolResults.toLocaleString()} |\n`);
-    md.appendMarkdown(`| Images / Media | ${cat.images.toLocaleString()} |\n`);
+    md.appendMarkdown(`| System Prompt (estimated) | ${cat.systemPrompt.toLocaleString()} |\n`);
+    md.appendMarkdown(`| Tools (definitions, estimated) | ${cat.tools.toLocaleString()} |\n`);
+    md.appendMarkdown(`| User Messages (estimated) | ${cat.userMessages.toLocaleString()} |\n`);
+    md.appendMarkdown(
+      `| Assistant Messages (estimated) | ${cat.assistantMessages.toLocaleString()} |\n`,
+    );
+    md.appendMarkdown(`| Tool Calls (estimated) | ${cat.toolCalls.toLocaleString()} |\n`);
+    md.appendMarkdown(`| Tool Results (estimated) | ${cat.toolResults.toLocaleString()} |\n`);
+    md.appendMarkdown(`| Images / Media (estimated) | ${cat.images.toLocaleString()} |\n`);
     md.appendMarkdown(
       `| **Input Total${hasActual ? " *(actual)*" : ""}** | **${inputTokens.toLocaleString()}** |\n`,
     );
-    md.appendMarkdown(`| Output (completion) | ${breakdown.output.toLocaleString()} |\n`);
-    md.appendMarkdown(`| **Total Used** | **${totalTokens.toLocaleString()}** |\n`);
+    const outputIsActual = breakdown.actualCompletionTokens !== undefined;
+    const outputLabel =
+      outputTokens === undefined
+        ? "Output (completion)"
+        : outputIsActual
+          ? "Output (completion)"
+          : "Output (completion) (estimated)";
+    md.appendMarkdown(
+      `| ${outputLabel} | ${outputTokens === undefined ? "Not reported" : outputTokens.toLocaleString()} |\n`,
+    );
+    md.appendMarkdown(
+      `| **Total Used** | **${totalTokens === undefined ? "Not available" : totalTokens.toLocaleString()}** |\n`,
+    );
 
     this.item.tooltip = md;
     this.item.command = undefined;
