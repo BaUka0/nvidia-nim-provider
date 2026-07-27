@@ -20,7 +20,19 @@ export const TOGGLE_SHOW_REASONING_COMMAND_ID = "nvidia-nim.toggleShowReasoning"
 export const BASE_URL = "https://integrate.api.nvidia.com/v1";
 export const EXTENSION_VERSION: string = packageJson.version;
 
-/** Safety margin for context window calculations (in tokens) */
+/**
+ * Calculate a dynamic safety margin that scales with context window size.
+ * Small windows get a fixed 4096-token margin; large windows (≥256K) get 1%
+ * of the window to account for estimation variance and hidden prompt content.
+ */
+export function calculateSafetyMargin(contextWindow: number): number {
+  if (contextWindow >= 256_000) {
+    return Math.max(4096, Math.ceil(contextWindow * 0.01));
+  }
+  return 4096;
+}
+
+/** Legacy fixed safety margin kept for backward-compatible call sites. */
 export const CONTEXT_WINDOW_SAFETY_MARGIN = 4096;
 
 /** Default token limit if model info is unknown */

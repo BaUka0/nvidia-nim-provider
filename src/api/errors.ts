@@ -7,6 +7,7 @@ export type ApiErrorKind =
   | "server_error"
   | "timeout"
   | "network_error"
+  | "context_overflow"
   | "invalid_request"
   | "unknown";
 
@@ -15,6 +16,7 @@ export interface ApiErrorContext {
   model?: string;
   status?: number;
   detail?: string;
+  contextOverflow?: ContextOverflowInfo;
 }
 
 export interface StructuredError {
@@ -49,6 +51,11 @@ export const ERROR_MESSAGES: Record<string, StructuredError> = {
     cause: "The model took too long to respond.",
     action: "Try again with a shorter prompt or switch to a faster model.",
   },
+  context_overflow: {
+    code: "CONTEXT_OVERFLOW",
+    cause: "The prompt exceeds the model's context window limit.",
+    action: "The request will be retried with a shorter response. If it fails again, start a new chat.",
+  },
   token_limit: {
     code: "TOKEN_LIMIT_EXCEEDED",
     cause: "The conversation is too long for this model's context window.",
@@ -73,12 +80,94 @@ export const ERROR_MESSAGES: Record<string, StructuredError> = {
 
 const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
 
+/**
+ * Patterns that indicate the server rejected the request due to context overflow.
+ * Covers common OpenAI-compatible and NVIDIA NIM error message formats.
+ */
+const CONTEXT_OVERFLOW_PATTERNS = [
+  /maximum.*context.*length/i,
+  /context.*length.*exceed/i,
+  /token.*limit.*exceed/i,
+  /prompt.*too.*long/i,
+  /prompt.*length.*exceed/i,
+  /request.*too.*large/i,
+  /max.*token/i,
+];
+
+/**
+ * Extract reported maximum and actual usage from server error detail text.
+ * Handles formats like:
+ *   "Maximum context length is 204800 tokens"
+ *   "prompt is too long: 1048576 > 1048575"
+ *   "token limit exceeded: 1000001 > 1000000"
+ */
+export function parseContextOverflowDetail(detail: string): ContextOverflowInfo {
+  const result: ContextOverflowInfo = {};
+
+  // Try to extract reported maximum
+  const maxMatch =
+    detail.match(/(?:maximum|max|limit).*?context.*?length.*?(?:is|=|:|of)\s*(\d[\d_,]*)/i) ??
+    detail.match(/(?:maximum|max|limit).*?(?:token|context).*?(?:is|=|:|of)\s*(\d[\d_,]*)/i) ??
+    detail.match(/(?:is|=|>)\s*(\d[\d_,]*)(?:\s*(?:token|>))/i);
+  if (maxMatch) {
+    result.reportedMaximum = parseNumericValue(maxMatch[1]);
+  }
+
+  // Try to extract actual usage
+  // The separator group must include 'has' to match NVIDIA NIM format:
+  // "your message has 524288 tokens" — 'has' is the separator, not a word prefix.
+  const usageMatch =
+    // Dedicated pattern for NVIDIA NIM format: "your message has 524288 tokens"
+    detail.match(/(?:has|had)\b\s+(\d[\d_,]*)/i) ??
+    // NVIDIA NIM format: "your messages resulted in 270981 tokens"
+    detail.match(/resulted\s+in\s+(\d[\d_,]*)/i) ??
+    detail.match(/(?:prompt|usage|actual|got|have).*?(?:is|=|:|>)\s*(\d[\d_,]*)/i) ??
+    detail.match(/(\d[\d_,]*)(?:\s*(?:>|token|\+))/i);
+  if (usageMatch) {
+    result.actualUsage = parseNumericValue(usageMatch[1]);
+  }
+
+  // Fallback: "N > M" pattern
+  if (result.actualUsage === undefined && result.reportedMaximum === undefined) {
+    const gtMatch = detail.match(/(\d[\d_,]*\s*>\s*\d[\d_,]*)/);
+    if (gtMatch) {
+      const nums = gtMatch[1].split(">").map((s) => parseNumericValue(s.trim()));
+      if (nums.length === 2 && nums[0] !== undefined && nums[1] !== undefined) {
+        result.actualUsage = nums[0];
+        result.reportedMaximum = nums[1];
+      }
+    }
+  }
+
+  return result;
+}
+
+function parseNumericValue(s: string): number | undefined {
+  const cleaned = s.replace(/[_,\s]/g, "");
+  const n = Number.parseInt(cleaned, 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * Check whether an error detail string indicates a context overflow.
+ */
+export function isContextOverflowError(detail: string | undefined): boolean {
+  if (!detail) return false;
+  return CONTEXT_OVERFLOW_PATTERNS.some((p) => p.test(detail));
+}
+
+export interface ContextOverflowInfo {
+  reportedMaximum?: number;
+  actualUsage?: number;
+}
+
 export class NvidiaApiError extends Error {
   readonly kind: ApiErrorKind;
   readonly code: string;
   readonly status?: number;
   readonly operation?: string;
   readonly retryable: boolean;
+  readonly contextOverflow?: ContextOverflowInfo;
 
   constructor(kind: ApiErrorKind, message: string, context: ApiErrorContext = {}) {
     super(message);
@@ -88,6 +177,7 @@ export class NvidiaApiError extends Error {
     this.status = context.status;
     this.operation = context.operation;
     this.retryable = context.status !== undefined && RETRYABLE_STATUS_CODES.has(context.status);
+    this.contextOverflow = context.contextOverflow;
   }
 }
 
@@ -131,6 +221,7 @@ function classifyKind(error: unknown, status: number | undefined): ApiErrorKind 
     return "server_error";
   }
   if (status !== undefined && status >= 400 && status <= 499) {
+    // HTTP 400 may be a context overflow — refine in classifyApiError below
     return "invalid_request";
   }
 
@@ -197,10 +288,19 @@ export function classifyApiError(error: unknown, context: ApiErrorContext = {}):
   }
 
   const status = getErrorStatus(error, context);
-  const kind = classifyKind(error, status);
+  let kind = classifyKind(error, status);
+  // Refine HTTP 400: only classify as context_overflow when the detail
+  // text matches known context-limit patterns; otherwise keep invalid_request.
+  const detail = context.detail;
+  if (kind === "invalid_request" && status === 400 && isContextOverflowError(detail)) {
+    kind = "context_overflow";
+  }
+  const contextOverflow =
+    kind === "context_overflow" && detail ? parseContextOverflowDetail(detail) : undefined;
   return new NvidiaApiError(kind, buildClassifiedMessage(kind, error, { ...context, status }), {
     ...context,
     status,
+    contextOverflow,
   });
 }
 

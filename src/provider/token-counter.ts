@@ -1,6 +1,6 @@
 import { LanguageModelChatRequestOptions } from "vscode";
 import { debugLog } from "../shared/logging";
-import { CONTEXT_WINDOW_SAFETY_MARGIN, DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
+import { calculateSafetyMargin, DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 
 export class TokenCounter {
   static calculateRequestedMaxTokens(
@@ -25,7 +25,8 @@ export class TokenCounter {
       }
     }
 
-    if (computedMaxTokens + estimatedInputTokens > contextWindow + CONTEXT_WINDOW_SAFETY_MARGIN) {
+    const safetyMargin = calculateSafetyMargin(contextWindow);
+    if (computedMaxTokens + estimatedInputTokens > contextWindow + safetyMargin) {
       debugLog(
         "NimChatModelProvider",
         `Requested max_tokens (${computedMaxTokens}) + estimated input (${estimatedInputTokens}) exceeds context window (${contextWindow}). Relying on API limits.`,

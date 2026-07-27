@@ -60,7 +60,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     catalog: {
       displayName: "DeepSeek V4 Flash",
       contextWindow: 1048576,
-      maxOutputTokens: 384000,
+      maxOutputTokens: 131072,
       supportsTools: true,
       supportsVision: false,
     },
@@ -79,7 +79,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     catalog: {
       displayName: "DeepSeek V4 Pro",
       contextWindow: 1048576,
-      maxOutputTokens: 384000,
+      maxOutputTokens: 131072,
       supportsTools: true,
       supportsVision: false,
     },
@@ -97,7 +97,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     modelId: "minimaxai/minimax-m3",
     catalog: {
       displayName: "MiniMax M3",
-      contextWindow: 524288,
+      contextWindow: 1000000,
       maxOutputTokens: 100000,
       supportsTools: true,
       supportsVision: true,
@@ -180,8 +180,8 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     modelId: "z-ai/glm-5.2",
     catalog: {
       displayName: "GLM 5.2",
-      contextWindow: 202752,
-      maxOutputTokens: 128000,
+      contextWindow: 1000000,
+      maxOutputTokens: 131072,
       supportsTools: true,
       supportsVision: false,
     },
@@ -211,7 +211,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     catalog: {
       displayName: "Step 3.7 Flash",
       contextWindow: 262144,
-      maxOutputTokens: 65536,
+      maxOutputTokens: 262144,
       supportsTools: true,
       supportsVision: true,
     },
@@ -252,7 +252,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     catalog: {
       displayName: "Laguna XS 2.1",
       contextWindow: 262144,
-      maxOutputTokens: 16384,
+      maxOutputTokens: 65536,
       supportsTools: true,
       supportsVision: false,
     },

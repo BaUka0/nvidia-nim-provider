@@ -24,7 +24,7 @@ import {
 } from "../tools/parser";
 import { streamChatCompletion } from "../api/client";
 import {
-  CONTEXT_WINDOW_SAFETY_MARGIN,
+  calculateSafetyMargin,
   DEBUG_ENV_VAR,
   MANAGE_COMMAND_ID,
   PROVIDER_DISPLAY_NAME,
@@ -36,6 +36,7 @@ import { getModelAdapter } from "../models/adapters";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
 import {
+  convertMessages,
   estimateNimMessagesTokens,
   estimateNimMessagesTokensByCategory,
   estimateToolsTokens,
@@ -49,9 +50,11 @@ import {
   NvidiaLanguageModelChatInformation,
 } from "../models/discovery";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver";
-import { formatStructuredError, NvidiaApiError } from "../api/errors";
+import { formatStructuredError, NvidiaApiError, parseContextOverflowDetail } from "../api/errors";
 import { NimRequestBuilder } from "./request-builder";
 import { ToolCallStreamAggregator } from "./tool-call-aggregator";
+import { splitMessagesForSummarization, summarizeOldMessages } from "../models/summarizer";
+import { ContextLimitStore } from "./context-limit-store";
 
 const DEFAULT_MAX_TOKENS = 65536;
 const MAX_RUNTIME_INFO_CACHE_SIZE = 64;
@@ -114,6 +117,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       runtimeMetadataSource: ChatRuntimeMetadataSource;
     }
   >();
+  private readonly contextLimitStore = new ContextLimitStore();
   private readonly _onDidChangeLanguageModelChatInformation = new EventEmitter<void>();
   /** Cleared at the start of each VS Code resolution cycle (groupless call). */
   private readonly _selectableModelIdsInCycle = new Set<string>();
@@ -141,6 +145,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
   fireModelInfoChanged(options: { invalidateModelCache?: boolean } = {}): void {
     this.runtimeInfoCache.clear();
+    this.contextLimitStore.clear();
     if (options.invalidateModelCache !== false) {
       this.apiKeyResolver.clearRuntimeBindings();
       this._resolutionKeyFingerprintsByGroup.clear();
@@ -189,8 +194,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       providerModelInfo.detail === PROVIDER_DISPLAY_NAME ||
       providerModelInfo.family === PROVIDER_VENDOR
     ) {
-      // A picker entry can outlive a refresh. Do not trust its copied
-      // capabilities when the current curated cache no longer contains it.
       const currentModels = await this.discoveryService.getAvailableModels(apiKey);
       const currentModel = currentModels.find((entry) => entry.id === model.id);
       if (currentModel) {
@@ -289,9 +292,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     if (!resolvedApiKey) {
       const groupLabel = groupName ? ` "${groupName}"` : "";
       const resolutionGroupKey = groupName ?? "<configured-provider-group>";
-      // A previously resolved group can lose both its configured and legacy
-      // keys without a model-info event. Drop only that group's binding so
-      // other configured groups continue resolving their own selected models.
       this.runtimeInfoCache.clear();
       this.apiKeyResolver.clearRuntimeBindings(resolutionGroupKey);
       this._resolutionKeyFingerprintsByGroup.delete(resolutionGroupKey);
@@ -311,19 +311,14 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       previousGroupFingerprint !== undefined && previousGroupFingerprint !== keyFingerprint;
     if (keyChanged) {
       this.runtimeInfoCache.clear();
+      this.contextLimitStore.clear();
       this.apiKeyResolver.clearRuntimeBindings(resolutionGroupKey);
       this.discoveryService.invalidateCache();
-      // A changed key in the same provider group starts a new selectable
-      // model set. Otherwise every returned ID would be hidden as a duplicate
-      // of the entries bound to the previous key.
       this._selectableModelIdsInCycle.clear();
     }
     this.apiKeyResolver.rememberRuntimeKey(apiKey, resolutionGroupKey);
     this._resolutionKeyFingerprintsByGroup.set(resolutionGroupKey, keyFingerprint);
 
-    // A fresh cache still avoids a network call inside discovery; enabling
-    // stale-version refresh here is required for migrations when the key is
-    // unchanged (key changes already invalidate the cache above).
     const models = await this.discoveryService.getAvailableModels(apiKey, {
       refreshStaleCache: true,
     });
@@ -367,9 +362,18 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       abortController.abort();
     });
     let hasReportedContent = false;
+    let hasRetriedContextOverflow = false;
+    // Declared outside try so the catch-block context-overflow handler can access them.
+    let apiKey: string | undefined;
+    let keyFingerprint: string | undefined;
+    let contextWindow = 0;
+    let effectiveContextWindow = 0;
+    let adapter: ReturnType<typeof getModelAdapter> = undefined!;
+    let activeRequestBody: import("../types").NimChatRequest | undefined;
+    let tools: import("../types").NimTool[] | undefined;
 
     try {
-      const apiKey = await this.ensureApiKey(false, model);
+      apiKey = await this.ensureApiKey(false, model);
       if (!apiKey) {
         progress.report(new vscode.LanguageModelTextPart(buildMissingApiKeyFallback()));
         return;
@@ -378,9 +382,14 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       const requestPreparationStartedAtMs =
         process.env[DEBUG_ENV_VAR] === "1" ? Date.now() : undefined;
 
-      const { supportsTools, supportsVision, contextWindow, runtimeMetadataSource } =
+      const { supportsTools, supportsVision, contextWindow: cw, runtimeMetadataSource } =
         await this.resolveChatModelRuntimeInfo(model, apiKey);
-      const adapter = getModelAdapter(model.id);
+      contextWindow = cw;
+      keyFingerprint = getApiKeyFingerprint(apiKey);
+      const runtimeLimit = this.contextLimitStore.get(model.id, keyFingerprint);
+      effectiveContextWindow =
+        runtimeLimit !== undefined ? Math.min(contextWindow, runtimeLimit) : contextWindow;
+      adapter = getModelAdapter(model.id);
 
       if (NimRequestBuilder.hasImageInput(messages) && !supportsVision) {
         progress.report(
@@ -391,19 +400,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         return;
       }
 
-      const {
-        requestBody,
-        reasoningIsolationExpected,
-        inputTokenCount,
-        requestedMaxTokens,
-        temperatureVal,
-        toolsEnabled,
-        tools,
-      } = await NimRequestBuilder.prepareRequest({
+      const prepared = await NimRequestBuilder.prepareRequest({
         model,
         messages,
         options,
-        contextWindow,
+        contextWindow: effectiveContextWindow,
         supportsTools,
         supportsVision,
         apiKey,
@@ -411,13 +412,20 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         signal: abortController.signal,
       });
 
-      let activeRequestBody = requestBody;
+      activeRequestBody = prepared.requestBody;
+      tools = prepared.tools;
+      let { reasoningIsolationExpected, inputTokenCount, requestedMaxTokens, safetyMargin, temperatureVal, toolsEnabled } = prepared;
+      const requestBody = prepared.requestBody;
+
       const recalculateActiveRequestBudget = (): void => {
-        const sentTools = activeRequestBody.tools ?? tools;
+        const sentTools = activeRequestBody!.tools ?? tools;
         const payloadInputTokenCount =
-          estimateNimMessagesTokens(activeRequestBody.messages) +
+          estimateNimMessagesTokens(activeRequestBody!.messages) +
           (sentTools ? estimateToolsTokens(sentTools) : 0);
-        const maximumInputTokens = Math.max(1, contextWindow - CONTEXT_WINDOW_SAFETY_MARGIN);
+        const maximumInputTokens = Math.max(
+          1,
+          effectiveContextWindow - calculateSafetyMargin(effectiveContextWindow),
+        );
         if (payloadInputTokenCount > maximumInputTokens) {
           throw new Error(
             formatStructuredError(
@@ -428,15 +436,15 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         }
 
         const currentMaxTokens =
-          typeof activeRequestBody.max_tokens === "number" && activeRequestBody.max_tokens > 0
-            ? activeRequestBody.max_tokens
+          typeof activeRequestBody!.max_tokens === "number" && activeRequestBody!.max_tokens > 0
+            ? activeRequestBody!.max_tokens
             : requestedMaxTokens;
         activeRequestBody = {
-          ...activeRequestBody,
+          ...activeRequestBody!,
           max_tokens: NimRequestBuilder.calculateRequestedMaxTokens({
             requestedMaxTokens: currentMaxTokens,
             modelMaxOutputTokens: model.maxOutputTokens,
-            contextWindow,
+            contextWindow: effectiveContextWindow,
             inputTokenCount: payloadInputTokenCount,
           }),
         };
@@ -455,9 +463,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
         totalAttempts += 1;
-        // Usage belongs to the final attempt. A retry can change the payload
-        // (for example by adding invalid-tool guidance), so never reuse usage
-        // from an earlier response in the final status-bar breakdown.
         finalUsage = undefined;
         const attemptStartedAtMs = Date.now();
         if (
@@ -631,8 +636,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
         try {
           for await (const chunk of streamChatCompletion(
-            apiKey,
-            activeRequestBody,
+            apiKey!,
+            activeRequestBody!,
             abortController.signal,
             this.userAgent,
             { maxOutputTokens: model.maxOutputTokens },
@@ -677,7 +682,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               }
             }
 
-            // Handle tool calls
             if (choice?.delta?.tool_calls) {
               markFirstResponse();
               sawToolCall = true;
@@ -685,7 +689,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             }
           }
 
-          // Flush any remaining buffered tool calls at stream end
           if (toolAggregator) {
             toolAggregator.flushRemaining();
           }
@@ -720,9 +723,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               `Network error during stream (retry ${networkRetryCount}/${MAX_NETWORK_RETRIES}): ${streamErr instanceof Error ? streamErr.message : String(streamErr)}`,
             );
             activeRequestBody = {
-              ...activeRequestBody,
+              ...activeRequestBody!,
               messages: [
-                ...activeRequestBody.messages,
+                ...activeRequestBody!.messages,
                 {
                   role: "system",
                   content:
@@ -748,12 +751,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           });
           debugLog("Skipped truncated text tool call", { name: incompleteTextToolName });
         }
-        // Incomplete control text is protocol noise. Do not leak it into the
-        // assistant response after it has been classified or suppressed.
         pendingTextEmbeddedContent = "";
 
-        // Preserve all user-visible text, including whitespace emitted before a
-        // rejected tool call. The fallback is reported separately below.
         if (pendingText) {
           flushPendingText();
         }
@@ -835,9 +834,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             retryReason = "invalid_tool_call";
             retryReasonHistory.push("invalid_tool_call");
             activeRequestBody = {
-              ...activeRequestBody,
+              ...activeRequestBody!,
               messages: [
-                ...activeRequestBody.messages,
+                ...activeRequestBody!.messages,
                 {
                   role: "system",
                   content: retryMessage,
@@ -864,8 +863,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
       if (this.statusBar) {
         const shortName = model.name ?? model.id.split("/").at(-1) ?? model.id;
-        const sentTools = activeRequestBody.tools ?? tools;
-        const categoryBreakdown = estimateNimMessagesTokensByCategory(activeRequestBody.messages);
+        const sentTools = activeRequestBody!.tools ?? tools;
+        const categoryBreakdown = estimateNimMessagesTokensByCategory(activeRequestBody!.messages);
         const toolsTokens = sentTools ? estimateToolsTokens(sentTools) : 0;
         const breakdown: TokenBreakdown = {
           modelName: shortName,
@@ -888,6 +887,144 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         throw new vscode.CancellationError();
       }
 
+      // Context overflow: server rejected prompt as too long.
+      // Parse the reported limit, compact history once, and retry with a
+      // smaller output reservation.  Only attempt when no content was emitted
+      // yet and we haven't already retried for this reason.
+      if (
+        !hasReportedContent &&
+        !hasRetriedContextOverflow &&
+        err instanceof NvidiaApiError &&
+        err.kind === "context_overflow" &&
+        apiKey &&
+        activeRequestBody
+      ) {
+        hasRetriedContextOverflow = true;
+        const overflowInfo =
+          err.contextOverflow ??
+          (err.status === 400 ? parseContextOverflowDetail(err.message) : {});
+        const reportedMax = overflowInfo.reportedMaximum;
+        const actualUsage = overflowInfo.actualUsage;
+        debugLog("contextOverflow", {
+          model: model.id,
+          reportedMax,
+          actualUsage,
+          catalogContextWindow: contextWindow,
+        });
+
+        if (
+          typeof reportedMax === "number" &&
+          reportedMax > 0 &&
+          reportedMax < contextWindow &&
+          keyFingerprint
+        ) {
+          this.contextLimitStore.set(model.id, reportedMax, keyFingerprint);
+        }
+
+        // Build a retry budget: use the server-reported limit if it is
+        // explicitly trusted and smaller than the catalog value, otherwise
+        // keep the catalog value and reduce output reservation aggressively.
+        const retryContextWindow =
+          typeof reportedMax === "number" && reportedMax > 0 && reportedMax < contextWindow
+            ? reportedMax
+            : contextWindow;
+        const safetyMargin = calculateSafetyMargin(retryContextWindow);
+        const compactedMaxOutput = Math.max(1024, Math.floor(retryContextWindow * 0.05));
+
+        // Compact conversation history: summarise old turns, keep system +
+        // current user turn + tool-call pairs.
+        try {
+          const apiMessages = convertMessages(Array.from(messages));
+          const maxRecentTokens = Math.floor(retryContextWindow * 0.4);
+          const { oldMessages, recentMessages } = splitMessagesForSummarization(
+            apiMessages,
+            maxRecentTokens,
+          );
+          if (oldMessages.length > 0) {
+            const summaryMessage = await summarizeOldMessages(
+              oldMessages,
+              apiKey,
+              this.userAgent,
+              abortController.signal,
+            );
+            const compactedMessages = [summaryMessage, ...recentMessages];
+            const compactedTokenCount = estimateNimMessagesTokens(compactedMessages);
+            const compactedMaxInput = Math.max(
+              1,
+              retryContextWindow - safetyMargin - compactedMaxOutput,
+            );
+
+            debugLog("contextOverflow", {
+              action: "retryAfterCompaction",
+              oldTurnCount: oldMessages.length,
+              recentTurnCount: recentMessages.length,
+              compactedTokens: compactedTokenCount,
+              compactedMaxInput,
+              compactedMaxOutput,
+            });
+
+            if (compactedTokenCount <= compactedMaxInput) {
+              const retryRequestBody = {
+                ...activeRequestBody,
+                messages: compactedMessages,
+                max_tokens: compactedMaxOutput,
+              };
+              vscode.window.showInformationMessage(
+                `Context overflow on ${model.name ?? model.id}. Retrying with compacted history…`,
+              );
+              // Stream the retry directly — do not recurse into the full
+              // provideLanguageModelChatResponse to avoid infinite loops.
+              for await (const chunk of streamChatCompletion(
+                apiKey,
+                retryRequestBody,
+                abortController.signal,
+                this.userAgent,
+                { maxOutputTokens: compactedMaxOutput },
+              )) {
+                if (token.isCancellationRequested) {
+                  throw new vscode.CancellationError();
+                }
+                const choice = chunk.choices?.[0];
+                const rawContent = choice?.delta?.content;
+                if (rawContent) {
+                  const content = adapter?.sanitizeResponseText?.(rawContent) ?? rawContent;
+                  progress.report(new vscode.LanguageModelTextPart(content));
+                  hasReportedContent = true;
+                }
+              }
+              return;
+            }
+          }
+        } catch (compactErr) {
+          if (compactErr instanceof Error && compactErr.name === "AbortError") {
+            throw new vscode.CancellationError();
+          }
+          debugLog("contextOverflow", {
+            action: "compactionFailed",
+            error: compactErr instanceof Error ? compactErr.message : String(compactErr),
+          });
+        }
+
+        // If we get here, compaction did not help — throw a clear message.
+        throw new Error(
+          formatStructuredError(
+            "context_overflow",
+            [
+              `Model: ${model.name ?? model.id}`,
+              reportedMax !== undefined
+                ? `Server-reported limit: ${reportedMax.toLocaleString()} tokens`
+                : null,
+              actualUsage !== undefined
+                ? `Prompt used: ${actualUsage.toLocaleString()} tokens`
+                : null,
+              "Start a new chat, reduce attachments, or switch to a model with a larger context window.",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          ),
+        );
+      }
+
       if (!hasReportedContent && err instanceof Error && err.message.includes("[RATE_LIMITED]")) {
         const modelApiKey = (await this.apiKeyResolver.resolveForModel(model))?.value;
         const fallbackModel = getFallbackModel(
@@ -902,7 +1039,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             maxInputTokens: Math.max(
               1,
               fallbackModel.contextWindow -
-                Math.min(fallbackModel.maxOutputTokens, DEFAULT_MAX_TOKENS),
+                Math.min(fallbackModel.maxOutputTokens, DEFAULT_MAX_TOKENS) -
+                calculateSafetyMargin(fallbackModel.contextWindow),
             ),
             maxOutputTokens: fallbackModel.maxOutputTokens,
             capabilities: {
@@ -979,9 +1117,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     try {
       const promptedKey = await this._apiKeyPrompt;
       if (promptedKey) {
-        // A picker model may carry a binding token for a provider group whose
-        // key was removed. Rebind that exact model after an interactive key
-        // entry so subsequent requests do not reopen the prompt.
         this.apiKeyResolver.registerModelKey(model, promptedKey);
       }
       return promptedKey;

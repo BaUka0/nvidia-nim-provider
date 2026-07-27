@@ -2,17 +2,55 @@
 
 ## Findings to date
 
-| Model | Endpoint result | Catalog value | Confidence |
+| Model | Observed at endpoint | Catalog value (model card) | Confidence |
 | --- | ---: | ---: | --- |
-| `poolside/laguna-xs-2.1` | 262144 accepted | 262144 | Confirmed |
-| `stepfun-ai/step-3.7-flash` | 262144 accepted | 262144 | Confirmed |
-| `z-ai/glm-5.2` | 202752 reported by API | 202752 | Confirmed |
-| `minimaxai/minimax-m3` | 524288 reported by API | 524288 | Confirmed |
-| `nvidia/nemotron-3-ultra-550b-a55b` | 1000000 reported by API | 1000000 | Confirmed |
+| `poolside/laguna-xs-2.1` | 262144 accepted | 262144 | Observed for tested account |
+| `stepfun-ai/step-3.7-flash` | 262144 accepted | 262144 | Observed for tested account |
+| `z-ai/glm-5.2` | 202752 reported by API | 1000000 | Observed for tested account; catalog uses model card |
+| `minimaxai/minimax-m3` | 524288 reported by API | 1000000 | Observed for tested account; catalog uses model card |
+| `nvidia/nemotron-3-ultra-550b-a55b` | 1000000 reported by API | 1000000 | Observed for tested account |
+| `deepseek-ai/deepseek-v4-pro` | 262144 reported by API (user issue) | 1048576 | Observed for tested account; catalog uses model card |
 | `thinkingmachines/inkling` | HTTP 500 at 1048575 prompt tokens | 1048576 | Unverified; service error |
 | `deepseek-ai/deepseek-v4-flash` | HTTP 503/504 during calibration | 1048576 | Unverified; service timeout |
-| `deepseek-ai/deepseek-v4-pro` | HTTP 504 during calibration | 1048576 | Unverified; service timeout |
-| `moonshotai/kimi-k2.6` | HTTP 404; function unavailable to account | catalog value | Unverified; access error |
+| `moonshotai/kimi-k2.6` | HTTP 404; function unavailable to account | 262144 | Unverified; access error |
+
+### Important: API limits ≠ model characteristics
+
+NVIDIA NIM API 400 error responses report **account/deployment-specific** context limits, not global model capabilities. These observed limits should **not** overwrite the curated catalog values (which reflect model card specifications). Instead, the extension should:
+
+1. Detect runtime limits from API error responses (`parseContextOverflowDetail`)
+2. Apply observed limits **locally** for retry logic and user feedback
+3. Preserve catalog integrity with model card values
+
+## Implementation status
+
+| Step | Description | Status |
+| --- | --- | --- |
+| 1 | Define effective budget (`calculateSafetyMargin`) | ✅ Complete |
+| 2 | Measure before sending (token estimation + diagnostics) | ✅ Complete |
+| 3 | Preflight long sessions (85% threshold compaction) | ✅ Complete |
+| 4 | Summarize evicted history (`summarizer.ts`) | ✅ Complete |
+| 5 | Handle server rejection (HTTP 400 parsing + retry) | ✅ Complete |
+| 6 | Cover long-session cases (edge-case tests) | ✅ Complete (19 tests) |
+| 7 | Validate in a real host | ⬜ Manual |
+
+## Files changed
+
+| File | Changes |
+|------|---------|
+| `src/shared/constants.ts` | `calculateSafetyMargin()` — dynamic: 4096 for ≤256K, 1% for ≥256K |
+| `src/api/errors.ts` | `context_overflow` kind, `parseContextOverflowDetail()`, `isContextOverflowError()`, HTTP 400 refinement, `\b` word boundary fix |
+| `src/provider/chat-provider.ts` | Context overflow retry with compaction, actionable message |
+| `src/provider/request-builder.ts` | Preflight compaction at 85% threshold, shared `compactMessages` helper, `PreparedRequest.safetyMargin`, budget debug log |
+| `src/provider/token-counter.ts` | Dynamic safety margin |
+| `tests/context-window-overflow.test.ts` | 19 tests for parsing, classification, safety margin (incl. edge cases) |
+| `CONTEXT_WINDOW_PLAN.md` | Updated with observed data, model card policy, step 2 complete |
+
+## Known limitations
+
+- `'N > M'` format (`"prompt is too long: 1048576 > 262144"`): `reportedMaximum` stays undefined due to maxMatch regex ordering
+- Context overflow retry doesn't handle reasoning content or tool calls from compacted stream (P1)
+- Dynamic runtime limit detection from API errors not yet applied to preflight checks (future work)
 
 ## Analysis plan
 

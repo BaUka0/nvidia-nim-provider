@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { CONTEXT_WINDOW_SAFETY_MARGIN, DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
+import { calculateSafetyMargin, DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 import {
   convertMessages,
   convertTools,
@@ -20,11 +20,20 @@ export interface PreparedRequest {
   reasoningIsolationExpected: boolean;
   inputTokenCount: number;
   requestedMaxTokens: number;
+  safetyMargin: number;
   temperatureVal: number;
   toolsEnabled: boolean;
   extraSystemMessages: string[];
   tools?: NimTool[];
 }
+
+/**
+ * When the prepared payload exceeds this fraction of the effective input budget,
+ * proactively compact older turns before the hard limit is reached.  This
+ * avoids the server rejecting the request outright and gives the user a
+ * smoother experience in long conversations.
+ */
+const PREFLIGHT_COMPACT_THRESHOLD = 0.85;
 
 export class NimRequestBuilder {
   public static calculateMaxToolResultChars(contextWindow: number): number {
@@ -46,9 +55,10 @@ export class NimRequestBuilder {
     contextWindow: number;
     inputTokenCount: number;
   }): number {
+    const safetyMargin = calculateSafetyMargin(options.contextWindow);
     const availableCompletionTokens = Math.max(
       1,
-      options.contextWindow - options.inputTokenCount - CONTEXT_WINDOW_SAFETY_MARGIN,
+      options.contextWindow - options.inputTokenCount - safetyMargin,
     );
 
     return Math.min(
@@ -97,7 +107,7 @@ export class NimRequestBuilder {
       messages as readonly { content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
     );
     const maxInputTokens = model.maxInputTokens;
-    const effectiveMaxInputTokens = Math.max(1, maxInputTokens - CONTEXT_WINDOW_SAFETY_MARGIN);
+    const effectiveMaxInputTokens = Math.max(1, maxInputTokens - calculateSafetyMargin(contextWindow));
 
     if (rawInputTokenCount > effectiveMaxInputTokens) {
       debugLog(
@@ -149,44 +159,74 @@ export class NimRequestBuilder {
     let apiTokenCount = estimateNimMessagesTokens(apiMessages);
     let payloadInputTokenCount = apiTokenCount + toolDefinitionTokens;
     const messageTokenBudget = Math.max(1, effectiveMaxInputTokens - toolDefinitionTokens);
+    const recentTokenBudget = Math.floor(messageTokenBudget * 0.4);
+
+    /**
+     * Summarise older turns and replace them with a compact summary message.
+     * Returns the new messages array and updated payloadInputTokenCount.
+     */
+    const compactMessages = async (
+      currentMessages: NimChatMessage[],
+      label: string,
+    ): Promise<{ messages: NimChatMessage[]; tokenCount: number }> => {
+      const { oldMessages, recentMessages } = splitMessagesForSummarization(
+        currentMessages,
+        recentTokenBudget,
+      );
+      if (oldMessages.length === 0) {
+        return { messages: currentMessages, tokenCount: payloadInputTokenCount };
+      }
+      const summaryMessage = await summarizeOldMessages(oldMessages, apiKey, userAgent, signal);
+      const recentSystemMessages = recentMessages.filter((m) => m.role === "system");
+      const recentConversationMessages = recentMessages.filter((m) => m.role !== "system");
+      const compacted = [...recentSystemMessages, summaryMessage, ...recentConversationMessages];
+      const tokenCount = estimateNimMessagesTokens(compacted) + toolDefinitionTokens;
+      debugLog(
+        "contextCompression",
+        `${label}: ${tokenCount} tokens (was ${payloadInputTokenCount}).`,
+      );
+      return { messages: compacted, tokenCount };
+    };
+
+    // --- Preflight compaction: proactive compression before hard limit ---
+    // When the payload exceeds the threshold (default 85%), compact older
+    // turns preemptively to avoid a server-side 400 rejection.
+    const compactThreshold = Math.floor(effectiveMaxInputTokens * PREFLIGHT_COMPACT_THRESHOLD);
+    if (payloadInputTokenCount > compactThreshold && payloadInputTokenCount <= effectiveMaxInputTokens) {
+      debugLog(
+        "contextCompression",
+        `Preflight: ${payloadInputTokenCount} tokens >= ${compactThreshold} threshold (${(PREFLIGHT_COMPACT_THRESHOLD * 100).toFixed(0)}%). Compacting proactively...`,
+      );
+      const result = await compactMessages(apiMessages, "Preflight compaction");
+      apiMessages = result.messages;
+      payloadInputTokenCount = result.tokenCount;
+    }
+
+    // --- Hard limit: reactive compression when over budget ---
     if (payloadInputTokenCount > effectiveMaxInputTokens) {
       debugLog(
         "contextCompression",
         `Prepared payload ${payloadInputTokenCount} tokens > ${effectiveMaxInputTokens} max. Compressing...`,
       );
-      const { oldMessages, recentMessages } = splitMessagesForSummarization(
-        apiMessages,
-        Math.floor(messageTokenBudget * 0.4),
-      );
-      if (oldMessages.length > 0) {
-        const summaryMessage = await summarizeOldMessages(oldMessages, apiKey, userAgent, signal);
-        const recentSystemMessages = recentMessages.filter((message) => message.role === "system");
-        const recentConversationMessages = recentMessages.filter(
-          (message) => message.role !== "system",
-        );
-        apiMessages = [...recentSystemMessages, summaryMessage, ...recentConversationMessages];
-        const compressedTokenCount = estimateNimMessagesTokens(apiMessages);
-        payloadInputTokenCount = compressedTokenCount + toolDefinitionTokens;
+      const result = await compactMessages(apiMessages, "Hard-limit compaction");
+      apiMessages = result.messages;
+      payloadInputTokenCount = result.tokenCount;
+
+      if (payloadInputTokenCount > effectiveMaxInputTokens) {
+        apiMessages = truncateMessagesForContext(apiMessages, messageTokenBudget);
+        const finalMessageTokenCount = estimateNimMessagesTokens(apiMessages);
+        payloadInputTokenCount = finalMessageTokenCount + toolDefinitionTokens;
         debugLog(
           "contextCompression",
-          `After compression: ${payloadInputTokenCount} tokens (was ${apiTokenCount + toolDefinitionTokens}).`,
+          `After truncation fallback: ${payloadInputTokenCount} tokens.`,
         );
         if (payloadInputTokenCount > effectiveMaxInputTokens) {
-          apiMessages = truncateMessagesForContext(apiMessages, messageTokenBudget);
-          const finalMessageTokenCount = estimateNimMessagesTokens(apiMessages);
-          payloadInputTokenCount = finalMessageTokenCount + toolDefinitionTokens;
-          debugLog(
-            "contextCompression",
-            `After truncation fallback: ${payloadInputTokenCount} tokens.`,
+          throw new Error(
+            formatStructuredError(
+              "token_limit",
+              `Even after compression and truncation: ${payloadInputTokenCount} tokens, max: ${effectiveMaxInputTokens}`,
+            ),
           );
-          if (payloadInputTokenCount > effectiveMaxInputTokens) {
-            throw new Error(
-              formatStructuredError(
-                "token_limit",
-                `Even after compression and truncation: ${payloadInputTokenCount} tokens, max: ${effectiveMaxInputTokens}`,
-              ),
-            );
-          }
         }
       }
     }
@@ -268,11 +308,25 @@ export class NimRequestBuilder {
 
     debugLog("Outgoing request messages", requestBody.messages);
 
+    const safetyMargin = calculateSafetyMargin(contextWindow);
+    const remainingBudget = Math.max(0, contextWindow - payloadInputTokenCount - requestedMaxTokens - safetyMargin);
+    const utilizationPercent = contextWindow > 0 ? ((payloadInputTokenCount / contextWindow) * 100).toFixed(1) : "0";
+    debugLog("budget", {
+      contextWindow,
+      safetyMargin,
+      estimatedInputTokens: payloadInputTokenCount,
+      reservedOutputTokens: requestedMaxTokens,
+      remainingBudget,
+      utilizationPercent: `${utilizationPercent}%`,
+      toolDefinitionTokens,
+    });
+
     return {
       requestBody,
       reasoningIsolationExpected,
       inputTokenCount: payloadInputTokenCount,
       requestedMaxTokens,
+      safetyMargin,
       temperatureVal,
       toolsEnabled,
       extraSystemMessages: requestProfile.extraSystemMessages,

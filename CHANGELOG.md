@@ -2,14 +2,18 @@
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-07-27
+
 ### Added
 
+- **Runtime context-limit store.** Server-reported context limits from HTTP 400 errors are now cached per model and API-key fingerprint. Subsequent requests automatically use `min(catalog, runtime)` as the effective budget, preventing repeated overflows without modifying the curated catalog.
 - **Complete curated-model capability matrix.** Declared reasoning, tool-calling, vision, context-window, output-limit, and adapter behavior for every bundled NVIDIA NIM model.
 - **Hardened model and credential infrastructure.** Added shared API-key resolution for provider groups and legacy secret storage, plus versioned model-cache ownership, migration, atomic persistence, refresh, and bounded LRU behavior.
 
 ### Changed
 
 - **Exact NVIDIA context windows.** Updated the curated catalog with endpoint-reported limits, including 202,752 tokens for GLM 5.2, 524,288 for MiniMax M3, and 1,000,000 for Nemotron 3 Ultra; retained a 1,048,576-token window for Inkling, and invalidated stale model caches.
+- **Model-card output limits.** Aligned `maxOutputTokens` with model-card specifications: DeepSeek V4 Flash/Pro 131,072, GLM 5.2 131,072, Step 3.7 Flash 262,144, Laguna XS 2.1 65,536.
 - **Reliable streaming and tool execution.** Improved split SSE delta and function-name assembly, malformed and truncated tool-call repair, JSON Schema validation, type normalization, duplicate suppression, and tool-result conversion.
 - **Abortable API lifecycle.** Centralized NVIDIA API errors and made retries, backoff, cancellation races, response-body cleanup, prompt locking, and rate-limit fallbacks cancellation-aware.
 - **Accurate context accounting.** Corrected prompt compression, retry output limits, image and tool-result estimates, and actual-versus-estimated status-bar usage.
@@ -17,6 +21,9 @@
 
 ### Fixed
 
+- **Context-overflow parser mis-extraction.** The `"your messages resulted in N tokens"` NVIDIA NIM error format previously captured the reported maximum as the actual usage. A dedicated `resulted in` regex now extracts both values correctly.
+- **Context-overflow retry loop.** Added a `hasRetriedContextOverflow` guard so the compact-and-retry path executes at most once per request, even if the retry also returns HTTP 400.
+- **Structured overflow failure message.** Final context-overflow errors now include the model name, server-reported limit, and actual prompt token count for actionable diagnostics.
 - **API-key isolation and fail-closed bindings.** Removed raw credentials from model metadata and normal logs; ambiguous or stale provider bindings no longer fall through to an unrelated key. Chat, summarization, and vision now use the same resolver.
 - **Vision tool contribution.** Declared `nvidia_nim_analyze_image` in `contributes.languageModelTools`, so VS Code registers it before extension activation.
 - **Current vision-model selection.** Refresh and cache updates can no longer leave vision requests bound to an obsolete model.
@@ -25,8 +32,11 @@
 
 - Added a public `/v1/models` metadata probe and calibrated context-window probes for 262,144, 500,000, and 1,048,576 tokens.
 - Recorded live probe outcomes: confirmed 202,752 for GLM 5.2, 524,288 for MiniMax M3, and 1,000,000 for Nemotron 3 Ultra; Inkling and both DeepSeek V4 variants returned service errors, while Kimi K2.6 returned an account-level 404. See `CONTEXT_WINDOW_PLAN.md` for the long-session overrun analysis plan.
+- Added parser tests for the `"resulted in"` error format across 202,752 / 262,144 / 524,288 / 1,000,000 limits, plus unrelated-400 rejection and `classifyApiError` integration.
+- Added `ContextLimitStore` unit tests: round-trip, per-model isolation, API-key invalidation, and clear semantics.
+- Synchronized catalog test expectations with updated model-card output limits.
 - Expanded regression coverage for API-key resolution, model capabilities and refresh, request building, streaming adapters, tool parsing, cancellation, token accounting, summarization, and extension activation.
-- Verified TypeScript compilation, formatting, packaging, all 443 Jest tests, isolated VSIX installation, and a real VS Code Extension Host activation smoke test.
+- Verified TypeScript compilation, formatting, packaging, all 475 Jest tests, isolated VSIX installation, and a real VS Code Extension Host activation smoke test.
 
 ## [0.4.9] - 2026-07-23
 
