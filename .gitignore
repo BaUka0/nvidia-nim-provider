@@ -17,6 +17,7 @@ coverage/
 
 # Gemini CLI
 .gemini/
+.qoder/
 
 # Misc
 .DS_Store

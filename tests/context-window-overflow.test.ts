@@ -84,7 +84,9 @@ describe("parseContextOverflowDetail", () => {
 
 describe("isContextOverflowError", () => {
   it("returns true for context length errors", () => {
-    expect(isContextOverflowError("This model's maximum context length is 262144 tokens")).toBe(true);
+    expect(isContextOverflowError("This model's maximum context length is 262144 tokens")).toBe(
+      true,
+    );
   });
 
   it("returns true for token limit exceeded errors", () => {

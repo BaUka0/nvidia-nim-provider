@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-29
+
+### Added
+
+- **Empty-stream recovery.** The provider now detects when a streamed completion finishes without surfacing any user-visible answer (`LanguageModelTextPart`) or tool call (`LanguageModelToolCallPart`). Fully empty streams (no reasoning, no content, no tool calls) are automatically retried up to two times within the existing attempt loop before failing.
+- **`empty_stream` structured error.** New `EMPTY_STREAM` error kind in `ERROR_MESSAGES` (`src/api/errors.ts`) replaces the previous silent resolution that produced Copilot Chat's `Sorry, no response was returned` placeholder. The final message includes the model name, attempt count, whether reasoning was emitted, and the last observed `finish_reason`.
+- **Visible-vs-thinking response tracking.** Introduced per-attempt `reportedVisibleContent` and outer `hasReportedVisibleContent`, distinct from `reportedContent`/`hasReportedContent`. Only text and tool-call parts count as a visible answer; thinking parts no longer mask an empty turn as success.
+- **Outer tool-intent guard.** New `sawToolCallOverall` flag tracks any streamed, text-embedded, invalid, or incomplete tool call across attempts so suppressed-duplicate and invalid-tool turns are not misclassified as an empty stream.
+- **Stream-end diagnostics.** `stream timing` and the new `stream finished` debug logs now record `reportedVisibleContent`, `sawReasoning`, `lastFinishReason`, `streamChunkCount`, `willRetryEmptyStream`, and `emptyStreamRetryCount`; a dedicated `emptyStreamRetry` log line is emitted on each empty-stream retry.
+
+### Changed
+
+- **Reasoning-only turns fail fast.** A turn that emits only `reasoning_content`/thinking with no answer or tool call (e.g. an NVIDIA NIM server-side stall mid-thinking) now raises `[EMPTY_STREAM]` immediately instead of being treated as a successful response. It is deliberately not multi-retried, to avoid compounding multi-minute stalls at `temperature: 0`.
+- **Empty-stream retry scope.** The empty-stream retry condition requires `!sawReasoning && !sawToolCall && !reportedVisibleContent && !emittedToolCall`, keeping it independent of the network-error and invalid-tool-call retry paths.
+
+### Fixed
+
+- **Silent `no response` on aborted streams.** Aborted or empty NVIDIA NIM streams no longer resolve without output; they retry or surface a structured error so Copilot Chat always receives either content or a real failure.
+- **Pre-existing lint failures.** Resolved 17 eslint errors across `src/provider/chat-provider.ts`, `src/api/errors.ts`, `src/provider/request-builder.ts`, and `tests/context-window-overflow.test.ts` (prettier formatting, `prefer-const`, and removal of dead `safetyMargin`/`requestBody` locals). `eslint src/ tests/ --quiet` now reports zero errors.
+
+### Removed
+
+- Deleted stale planning documents `CONTEXT_WINDOW_PLAN.md` and `CONTEXT_WINDOW_FIX_PLAN.md`, and the superseded `release-notes-0.4.10.md`.
+
+### Tests
+
+- Added empty-stream recovery coverage: a fully empty stream retries then throws `[EMPTY_STREAM]`, and a retry that returns content recovers cleanly.
+- Updated reasoning-only stream tests to assert the new `[EMPTY_STREAM]` failure (single attempt, no multi-retry) while preserving thinking-part routing assertions.
+- Verified TypeScript compilation, `eslint --quiet` (0 errors), and the full Jest suite (478 tests).
+
 ## [0.4.10] - 2026-07-27
 
 ### Added
@@ -31,7 +61,7 @@
 ### Tests
 
 - Added a public `/v1/models` metadata probe and calibrated context-window probes for 262,144, 500,000, and 1,048,576 tokens.
-- Recorded live probe outcomes: confirmed 202,752 for GLM 5.2, 524,288 for MiniMax M3, and 1,000,000 for Nemotron 3 Ultra; Inkling and both DeepSeek V4 variants returned service errors, while Kimi K2.6 returned an account-level 404. See `CONTEXT_WINDOW_PLAN.md` for the long-session overrun analysis plan.
+- Recorded live probe outcomes: confirmed 202,752 for GLM 5.2, 524,288 for MiniMax M3, and 1,000,000 for Nemotron 3 Ultra; Inkling and both DeepSeek V4 variants returned service errors, while Kimi K2.6 returned an account-level 404.
 - Added parser tests for the `"resulted in"` error format across 202,752 / 262,144 / 524,288 / 1,000,000 limits, plus unrelated-400 rejection and `classifyApiError` integration.
 - Added `ContextLimitStore` unit tests: round-trip, per-model isolation, API-key invalidation, and clear semantics.
 - Synchronized catalog test expectations with updated model-card output limits.

@@ -107,7 +107,10 @@ export class NimRequestBuilder {
       messages as readonly { content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
     );
     const maxInputTokens = model.maxInputTokens;
-    const effectiveMaxInputTokens = Math.max(1, maxInputTokens - calculateSafetyMargin(contextWindow));
+    const effectiveMaxInputTokens = Math.max(
+      1,
+      maxInputTokens - calculateSafetyMargin(contextWindow),
+    );
 
     if (rawInputTokenCount > effectiveMaxInputTokens) {
       debugLog(
@@ -192,7 +195,10 @@ export class NimRequestBuilder {
     // When the payload exceeds the threshold (default 85%), compact older
     // turns preemptively to avoid a server-side 400 rejection.
     const compactThreshold = Math.floor(effectiveMaxInputTokens * PREFLIGHT_COMPACT_THRESHOLD);
-    if (payloadInputTokenCount > compactThreshold && payloadInputTokenCount <= effectiveMaxInputTokens) {
+    if (
+      payloadInputTokenCount > compactThreshold &&
+      payloadInputTokenCount <= effectiveMaxInputTokens
+    ) {
       debugLog(
         "contextCompression",
         `Preflight: ${payloadInputTokenCount} tokens >= ${compactThreshold} threshold (${(PREFLIGHT_COMPACT_THRESHOLD * 100).toFixed(0)}%). Compacting proactively...`,
@@ -309,8 +315,12 @@ export class NimRequestBuilder {
     debugLog("Outgoing request messages", requestBody.messages);
 
     const safetyMargin = calculateSafetyMargin(contextWindow);
-    const remainingBudget = Math.max(0, contextWindow - payloadInputTokenCount - requestedMaxTokens - safetyMargin);
-    const utilizationPercent = contextWindow > 0 ? ((payloadInputTokenCount / contextWindow) * 100).toFixed(1) : "0";
+    const remainingBudget = Math.max(
+      0,
+      contextWindow - payloadInputTokenCount - requestedMaxTokens - safetyMargin,
+    );
+    const utilizationPercent =
+      contextWindow > 0 ? ((payloadInputTokenCount / contextWindow) * 100).toFixed(1) : "0";
     debugLog("budget", {
       contextWindow,
       safetyMargin,

@@ -329,7 +329,7 @@ describe("NimChatModelProvider", () => {
     expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "The answer is 42" }));
   });
 
-  it("flushes buffered reasoning even when no content follows", async () => {
+  it("throws empty_stream when reasoning was emitted without an answer or tool call", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -344,14 +344,17 @@ describe("NimChatModelProvider", () => {
       onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
     };
 
-    await provider.provideLanguageModelChatResponse(
-      { id: "deepseek-ai/deepseek-v4", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
-      progress,
-      token as any,
-    );
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        { id: "deepseek-ai/deepseek-v4", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        [{ role: 1, content: [{ value: "Hi" }] }] as any,
+        { modelOptions: {} } as any,
+        progress,
+        token as any,
+      ),
+    ).rejects.toThrow("[EMPTY_STREAM]");
 
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
     const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
     const thinkingReports = progress.report.mock.calls.filter(
       (c: any) => c[0] instanceof ThinkingPart,
@@ -613,7 +616,7 @@ describe("NimChatModelProvider", () => {
     }
   });
 
-  it("routes untagged content to thinking when reasoning is expected but reasoning_content is absent", async () => {
+  it("routes untagged content to thinking and throws empty_stream when no answer follows", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -629,14 +632,17 @@ describe("NimChatModelProvider", () => {
       onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
     };
 
-    await provider.provideLanguageModelChatResponse(
-      { id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
-      progress,
-      token as any,
-    );
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        { id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        [{ role: 1, content: [{ value: "Hi" }] }] as any,
+        { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+        progress,
+        token as any,
+      ),
+    ).rejects.toThrow("[EMPTY_STREAM]");
 
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
     const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
     const thinkingReports = progress.report.mock.calls.filter(
       (c: any) => c[0] instanceof ThinkingPart,
@@ -651,7 +657,7 @@ describe("NimChatModelProvider", () => {
     expect(thinkingText).toContain("Now let me look at the code to understand");
   });
 
-  it("keeps ambiguous content in thinking until an explicit reasoning close tag", async () => {
+  it("keeps ambiguous content in thinking and throws empty_stream when no close tag appears", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -667,14 +673,17 @@ describe("NimChatModelProvider", () => {
       onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
     };
 
-    await provider.provideLanguageModelChatResponse(
-      { id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
-      progress,
-      token as any,
-    );
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        { id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        [{ role: 1, content: [{ value: "Hi" }] }] as any,
+        { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+        progress,
+        token as any,
+      ),
+    ).rejects.toThrow("[EMPTY_STREAM]");
 
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
     const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
     const allReports = progress.report.mock.calls.map((c: any) => c[0]);
     const thinkingText = allReports
@@ -2570,5 +2579,100 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Recovered" }));
+  });
+
+  it("retries an empty stream and then throws a structured empty_stream error", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: {}, finish_reason: null }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        [{ role: 1, content: [{ value: "Hi" }] }] as any,
+        { modelOptions: {} } as any,
+        progress,
+        token as any,
+      ),
+    ).rejects.toThrow("[EMPTY_STREAM]");
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(3);
+    expect(progress.report).not.toHaveBeenCalled();
+  });
+
+  it("recovers when a retry after an empty stream returns content", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const emptyStream = async function* () {
+      yield { choices: [{ delta: {}, finish_reason: null }] };
+    };
+    const goodStream = async function* () {
+      yield { choices: [{ delta: { content: "Recovered answer" } }] };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockReturnValueOnce(emptyStream())
+      .mockReturnValueOnce(goodStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      { modelOptions: {} } as any,
+      progress,
+      token as any,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const textReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+    );
+    expect(textReports.map((c: any) => c[0].value).join("")).toBe("Recovered answer");
+  });
+
+  it("does not multi-retry a reasoning-only stream and throws empty_stream", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "thinking only" } }] };
+      yield { choices: [{ delta: {}, finish_reason: "stop" }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        { id: "deepseek-ai/deepseek-v4", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        [{ role: 1, content: [{ value: "Hi" }] }] as any,
+        { modelOptions: {} } as any,
+        progress,
+        token as any,
+      ),
+    ).rejects.toThrow("[EMPTY_STREAM]");
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+    const thinkingReports = progress.report.mock.calls.filter(
+      (c: any) => c[0] instanceof ThinkingPart,
+    );
+    expect(thinkingReports.length).toBeGreaterThanOrEqual(1);
   });
 });

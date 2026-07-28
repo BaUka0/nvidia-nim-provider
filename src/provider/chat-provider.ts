@@ -362,6 +362,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       abortController.abort();
     });
     let hasReportedContent = false;
+    let hasReportedVisibleContent = false;
+    let sawToolCallOverall = false;
     let hasRetriedContextOverflow = false;
     // Declared outside try so the catch-block context-overflow handler can access them.
     let apiKey: string | undefined;
@@ -382,8 +384,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       const requestPreparationStartedAtMs =
         process.env[DEBUG_ENV_VAR] === "1" ? Date.now() : undefined;
 
-      const { supportsTools, supportsVision, contextWindow: cw, runtimeMetadataSource } =
-        await this.resolveChatModelRuntimeInfo(model, apiKey);
+      const {
+        supportsTools,
+        supportsVision,
+        contextWindow: cw,
+        runtimeMetadataSource,
+      } = await this.resolveChatModelRuntimeInfo(model, apiKey);
       contextWindow = cw;
       keyFingerprint = getApiKeyFingerprint(apiKey);
       const runtimeLimit = this.contextLimitStore.get(model.id, keyFingerprint);
@@ -414,8 +420,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
       activeRequestBody = prepared.requestBody;
       tools = prepared.tools;
-      let { reasoningIsolationExpected, inputTokenCount, requestedMaxTokens, safetyMargin, temperatureVal, toolsEnabled } = prepared;
-      const requestBody = prepared.requestBody;
+      const {
+        reasoningIsolationExpected,
+        inputTokenCount,
+        requestedMaxTokens,
+        temperatureVal,
+        toolsEnabled,
+      } = prepared;
 
       const recalculateActiveRequestBudget = (): void => {
         const sentTools = activeRequestBody!.tools ?? tools;
@@ -460,6 +471,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         | undefined;
       let networkRetryCount = 0;
       const MAX_NETWORK_RETRIES = 2;
+      let emptyStreamRetryCount = 0;
+      const MAX_EMPTY_STREAM_RETRIES = 2;
+      let everSawReasoning = false;
+      let lastFinishReasonOverall: string | null | undefined = undefined;
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
         totalAttempts += 1;
@@ -478,6 +493,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         let sawToolCall = false;
         let emittedToolCall = false;
         let reportedContent = false;
+        let reportedVisibleContent = false;
+        let sawReasoning = false;
+        let lastFinishReason: string | null | undefined = undefined;
+        let streamChunkCount = 0;
         let firstResponseAtMs: number | undefined;
         let firstToolCallAtMs: number | undefined;
         let lastUsage:
@@ -493,6 +512,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           progress.report(part);
           reportedContent = true;
           hasReportedContent = true;
+          if (
+            part instanceof vscode.LanguageModelTextPart ||
+            part instanceof vscode.LanguageModelToolCallPart
+          ) {
+            reportedVisibleContent = true;
+            hasReportedVisibleContent = true;
+          }
         };
         const flushPendingText = (): void => {
           if (!pendingText) {
@@ -535,6 +561,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         const router = new ReasoningStreamRouter({
           reasoningIsolationExpected,
           onThinking: (text) => {
+            sawReasoning = true;
+            everSawReasoning = true;
             type ThinkingPartConstructor = new (value: string) => LanguageModelResponsePart;
             const ThinkingPart = (
               vscode as unknown as { LanguageModelThinkingPart?: ThinkingPartConstructor }
@@ -580,6 +608,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
             if (segment.type === "invalidToolCall") {
               sawToolCall = true;
+              sawToolCallOverall = true;
               const schema = getToolAggregator().getToolSchemas().get(segment.name);
               skippedToolCalls.push({
                 name: segment.name,
@@ -591,6 +620,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
             const toolCall = segment.toolCall;
             sawToolCall = true;
+            sawToolCallOverall = true;
             const schema = getToolAggregator().getToolSchemas().get(toolCall.name);
             const repairedArgs = repairToolArguments(
               toolCall.name,
@@ -647,6 +677,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             }
 
             const choice = chunk.choices?.[0];
+            streamChunkCount += 1;
+            if (choice?.finish_reason != null) {
+              lastFinishReason = choice.finish_reason;
+            }
 
             if (chunk.usage) {
               lastUsage = chunk.usage;
@@ -685,6 +719,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             if (choice?.delta?.tool_calls) {
               markFirstResponse();
               sawToolCall = true;
+              sawToolCallOverall = true;
               getToolAggregator().handleToolCalls(choice.delta.tool_calls);
             }
           }
@@ -739,11 +774,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
           throw streamErr;
         }
+        lastFinishReasonOverall = lastFinishReason;
         router.flush();
 
         const incompleteTextToolName = getIncompleteTextToolCallName(pendingTextEmbeddedContent);
         if (incompleteTextToolName) {
           sawToolCall = true;
+          sawToolCallOverall = true;
           const schema = getToolAggregator().getToolSchemas().get(incompleteTextToolName);
           skippedToolCalls.push({
             name: incompleteTextToolName,
@@ -769,8 +806,20 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           attempt === 0 &&
           !reportedContent &&
           Boolean(fallbackText && retryMessage);
+        const willRetryEmptyStream =
+          !sawReasoning &&
+          !sawToolCall &&
+          !reportedVisibleContent &&
+          !emittedToolCall &&
+          emptyStreamRetryCount < MAX_EMPTY_STREAM_RETRIES &&
+          attempt < 2;
         const currentRetryReason =
-          retryReason ?? (willRetryAfterInvalidToolCall ? "invalid_tool_call" : undefined);
+          retryReason ??
+          (willRetryAfterInvalidToolCall
+            ? "invalid_tool_call"
+            : willRetryEmptyStream
+              ? "empty_stream"
+              : undefined);
         const skippedToolCallNames = Array.from(new Set(skippedToolCalls.map((call) => call.name)));
 
         if (firstResponseAtMs !== undefined) {
@@ -820,7 +869,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                 }
               : {}),
             reportedContent,
+            reportedVisibleContent,
             emittedToolCall,
+            sawReasoning,
+            lastFinishReason,
+            streamChunkCount,
+            willRetryEmptyStream,
+            emptyStreamRetryCount,
           });
         }
 
@@ -854,11 +909,59 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         if (reportedContent || emittedToolCall) {
           deferredInvalidToolFallbackText = undefined;
         }
+
+        debugLog("stream finished", {
+          attempt: attempt + 1,
+          totalAttempts,
+          model: model.id,
+          reportedContent,
+          reportedVisibleContent,
+          emittedToolCall,
+          sawToolCall,
+          sawReasoning,
+          lastFinishReason,
+          streamChunkCount,
+          willRetryAfterInvalidToolCall,
+          willRetryEmptyStream,
+          emptyStreamRetryCount,
+        });
+
+        if (willRetryEmptyStream) {
+          emptyStreamRetryCount += 1;
+          retryReasonHistory.push("empty_stream");
+          debugLog(
+            "emptyStreamRetry",
+            `Empty stream (no text/tool/reasoning surfaced); retry ${emptyStreamRetryCount}/${MAX_EMPTY_STREAM_RETRIES}. lastFinishReason=${String(lastFinishReason)}, chunks=${streamChunkCount}`,
+          );
+          continue;
+        }
         break;
       }
 
       if (deferredInvalidToolFallbackText) {
         progress.report(new vscode.LanguageModelTextPart(deferredInvalidToolFallbackText));
+        hasReportedVisibleContent = true;
+      }
+
+      if (!hasReportedVisibleContent && !sawToolCallOverall && !deferredInvalidToolFallbackText) {
+        throw new Error(
+          formatStructuredError(
+            "empty_stream",
+            [
+              `Model: ${model.name ?? model.id}`,
+              `Attempts: ${totalAttempts}`,
+              everSawReasoning
+                ? "The model emitted reasoning but no visible answer or tool call."
+                : "The model returned no text, tool call, or reasoning.",
+              lastFinishReasonOverall !== undefined
+                ? `Last finish_reason: ${String(lastFinishReasonOverall)}`
+                : null,
+              "Try again, reduce reasoning effort, or switch to a different model.",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          ),
+        );
       }
 
       if (this.statusBar) {
@@ -990,6 +1093,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                   const content = adapter?.sanitizeResponseText?.(rawContent) ?? rawContent;
                   progress.report(new vscode.LanguageModelTextPart(content));
                   hasReportedContent = true;
+                  hasReportedVisibleContent = true;
                 }
               }
               return;

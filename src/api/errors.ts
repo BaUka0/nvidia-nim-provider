@@ -54,12 +54,18 @@ export const ERROR_MESSAGES: Record<string, StructuredError> = {
   context_overflow: {
     code: "CONTEXT_OVERFLOW",
     cause: "The prompt exceeds the model's context window limit.",
-    action: "The request will be retried with a shorter response. If it fails again, start a new chat.",
+    action:
+      "The request will be retried with a shorter response. If it fails again, start a new chat.",
   },
   token_limit: {
     code: "TOKEN_LIMIT_EXCEEDED",
     cause: "The conversation is too long for this model's context window.",
     action: "Start a new chat or switch to a model with a larger context window.",
+  },
+  empty_stream: {
+    code: "EMPTY_STREAM",
+    cause: "The model finished without returning any visible answer or tool call.",
+    action: "Try again. If it repeats, lower the reasoning effort or switch to a different model.",
   },
   network_error: {
     code: "NETWORK_ERROR",
