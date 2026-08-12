@@ -82,12 +82,12 @@ export const ELITE_MODELS_WHITELIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: true,
   },
-  "poolside/laguna-xs-2.1": {
-    displayName: "Laguna XS 2.1",
-    contextWindow: 262144,
-    maxOutputTokens: 65536,
+  "meta/muse-glimmer-30b": {
+    displayName: "Muse Glimmer",
+    contextWindow: 131072,
+    maxOutputTokens: 32768,
     supportsTools: true,
-    supportsVision: false,
+    supportsVision: true,
   },
 };
 

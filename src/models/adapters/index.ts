@@ -11,7 +11,7 @@ import { NemotronAdapter } from "./nemotron";
 import { MinimaxAdapter } from "./minimax";
 import { StepfunAdapter } from "./stepfun";
 import { InklingAdapter } from "./inkling";
-import { LagunaAdapter } from "./laguna";
+import { MuseGlimmerAdapter } from "./muse-glimmer";
 
 export {
   ModelAdapter,
@@ -29,7 +29,7 @@ export { NemotronAdapter } from "./nemotron";
 export { MinimaxAdapter } from "./minimax";
 export { StepfunAdapter } from "./stepfun";
 export { InklingAdapter } from "./inkling";
-export { LagunaAdapter } from "./laguna";
+export { MuseGlimmerAdapter } from "./muse-glimmer";
 
 class DefaultAdapter extends BaseModelAdapter {
   readonly idPattern = /.*/;
@@ -47,7 +47,7 @@ const ADAPTERS: ModelAdapter[] = [
   new MinimaxAdapter(),
   new StepfunAdapter(),
   new InklingAdapter(),
-  new LagunaAdapter(),
+  new MuseGlimmerAdapter(),
 ];
 
 const DEFAULT_ADAPTER = new DefaultAdapter();

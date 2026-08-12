@@ -1,6 +1,6 @@
 # NVIDIA NIM Agent
 
-VS Code extension that gives you access **exclusively** to the best, most powerful reasoning and agentic models available in NVIDIA NIM (DeepSeek, Kimi, GLM, Nemotron, MiniMax, Stepfun, Inkling, Laguna) directly inside the Copilot Chat interface.
+VS Code extension that gives you access **exclusively** to the best, most powerful reasoning and agentic models available in NVIDIA NIM (DeepSeek, Kimi, GLM, Nemotron, MiniMax, Stepfun, Inkling, Muse Glimmer) directly inside the Copilot Chat interface.
 
 ## Requirements
 
@@ -47,7 +47,7 @@ tool-calling system prompts, and reasoning configuration where required:
 | GLM 5.2                 | None, On                                     | Yes          | No     |
 | Step 3.7 Flash          | Always on                                    | Yes          | Yes    |
 | Inkling                 | None, Minimal, Low, Medium, High, XHigh, Max | Yes          | Yes    |
-| Laguna XS 2.1           | None, On                                     | Yes          | No     |
+| Muse Glimmer            | None, Low, Medium, High, XHigh               | Yes          | Yes    |
 
 When NVIDIA's `/models` response omits tool-calling capability metadata, chat models are treated as
 tool-capable so they remain selectable in Copilot Chat Agent mode.
@@ -127,7 +127,7 @@ Context probes require `NIM_API_KEY` (also accepts `NVIDIA_API_KEY`, `NVIDIA_NIM
 `max_tokens: 1`. Large probes consume billable input tokens.
 
 ```bash
-npm run probe:context:262k -- poolside/laguna-xs-2.1
+npm run probe:context:262k -- moonshotai/kimi-k2.6
 npm run probe:context:500k -- thinkingmachines/inkling
 npm run probe:context:1048k -- deepseek-ai/deepseek-v4-flash
 ```

@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-13
+
+### Added
+
+- **Muse Glimmer 30B support.** Added `meta/muse-glimmer-30b` with a 131,072-token context window, 32,768-token maximum output, vision input, tool calling, and reasoning efforts (`None` / `Low` / `Medium` / `High` / `XHigh`) sent via `reasoning_effort`.
+- **Muse Glimmer model adapter.** Added model-specific request configuration (`temperature: 1`, `reasoning_effort` parameter format) and direct-content reasoning routing.
+
+### Removed
+
+- **Laguna XS 2.1 support.** Removed `poolside/laguna-xs-2.1` from the curated catalog, along with its model adapter, response control-marker sanitization, and related regression tests.
+
 ## [0.5.0] - 2026-07-29
 
 ### Added

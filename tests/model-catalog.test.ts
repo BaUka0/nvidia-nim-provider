@@ -62,21 +62,21 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
-  it("normalizes poolside/laguna-xs-2.1 with its documented limits", () => {
+  it("normalizes meta/muse-glimmer-30b with its documented limits", () => {
     const raw: NvidiaModelSummary[] = [
       {
-        id: "poolside/laguna-xs-2.1",
+        id: "meta/muse-glimmer-30b",
       },
     ];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       {
-        id: "poolside/laguna-xs-2.1",
-        displayName: "Laguna XS 2.1",
-        contextWindow: 262144,
-        maxOutputTokens: 65536,
+        id: "meta/muse-glimmer-30b",
+        displayName: "Muse Glimmer",
+        contextWindow: 131072,
+        maxOutputTokens: 32768,
         supportsTools: true,
-        supportsVision: false,
+        supportsVision: true,
       },
     ]);
   });

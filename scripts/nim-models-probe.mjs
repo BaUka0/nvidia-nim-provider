@@ -8,7 +8,7 @@ const CURATED_MODEL_IDS = new Set([
   "z-ai/glm-5.2",
   "stepfun-ai/step-3.7-flash",
   "thinkingmachines/inkling",
-  "poolside/laguna-xs-2.1",
+  "meta/muse-glimmer-30b",
 ]);
 
 const baseUrl = (process.env.NVIDIA_NIM_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");

@@ -154,20 +154,20 @@ describe("applyReasoningMode", () => {
     expect(request.reasoning_effort).toBe("none");
   });
 
-  it("toggles Laguna reasoning through chat_template_kwargs", () => {
-    const adapter = getModelAdapter("poolside/laguna-xs-2.1");
+  it("exposes Muse Glimmer reasoning effort modes and sends the selected mode", () => {
+    const adapter = getModelAdapter("meta/muse-glimmer-30b");
     const request: NimChatRequest = {
-      model: "poolside/laguna-xs-2.1",
+      model: "meta/muse-glimmer-30b",
       messages: [],
     };
 
-    expect(adapter.supportedReasoningModes).toEqual(["none", "on"]);
+    expect(adapter.supportedReasoningModes).toEqual(["none", "low", "medium", "high", "xhigh"]);
     expect(adapter.getProfile({ toolsEnabled: true }).defaultTemperature).toBe(1);
 
-    adapter.applyReasoningMode!(request, "on");
-    expect(request.chat_template_kwargs).toEqual({ enable_thinking: true });
+    adapter.applyReasoningMode!(request, "high");
+    expect(request.reasoning_effort).toBe("high");
 
     adapter.applyReasoningMode!(request, "none");
-    expect(request.chat_template_kwargs).toEqual({ enable_thinking: false });
+    expect(request.reasoning_effort).toBe("none");
   });
 });

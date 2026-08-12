@@ -825,79 +825,6 @@ describe("NimChatModelProvider", () => {
     expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "Inkling final answer" }));
   });
 
-  it("separates Laguna reasoning before an orphaned close tag and removes its control marker", async () => {
-    (secrets.get as jest.Mock).mockResolvedValue("test-key");
-
-    const mockStream = async function* () {
-      yield {
-        choices: [
-          {
-            delta: { content: "Laguna reasoning</think>Laguna final answer ∆" },
-          },
-        ],
-      };
-    };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
-
-    const progress = { report: jest.fn() };
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
-
-    await provider.provideLanguageModelChatResponse(
-      { id: "poolside/laguna-xs-2.1", maxInputTokens: 100000, maxOutputTokens: 16384 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
-      progress,
-      token as any,
-    );
-
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const thinkingText = progress.report.mock.calls
-      .filter((c: any) => c[0] instanceof ThinkingPart)
-      .map((c: any) => c[0].value)
-      .join("");
-    const answerText = progress.report.mock.calls
-      .filter((c: any) => c[0] instanceof vscode.LanguageModelTextPart)
-      .map((c: any) => c[0].value)
-      .join("");
-
-    expect(thinkingText).toBe("Laguna reasoning");
-    expect(answerText).toBe("Laguna final answer");
-    expect(answerText).not.toContain("∆");
-  });
-
-  it("returns a Laguna content-only response when reasoning output is absent", async () => {
-    (secrets.get as jest.Mock).mockResolvedValue("test-key");
-
-    const mockStream = async function* () {
-      yield {
-        choices: [{ delta: { content: "Привет! Я могу помочь." } }],
-      };
-    };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
-
-    const progress = { report: jest.fn() };
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
-
-    await provider.provideLanguageModelChatResponse(
-      { id: "poolside/laguna-xs-2.1", maxInputTokens: 100000, maxOutputTokens: 16384 } as any,
-      [{ role: 1, content: [{ value: "Привет" }] }] as any,
-      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
-      progress,
-      token as any,
-    );
-
-    const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
-    );
-    expect(textReports.map((c: any) => c[0].value).join("")).toBe("Привет! Я могу помочь.");
-  });
-
   it("emits think-tag content as a thinking part for kimi models", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
@@ -2139,7 +2066,7 @@ describe("NimChatModelProvider", () => {
     ["z-ai/glm-5.2", false],
     ["stepfun-ai/step-3.7-flash", true],
     ["thinkingmachines/inkling", true],
-    ["poolside/laguna-xs-2.1", false],
+    ["meta/muse-glimmer-30b", true],
   ] as const)("enforces the curated vision capability for %s", async (modelId, supportsVision) => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     const mockStream = async function* () {
