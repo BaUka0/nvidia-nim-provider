@@ -4,6 +4,7 @@
 .codex/**
 .gemini/**
 .opencode/**
+.qoder/**
 .vscode/**
 .vscode-test/**
 .venv/**
