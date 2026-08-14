@@ -54,6 +54,21 @@ describe("output-channel", () => {
     );
   });
 
+  it("debugLog survives circular payloads without throwing", async () => {
+    process.env.NVIDIA_NIM_DEBUG = "1";
+
+    const { debugLog, getOutputChannel } = await import("../src/shared/logging");
+    getOutputChannel();
+
+    const circular: Record<string, unknown> = { name: "loop" };
+    circular.self = circular;
+
+    expect(() => debugLog("circular", circular)).not.toThrow();
+    expect(mockAppendLine).toHaveBeenCalledWith(
+      expect.stringContaining("[NVIDIA NIM Debug] circular:"),
+    );
+  });
+
   it("errorLog and warnLog still work when debug is enabled", async () => {
     process.env.NVIDIA_NIM_DEBUG = "1";
 

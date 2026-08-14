@@ -1,6 +1,28 @@
 # Change Log
 
-## [Unreleased]
+## [0.5.2] - 2026-08-14
+
+### Added
+
+- **Fetch-attempt budget.** Every response now shares a `MAX_TOTAL_FETCH_ATTEMPTS` connection budget across all of its stream attempts (initial tries, empty-stream, network, and context-overflow retries). Nested retry layers previously multiplied into ~9+ requests against a rate-limited endpoint; the observed worst case is now capped.
+- **Overflow retry preserves tool calls and reasoning.** When a context-overflow compaction retry is issued, streamed `tool_calls` are aggregated and emitted instead of being silently dropped, and `reasoning_content` is surfaced as thinking parts. Tool results in the compacted history are now truncated (`maxToolResultChars`) and vision content is preserved via the same conversion options as the primary request.
+- **Vision input validation.** The `nvidia_nim_analyze_image` tool now requires a base64 image data URL (`data:image/...;base64,...`) and rejects remote URLs and oversized payloads (max 20 MB) before any API access.
+- **Clickable token breakdown.** The status bar keeps its refresh command active after showing the token-usage breakdown instead of becoming inert.
+- **Retry budget test coverage.** Added provider/client tests for the fetch budget, the overflow-retry tool/reasoning paths, `max_tokens` error classification, network-retry message role, empty summarizer fallback, and circular log payloads.
+
+### Changed
+
+- **Context-overflow detection narrowed.** The overly broad `/max.*token/i` pattern was replaced with anchored variants requiring an explicit excess or limit. HTTP 400 validation errors such as `invalid value for 'max_tokens'` are no longer misclassified as `context_overflow`, avoiding needless history compaction and retries.
+- **Rate-limit fallback detected by type.** The DeepSeek Flash fallback now fires on `NvidiaApiError` with `kind === "rate_limited"` instead of string-matching `[RATE_LIMITED]`.
+- **Network-retry message role.** The guidance injected after a mid-stream network failure is now sent as a `user` turn, which is universally accepted by OpenAI-compatible backends, instead of a trailing `system` message.
+- **Cryptographic tool-call IDs.** Generated tool-call IDs now use `crypto.randomUUID()` instead of `Math.random()`.
+- **Empty summaries fall back to truncation.** If the summarizer returns an empty response, the previous-context fallback truncation is used instead of inserting an empty `[Previous conversation summary]`.
+- **Logging resilience.** `debugLog`/`outputLog`/`warnLog`/`errorLog` no longer throw on circular payloads.
+- **Token estimates consistent.** Unknown message parts contribute a placeholder token count in category breakdowns, matching `estimatePartTokens`.
+
+### Removed
+
+- **Dead code.** Removed the unused `TokenCounter` module, `validateRequest` and `tryParseJSONObject` from the message converter, and the duplicated `SkippedToolCall` interface in the tool-call aggregator.
 
 ## [0.5.1] - 2026-08-13
 

@@ -104,6 +104,21 @@ describe("isContextOverflowError", () => {
   it("returns false for undefined", () => {
     expect(isContextOverflowError(undefined)).toBe(false);
   });
+
+  it("returns false for max_tokens parameter validation errors", () => {
+    expect(
+      isContextOverflowError("Invalid value for 'max_tokens': must be a positive integer."),
+    ).toBe(false);
+    expect(isContextOverflowError("'max_tokens' must be at most 8192 for this model.")).toBe(false);
+  });
+
+  it("returns true for explicit max-token excess phrasings", () => {
+    expect(isContextOverflowError("max tokens exceeded")).toBe(true);
+    expect(isContextOverflowError("maximum token limit is 204800")).toBe(true);
+    expect(
+      isContextOverflowError("This request exceeds the maximum number of tokens allowed."),
+    ).toBe(true);
+  });
 });
 
 describe("classifyApiError context overflow", () => {
@@ -132,6 +147,18 @@ describe("classifyApiError context overflow", () => {
     });
     expect(classified).toBeInstanceOf(NvidiaApiError);
     expect((classified as NvidiaApiError).kind).toBe("invalid_request");
+  });
+
+  it("keeps HTTP 400 max_tokens validation errors as invalid_request", () => {
+    const detail = "Invalid value for 'max_tokens': must be a positive integer.";
+    const classified = classifyApiError(new Error(`HTTP 400 Bad Request: ${detail}`), {
+      status: 400,
+      operation: "stream",
+      detail,
+    });
+    expect(classified).toBeInstanceOf(NvidiaApiError);
+    expect((classified as NvidiaApiError).kind).toBe("invalid_request");
+    expect((classified as NvidiaApiError).contextOverflow).toBeUndefined();
   });
 
   it("classifies HTTP 429 as rate_limited", () => {

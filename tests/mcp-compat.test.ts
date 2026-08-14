@@ -23,6 +23,30 @@ describe("NimVisionClient", () => {
     expect(secrets.get).toHaveBeenCalledWith("nvidia-nim.apiKey");
   });
 
+  it("rejects a remote image URL without touching the API key", async () => {
+    const secrets = { get: jest.fn(async () => "test-key") };
+    const client = new NimVisionClient(secrets as never);
+    await expect(client.analyzeImage("https://example.com/cat.png", "What?")).rejects.toThrow(
+      "requires a base64 image data URL",
+    );
+    expect(secrets.get).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-base64 data URL", async () => {
+    const client = new NimVisionClient({ get: jest.fn() } as never);
+    await expect(client.analyzeImage("data:image/png,raw-bytes", "What?")).rejects.toThrow(
+      "requires a base64 image data URL",
+    );
+  });
+
+  it("rejects oversized image payloads", async () => {
+    const client = new NimVisionClient({ get: jest.fn() } as never);
+    const oversizedBase64 = `data:image/png;base64,${"A".repeat(30 * 1024 * 1024)}`;
+    await expect(client.analyzeImage(oversizedBase64, "What?")).rejects.toThrow(
+      "image is too large",
+    );
+  });
+
   it("uses the cached NVIDIA vision model for image analysis", async () => {
     const secrets = {
       get: jest.fn(async () => "test-key"),

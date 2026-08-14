@@ -465,6 +465,27 @@ describe("streamChatCompletion", () => {
     await expect(gen.next()).rejects.toThrow("HTTP 429");
     expect(fetch).toHaveBeenCalledTimes(3);
   });
+
+  it("honors a reduced maxFetchAttempts budget for stream connections", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: "Too Many Requests",
+      headers: { get: (name: string) => (name === "retry-after" ? "0" : null) },
+      text: async () => "Rate limited",
+    } as any);
+
+    const gen = streamChatCompletion(
+      "key",
+      { model: "kimi-k2.6", messages: [], stream: true },
+      undefined,
+      undefined,
+      { maxFetchAttempts: 1 },
+    );
+    await expect(gen.next()).rejects.toThrow("HTTP 429");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("handles partial lines across chunks", async () => {
     const chunk: NimStreamResponse = {
       id: "1",

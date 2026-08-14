@@ -303,7 +303,7 @@ export async function* streamChatCompletion(
   requestBody: NimChatRequest,
   signal?: AbortSignal,
   userAgent?: string,
-  options?: { maxOutputTokens?: number },
+  options?: { maxOutputTokens?: number; maxFetchAttempts?: number },
 ): AsyncGenerator<NimStreamResponse, void, unknown> {
   const response = await fetchWithRetry(
     `${BASE_URL}/chat/completions`,
@@ -317,7 +317,7 @@ export async function* streamChatCompletion(
       body: JSON.stringify(requestBody),
       signal,
     },
-    3,
+    Math.max(1, options?.maxFetchAttempts ?? 3),
     { operation: "stream", model: requestBody.model },
   );
 

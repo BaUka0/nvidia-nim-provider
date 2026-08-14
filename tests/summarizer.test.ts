@@ -173,6 +173,25 @@ describe("summarizeOldMessages", () => {
     expect(userMessage?.content).toContain("Earlier content clipped");
   });
 
+  it("falls back to truncation when the API returns an empty summary", async () => {
+    const completionMock = chatCompletion as jest.Mock;
+    completionMock.mockResolvedValueOnce("   ");
+
+    const summary = await summarizeOldMessages(
+      [
+        { role: "user", content: "Old question" },
+        { role: "assistant", content: "Old answer" },
+      ],
+      "test-key",
+      "test-agent",
+    );
+
+    expect(summary.role).toBe("system");
+    expect(summary.content).toEqual(
+      expect.stringContaining("[Previous conversation — truncated due to context limits]"),
+    );
+  });
+
   it("propagates summarizer cancellation instead of silently truncating", async () => {
     const cancellation = new Error("aborted");
     cancellation.name = "AbortError";

@@ -60,6 +60,30 @@ describe("NimAnalyzeImageTool", () => {
     expect((result.content[0] as any).value).toContain("API down");
   });
 
+  it("rejects remote image URLs before any API access", async () => {
+    jest.restoreAllMocks();
+    const result = await tool.invoke(
+      {
+        input: { image_data: "https://example.com/cat.png", prompt: "What is this?" },
+      } as any,
+      { isCancellationRequested: false } as any,
+    );
+    expect((result.content[0] as any).value).toContain("requires a base64 image data URL");
+    expect(secrets.get).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-base64 data URLs before any API access", async () => {
+    jest.restoreAllMocks();
+    const result = await tool.invoke(
+      {
+        input: { image_data: "data:image/png,not-base64", prompt: "What is this?" },
+      } as any,
+      { isCancellationRequested: false } as any,
+    );
+    expect((result.content[0] as any).value).toContain("requires a base64 image data URL");
+    expect(secrets.get).not.toHaveBeenCalled();
+  });
+
   it("prepareInvocation returns invocation message", async () => {
     const prepared = await tool.prepareInvocation!(
       { input: { image_data: "", prompt: "" } } as any,

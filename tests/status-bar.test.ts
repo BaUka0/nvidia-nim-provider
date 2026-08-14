@@ -173,7 +173,7 @@ describe("StatusBarManager", () => {
       expect(md.value).toMatch(/262.?144/);
     });
 
-    it("sets command to undefined (no refresh on click)", async () => {
+    it("keeps the refresh command active after showing the token breakdown", async () => {
       const { StatusBarManager } = await import("../src/shared/status-bar");
       const manager = new StatusBarManager();
       const item = mockCreateStatusBarItem.mock.results[0].value;
@@ -190,7 +190,7 @@ describe("StatusBarManager", () => {
         output: 0,
         contextWindow: 262144,
       });
-      expect(item.command).toBeUndefined();
+      expect(item.command).toBe("nvidia-nim.refreshModels");
     });
 
     it("sets warning background at >80% context usage", async () => {

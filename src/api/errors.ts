@@ -97,7 +97,11 @@ const CONTEXT_OVERFLOW_PATTERNS = [
   /prompt.*too.*long/i,
   /prompt.*length.*exceed/i,
   /request.*too.*large/i,
-  /max.*token/i,
+  // "max token" variants require an explicit excess/limit verb so unrelated
+  // 400s such as "invalid value for max_tokens" are not misclassified.
+  /max(?:imum)?[^.\n]{0,40}tokens?\s+(?:limit\s+)?exceed(?:s|ed)?/i,
+  /exceed(?:s|ed)?[^.\n]{0,40}max(?:imum)?[^.\n]{0,40}tokens?/i,
+  /max(?:imum)?\s+(?:context\s+)?(?:length|tokens?)\s+(?:limit\s+)?(?:is|of)\s+\d/i,
 ];
 
 /**

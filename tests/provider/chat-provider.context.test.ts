@@ -1,8 +1,10 @@
 import * as vscode from "vscode";
-import { streamChatCompletion } from "../../src/api/client";
+import { chatCompletion, streamChatCompletion } from "../../src/api/client";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
+import { NvidiaApiError } from "../../src/api/errors";
 
 jest.mock("../../src/api/client", () => ({
+  chatCompletion: jest.fn(),
   fetchModels: jest.fn(),
   streamChatCompletion: jest.fn(),
 }));
@@ -29,6 +31,9 @@ jest.mock("vscode", () => ({
       public callId: string,
       public content: unknown[],
     ) {}
+  },
+  LanguageModelThinkingPart: class {
+    constructor(public value: string) {}
   },
   window: {
     createOutputChannel: jest.fn(() => ({
@@ -892,5 +897,180 @@ describe("NimChatModelProvider", () => {
         }),
       ]),
     );
+  });
+
+  describe("context overflow compaction retry", () => {
+    // The test model is not in the curated whitelist, so its runtime context
+    // window resolves to maxInputTokens + maxOutputTokens = 165536. The
+    // server-reported maximum must stay below that for the retry to use it.
+    const overflowError = () =>
+      new NvidiaApiError("context_overflow", "HTTP 400 Bad Request: context overflow", {
+        status: 400,
+        contextOverflow: { reportedMaximum: 150000, actualUsage: 160000 },
+      });
+
+    const makeMessages = () =>
+      [
+        { role: 1, content: [{ value: "Hi" }] },
+        { role: 2, content: [{ value: "Hello, how can I help?" }] },
+        { role: 1, content: [{ value: "What is the weather in Tokyo?" }] },
+      ] as any;
+
+    const makeToken = () =>
+      ({
+        isCancellationRequested: false,
+        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+      }) as any;
+
+    const weatherTool = {
+      name: "get_weather",
+      description: "Get weather",
+      inputSchema: {
+        type: "object",
+        properties: { city: { type: "string" } },
+        required: ["city"],
+      },
+    };
+
+    it("emits tool calls from the compacted retry instead of dropping them", async () => {
+      (secrets.get as jest.Mock).mockResolvedValue("test-key");
+      (chatCompletion as jest.Mock).mockResolvedValue("Compacted summary.");
+
+      const overflowingStream = async function* () {
+        throw overflowError();
+      };
+      const retryStream = async function* () {
+        yield {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_retry",
+                    type: "function",
+                    function: { name: "get_weather", arguments: '{"city":"Tokyo"}' },
+                  },
+                ],
+              },
+            },
+          ],
+        };
+      };
+      (streamChatCompletion as jest.Mock)
+        .mockImplementationOnce(() => overflowingStream())
+        .mockImplementationOnce(() => retryStream());
+
+      const progress = { report: jest.fn() };
+      await provider.provideLanguageModelChatResponse(
+        { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        makeMessages(),
+        { modelOptions: {}, tools: [weatherTool] } as any,
+        progress,
+        makeToken(),
+      );
+
+      expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+      const retryRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+      expect(retryRequest.messages[0]).toEqual(
+        expect.objectContaining({
+          role: "system",
+          content: "[Previous conversation summary]: Compacted summary.",
+        }),
+      );
+      expect(retryRequest.max_tokens).toBe(Math.max(1024, Math.floor(150000 * 0.05)));
+
+      const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+      expect(toolCallReports).toHaveLength(1);
+      expect(toolCallReports[0][0].name).toBe("get_weather");
+      expect(toolCallReports[0][0].input).toEqual({ city: "Tokyo" });
+    });
+
+    it("reports reasoning_content from the compacted retry as thinking parts", async () => {
+      (secrets.get as jest.Mock).mockResolvedValue("test-key");
+      (chatCompletion as jest.Mock).mockResolvedValue("Compacted summary.");
+
+      const overflowingStream = async function* () {
+        throw overflowError();
+      };
+      const retryStream = async function* () {
+        yield { choices: [{ delta: { reasoning_content: "Let me think." } }] };
+        yield { choices: [{ delta: { content: "Final answer" } }] };
+      };
+      (streamChatCompletion as jest.Mock)
+        .mockImplementationOnce(() => overflowingStream())
+        .mockImplementationOnce(() => retryStream());
+
+      const progress = { report: jest.fn() };
+      await provider.provideLanguageModelChatResponse(
+        { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        makeMessages(),
+        { modelOptions: {} } as any,
+        progress,
+        makeToken(),
+      );
+
+      expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+      const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+      const thinkingReports = progress.report.mock.calls.filter(
+        (c: any) => c[0] instanceof ThinkingPart,
+      );
+      expect(thinkingReports).toHaveLength(1);
+      expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "Let me think." }));
+      expect(progress.report).toHaveBeenCalledWith(
+        expect.objectContaining({ value: "Final answer" }),
+      );
+    });
+
+    it("truncates large tool results when converting messages for the compacted retry", async () => {
+      (secrets.get as jest.Mock).mockResolvedValue("test-key");
+      (chatCompletion as jest.Mock).mockResolvedValue("Compacted summary.");
+
+      const overflowingStream = async function* () {
+        throw overflowError();
+      };
+      const retryStream = async function* () {
+        yield { choices: [{ delta: { content: "Done" } }] };
+      };
+      (streamChatCompletion as jest.Mock)
+        .mockImplementationOnce(() => overflowingStream())
+        .mockImplementationOnce(() => retryStream());
+
+      const hugeToolResult = "x".repeat(80000);
+      const messages = [
+        { role: 1, content: [{ value: "Hi" }] },
+        { role: 2, content: [{ value: "Hello!" }] },
+        {
+          role: 2,
+          content: [
+            new (vscode as any).LanguageModelToolCallPart("call_1", "get_weather", {
+              city: "Tokyo",
+            }),
+          ],
+        },
+        {
+          role: 1,
+          content: [
+            new (vscode as any).LanguageModelToolResultPart("call_1", [
+              new (vscode as any).LanguageModelTextPart(hugeToolResult),
+            ]),
+          ],
+        },
+        { role: 1, content: [{ value: "Summarize the tool output" }] },
+      ] as any;
+
+      await provider.provideLanguageModelChatResponse(
+        { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        messages,
+        { modelOptions: {}, tools: [weatherTool] } as any,
+        { report: jest.fn() },
+        makeToken(),
+      );
+
+      expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+      const retryRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+      const retryJson = JSON.stringify(retryRequest.messages);
+      expect(retryJson.length).toBeLessThan(hugeToolResult.length);
+    });
   });
 });

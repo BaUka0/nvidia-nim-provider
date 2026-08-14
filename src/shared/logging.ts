@@ -34,11 +34,23 @@ export function debugEnabled(): boolean {
   return process.env[DEBUG_ENV_VAR] === "1";
 }
 
+/** Serialize a log payload without ever throwing on circular structures. */
+function toLogMessage(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 export function debugLog(label: string, value: unknown): void {
   if (!debugEnabled()) {
     return;
   }
-  const message = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const message = toLogMessage(value);
   const channel = getGlobalOutputChannel();
   if (channel) {
     channel.appendLine(`${DEBUG_LOG_PREFIX} ${label}: ${message}`);
@@ -48,7 +60,7 @@ export function debugLog(label: string, value: unknown): void {
 }
 
 export function outputLog(label: string, value: unknown): void {
-  const message = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const message = toLogMessage(value);
   const channel = getGlobalOutputChannel();
   if (channel) {
     channel.appendLine(`${LOG_PREFIX} ${label}: ${message}`);
@@ -58,7 +70,7 @@ export function outputLog(label: string, value: unknown): void {
 }
 
 export function errorLog(label: string, value: unknown): void {
-  const message = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const message = toLogMessage(value);
   const channel = getGlobalOutputChannel();
   if (channel) {
     channel.appendLine(`${ERROR_LOG_PREFIX} ${label}: ${message}`);
@@ -68,7 +80,7 @@ export function errorLog(label: string, value: unknown): void {
 }
 
 export function warnLog(label: string, value: unknown): void {
-  const message = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const message = toLogMessage(value);
   const channel = getGlobalOutputChannel();
   if (channel) {
     channel.appendLine(`${WARN_LOG_PREFIX} ${label}: ${message}`);

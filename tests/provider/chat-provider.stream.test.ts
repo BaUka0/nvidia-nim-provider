@@ -142,7 +142,7 @@ describe("NimChatModelProvider", () => {
       expect.objectContaining({ model: "kimi-k2.6", stream: true }),
       expect.any(AbortSignal),
       "test-ua",
-      { maxOutputTokens: 65536 },
+      expect.objectContaining({ maxOutputTokens: 65536 }),
     );
     expect(progress.report).toHaveBeenCalledTimes(2);
     expect(progress.report).toHaveBeenNthCalledWith(1, expect.objectContaining({ value: "Hello" }));
@@ -745,7 +745,7 @@ describe("NimChatModelProvider", () => {
       }),
       expect.any(AbortSignal),
       "test-ua",
-      { maxOutputTokens: 65536 },
+      expect.objectContaining({ maxOutputTokens: 65536 }),
     );
   });
 
@@ -1904,7 +1904,7 @@ describe("NimChatModelProvider", () => {
       expect.objectContaining({ model: "kimi-k2.6", stream: true }),
       expect.any(AbortSignal),
       "test-ua",
-      { maxOutputTokens: 65536 },
+      expect.objectContaining({ maxOutputTokens: 65536 }),
     );
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Hello from NVIDIA NIM" }),
@@ -1958,7 +1958,7 @@ describe("NimChatModelProvider", () => {
       expect.anything(),
       expect.any(AbortSignal),
       "test-ua",
-      { maxOutputTokens: 65536 },
+      expect.objectContaining({ maxOutputTokens: 65536 }),
     );
     expect((vscode as any).window.showInputBox).not.toHaveBeenCalled();
   });
@@ -2016,7 +2016,11 @@ describe("NimChatModelProvider", () => {
             : undefined,
     );
 
-    const rateLimitError = new Error("[RATE_LIMITED] Rate limited.\nRetry after 30.");
+    const rateLimitError = new NvidiaApiError(
+      "rate_limited",
+      "[RATE_LIMITED] Rate limited.\nRetry after 30.",
+      { status: 429 },
+    );
     const rateLimitedStream = async function* () {
       throw rateLimitError;
     };
@@ -2122,7 +2126,11 @@ describe("NimChatModelProvider", () => {
 
   it("does not start a rate-limit fallback after user-visible content was emitted", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
-    const rateLimitError = new Error("[RATE_LIMITED] Rate limited.\nRetry after 30.");
+    const rateLimitError = new NvidiaApiError(
+      "rate_limited",
+      "[RATE_LIMITED] Rate limited.\nRetry after 30.",
+      { status: 429 },
+    );
     const partialStream = async function* () {
       yield { choices: [{ delta: { content: "Partial response" } }] };
       throw rateLimitError;
@@ -2180,7 +2188,9 @@ describe("NimChatModelProvider", () => {
             : undefined,
     );
     const rateLimitedStream = async function* () {
-      throw new Error("[RATE_LIMITED] Rate limited.\nRetry after 30.");
+      throw new NvidiaApiError("rate_limited", "[RATE_LIMITED] Rate limited.\nRetry after 30.", {
+        status: 429,
+      });
     };
     (streamChatCompletion as jest.Mock).mockImplementation(() => rateLimitedStream());
 
@@ -2290,6 +2300,13 @@ describe("NimChatModelProvider", () => {
     const retryRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
     expect(retryRequest.messages).toHaveLength(firstRequest.messages.length + 1);
     expect(retryRequest.max_tokens).toBeLessThan(firstRequest.max_tokens);
+    const guidanceMessage = retryRequest.messages[retryRequest.messages.length - 1];
+    expect(guidanceMessage).toEqual(
+      expect.objectContaining({
+        role: "user",
+        content: expect.stringContaining("interrupted by a network error"),
+      }),
+    );
   });
 
   it("does not retry a network failure after user-visible content was emitted", async () => {
@@ -2534,6 +2551,41 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(3);
     expect(progress.report).not.toHaveBeenCalled();
+  });
+
+  it("caps the total fetch-attempt budget across all stream retries", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: {}, finish_reason: null }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        [{ role: 1, content: [{ value: "Hi" }] }] as any,
+        { modelOptions: {} } as any,
+        { report: jest.fn() },
+        {
+          isCancellationRequested: false,
+          onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+        } as any,
+      ),
+    ).rejects.toThrow("[EMPTY_STREAM]");
+
+    const attempts = (streamChatCompletion as jest.Mock).mock.calls.map(
+      (call: any[]) => call[4]?.maxFetchAttempts ?? 3,
+    );
+    expect(attempts).toHaveLength(3);
+    for (const value of attempts) {
+      expect(value).toBeGreaterThanOrEqual(1);
+      expect(value).toBeLessThanOrEqual(3);
+    }
+    // Budget is 6 connection attempts; the final stream attempt always keeps
+    // at least one connection try, so the observed total is capped at 7
+    // instead of the uncapped 3x3=9.
+    expect(attempts.reduce((sum: number, value: number) => sum + value, 0)).toBeLessThanOrEqual(7);
   });
 
   it("recovers when a retry after an empty stream returns content", async () => {

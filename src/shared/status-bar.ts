@@ -153,7 +153,7 @@ export class StatusBarManager {
     );
 
     this.item.tooltip = md;
-    this.item.command = undefined;
+    this.item.command = REFRESH_MODELS_COMMAND_ID;
 
     if (percentage >= 95) {
       this.item.backgroundColor = new vscode.ThemeColor("statusBarItem.errorBackground");

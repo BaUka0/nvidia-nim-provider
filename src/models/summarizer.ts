@@ -103,9 +103,13 @@ export async function summarizeOldMessages(
       signal,
       userAgent,
     );
+    const trimmedSummary = summary.trim();
+    if (!trimmedSummary) {
+      throw new Error("Summarization returned an empty response");
+    }
     return {
       role: "system",
-      content: `[Previous conversation summary]: ${summary.trim()}`,
+      content: `[Previous conversation summary]: ${trimmedSummary}`,
     };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {

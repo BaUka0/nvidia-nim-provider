@@ -11,6 +11,39 @@ import {
 import { ELITE_MODELS_WHITELIST, isNormalizedNvidiaModel } from "../models/catalog";
 import { NvidiaApiKeyResolver } from "../api/key-resolver";
 
+/** Maximum accepted image payload (binary bytes) sent to the vision model. */
+const MAX_IMAGE_DATA_BYTES = 20 * 1024 * 1024;
+
+/**
+ * Validate that image_data is a base64 image data URL and return its decoded
+ * size. Arbitrary remote URLs are rejected so the NIM vision endpoint never
+ * fetches external resources on the user's behalf.
+ */
+function measureImageDataUrl(
+  imageData: string,
+): { mimeType: string; byteLength: number } | undefined {
+  if (!imageData.startsWith("data:image/")) {
+    return undefined;
+  }
+  const comma = imageData.indexOf(",");
+  if (comma === -1) {
+    return undefined;
+  }
+  const prefix = imageData.slice(5, comma);
+  const payload = imageData.slice(comma + 1);
+  if (!payload) {
+    return undefined;
+  }
+  const headerFields = prefix.split(";");
+  const isBase64 = headerFields.includes("base64");
+  if (!isBase64) {
+    return undefined;
+  }
+  const mimeType = headerFields[0];
+  const byteLength = Math.ceil((payload.length * 3) / 4);
+  return { mimeType, byteLength };
+}
+
 /**
  * Image-analysis client that uses a cached NVIDIA NIM vision-capable model.
  */
@@ -55,6 +88,17 @@ export class NimVisionClient {
   async analyzeImage(imageData: string, prompt: string, signal?: AbortSignal): Promise<string> {
     if (signal?.aborted) {
       throw createAbortError();
+    }
+    const imageInfo = measureImageDataUrl(imageData);
+    if (!imageInfo) {
+      throw new Error(
+        `${PROVIDER_DISPLAY_NAME} image analysis requires a base64 image data URL ('data:image/...;base64,...').`,
+      );
+    }
+    if (imageInfo.byteLength > MAX_IMAGE_DATA_BYTES) {
+      throw new Error(
+        `${PROVIDER_DISPLAY_NAME} image is too large (${Math.ceil(imageInfo.byteLength / (1024 * 1024))} MB). Maximum size is ${MAX_IMAGE_DATA_BYTES / (1024 * 1024)} MB.`,
+      );
     }
     const apiKey = await this.getApiKey();
     if (!apiKey) {

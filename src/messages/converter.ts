@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
+
 import * as vscode from "vscode";
 import { debugLog } from "../shared/logging";
-import { Json, JsonObject, NimChatMessage, NimContentPart, NimTool } from "../types";
+import { JsonObject, NimChatMessage, NimContentPart, NimTool } from "../types";
 
 export interface LegacyPart {
   type?: string;
@@ -322,13 +324,17 @@ export function convertMessages(
         role: "assistant",
         content: assistantContent || "",
         tool_calls: toolCalls.map((tc) => ({
-          id: tc.id ?? `call_${Math.random().toString(36).slice(2, 10)}`,
+          id: tc.id ?? `call_${randomUUID()}`,
           type: "function",
           function: {
             name: tc.name ?? "unknown",
             arguments: JSON.stringify(tc.args ?? {}),
           },
         })),
+        // A single space of reasoning_content prevents incomplete responses on
+        // models that require the field (Kimi K2.5/2.6) without polluting the
+        // actual output. Applied globally so the converted assistant turn stays
+        // uniform across the adapter-specific messages workarounds.
         reasoning_content: " ",
       });
     }
@@ -369,9 +375,8 @@ export function convertMessages(
 }
 
 /**
- * Apply reasoning_content workaround for models that need it (e.g. Kimi K2.5/2.6).
- * These models may return incomplete responses when reasoning_content is absent.
- * A single space prevents this without polluting the actual output.
+ * Convert VS Code language model tools to the NVIDIA NIM tool-call format.
+ * Honors the Required tool mode by emitting an explicit tool_choice.
  */
 export function convertTools(options: vscode.ProvideLanguageModelChatResponseOptions): {
   tools?: NimTool[];
@@ -400,41 +405,6 @@ export function convertTools(options: vscode.ProvideLanguageModelChatResponseOpt
   }
 
   return { tools };
-}
-
-/**
- * Parse a JSON string, returning a typed result object.
- */
-export function tryParseJSONObject<T extends Json = Json>(
-  text: string,
-): { ok: true; value: T } | { ok: false; error: string } {
-  if (!text || !text.trim()) {
-    return { ok: false, error: "Empty string" };
-  }
-  try {
-    const value = JSON.parse(text) as T;
-    return { ok: true, value };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
-/**
- * Validate that a message array is non-empty and each message has content.
- */
-export function validateRequest(
-  messages:
-    | readonly vscode.LanguageModelChatMessage[]
-    | readonly { role: string; content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
-): void {
-  if (!messages || messages.length === 0) {
-    throw new Error("Messages array is empty");
-  }
-  for (const msg of messages) {
-    if (!msg.content || msg.content.length === 0) {
-      throw new Error("Message has no content");
-    }
-  }
 }
 
 export function estimateTokens(text: string): number {
@@ -595,7 +565,9 @@ export function estimateMessagesTokensByCategory(
         classifyPartTokens(part, breakdown);
       } else {
         const tv = getTextPartValue(part) ?? getDataPartTextValue(part);
-        const tokens = tv !== undefined ? estimateTokens(tv) : 0;
+        // Unknown parts still contribute a placeholder so the category
+        // breakdown stays consistent with estimatePartTokens().
+        const tokens = tv !== undefined ? estimateTokens(tv) : 2;
         if (isUser) {
           breakdown.user += tokens;
         } else if (isAssistant) {

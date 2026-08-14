@@ -15,11 +15,6 @@ import {
 import { debugLog } from "../shared/logging";
 import { NimToolCall } from "../types";
 
-export interface SkippedToolCall {
-  name: string;
-  required: string[];
-}
-
 export interface ToolCallStreamAggregatorOptions {
   options: vscode.ProvideLanguageModelChatResponseOptions;
   messages: readonly vscode.LanguageModelChatMessage[];

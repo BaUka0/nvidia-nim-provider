@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import * as vscode from "vscode";
 import {
   CancellationToken,
@@ -58,6 +60,13 @@ import { ContextLimitStore } from "./context-limit-store";
 
 const DEFAULT_MAX_TOKENS = 65536;
 const MAX_RUNTIME_INFO_CACHE_SIZE = 64;
+/**
+ * Total connection-attempt budget shared by every stream attempt of a single
+ * response (initial tries, empty-stream/network retries, overflow retry).
+ * Without this cap the nested retry layers could multiply into ~9+ requests
+ * against an already rate-limited endpoint.
+ */
+const MAX_TOTAL_FETCH_ATTEMPTS = 6;
 
 interface NvidiaProviderConfiguration {
   apiKey?: string;
@@ -370,9 +379,40 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     let keyFingerprint: string | undefined;
     let contextWindow = 0;
     let effectiveContextWindow = 0;
+    let supportsVision = false;
     let adapter: ReturnType<typeof getModelAdapter> = undefined!;
     let activeRequestBody: import("../types").NimChatRequest | undefined;
     let tools: import("../types").NimTool[] | undefined;
+    let remainingFetchAttempts = MAX_TOTAL_FETCH_ATTEMPTS;
+    const consumeFetchAttempts = (): number => {
+      const attempts = Math.max(1, Math.min(3, remainingFetchAttempts));
+      remainingFetchAttempts -= attempts;
+      return attempts;
+    };
+    /**
+     * Report a reasoning fragment as a thinking part when the runtime supports
+     * it, otherwise fall back to plain text when showReasoning is enabled.
+     * Returns what was emitted so the caller can mirror the original reportPart
+     * flag semantics (the text fallback counts as visible content).
+     */
+    const reportThinkingPart = (text: string): { didReport: boolean; emittedVisible: boolean } => {
+      type ThinkingPartConstructor = new (value: string) => LanguageModelResponsePart;
+      const ThinkingPart = (
+        vscode as unknown as { LanguageModelThinkingPart?: ThinkingPartConstructor }
+      ).LanguageModelThinkingPart;
+      if (ThinkingPart) {
+        progress.report(new ThinkingPart(text));
+        return { didReport: true, emittedVisible: false };
+      }
+      const showReasoning = vscode.workspace
+        .getConfiguration("nvidia-nim")
+        .get<boolean>("showReasoning", false);
+      if (showReasoning) {
+        progress.report(new vscode.LanguageModelTextPart(text.startsWith(" ") ? text : ` ${text}`));
+        return { didReport: true, emittedVisible: true };
+      }
+      return { didReport: false, emittedVisible: false };
+    };
 
     try {
       apiKey = await this.ensureApiKey(false, model);
@@ -386,11 +426,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
       const {
         supportsTools,
-        supportsVision,
+        supportsVision: visionSupport,
         contextWindow: cw,
         runtimeMetadataSource,
       } = await this.resolveChatModelRuntimeInfo(model, apiKey);
       contextWindow = cw;
+      supportsVision = visionSupport;
       keyFingerprint = getApiKeyFingerprint(apiKey);
       const runtimeLimit = this.contextLimitStore.get(model.id, keyFingerprint);
       effectiveContextWindow =
@@ -563,20 +604,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           onThinking: (text) => {
             sawReasoning = true;
             everSawReasoning = true;
-            type ThinkingPartConstructor = new (value: string) => LanguageModelResponsePart;
-            const ThinkingPart = (
-              vscode as unknown as { LanguageModelThinkingPart?: ThinkingPartConstructor }
-            ).LanguageModelThinkingPart;
-            if (ThinkingPart) {
-              reportPart(new ThinkingPart(text));
-            } else {
-              const showReasoning = vscode.workspace
-                .getConfiguration("nvidia-nim")
-                .get<boolean>("showReasoning", false);
-              if (showReasoning) {
-                reportPart(
-                  new vscode.LanguageModelTextPart(text.startsWith(" ") ? text : ` ${text}`),
-                );
+            const thinkingResult = reportThinkingPart(text);
+            if (thinkingResult.didReport) {
+              reportedContent = true;
+              hasReportedContent = true;
+              if (thinkingResult.emittedVisible) {
+                reportedVisibleContent = true;
+                hasReportedVisibleContent = true;
               }
             }
           },
@@ -637,7 +671,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               flushPendingText();
               reportPart(
                 new vscode.LanguageModelToolCallPart(
-                  `text_tool_${Math.random().toString(36).slice(2, 10)}`,
+                  `text_tool_${randomUUID()}`,
                   toolCall.name,
                   repairedArgs as Record<string, unknown>,
                 ),
@@ -670,7 +704,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             activeRequestBody!,
             abortController.signal,
             this.userAgent,
-            { maxOutputTokens: model.maxOutputTokens },
+            {
+              maxOutputTokens: model.maxOutputTokens,
+              maxFetchAttempts: consumeFetchAttempts(),
+            },
           )) {
             if (token.isCancellationRequested) {
               throw new vscode.CancellationError();
@@ -762,7 +799,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               messages: [
                 ...activeRequestBody!.messages,
                 {
-                  role: "system",
+                  // A trailing system message is rejected or mishandled by some
+                  // OpenAI-compatible backends; a user turn is universally safe.
+                  role: "user",
                   content:
                     "Your previous response was interrupted by a network error. Please start over and provide a complete response.",
                 },
@@ -1037,7 +1076,15 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         // Compact conversation history: summarise old turns, keep system +
         // current user turn + tool-call pairs.
         try {
-          const apiMessages = convertMessages(Array.from(messages));
+          // Convert with the same options as the primary request so large
+          // tool results are truncated and vision content is preserved.
+          let apiMessages = convertMessages(Array.from(messages), {
+            maxToolResultChars: NimRequestBuilder.calculateMaxToolResultChars(retryContextWindow),
+            supportsVision,
+          });
+          if (adapter?.applyMessagesWorkaround) {
+            apiMessages = adapter.applyMessagesWorkaround(apiMessages);
+          }
           const maxRecentTokens = Math.floor(retryContextWindow * 0.4);
           const { oldMessages, recentMessages } = splitMessagesForSummarization(
             apiMessages,
@@ -1077,23 +1124,66 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               );
               // Stream the retry directly — do not recurse into the full
               // provideLanguageModelChatResponse to avoid infinite loops.
+              const retrySkippedToolCalls: SkippedToolCall[] = [];
+              const retryToolAggregator = new ToolCallStreamAggregator({
+                options,
+                messages,
+                onEmitToolCall: (id, name, args) => {
+                  progress.report(new vscode.LanguageModelToolCallPart(id, name, args));
+                  hasReportedContent = true;
+                  hasReportedVisibleContent = true;
+                },
+                onSkipToolCall: (name, required) => {
+                  retrySkippedToolCalls.push({ name, required });
+                },
+              });
               for await (const chunk of streamChatCompletion(
                 apiKey,
                 retryRequestBody,
                 abortController.signal,
                 this.userAgent,
-                { maxOutputTokens: compactedMaxOutput },
+                {
+                  maxOutputTokens: compactedMaxOutput,
+                  maxFetchAttempts: consumeFetchAttempts(),
+                },
               )) {
                 if (token.isCancellationRequested) {
                   throw new vscode.CancellationError();
                 }
                 const choice = chunk.choices?.[0];
+                if (choice?.delta?.reasoning_content) {
+                  const retryThinking = reportThinkingPart(choice.delta.reasoning_content);
+                  if (retryThinking.didReport) {
+                    hasReportedContent = true;
+                    if (retryThinking.emittedVisible) {
+                      hasReportedVisibleContent = true;
+                    }
+                  }
+                }
                 const rawContent = choice?.delta?.content;
                 if (rawContent) {
                   const content = adapter?.sanitizeResponseText?.(rawContent) ?? rawContent;
                   progress.report(new vscode.LanguageModelTextPart(content));
                   hasReportedContent = true;
                   hasReportedVisibleContent = true;
+                }
+                if (choice?.delta?.tool_calls) {
+                  retryToolAggregator.handleToolCalls(choice.delta.tool_calls);
+                }
+              }
+              retryToolAggregator.flushRemaining();
+              if (!hasReportedVisibleContent) {
+                const retryFallbackText = buildInvalidToolCallFallback(retrySkippedToolCalls);
+                if (retryFallbackText) {
+                  progress.report(new vscode.LanguageModelTextPart(retryFallbackText));
+                  hasReportedVisibleContent = true;
+                } else {
+                  throw new Error(
+                    formatStructuredError(
+                      "empty_stream",
+                      `Compacted retry on ${model.name ?? model.id} produced no visible answer or tool call.`,
+                    ),
+                  );
                 }
               }
               return;
@@ -1129,7 +1219,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         );
       }
 
-      if (!hasReportedContent && err instanceof Error && err.message.includes("[RATE_LIMITED]")) {
+      if (!hasReportedContent && err instanceof NvidiaApiError && err.kind === "rate_limited") {
         const modelApiKey = (await this.apiKeyResolver.resolveForModel(model))?.value;
         const fallbackModel = getFallbackModel(
           model.id,

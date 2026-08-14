@@ -162,7 +162,7 @@ describe("NimChatModelProvider", () => {
       }),
       expect.any(AbortSignal),
       "test-ua",
-      { maxOutputTokens: 16384 },
+      expect.objectContaining({ maxOutputTokens: 16384 }),
     );
     const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
     expect(toolCallReports.length).toBe(1);
