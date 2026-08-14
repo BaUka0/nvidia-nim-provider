@@ -49,11 +49,11 @@ describe("fetchWithRetry", () => {
           statusText: "Service Unavailable",
           headers: { get: () => null },
           body: firstBody,
-        } as any;
+        } as unknown as Response;
       })
       .mockImplementationOnce(async () => {
         order.push("fetch-2");
-        return { ok: true, status: 200, statusText: "OK" } as any;
+        return { ok: true, status: 200, statusText: "OK" } as unknown as Response;
       });
 
     const response = await fetchWithRetry("https://example.test", { method: "GET" }, 2);
@@ -74,7 +74,7 @@ describe("fetchWithRetry", () => {
       statusText: "Service Unavailable",
       headers: { get: () => null },
       body,
-    } as any);
+    } as unknown as Response);
 
     const request = fetchWithRetry(
       "https://example.test",
@@ -108,7 +108,7 @@ describe("fetchWithRetry", () => {
       statusText: "Service Unavailable",
       headers: { get: () => null },
       body,
-    } as any);
+    } as unknown as Response);
 
     await expect(
       fetchWithRetry("https://example.test", { method: "GET", signal }, 3),
@@ -130,7 +130,7 @@ describe("fetchWithRetry", () => {
       statusText: "Too Many Requests",
       headers: { get: () => null },
       body,
-    } as any);
+    } as unknown as Response);
 
     await expect(
       fetchWithRetry("https://example.test", { method: "GET" }, 2),
@@ -192,7 +192,7 @@ describe("chatCompletion", () => {
       status: 401,
       statusText: "Unauthorized",
       text: async () => "Invalid key",
-    } as any);
+    } as unknown as Response);
 
     await expect(
       chatCompletion("bad-key", { model: "test-model", messages: [] }),
@@ -209,7 +209,7 @@ describe("fetchModels", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ data: rawModelSummaries }),
-    } as any);
+    } as unknown as Response);
 
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
@@ -234,7 +234,7 @@ describe("fetchModels", () => {
       status: 401,
       statusText: "Unauthorized",
       text: async () => "Invalid key",
-    } as any);
+    } as unknown as Response);
 
     const result = await fetchModels("bad-key");
     expect(result).toBeNull();
@@ -247,7 +247,7 @@ describe("fetchModels", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: rawModelSummaries }),
-      } as any);
+      } as unknown as Response);
 
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
@@ -270,11 +270,11 @@ describe("fetchModels", () => {
         status: 429,
         statusText: "Too Many Requests",
         headers: { get: (name: string) => (name === "retry-after" ? "1" : null) },
-      } as any)
+      } as unknown as Response)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: rawModelSummaries }),
-      } as any);
+      } as unknown as Response);
 
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
@@ -289,11 +289,11 @@ describe("fetchModels", () => {
         status: 503,
         statusText: "Service Unavailable",
         headers: { get: () => null },
-      } as any)
+      } as unknown as Response)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: rawModelSummaries }),
-      } as any);
+      } as unknown as Response);
 
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
@@ -309,11 +309,11 @@ describe("fetchModels", () => {
         status: 429,
         statusText: "Too Many Requests",
         headers: new Headers({ "retry-after": retryDate }),
-      } as any)
+      } as unknown as Response)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: rawModelSummaries }),
-      } as any);
+      } as unknown as Response);
 
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
@@ -328,11 +328,11 @@ describe("fetchModels", () => {
         status: 429,
         statusText: "Too Many Requests",
         headers: new Headers({ "retry-after": "not-a-number" }),
-      } as any)
+      } as unknown as Response)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: rawModelSummaries }),
-      } as any);
+      } as unknown as Response);
 
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
@@ -345,7 +345,7 @@ describe("fetchModels", () => {
       status: 401,
       statusText: "Unauthorized",
       text: async () => "Invalid key",
-    } as any);
+    } as unknown as Response);
 
     const result = await fetchModels("bad-key");
     expect(result).toBeNull();
@@ -358,7 +358,7 @@ describe("fetchModels", () => {
       status: 401,
       statusText: "Unauthorized",
       text: async () => "Invalid key",
-    } as any);
+    } as unknown as Response);
 
     await expect(fetchModelsOrThrow("bad-key")).rejects.toMatchObject({
       name: "NvidiaApiError",
@@ -396,7 +396,7 @@ describe("streamChatCompletion", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       body: stream,
-    } as any);
+    } as unknown as Response);
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     const results: NimStreamResponse[] = [];
@@ -414,7 +414,7 @@ describe("streamChatCompletion", () => {
       status: 500,
       statusText: "Internal Server Error",
       text: async () => "Server error",
-    } as any);
+    } as unknown as Response);
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     await expect(gen.next()).rejects.toThrow("[SERVER_ERROR] Server error.");
@@ -426,7 +426,7 @@ describe("streamChatCompletion", () => {
       status: 401,
       statusText: "Unauthorized",
       text: async () => "Invalid key",
-    } as any);
+    } as unknown as Response);
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     await expect(gen.next()).rejects.toThrow(
@@ -440,7 +440,7 @@ describe("streamChatCompletion", () => {
       status: 404,
       statusText: "Not Found",
       text: async () => "Model not found",
-    } as any);
+    } as unknown as Response);
 
     const gen = streamChatCompletion("key", {
       model: "thinkingmachines/inkling",
@@ -459,7 +459,7 @@ describe("streamChatCompletion", () => {
       statusText: "Too Many Requests",
       headers: { get: (name: string) => (name === "retry-after" ? "0" : null) },
       text: async () => "Rate limited",
-    } as any);
+    } as unknown as Response);
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     await expect(gen.next()).rejects.toThrow("HTTP 429");
@@ -473,7 +473,7 @@ describe("streamChatCompletion", () => {
       statusText: "Too Many Requests",
       headers: { get: (name: string) => (name === "retry-after" ? "0" : null) },
       text: async () => "Rate limited",
-    } as any);
+    } as unknown as Response);
 
     const gen = streamChatCompletion(
       "key",
@@ -511,7 +511,7 @@ describe("streamChatCompletion", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       body: stream,
-    } as any);
+    } as unknown as Response);
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     const results: NimStreamResponse[] = [];
@@ -536,7 +536,7 @@ describe("streamChatCompletion", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       body: stream,
-    } as any);
+    } as unknown as Response);
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     const results: NimStreamResponse[] = [];
@@ -566,7 +566,7 @@ describe("streamChatCompletion", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       body: stream,
-    } as any);
+    } as unknown as Response);
 
     const gen = streamChatCompletion(
       "test-key",
@@ -607,7 +607,7 @@ describe("streamChatCompletion", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       body: { getReader: () => reader },
-    } as any);
+    } as unknown as Response);
 
     const gen = streamChatCompletion(
       "key",
@@ -640,7 +640,7 @@ describe("streamChatCompletion", () => {
         body: {
           getReader: () => reader,
         },
-      } as any);
+      } as unknown as Response);
 
       const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
       const nextPromise = gen.next();

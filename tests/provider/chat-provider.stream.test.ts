@@ -52,7 +52,7 @@ jest.mock("vscode", () => ({
   },
   workspace: {
     getConfiguration: jest.fn(() => ({
-      get: jest.fn((key: string, defaultValue: any) => defaultValue),
+      get: jest.fn((key: string, defaultValue: unknown) => defaultValue),
     })),
   },
   LanguageModelError: {
@@ -72,6 +72,12 @@ describe("NimChatModelProvider", () => {
   let secrets: vscode.SecretStorage;
   let globalState: vscode.Memento;
   let provider: NimChatModelProvider;
+
+  const ThinkingPart = (
+    vscode as unknown as {
+      LanguageModelThinkingPart: new (value: string) => { value: string };
+    }
+  ).LanguageModelThinkingPart;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -108,7 +114,7 @@ describe("NimChatModelProvider", () => {
       keys: jest.fn(),
     } as unknown as vscode.Memento;
     provider = new NimChatModelProvider(secrets, "test-ua", globalState);
-    ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((_key: string, defaultValue: unknown) => defaultValue),
     }));
@@ -130,11 +136,15 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).toHaveBeenCalledWith(
@@ -170,20 +180,21 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "nim-any-model", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "nim-any-model",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
     const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
-    const thinkingReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof ThinkingPart,
-    );
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
 
     expect(textReports).toHaveLength(1);
     expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "表示テキスト" }));
@@ -208,19 +219,20 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const thinkingReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof ThinkingPart,
-    );
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
 
     expect(thinkingReports).toHaveLength(2);
@@ -256,20 +268,23 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "minimaxai/minimax-m3", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "minimaxai/minimax-m3",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const allReports = progress.report.mock.calls.map((c: any) => c[0]);
+    const allReports = progress.report.mock.calls.map((c) => c[0]);
     const thinkingIndices = allReports
-      .map((r: any, i: number) => (r instanceof ThinkingPart ? i : -1))
+      .map((r, i) => (r instanceof ThinkingPart ? i : -1))
       .filter((i: number) => i !== -1);
     const textIndices = allReports
-      .map((r: any, i: number) => (r instanceof vscode.LanguageModelTextPart ? i : -1))
+      .map((r, i) => (r instanceof vscode.LanguageModelTextPart ? i : -1))
       .filter((i: number) => i !== -1);
 
     expect(thinkingIndices).toHaveLength(2);
@@ -304,19 +319,20 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "deepseek-ai/deepseek-v4", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "deepseek-ai/deepseek-v4",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const thinkingReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof ThinkingPart,
-    );
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
 
     expect(thinkingReports).toHaveLength(1);
@@ -346,19 +362,21 @@ describe("NimChatModelProvider", () => {
 
     await expect(
       provider.provideLanguageModelChatResponse(
-        { id: "deepseek-ai/deepseek-v4", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelOptions: {} } as any,
+        {
+          id: "deepseek-ai/deepseek-v4",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         progress,
-        token as any,
+        token as unknown as vscode.CancellationToken,
       ),
     ).rejects.toThrow("[EMPTY_STREAM]");
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(1);
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const thinkingReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof ThinkingPart,
-    );
+
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
 
     expect(thinkingReports).toHaveLength(1);
     expect(thinkingReports[0][0]).toEqual(
@@ -385,20 +403,26 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+      {
+        id: "z-ai/glm-5.2",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      {
+        modelConfiguration: { reasoningMode: "on" },
+        modelOptions: {},
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const allReports = progress.report.mock.calls.map((c: any) => c[0]);
+    const allReports = progress.report.mock.calls.map((c) => c[0]);
     const thinkingIndices = allReports
-      .map((r: any, i: number) => (r instanceof ThinkingPart ? i : -1))
+      .map((r, i) => (r instanceof ThinkingPart ? i : -1))
       .filter((i: number) => i !== -1);
     const textIndices = allReports
-      .map((r: any, i: number) => (r instanceof vscode.LanguageModelTextPart ? i : -1))
+      .map((r, i) => (r instanceof vscode.LanguageModelTextPart ? i : -1))
       .filter((i: number) => i !== -1);
 
     const thinkingText = thinkingIndices.map((i: number) => allReports[i].value).join("");
@@ -428,15 +452,22 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+      {
+        id: "z-ai/glm-5.2",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      {
+        modelConfiguration: { reasoningMode: "on" },
+        modelOptions: {},
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
 
     expect(textReports).toHaveLength(1);
@@ -460,21 +491,27 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+      {
+        id: "z-ai/glm-5.2",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      {
+        modelConfiguration: { reasoningMode: "on" },
+        modelOptions: {},
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const allReports = progress.report.mock.calls.map((c: any) => c[0]);
+    const allReports = progress.report.mock.calls.map((c) => c[0]);
     const thinkingText = allReports
-      .filter((r: any) => r instanceof ThinkingPart)
-      .map((r: any) => r.value)
+      .filter((r) => r instanceof ThinkingPart)
+      .map((r) => r.value)
       .join("");
     const textIndices = allReports
-      .map((r: any, i: number) => (r instanceof vscode.LanguageModelTextPart ? i : -1))
+      .map((r, i) => (r instanceof vscode.LanguageModelTextPart ? i : -1))
       .filter((i: number) => i !== -1);
 
     expect(thinkingText).toContain("proper reasoning start");
@@ -503,21 +540,27 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+      {
+        id: "z-ai/glm-5.2",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      {
+        modelConfiguration: { reasoningMode: "on" },
+        modelOptions: {},
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const allReports = progress.report.mock.calls.map((c: any) => c[0]);
+    const allReports = progress.report.mock.calls.map((c) => c[0]);
     const thinkingText = allReports
-      .filter((r: any) => r instanceof ThinkingPart)
-      .map((r: any) => r.value)
+      .filter((r) => r instanceof ThinkingPart)
+      .map((r) => r.value)
       .join("");
-    const textReports = allReports.filter((r: any) => r instanceof vscode.LanguageModelTextPart);
-    const textContent = textReports.map((r: any) => r.value).join("");
+    const textReports = allReports.filter((r) => r instanceof vscode.LanguageModelTextPart);
+    const textContent = textReports.map((r) => r.value).join("");
 
     expect(thinkingText).toContain("proper reasoning start");
     expect(thinkingText).toContain("leaked reasoning part one and part two");
@@ -546,21 +589,27 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+      {
+        id: "z-ai/glm-5.2",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      {
+        modelConfiguration: { reasoningMode: "on" },
+        modelOptions: {},
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const allReports = progress.report.mock.calls.map((c: any) => c[0]);
+    const allReports = progress.report.mock.calls.map((c) => c[0]);
     const thinkingText = allReports
-      .filter((r: any) => r instanceof ThinkingPart)
-      .map((r: any) => r.value)
+      .filter((r) => r instanceof ThinkingPart)
+      .map((r) => r.value)
       .join("");
-    const textReports = allReports.filter((r: any) => r instanceof vscode.LanguageModelTextPart);
-    const textContent = textReports.map((r: any) => r.value).join("");
+    const textReports = allReports.filter((r) => r instanceof vscode.LanguageModelTextPart);
+    const textContent = textReports.map((r) => r.value).join("");
 
     expect(thinkingText).toBe("proper reasoning start");
     expect(textReports).toHaveLength(1);
@@ -592,14 +641,18 @@ describe("NimChatModelProvider", () => {
       };
 
       await provider.provideLanguageModelChatResponse(
-        { id: "deepseek-ai/deepseek-v4", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelOptions: {} } as any,
+        {
+          id: "deepseek-ai/deepseek-v4",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         progress,
-        token as any,
+        token as unknown as vscode.CancellationToken,
       );
 
-      const chunkLogs = consoleSpy.mock.calls.filter((c: any) => c[0]?.includes?.("stream chunk"));
+      const chunkLogs = consoleSpy.mock.calls.filter((c) => c[0]?.includes?.("stream chunk"));
       expect(chunkLogs.length).toBeGreaterThanOrEqual(3);
       expect(chunkLogs[0][1]).toEqual(
         expect.objectContaining({ rc: true, content: false, finish: null }),
@@ -634,26 +687,31 @@ describe("NimChatModelProvider", () => {
 
     await expect(
       provider.provideLanguageModelChatResponse(
-        { id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+        {
+          id: "z-ai/glm-5.2",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        {
+          modelConfiguration: { reasoningMode: "on" },
+          modelOptions: {},
+        } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         progress,
-        token as any,
+        token as unknown as vscode.CancellationToken,
       ),
     ).rejects.toThrow("[EMPTY_STREAM]");
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(1);
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const thinkingReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof ThinkingPart,
-    );
+
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
 
     expect(thinkingReports.length).toBeGreaterThanOrEqual(1);
     expect(textReports).toHaveLength(0);
-    const thinkingText = thinkingReports.map((r: any) => r[0].value).join("");
+    const thinkingText = thinkingReports.map((r) => r[0].value).join("");
     expect(thinkingText).toContain("Now let me look at the code to understand");
   });
 
@@ -675,22 +733,29 @@ describe("NimChatModelProvider", () => {
 
     await expect(
       provider.provideLanguageModelChatResponse(
-        { id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelConfiguration: { reasoningMode: "on" }, modelOptions: {} } as any,
+        {
+          id: "z-ai/glm-5.2",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        {
+          modelConfiguration: { reasoningMode: "on" },
+          modelOptions: {},
+        } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         progress,
-        token as any,
+        token as unknown as vscode.CancellationToken,
       ),
     ).rejects.toThrow("[EMPTY_STREAM]");
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(1);
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const allReports = progress.report.mock.calls.map((c: any) => c[0]);
+
+    const allReports = progress.report.mock.calls.map((c) => c[0]);
     const thinkingText = allReports
-      .filter((r: any) => r instanceof ThinkingPart)
-      .map((r: any) => r.value)
+      .filter((r) => r instanceof ThinkingPart)
+      .map((r) => r.value)
       .join("");
-    const textReports = allReports.filter((r: any) => r instanceof vscode.LanguageModelTextPart);
+    const textReports = allReports.filter((r) => r instanceof vscode.LanguageModelTextPart);
 
     expect(textReports).toHaveLength(0);
     expect(thinkingText).toContain("thinking without tags");
@@ -718,19 +783,23 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelConfiguration: { reasoningMode: "none" }, modelOptions: {} } as any,
+      {
+        id: "z-ai/glm-5.2",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      {
+        modelConfiguration: { reasoningMode: "none" },
+        modelOptions: {},
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const thinkingReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof ThinkingPart,
-    );
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
 
     expect(thinkingReports).toHaveLength(0);
@@ -768,19 +837,16 @@ describe("NimChatModelProvider", () => {
         id: "meta/llama-4-maverick-17b-128e-instruct",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
-      } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const thinkingReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof ThinkingPart,
-    );
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
 
     expect(thinkingReports).toHaveLength(0);
@@ -805,19 +871,23 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "thinkingmachines/inkling", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelConfiguration: { reasoningMode: "medium" }, modelOptions: {} } as any,
+      {
+        id: "thinkingmachines/inkling",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      {
+        modelConfiguration: { reasoningMode: "medium" },
+        modelOptions: {},
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const thinkingReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof ThinkingPart,
-    );
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
 
     expect(thinkingReports).toHaveLength(0);
@@ -840,19 +910,20 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const thinkingReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof ThinkingPart,
-    );
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
 
     expect(thinkingReports).toHaveLength(1);
@@ -885,24 +956,25 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "minimaxai/minimax-m3", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "minimaxai/minimax-m3",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const thinkingReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof ThinkingPart,
-    );
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
 
     expect(thinkingReports).toHaveLength(1);
     expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "Initial reasoning" }));
-    const textContent = textReports.map((r: any) => r[0].value).join("");
+    const textContent = textReports.map((r) => r[0].value).join("");
     expect(textContent).toBe("Response before  response after");
     expect(textContent).not.toContain("mid reasoning");
     expect(textContent).not.toContain("<mm:think>");
@@ -931,19 +1003,20 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "minimaxai/minimax-m3", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "minimaxai/minimax-m3",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const thinkingReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof ThinkingPart,
-    );
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
 
     expect(thinkingReports).toHaveLength(1);
@@ -969,21 +1042,24 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "stepfun-ai/step-3.7-flash", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "stepfun-ai/step-3.7-flash",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const allReports = progress.report.mock.calls.map((c: any) => c[0]);
+    const allReports = progress.report.mock.calls.map((c) => c[0]);
     const thinkingText = allReports
-      .filter((r: any) => r instanceof ThinkingPart)
-      .map((r: any) => r.value)
+      .filter((r) => r instanceof ThinkingPart)
+      .map((r) => r.value)
       .join("");
-    const textReports = allReports.filter((r: any) => r instanceof vscode.LanguageModelTextPart);
-    const textContent = textReports.map((r: any) => r.value).join("");
+    const textReports = allReports.filter((r) => r instanceof vscode.LanguageModelTextPart);
+    const textContent = textReports.map((r) => r.value).join("");
 
     expect(thinkingText).toContain("English reasoning still thinking");
     expect(textReports).toHaveLength(1);
@@ -1015,8 +1091,8 @@ describe("NimChatModelProvider", () => {
           toolCalling: 128,
           imageInput: false,
         },
-      } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -1034,9 +1110,9 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(fetchModels).not.toHaveBeenCalled();
@@ -1084,16 +1160,16 @@ describe("NimChatModelProvider", () => {
         maxInputTokens: 200000,
         maxOutputTokens: 65536,
         capabilities: { toolCalling: 128, imageInput: true },
-      } as any,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 1,
           content: [{ mimeType: "image/png", data: new Uint8Array([1, 2, 3]) }],
         },
-      ] as any,
-      { modelOptions: {} } as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).not.toHaveBeenCalled();
@@ -1126,7 +1202,7 @@ describe("NimChatModelProvider", () => {
         id: "deepseek-ai/deepseek-v4-pro",
         maxInputTokens: 100000,
         maxOutputTokens: 384000,
-      } as any,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 1,
@@ -1135,10 +1211,10 @@ describe("NimChatModelProvider", () => {
             { mimeType: "image/png", data: new Uint8Array([1, 2, 3]) },
           ],
         },
-      ] as any,
-      { modelOptions: {} } as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).not.toHaveBeenCalled();
@@ -1176,7 +1252,7 @@ describe("NimChatModelProvider", () => {
         id: "minimaxai/minimax-m3",
         maxInputTokens: 100000,
         maxOutputTokens: 100000,
-      } as any,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 1,
@@ -1185,10 +1261,10 @@ describe("NimChatModelProvider", () => {
             { mimeType: "image/png", data: new Uint8Array([1, 2, 3]) },
           ],
         },
-      ] as any,
-      { modelOptions: {} } as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     const requestBody = (streamChatCompletion as jest.Mock).mock.calls[0][1];
@@ -1218,16 +1294,20 @@ describe("NimChatModelProvider", () => {
 
     await expect(
       provider.provideLanguageModelChatResponse(
-        { id: "kimi-k2.6", maxInputTokens: 1, maxOutputTokens: 65536 } as any,
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 1,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
         [
           {
             role: 1,
             content: [{ value: "This is a very long message that exceeds the token limit" }],
           },
-        ] as any,
-        { modelOptions: {} } as any,
+        ] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         progress,
-        token as any,
+        token as unknown as vscode.CancellationToken,
       ),
     ).rejects.toThrow("[TOKEN_LIMIT_EXCEEDED]");
   });
@@ -1262,11 +1342,17 @@ describe("NimChatModelProvider", () => {
     const prompt = "a".repeat(900);
 
     await provider.provideLanguageModelChatResponse(
-      { id: "moonshotai/kimi-k2.6", maxInputTokens: 5000, maxOutputTokens: 200000 } as any,
-      [{ role: 1, content: [{ value: prompt }] }] as any,
-      { modelOptions: { max_tokens: 120000 } } as any,
+      {
+        id: "moonshotai/kimi-k2.6",
+        maxInputTokens: 5000,
+        maxOutputTokens: 200000,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: prompt }] }] as unknown as vscode.LanguageModelChatMessage[],
+      {
+        modelOptions: { max_tokens: 120000 },
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
@@ -1876,7 +1962,7 @@ describe("NimChatModelProvider", () => {
 
   it("prompts for an API key during chat and continues the request when one is provided", async () => {
     (secrets.get as jest.Mock).mockResolvedValue(undefined);
-    ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue("new-api-key");
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue("new-api-key");
 
     const mockStream = async function* () {
       yield { choices: [{ delta: { content: "Hello from NVIDIA NIM" } }] };
@@ -1890,14 +1976,18 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    expect((vscode as any).window.showInputBox).toHaveBeenCalled();
+    expect(vscode.window.showInputBox).toHaveBeenCalled();
     expect(secrets.store).toHaveBeenCalledWith("nvidia-nim.apiKey", "new-api-key");
     expect(streamChatCompletion).toHaveBeenCalledWith(
       "new-api-key",
@@ -1914,14 +2004,20 @@ describe("NimChatModelProvider", () => {
     // key was removed. A key entered interactively must rebind that model so
     // the next request reuses it instead of opening another prompt.
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi again" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [
+        { role: 1, content: [{ value: "Hi again" }] },
+      ] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    expect((vscode as any).window.showInputBox).toHaveBeenCalledTimes(1);
+    expect(vscode.window.showInputBox).toHaveBeenCalledTimes(1);
     expect((streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[0]).toBe("new-api-key");
   });
 
@@ -1943,14 +2039,14 @@ describe("NimChatModelProvider", () => {
         maxOutputTokens: 65536,
         capabilities: {},
         apiKey: "configured-key",
-      } as any,
+      } as unknown as vscode.LanguageModelChatInformation,
       [vscode.LanguageModelChatMessage.User([new vscode.LanguageModelTextPart("Hi")])],
-      { modelOptions: {} } as any,
-      progress as any,
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
+      progress as unknown as vscode.Progress<vscode.LanguageModelResponsePart>,
       {
         isCancellationRequested: false,
         onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      } as any,
+      } as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).toHaveBeenCalledWith(
@@ -1960,12 +2056,12 @@ describe("NimChatModelProvider", () => {
       "test-ua",
       expect.objectContaining({ maxOutputTokens: 65536 }),
     );
-    expect((vscode as any).window.showInputBox).not.toHaveBeenCalled();
+    expect(vscode.window.showInputBox).not.toHaveBeenCalled();
   });
 
   it("returns setup guidance in chat when no API key is available", async () => {
     (secrets.get as jest.Mock).mockResolvedValue(undefined);
-    ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
 
     const progress = { report: jest.fn() };
     const token = {
@@ -1974,11 +2070,15 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).not.toHaveBeenCalled();
@@ -2043,17 +2143,17 @@ describe("NimChatModelProvider", () => {
         name: "Kimi k2.6",
         maxInputTokens: 200000,
         maxOutputTokens: 65536,
-      } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
     expect(fallbackRequest.model).toBe("deepseek-ai/deepseek-v4-flash");
-    expect((vscode as any).window.showInformationMessage).toHaveBeenCalledWith(
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining("Falling back to DeepSeek V4 Flash"),
     );
     expect(progress.report).toHaveBeenCalledWith(
@@ -2090,7 +2190,7 @@ describe("NimChatModelProvider", () => {
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
         capabilities: { toolCalling: 128, imageInput: supportsVision },
-      } as any,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 1,
@@ -2099,10 +2199,10 @@ describe("NimChatModelProvider", () => {
             { mimeType: "image/png", data: new Uint8Array([1, 2, 3]) },
           ],
         },
-      ] as any,
-      { modelOptions: {} } as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     if (!supportsVision) {
@@ -2150,11 +2250,11 @@ describe("NimChatModelProvider", () => {
           maxInputTokens: 200000,
           maxOutputTokens: 65536,
           capabilities: { toolCalling: 128, imageInput: true },
-        } as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelOptions: {} } as any,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         progress,
-        token as any,
+        token as unknown as vscode.CancellationToken,
       ),
     ).rejects.toThrow("[RATE_LIMITED]");
 
@@ -2162,7 +2262,7 @@ describe("NimChatModelProvider", () => {
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Partial response" }),
     );
-    expect((vscode as any).window.showInformationMessage).not.toHaveBeenCalledWith(
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalledWith(
       expect.stringContaining("Falling back"),
     );
   });
@@ -2202,14 +2302,14 @@ describe("NimChatModelProvider", () => {
           maxInputTokens: 200000,
           maxOutputTokens: 65536,
           capabilities: { toolCalling: 128, imageInput: true },
-        } as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelOptions: {} } as any,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         { report: jest.fn() },
         {
           isCancellationRequested: false,
           onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-        } as any,
+        } as unknown as vscode.CancellationToken,
       ),
     ).rejects.toThrow("[RATE_LIMITED]");
 
@@ -2242,11 +2342,11 @@ describe("NimChatModelProvider", () => {
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
         capabilities: { toolCalling: 128, imageInput: true },
-      } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
@@ -2286,14 +2386,18 @@ describe("NimChatModelProvider", () => {
         maxInputTokens: 5000,
         maxOutputTokens: 1000,
         capabilities: { toolCalling: 128, imageInput: true },
-      } as any,
-      [{ role: 1, content: [{ value: "a".repeat(900) }] }] as any,
-      { modelOptions: { max_tokens: 1000 } } as any,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [
+        { role: 1, content: [{ value: "a".repeat(900) }] },
+      ] as unknown as vscode.LanguageModelChatMessage[],
+      {
+        modelOptions: { max_tokens: 1000 },
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       { report: jest.fn() },
       {
         isCancellationRequested: false,
         onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      } as any,
+      } as unknown as vscode.CancellationToken,
     );
 
     const firstRequest = (streamChatCompletion as jest.Mock).mock.calls[0][1];
@@ -2325,14 +2429,14 @@ describe("NimChatModelProvider", () => {
           maxInputTokens: 100000,
           maxOutputTokens: 65536,
           capabilities: { toolCalling: 128, imageInput: true },
-        } as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelOptions: {} } as any,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         progress,
         {
           isCancellationRequested: false,
           onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-        } as any,
+        } as unknown as vscode.CancellationToken,
       ),
     ).rejects.toThrow("fetch failed");
 
@@ -2348,7 +2452,7 @@ describe("NimChatModelProvider", () => {
     const promptResult = new Promise<string | undefined>((resolve) => {
       resolvePrompt = resolve;
     });
-    ((vscode as any).window.showInputBox as jest.Mock).mockReturnValue(promptResult);
+    (vscode.window.showInputBox as jest.Mock).mockReturnValue(promptResult);
     (streamChatCompletion as jest.Mock).mockImplementation(() =>
       (async function* () {
         yield { choices: [{ delta: { content: "done" } }] };
@@ -2365,23 +2469,23 @@ describe("NimChatModelProvider", () => {
           maxInputTokens: 100000,
           maxOutputTokens: 65536,
           capabilities: { toolCalling: 128, imageInput: true },
-        } as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelOptions: {} } as any,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         { report: jest.fn() },
-        token as any,
+        token as unknown as vscode.CancellationToken,
       );
 
     const requests = [makeRequest(), makeRequest()];
     for (
       let attempt = 0;
-      attempt < 10 && !((vscode as any).window.showInputBox as jest.Mock).mock.calls.length;
+      attempt < 10 && !(vscode.window.showInputBox as jest.Mock).mock.calls.length;
       attempt += 1
     ) {
       await Promise.resolve();
     }
 
-    expect((vscode as any).window.showInputBox).toHaveBeenCalledTimes(1);
+    expect(vscode.window.showInputBox).toHaveBeenCalledTimes(1);
     resolvePrompt("shared-key");
     await Promise.all(requests);
 
@@ -2431,11 +2535,11 @@ describe("NimChatModelProvider", () => {
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
         capabilities: { toolCalling: 128, imageInput: true },
-      } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       { report: jest.fn() },
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     for (let attempt = 0; attempt < 10 && !streamSignal; attempt += 1) {
@@ -2445,7 +2549,7 @@ describe("NimChatModelProvider", () => {
     cancelled = true;
     cancelListener?.();
 
-    await expect(request).rejects.toBeInstanceOf((vscode as any).CancellationError);
+    await expect(request).rejects.toBeInstanceOf(vscode.CancellationError);
     expect(streamSignal?.aborted).toBe(true);
     expect(streamChatCompletion).toHaveBeenCalledTimes(1);
   });
@@ -2480,13 +2584,13 @@ describe("NimChatModelProvider", () => {
           maxInputTokens: 100000,
           maxOutputTokens: 65536,
           capabilities: { toolCalling: 128, imageInput: true },
-        } as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelOptions: {} } as any,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         { report: jest.fn() },
-        token as any,
+        token as unknown as vscode.CancellationToken,
       ),
-    ).rejects.toBeInstanceOf((vscode as any).CancellationError);
+    ).rejects.toBeInstanceOf(vscode.CancellationError);
 
     expect(streamCalls).toBe(1);
   });
@@ -2514,11 +2618,15 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
@@ -2541,11 +2649,15 @@ describe("NimChatModelProvider", () => {
 
     await expect(
       provider.provideLanguageModelChatResponse(
-        { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelOptions: {} } as any,
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         progress,
-        token as any,
+        token as unknown as vscode.CancellationToken,
       ),
     ).rejects.toThrow("[EMPTY_STREAM]");
 
@@ -2563,19 +2675,23 @@ describe("NimChatModelProvider", () => {
 
     await expect(
       provider.provideLanguageModelChatResponse(
-        { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelOptions: {} } as any,
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         { report: jest.fn() },
         {
           isCancellationRequested: false,
           onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-        } as any,
+        } as unknown as vscode.CancellationToken,
       ),
     ).rejects.toThrow("[EMPTY_STREAM]");
 
     const attempts = (streamChatCompletion as jest.Mock).mock.calls.map(
-      (call: any[]) => call[4]?.maxFetchAttempts ?? 3,
+      (call) => call[4]?.maxFetchAttempts ?? 3,
     );
     expect(attempts).toHaveLength(3);
     for (const value of attempts) {
@@ -2608,18 +2724,22 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
-      { modelOptions: {} } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+      { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const textReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof vscode.LanguageModelTextPart,
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
-    expect(textReports.map((c: any) => c[0].value).join("")).toBe("Recovered answer");
+    expect(textReports.map((c) => c[0].value).join("")).toBe("Recovered answer");
   });
 
   it("does not multi-retry a reasoning-only stream and throws empty_stream", async () => {
@@ -2639,19 +2759,21 @@ describe("NimChatModelProvider", () => {
 
     await expect(
       provider.provideLanguageModelChatResponse(
-        { id: "deepseek-ai/deepseek-v4", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelOptions: {} } as any,
+        {
+          id: "deepseek-ai/deepseek-v4",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         progress,
-        token as any,
+        token as unknown as vscode.CancellationToken,
       ),
     ).rejects.toThrow("[EMPTY_STREAM]");
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(1);
-    const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
-    const thinkingReports = progress.report.mock.calls.filter(
-      (c: any) => c[0] instanceof ThinkingPart,
-    );
+
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     expect(thinkingReports.length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -24,7 +24,7 @@ describe("NimAnalyzeImageTool", () => {
 
   beforeEach(() => {
     secrets = { get: jest.fn() };
-    tool = new NimAnalyzeImageTool(secrets as any);
+    tool = new NimAnalyzeImageTool(secrets as unknown as vscode.SecretStorage);
     jest.spyOn(NimVisionClient.prototype, "analyzeImage").mockResolvedValue("Analyzed result");
   });
   afterEach(() => {
@@ -41,23 +41,29 @@ describe("NimAnalyzeImageTool", () => {
     const result = await tool.invoke(
       {
         input: { image_data: "data:image/png;base64,abc", prompt: "What is this?" },
-      } as any,
-      { isCancellationRequested: false } as any,
+      } as unknown as vscode.LanguageModelToolInvocationOptions<{
+        image_data: string;
+        prompt: string;
+      }>,
+      { isCancellationRequested: false } as unknown as vscode.CancellationToken,
     );
-    expect((result.content[0] as any).value).toBe("Analyzed result");
+    expect((result.content as { value: string }[])[0].value).toBe("Analyzed result");
   });
 
   it("handles analyzeImage errors gracefully", async () => {
     jest.spyOn(NimVisionClient.prototype, "analyzeImage").mockRejectedValue(new Error("API down"));
-    const failingTool = new NimAnalyzeImageTool(secrets as any);
+    const failingTool = new NimAnalyzeImageTool(secrets as unknown as vscode.SecretStorage);
     const result = await failingTool.invoke(
       {
         input: { image_data: "data:image/png;base64,abc", prompt: "What?" },
-      } as any,
-      { isCancellationRequested: false } as any,
+      } as unknown as vscode.LanguageModelToolInvocationOptions<{
+        image_data: string;
+        prompt: string;
+      }>,
+      { isCancellationRequested: false } as unknown as vscode.CancellationToken,
     );
-    expect((result.content[0] as any).value).toContain("Failed to analyze image");
-    expect((result.content[0] as any).value).toContain("API down");
+    expect((result.content as { value: string }[])[0].value).toContain("Failed to analyze image");
+    expect((result.content as { value: string }[])[0].value).toContain("API down");
   });
 
   it("rejects remote image URLs before any API access", async () => {
@@ -65,10 +71,15 @@ describe("NimAnalyzeImageTool", () => {
     const result = await tool.invoke(
       {
         input: { image_data: "https://example.com/cat.png", prompt: "What is this?" },
-      } as any,
-      { isCancellationRequested: false } as any,
+      } as unknown as vscode.LanguageModelToolInvocationOptions<{
+        image_data: string;
+        prompt: string;
+      }>,
+      { isCancellationRequested: false } as unknown as vscode.CancellationToken,
     );
-    expect((result.content[0] as any).value).toContain("requires a base64 image data URL");
+    expect((result.content as { value: string }[])[0].value).toContain(
+      "requires a base64 image data URL",
+    );
     expect(secrets.get).not.toHaveBeenCalled();
   });
 
@@ -77,17 +88,27 @@ describe("NimAnalyzeImageTool", () => {
     const result = await tool.invoke(
       {
         input: { image_data: "data:image/png,not-base64", prompt: "What is this?" },
-      } as any,
-      { isCancellationRequested: false } as any,
+      } as unknown as vscode.LanguageModelToolInvocationOptions<{
+        image_data: string;
+        prompt: string;
+      }>,
+      { isCancellationRequested: false } as unknown as vscode.CancellationToken,
     );
-    expect((result.content[0] as any).value).toContain("requires a base64 image data URL");
+    expect((result.content as { value: string }[])[0].value).toContain(
+      "requires a base64 image data URL",
+    );
     expect(secrets.get).not.toHaveBeenCalled();
   });
 
   it("prepareInvocation returns invocation message", async () => {
     const prepared = await tool.prepareInvocation!(
-      { input: { image_data: "", prompt: "" } } as any,
-      { isCancellationRequested: false } as any,
+      {
+        input: { image_data: "", prompt: "" },
+      } as unknown as vscode.LanguageModelToolInvocationPrepareOptions<{
+        image_data: string;
+        prompt: string;
+      }>,
+      { isCancellationRequested: false } as unknown as vscode.CancellationToken,
     );
     expect(prepared).toEqual({ invocationMessage: "Analyzing image with NVIDIA NIM Vision..." });
   });
@@ -95,12 +116,12 @@ describe("NimAnalyzeImageTool", () => {
 
 describe("registerNimTools", () => {
   it("returns a disposable", () => {
-    const secrets = { get: jest.fn() } as any;
+    const secrets = { get: jest.fn() } as unknown as vscode.SecretStorage;
     const disposable = registerNimTools(secrets);
     expect(disposable).toBeDefined();
     expect(typeof disposable.dispose).toBe("function");
     expect(vscode.Disposable.from).toHaveBeenCalled();
-    expect((vscode as any).lm.registerTool).toHaveBeenCalledWith(
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
       "nvidia_nim_analyze_image",
       expect.any(NimAnalyzeImageTool),
     );

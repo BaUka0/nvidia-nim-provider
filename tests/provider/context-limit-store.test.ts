@@ -35,14 +35,6 @@ describe("ContextLimitStore", () => {
     expect(store.get("model-a", "fp1")).toBe(202752);
   });
 
-  it("clearForModel removes only the target model", () => {
-    store.set("model-a", 262144, "fp1");
-    store.set("model-b", 524288, "fp1");
-    store.clearForModel("model-a");
-    expect(store.get("model-a", "fp1")).toBeUndefined();
-    expect(store.get("model-b", "fp1")).toBe(524288);
-  });
-
   it("clear removes all entries", () => {
     store.set("model-a", 262144, "fp1");
     store.set("model-b", 524288, "fp1");

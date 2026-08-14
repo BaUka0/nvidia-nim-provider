@@ -15,7 +15,7 @@ jest.mock("vscode", () => ({
   window: { showInformationMessage: jest.fn() },
   workspace: {
     getConfiguration: jest.fn(() => ({
-      get: jest.fn((key: string, defaultValue: any) => defaultValue),
+      get: jest.fn((key: string, defaultValue: unknown) => defaultValue),
     })),
   },
 }));

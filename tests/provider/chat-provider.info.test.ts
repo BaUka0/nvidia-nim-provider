@@ -43,7 +43,7 @@ jest.mock("vscode", () => ({
   },
   workspace: {
     getConfiguration: jest.fn(() => ({
-      get: jest.fn((key: string, defaultValue: any) => defaultValue),
+      get: jest.fn((key: string, defaultValue: unknown) => defaultValue),
     })),
   },
   LanguageModelError: {
@@ -63,6 +63,12 @@ describe("NimChatModelProvider", () => {
   let secrets: vscode.SecretStorage;
   let globalState: vscode.Memento;
   let provider: NimChatModelProvider;
+
+  const makeToken = (isCancellationRequested = false) =>
+    ({
+      isCancellationRequested,
+      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
+    }) as unknown as vscode.CancellationToken;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -99,19 +105,16 @@ describe("NimChatModelProvider", () => {
       keys: jest.fn(),
     } as unknown as vscode.Memento;
     provider = new NimChatModelProvider(secrets, "test-ua", globalState);
-    ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
   });
 
   it("provideLanguageModelChatInformation returns no models when no provider group API key exists", async () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
     (secrets.get as jest.Mock).mockResolvedValue(undefined);
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true } as any,
-      token as any,
+      { silent: true } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
     expect(infos).toEqual([]);
     expect(fetchModels).not.toHaveBeenCalled();
@@ -128,14 +131,14 @@ describe("NimChatModelProvider", () => {
         owned_by: "integrate.api.nvidia.com",
       },
     ]);
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: { apiKey: "configured-key" } } as any,
-      token as any,
+      {
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
@@ -170,14 +173,14 @@ describe("NimChatModelProvider", () => {
         owned_by: "integrate.api.nvidia.com",
       },
     ]);
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: { apiKey: "configured-key" } } as any,
-      token as any,
+      {
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
@@ -210,14 +213,11 @@ describe("NimChatModelProvider", () => {
       return undefined;
     });
     (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true } as any,
-      token as any,
+      { silent: true } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(infos).toEqual([]);
@@ -244,14 +244,14 @@ describe("NimChatModelProvider", () => {
       return undefined;
     });
     (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: undefined } as any,
-      token as any,
+      {
+        silent: true,
+        configuration: undefined,
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(infos).toEqual([]);
@@ -269,14 +269,11 @@ describe("NimChatModelProvider", () => {
         owned_by: "deepseek-ai",
       },
     ]);
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: {} } as any,
-      token as any,
+      { silent: true, configuration: {} } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(fetchModels).toHaveBeenCalledWith("legacy-key", undefined, "test-ua");
@@ -312,18 +309,15 @@ describe("NimChatModelProvider", () => {
       return undefined;
     });
     (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const grouplessInfos = await provider.provideLanguageModelChatInformation(
-      { silent: true } as any,
-      token as any,
+      { silent: true } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
     const groupInfos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: {} } as any,
-      token as any,
+      { silent: true, configuration: {} } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(grouplessInfos).toEqual([]);
@@ -356,19 +350,27 @@ describe("NimChatModelProvider", () => {
       }
       return undefined;
     });
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
-    await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
+    await provider.provideLanguageModelChatInformation(
+      { silent: true } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
+    );
     const firstInfos = await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "configured-key" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM",
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
     const duplicateInfos = await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM 2", silent: true, configuration: { apiKey: "configured-key" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM 2",
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(firstInfos).toHaveLength(1);
@@ -396,19 +398,27 @@ describe("NimChatModelProvider", () => {
       }
       return undefined;
     });
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
-    await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
+    await provider.provideLanguageModelChatInformation(
+      { silent: true } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
+    );
     const firstInfos = await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "key-aaa" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM",
+        silent: true,
+        configuration: { apiKey: "key-aaa" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
     const differentKeyInfos = await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM 2", silent: true, configuration: { apiKey: "key-bbb" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM 2",
+        silent: true,
+        configuration: { apiKey: "key-bbb" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(firstInfos).toHaveLength(1);
@@ -428,29 +438,37 @@ describe("NimChatModelProvider", () => {
         yield { choices: [{ delta: { content: "done" } }] };
       })(),
     );
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
-    await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
+    await provider.provideLanguageModelChatInformation(
+      { silent: true } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
+    );
     const [modelA] = await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM A", silent: true, configuration: { apiKey: "key-a" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM A",
+        silent: true,
+        configuration: { apiKey: "key-a" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
     const [modelB] = await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM B", silent: true, configuration: { apiKey: "key-b" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM B",
+        silent: true,
+        configuration: { apiKey: "key-b" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     const progress = { report: jest.fn() };
     for (const model of [{ ...modelA }, { ...modelB }]) {
       await provider.provideLanguageModelChatResponse(
-        model as any,
-        [{ role: 1, content: [{ value: "Hi" }] }] as any,
-        { modelOptions: {} } as any,
+        model as unknown as vscode.LanguageModelChatInformation,
+        [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         progress,
-        token as any,
+        token,
       );
     }
 
@@ -479,20 +497,31 @@ describe("NimChatModelProvider", () => {
       }
       return undefined;
     });
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
-    await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
     await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "configured-key" } } as any,
-      token as any,
+      { silent: true } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
-    await provider.provideLanguageModelChatInformation({ silent: true } as any, token as any);
+    await provider.provideLanguageModelChatInformation(
+      {
+        group: "NVIDIA NIM",
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
+    );
+    await provider.provideLanguageModelChatInformation(
+      { silent: true } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
+    );
     const infos = await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "configured-key" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM",
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(infos).toHaveLength(1);
@@ -525,14 +554,14 @@ describe("NimChatModelProvider", () => {
         owned_by: "integrate.api.nvidia.com",
       },
     ]);
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: { apiKey: "configured-key" } } as any,
-      token as any,
+      {
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
@@ -564,14 +593,14 @@ describe("NimChatModelProvider", () => {
       return undefined;
     });
     (fetchModels as jest.Mock).mockResolvedValue(null);
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: { apiKey: "configured-key" } } as any,
-      token as any,
+      {
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
@@ -601,14 +630,14 @@ describe("NimChatModelProvider", () => {
       }
       return undefined;
     });
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: { apiKey: "configured-key" } } as any,
-      token as any,
+      {
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
     expect(infos.length).toBe(1);
     expect(infos[0].id).toBe("deepseek-ai/deepseek-v4-flash");
@@ -639,10 +668,7 @@ describe("NimChatModelProvider", () => {
       }
       return undefined;
     });
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
     const options = {
       group: "NVIDIA NIM",
       silent: true,
@@ -650,10 +676,16 @@ describe("NimChatModelProvider", () => {
     };
 
     await expect(
-      provider.provideLanguageModelChatInformation(options as any, token as any),
+      provider.provideLanguageModelChatInformation(
+        options as unknown as vscode.PrepareLanguageModelChatModelOptions,
+        token,
+      ),
     ).resolves.toHaveLength(1);
     await expect(
-      provider.provideLanguageModelChatInformation(options as any, token as any),
+      provider.provideLanguageModelChatInformation(
+        options as unknown as vscode.PrepareLanguageModelChatModelOptions,
+        token,
+      ),
     ).resolves.toHaveLength(1);
 
     expect(fetchModels).not.toHaveBeenCalled();
@@ -682,18 +714,15 @@ describe("NimChatModelProvider", () => {
     (fetchModels as jest.Mock).mockResolvedValue([
       { id: "deepseek-ai/deepseek-v4-pro", object: "model" },
     ]);
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
       {
         group: "NVIDIA NIM",
         silent: true,
         configuration: { apiKey: "configured-key" },
-      } as any,
-      token as any,
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(infos).toEqual([expect.objectContaining({ id: "deepseek-ai/deepseek-v4-pro" })]);
@@ -702,14 +731,11 @@ describe("NimChatModelProvider", () => {
 
   it("provideLanguageModelChatInformation returns no models when the cache is not normalized", async () => {
     (globalState.get as jest.Mock).mockReturnValue([{ id: "cached-model", name: "Cached Model" }]);
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true } as any,
-      token as any,
+      { silent: true } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(infos).toEqual([]);
@@ -719,14 +745,11 @@ describe("NimChatModelProvider", () => {
     "provideLanguageModelChatInformation returns no models when cache is malformed non-array: %p",
     async (malformedCache) => {
       (globalState.get as jest.Mock).mockReturnValue(malformedCache);
-      const token = {
-        isCancellationRequested: false,
-        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      };
+      const token = makeToken();
 
       const infos = await provider.provideLanguageModelChatInformation(
-        { silent: true } as any,
-        token as any,
+        { silent: true } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+        token,
       );
 
       expect(infos).toEqual([]);
@@ -756,14 +779,14 @@ describe("NimChatModelProvider", () => {
       }
       return undefined;
     });
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true, configuration: { apiKey: "configured-key" } } as any,
-      token as any,
+      {
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(infos).toHaveLength(1);
@@ -772,13 +795,10 @@ describe("NimChatModelProvider", () => {
   });
 
   it("provideLanguageModelChatInformation returns empty array on cancellation", async () => {
-    const token = {
-      isCancellationRequested: true,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken(true);
     const infos = await provider.provideLanguageModelChatInformation(
-      { silent: true } as any,
-      token as any,
+      { silent: true } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
     expect(infos).toEqual([]);
   });
@@ -809,18 +829,23 @@ describe("NimChatModelProvider", () => {
     (fetchModels as jest.Mock).mockResolvedValue([
       { id: "deepseek-ai/deepseek-v4-pro", object: "model" },
     ]);
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const firstInfos = await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "key-a" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM",
+        silent: true,
+        configuration: { apiKey: "key-a" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
     const secondInfos = await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "key-b" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM",
+        silent: true,
+        configuration: { apiKey: "key-b" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(firstInfos[0].id).toBe("deepseek-ai/deepseek-v4-flash");
@@ -855,19 +880,24 @@ describe("NimChatModelProvider", () => {
     (fetchModels as jest.Mock).mockResolvedValue([
       { id: "deepseek-ai/deepseek-v4-pro", object: "model" },
     ]);
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     const before = await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "key-a" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM",
+        silent: true,
+        configuration: { apiKey: "key-a" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
     provider.fireModelInfoChanged();
     const after = await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "key-a" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM",
+        silent: true,
+        configuration: { apiKey: "key-a" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(before[0].id).toBe("deepseek-ai/deepseek-v4-flash");
@@ -949,11 +979,8 @@ describe("NimChatModelProvider", () => {
     });
 
     await provider.provideLanguageModelChatInformation(
-      { silent: true } as any,
-      {
-        isCancellationRequested: false,
-        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      } as any,
+      { silent: true } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      makeToken(),
     );
 
     expect(cacheHarness.runtimeInfoCache.size).toBe(0);
@@ -993,14 +1020,15 @@ describe("NimChatModelProvider", () => {
         },
       ): void;
     };
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "key-a" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM",
+        silent: true,
+        configuration: { apiKey: "key-a" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
     cacheHarness.setRuntimeInfoCache("deepseek-ai/deepseek-v4-flash", {
       supportsTools: true,
@@ -1010,8 +1038,12 @@ describe("NimChatModelProvider", () => {
     });
 
     await provider.provideLanguageModelChatInformation(
-      { group: "NVIDIA NIM", silent: true, configuration: { apiKey: "key-b" } } as any,
-      token as any,
+      {
+        group: "NVIDIA NIM",
+        silent: true,
+        configuration: { apiKey: "key-b" },
+      } as unknown as vscode.PrepareLanguageModelChatModelOptions,
+      token,
     );
 
     expect(cacheHarness.runtimeInfoCache.size).toBe(0);

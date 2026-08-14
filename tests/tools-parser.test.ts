@@ -6,6 +6,7 @@ import {
   repairToolArguments,
 } from "../src/tools/parser";
 import { ToolCallStreamAggregator } from "../src/provider/tool-call-aggregator";
+import type { ProvideLanguageModelChatResponseOptions } from "vscode";
 
 describe("tool argument parsing and validation", () => {
   const options = {
@@ -24,7 +25,7 @@ describe("tool argument parsing and validation", () => {
         },
       },
     ],
-  } as any;
+  } as unknown as ProvideLanguageModelChatResponseOptions;
 
   it("repairs malformed JSON only after strict parsing fails", () => {
     expect(parseToolArguments('{"filePath":"/tmp/a.ts","startLine":1}')).toEqual({
@@ -85,7 +86,7 @@ describe("tool argument parsing and validation", () => {
           },
         },
       ],
-    } as any).get("run_query");
+    } as unknown as ProvideLanguageModelChatResponseOptions).get("run_query");
 
     const repaired = repairToolArguments(
       "run_query",
@@ -115,7 +116,7 @@ describe("tool argument parsing and validation", () => {
           },
         },
       ],
-    } as any).get("search");
+    } as unknown as ProvideLanguageModelChatResponseOptions).get("search");
 
     expect(hasRequiredToolArguments({ filter: {} }, nestedSchema)).toBe(false);
     expect(hasRequiredToolArguments({ filter: { path: "/tmp" } }, nestedSchema)).toBe(true);
@@ -231,7 +232,7 @@ describe("tool argument parsing and validation", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as ProvideLanguageModelChatResponseOptions,
       messages: [],
       onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
       onSkipToolCall: (name, required) => skipped.push({ name, required }),

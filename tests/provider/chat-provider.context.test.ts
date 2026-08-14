@@ -46,7 +46,7 @@ jest.mock("vscode", () => ({
   },
   workspace: {
     getConfiguration: jest.fn(() => ({
-      get: jest.fn((key: string, defaultValue: any) => defaultValue),
+      get: jest.fn((key: string, defaultValue: unknown) => defaultValue),
     })),
   },
   LanguageModelError: {
@@ -102,7 +102,7 @@ describe("NimChatModelProvider", () => {
       keys: jest.fn(),
     } as unknown as vscode.Memento;
     provider = new NimChatModelProvider(secrets, "test-ua", globalState);
-    ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
   });
 
   it("repairs empty read_file arguments from editor context", async () => {
@@ -135,7 +135,11 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 1,
@@ -146,7 +150,7 @@ describe("NimChatModelProvider", () => {
             },
           ],
         },
-      ] as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -164,12 +168,12 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].name).toBe("read_file");
     expect(toolCallReports[0][0].input).toEqual({
@@ -209,7 +213,11 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 1,
@@ -220,7 +228,7 @@ describe("NimChatModelProvider", () => {
             },
           ],
         },
-      ] as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -238,12 +246,12 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
@@ -282,7 +290,11 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 1,
@@ -293,7 +305,7 @@ describe("NimChatModelProvider", () => {
             },
           ],
         },
-      ] as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -311,12 +323,12 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].input).toEqual({ filePath: "/tmp/example.md" });
   });
@@ -351,7 +363,11 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 1,
@@ -362,7 +378,7 @@ describe("NimChatModelProvider", () => {
             },
           ],
         },
-      ] as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -378,12 +394,12 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].input).toEqual({ filePath: "/tmp/example.md" });
   });
@@ -418,7 +434,11 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 1,
@@ -429,7 +449,7 @@ describe("NimChatModelProvider", () => {
             },
           ],
         },
-      ] as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -447,12 +467,12 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
@@ -491,7 +511,11 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 1,
@@ -502,7 +526,7 @@ describe("NimChatModelProvider", () => {
             },
           ],
         },
-      ] as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -518,12 +542,12 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].name).toBe("list_dir");
     expect(toolCallReports[0][0].input).toEqual({ path: "/tmp/workspace" });
@@ -573,8 +597,14 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Test the memory tool" }] }] as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [
+        { role: 1, content: [{ value: "Test the memory tool" }] },
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -597,12 +627,12 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].name).toBe("grep_search");
     expect(toolCallReports[0][0].input).toEqual({ query: "causal", isRegexp: false });
@@ -632,7 +662,11 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 1,
@@ -643,7 +677,7 @@ describe("NimChatModelProvider", () => {
             },
           ],
         },
-      ] as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -661,12 +695,12 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].name).toBe("read_file");
     expect(toolCallReports[0][0].input).toEqual({
@@ -709,12 +743,16 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 2,
           content: [
-            new (vscode as any).LanguageModelToolCallPart("read_file:0", "read_file", {
+            new vscode.LanguageModelToolCallPart("read_file:0", "read_file", {
               filePath: "/tmp/example.md",
               startLine: 158,
               endLine: 158,
@@ -724,12 +762,12 @@ describe("NimChatModelProvider", () => {
         {
           role: 1,
           content: [
-            new (vscode as any).LanguageModelToolResultPart("read_file:0", [
-              new (vscode as any).LanguageModelTextPart("**③ パネル・データ分析（差分の差分法）**"),
+            new vscode.LanguageModelToolResultPart("read_file:0", [
+              new vscode.LanguageModelTextPart("**③ パネル・データ分析（差分の差分法）**"),
             ]),
           ],
         },
-      ] as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -747,12 +785,12 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(0);
   });
 
@@ -789,12 +827,16 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 2,
           content: [
-            new (vscode as any).LanguageModelToolCallPart("read_file:0", "read_file", {
+            new vscode.LanguageModelToolCallPart("read_file:0", "read_file", {
               filePath: "/tmp/example.md",
               startLine: 158,
               endLine: 158,
@@ -804,16 +846,16 @@ describe("NimChatModelProvider", () => {
         {
           role: 1,
           content: [
-            new (vscode as any).LanguageModelToolResultPart("read_file:0", [
-              new (vscode as any).LanguageModelTextPart("**③ パネル・データ分析（差分の差分法）**"),
+            new vscode.LanguageModelToolResultPart("read_file:0", [
+              new vscode.LanguageModelTextPart("**③ パネル・データ分析（差分の差分法）**"),
             ]),
           ],
         },
         {
           role: 1,
-          content: [new (vscode as any).LanguageModelTextPart("Read that same line again.")],
+          content: [new vscode.LanguageModelTextPart("Read that same line again.")],
         },
-      ] as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -831,12 +873,12 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0]).toEqual(
       expect.objectContaining({ callId: "read_file:1", name: "read_file" }),
@@ -858,13 +900,17 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
       [
         {
           role: 2,
           content: [
-            new (vscode as any).LanguageModelTextPart("Let me check"),
-            new (vscode as any).LanguageModelToolCallPart("call_1", "get_weather", {
+            new vscode.LanguageModelTextPart("Let me check"),
+            new vscode.LanguageModelToolCallPart("call_1", "get_weather", {
               city: "Tokyo",
             }),
           ],
@@ -872,18 +918,18 @@ describe("NimChatModelProvider", () => {
         {
           role: 1,
           content: [
-            new (vscode as any).LanguageModelToolResultPart("call_1", [
-              new (vscode as any).LanguageModelTextPart("Sunny, 25C"),
+            new vscode.LanguageModelToolResultPart("call_1", [
+              new vscode.LanguageModelTextPart("Sunny, 25C"),
             ]),
           ],
         },
-      ] as any,
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [{ name: "get_weather", description: "Get weather", inputSchema: {} }],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
@@ -914,13 +960,13 @@ describe("NimChatModelProvider", () => {
         { role: 1, content: [{ value: "Hi" }] },
         { role: 2, content: [{ value: "Hello, how can I help?" }] },
         { role: 1, content: [{ value: "What is the weather in Tokyo?" }] },
-      ] as any;
+      ] as unknown as vscode.LanguageModelChatMessage[];
 
     const makeToken = () =>
       ({
         isCancellationRequested: false,
         onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      }) as any;
+      }) as unknown as vscode.CancellationToken;
 
     const weatherTool = {
       name: "get_weather",
@@ -963,9 +1009,16 @@ describe("NimChatModelProvider", () => {
 
       const progress = { report: jest.fn() };
       await provider.provideLanguageModelChatResponse(
-        { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
         makeMessages(),
-        { modelOptions: {}, tools: [weatherTool] } as any,
+        {
+          modelOptions: {},
+          tools: [weatherTool],
+        } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         progress,
         makeToken(),
       );
@@ -980,7 +1033,7 @@ describe("NimChatModelProvider", () => {
       );
       expect(retryRequest.max_tokens).toBe(Math.max(1024, Math.floor(150000 * 0.05)));
 
-      const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+      const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
       expect(toolCallReports).toHaveLength(1);
       expect(toolCallReports[0][0].name).toBe("get_weather");
       expect(toolCallReports[0][0].input).toEqual({ city: "Tokyo" });
@@ -1003,17 +1056,25 @@ describe("NimChatModelProvider", () => {
 
       const progress = { report: jest.fn() };
       await provider.provideLanguageModelChatResponse(
-        { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
         makeMessages(),
-        { modelOptions: {} } as any,
+        { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         progress,
         makeToken(),
       );
 
       expect(streamChatCompletion).toHaveBeenCalledTimes(2);
-      const ThinkingPart = (vscode as any).LanguageModelThinkingPart;
+      const ThinkingPart = (
+        vscode as unknown as {
+          LanguageModelThinkingPart: new (value: string) => { value: string };
+        }
+      ).LanguageModelThinkingPart;
       const thinkingReports = progress.report.mock.calls.filter(
-        (c: any) => c[0] instanceof ThinkingPart,
+        (c) => c[0] instanceof ThinkingPart,
       );
       expect(thinkingReports).toHaveLength(1);
       expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "Let me think." }));
@@ -1043,7 +1104,7 @@ describe("NimChatModelProvider", () => {
         {
           role: 2,
           content: [
-            new (vscode as any).LanguageModelToolCallPart("call_1", "get_weather", {
+            new vscode.LanguageModelToolCallPart("call_1", "get_weather", {
               city: "Tokyo",
             }),
           ],
@@ -1051,18 +1112,25 @@ describe("NimChatModelProvider", () => {
         {
           role: 1,
           content: [
-            new (vscode as any).LanguageModelToolResultPart("call_1", [
-              new (vscode as any).LanguageModelTextPart(hugeToolResult),
+            new vscode.LanguageModelToolResultPart("call_1", [
+              new vscode.LanguageModelTextPart(hugeToolResult),
             ]),
           ],
         },
         { role: 1, content: [{ value: "Summarize the tool output" }] },
-      ] as any;
+      ] as unknown as vscode.LanguageModelChatMessage[];
 
       await provider.provideLanguageModelChatResponse(
-        { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
+        {
+          id: "kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        } as unknown as vscode.LanguageModelChatInformation,
         messages,
-        { modelOptions: {}, tools: [weatherTool] } as any,
+        {
+          modelOptions: {},
+          tools: [weatherTool],
+        } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
         { report: jest.fn() },
         makeToken(),
       );

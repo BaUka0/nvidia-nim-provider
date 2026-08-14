@@ -88,43 +88,6 @@ describe("StatusBarManager", () => {
     expect(item.dispose).toHaveBeenCalled();
   });
 
-  describe("showUsage", () => {
-    it("shows prompt and completion tokens with zap icon", async () => {
-      const { StatusBarManager } = await import("../src/shared/status-bar");
-      const manager = new StatusBarManager();
-      const item = mockCreateStatusBarItem.mock.results[0].value;
-      manager.showUsage("Kimi k2.6", 1200, 850);
-      expect(item.text).toBe("$(zap) Kimi k2.6: 1.2k→850");
-      expect(item.tooltip).toContain("Prompt: 1200");
-      expect(item.tooltip).toContain("Completion: 850");
-      expect(item.show).toHaveBeenCalled();
-    });
-
-    it("formats millions with M suffix", async () => {
-      const { StatusBarManager } = await import("../src/shared/status-bar");
-      const manager = new StatusBarManager();
-      const item = mockCreateStatusBarItem.mock.results[0].value;
-      manager.showUsage("DeepSeek V4 Pro", 1000000, 500000);
-      expect(item.text).toBe("$(zap) DeepSeek V4 Pro: 1.0M→500.0k");
-    });
-
-    it("shows only prompt when completion is undefined", async () => {
-      const { StatusBarManager } = await import("../src/shared/status-bar");
-      const manager = new StatusBarManager();
-      const item = mockCreateStatusBarItem.mock.results[0].value;
-      manager.showUsage("GLM 5.1", 500, undefined);
-      expect(item.text).toBe("$(zap) GLM 5.1: 500 in");
-    });
-
-    it("shows only model name when no token data", async () => {
-      const { StatusBarManager } = await import("../src/shared/status-bar");
-      const manager = new StatusBarManager();
-      const item = mockCreateStatusBarItem.mock.results[0].value;
-      manager.showUsage("Nemotron");
-      expect(item.text).toBe("$(zap) Nemotron");
-    });
-  });
-
   describe("showTokenBreakdown", () => {
     it("displays X/Y format in status bar text", async () => {
       const { StatusBarManager } = await import("../src/shared/status-bar");

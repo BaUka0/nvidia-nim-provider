@@ -67,23 +67,6 @@ export class StatusBarManager {
     this.item.show();
   }
 
-  showUsage(modelName: string, promptTokens?: number, completionTokens?: number): void {
-    if (promptTokens !== undefined && completionTokens !== undefined) {
-      this.item.text = `$(zap) ${modelName}: ${formatTokenCount(promptTokens)}→${formatTokenCount(completionTokens)}`;
-      this.item.tooltip = `${PROVIDER_DISPLAY_NAME} — ${modelName}\nPrompt: ${promptTokens} tokens\nCompletion: ${completionTokens} tokens`;
-    } else if (promptTokens !== undefined) {
-      this.item.text = `$(zap) ${modelName}: ${formatTokenCount(promptTokens)} in`;
-      this.item.tooltip = `${PROVIDER_DISPLAY_NAME} — ${modelName}\nPrompt: ${promptTokens} tokens`;
-    } else {
-      this.item.text = `$(zap) ${modelName}`;
-      this.item.tooltip = `${PROVIDER_DISPLAY_NAME} — ${modelName}`;
-    }
-    this.item.command = REFRESH_MODELS_COMMAND_ID;
-    this.item.color = undefined;
-    this.item.backgroundColor = undefined;
-    this.item.show();
-  }
-
   showTokenBreakdown(breakdown: TokenBreakdown): void {
     const estimatedInput =
       breakdown.systemPrompt +

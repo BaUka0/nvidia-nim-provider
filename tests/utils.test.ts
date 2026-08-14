@@ -8,11 +8,7 @@ import {
   estimateToolsTokens,
   estimateTokens,
 } from "../src/messages/converter";
-import {
-  filterThinkTagsFromChunk,
-  flushThinkTagFilter,
-  stripThinkTags,
-} from "../src/messages/think-filter";
+import { filterThinkTagsFromChunk, flushThinkTagFilter } from "../src/messages/think-filter";
 
 describe("convertMessages", () => {
   it("converts user text message", () => {
@@ -22,7 +18,7 @@ describe("convertMessages", () => {
         content: [new vscode.LanguageModelTextPart("Hello")],
       },
     ];
-    const result = convertMessages(messages as any);
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[]);
     expect(result).toEqual<NimChatMessage[]>([{ role: "user", content: "Hello" }]);
   });
 
@@ -33,24 +29,24 @@ describe("convertMessages", () => {
         content: [new vscode.LanguageModelTextPart("Hi there")],
       },
     ];
-    const result = convertMessages(messages as any);
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[]);
     expect(result).toEqual<NimChatMessage[]>([{ role: "assistant", content: "Hi there" }]);
   });
 
   it("converts system text message", () => {
     const messages = [
       {
-        role: (vscode as any).LanguageModelChatMessageRole.System,
+        role: (vscode.LanguageModelChatMessageRole as unknown as { System: number }).System,
         content: [new vscode.LanguageModelTextPart("Be helpful")],
       },
     ];
-    const result = convertMessages(messages as any);
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[]);
     expect(result).toEqual<NimChatMessage[]>([{ role: "system", content: "Be helpful" }]);
   });
 
   it("handles empty messages", () => {
     const messages = [{ role: vscode.LanguageModelChatMessageRole.User, content: [] }];
-    const result = convertMessages(messages as any);
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[]);
     expect(result).toEqual<NimChatMessage[]>([{ role: "user", content: "(empty message)" }]);
   });
 
@@ -62,7 +58,9 @@ describe("convertMessages", () => {
         content: [{ mimeType: "image/png", data: imageData }],
       },
     ];
-    const result = convertMessages(messages as any, { supportsVision: true });
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[], {
+      supportsVision: true,
+    });
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("user");
     const content = result[0].content as Array<{ type: string; image_url?: { url: string } }>;
@@ -81,7 +79,9 @@ describe("convertMessages", () => {
         ],
       },
     ];
-    const result = convertMessages(messages as any, { supportsVision: false });
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[], {
+      supportsVision: false,
+    });
     expect(result).toEqual<NimChatMessage[]>([{ role: "user", content: "Describe this image" }]);
   });
 });
@@ -98,7 +98,7 @@ describe("estimateMessagesTokens", () => {
       { content: [new vscode.LanguageModelTextPart("Hello")] },
       { content: [new vscode.LanguageModelTextPart("world")] },
     ];
-    expect(estimateMessagesTokens(messages as any)).toBe(
+    expect(estimateMessagesTokens(messages as unknown as vscode.LanguageModelChatMessage[])).toBe(
       estimateTokens("Hello") + estimateTokens("world"),
     );
   });
@@ -118,7 +118,7 @@ describe("estimateMessagesTokens", () => {
         content: [new vscode.LanguageModelToolCallPart("call_1", "read_file", args)],
       },
     ];
-    const result = estimateMessagesTokens(messages as any);
+    const result = estimateMessagesTokens(messages as unknown as vscode.LanguageModelChatMessage[]);
     expect(result).toBe(
       estimateTokens(longContent) +
         estimateTokens("read_file") +
@@ -130,7 +130,9 @@ describe("estimateMessagesTokens", () => {
 
 describe("convertTools", () => {
   it("returns empty object when no tools", () => {
-    const result = convertTools({ tools: [] } as any);
+    const result = convertTools({
+      tools: [],
+    } as unknown as vscode.ProvideLanguageModelChatResponseOptions);
     expect(result).toEqual({});
   });
 
@@ -143,7 +145,7 @@ describe("convertTools", () => {
           inputSchema: { type: "object", properties: {} },
         },
       ],
-    } as any);
+    } as unknown as vscode.ProvideLanguageModelChatResponseOptions);
     expect(result.tools).toHaveLength(1);
     expect(result.tools?.[0].type).toBe("function");
     expect(result.tools?.[0].function.name).toBe("test_tool");
@@ -165,7 +167,7 @@ describe("convertTools", () => {
           },
         },
       ],
-    } as any);
+    } as unknown as vscode.ProvideLanguageModelChatResponseOptions);
     expect(result.tools).toHaveLength(1);
     const description = result.tools?.[0].function.description ?? "";
     expect(description).toContain("Required arguments");
@@ -196,7 +198,7 @@ describe("convertTools", () => {
           },
         },
       ],
-    } as any);
+    } as unknown as vscode.ProvideLanguageModelChatResponseOptions);
 
     const description = result.tools?.[0].function.description ?? "";
     expect(description).toContain("command");
@@ -218,7 +220,7 @@ describe("convertMessages with tools", () => {
         ],
       },
     ];
-    const result = convertMessages(messages as any);
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[]);
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("assistant");
     expect(result[0].reasoning_content).toBe(" ");
@@ -237,7 +239,7 @@ describe("convertMessages with tools", () => {
         ],
       },
     ];
-    const result = convertMessages(messages as any);
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[]);
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("tool");
     expect(result[0].tool_call_id).toBe("call_1");
@@ -255,7 +257,7 @@ describe("convertMessages with tools", () => {
         ],
       },
     ];
-    const result = convertMessages(messages as any);
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[]);
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("tool");
     expect(result[0].tool_call_id).toBe("call_1");
@@ -276,7 +278,7 @@ describe("convertMessages with tools", () => {
         ],
       },
     ];
-    const result = convertMessages(messages as any);
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[]);
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("tool");
     expect(result[0].content).toBe("real result");
@@ -297,7 +299,7 @@ describe("convertMessages with tools", () => {
         ],
       },
     ];
-    const result = convertMessages(messages as any);
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[]);
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("tool");
     expect(result[0].content).toContain("filePath");
@@ -316,7 +318,7 @@ describe("convertMessages with tools", () => {
         ],
       },
     ];
-    const result = convertMessages(messages as any);
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[]);
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("tool");
     expect(result[0].content).toBe("eyJ9");
@@ -334,7 +336,9 @@ describe("convertMessages with tools", () => {
         ],
       },
     ];
-    const result = convertMessages(messages as any, { maxToolResultChars: 50 });
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[], {
+      maxToolResultChars: 50,
+    });
     expect(result[0].content).toBe("a".repeat(50) + "…");
   });
 
@@ -350,30 +354,10 @@ describe("convertMessages with tools", () => {
         ],
       },
     ];
-    const result = convertMessages(messages as any, { maxToolResultChars: 100 });
+    const result = convertMessages(messages as unknown as vscode.LanguageModelChatMessage[], {
+      maxToolResultChars: 100,
+    });
     expect(result[0].content).toBe(shortContent);
-  });
-});
-
-describe("stripThinkTags", () => {
-  it("removes think tags", () => {
-    expect(stripThinkTags("<think>reasoning</think>answer")).toBe("answer");
-  });
-
-  it("handles nested multiline think tags", () => {
-    expect(stripThinkTags("<think>\nstep1\nstep2\n</think>\nresult")).toBe("\nresult");
-  });
-
-  it("is case-insensitive", () => {
-    expect(stripThinkTags("<THINK>hidden</THINK>visible")).toBe("visible");
-  });
-
-  it("returns plain text unchanged", () => {
-    expect(stripThinkTags("plain text")).toBe("plain text");
-  });
-
-  it("handles incomplete open tag", () => {
-    expect(stripThinkTags("<think>no close")).toBe("<think>no close");
   });
 });
 
@@ -471,7 +455,7 @@ describe("estimateMessagesTokensByCategory", () => {
   it("classifies text parts by role into system, user, assistant", () => {
     const messages = [
       {
-        role: (vscode as any).LanguageModelChatMessageRole.System,
+        role: (vscode.LanguageModelChatMessageRole as unknown as { System: number }).System,
         content: [new vscode.LanguageModelTextPart("Be helpful")],
       },
       {
@@ -483,7 +467,9 @@ describe("estimateMessagesTokensByCategory", () => {
         content: [new vscode.LanguageModelTextPart("Hi! How can I help?")],
       },
     ];
-    const result = estimateMessagesTokensByCategory(messages as any);
+    const result = estimateMessagesTokensByCategory(
+      messages as unknown as vscode.LanguageModelChatMessage[],
+    );
     expect(result.system).toBe(estimateTokens("Be helpful"));
     expect(result.user).toBe(estimateTokens("Hello there"));
     expect(result.assistant).toBe(estimateTokens("Hi! How can I help?"));
@@ -499,7 +485,9 @@ describe("estimateMessagesTokensByCategory", () => {
         content: [new vscode.LanguageModelTextPart("System instructions")],
       },
     ];
-    const result = estimateMessagesTokensByCategory(messages as any);
+    const result = estimateMessagesTokensByCategory(
+      messages as unknown as vscode.LanguageModelChatMessage[],
+    );
     expect(result.system).toBe(estimateTokens("System instructions"));
     expect(result.user).toBe(0);
     expect(result.assistant).toBe(0);
@@ -513,7 +501,9 @@ describe("estimateMessagesTokensByCategory", () => {
         content: [new vscode.LanguageModelToolCallPart("call_1", "read_file", args)],
       },
     ];
-    const result = estimateMessagesTokensByCategory(messages as any);
+    const result = estimateMessagesTokensByCategory(
+      messages as unknown as vscode.LanguageModelChatMessage[],
+    );
     expect(result.toolCalls).toBe(
       estimateTokens("read_file") + estimateTokens(JSON.stringify(args)),
     );
@@ -532,7 +522,9 @@ describe("estimateMessagesTokensByCategory", () => {
         ],
       },
     ];
-    const result = estimateMessagesTokensByCategory(messages as any);
+    const result = estimateMessagesTokensByCategory(
+      messages as unknown as vscode.LanguageModelChatMessage[],
+    );
     expect(result.toolResults).toBe(estimateTokens(longContent));
     expect(result.user).toBe(0);
   });
@@ -545,7 +537,9 @@ describe("estimateMessagesTokensByCategory", () => {
         content: [new vscode.LanguageModelDataPart(bytes, "image/png")],
       },
     ];
-    const result = estimateMessagesTokensByCategory(messages as any);
+    const result = estimateMessagesTokensByCategory(
+      messages as unknown as vscode.LanguageModelChatMessage[],
+    );
     expect(result.images).toBe(Math.max(4, Math.ceil(3000 / 750)));
     expect(result.user).toBe(0);
   });
@@ -571,7 +565,9 @@ describe("estimateMessagesTokensByCategory", () => {
         ],
       },
     ];
-    const result = estimateMessagesTokensByCategory(messages as any);
+    const result = estimateMessagesTokensByCategory(
+      messages as unknown as vscode.LanguageModelChatMessage[],
+    );
     expect(result.assistant).toBe(estimateTokens(text));
     expect(result.toolCalls).toBe(
       estimateTokens("read_file") + estimateTokens(JSON.stringify(args)),

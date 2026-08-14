@@ -23,10 +23,6 @@ export class ContextLimitStore {
     return entry.limit;
   }
 
-  clearForModel(modelId: string): void {
-    this.entries.delete(modelId);
-  }
-
   clear(): void {
     this.entries.clear();
   }

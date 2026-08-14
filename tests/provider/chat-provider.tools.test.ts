@@ -41,7 +41,7 @@ jest.mock("vscode", () => ({
   },
   workspace: {
     getConfiguration: jest.fn(() => ({
-      get: jest.fn((key: string, defaultValue: any) => defaultValue),
+      get: jest.fn((key: string, defaultValue: unknown) => defaultValue),
     })),
   },
   LanguageModelError: {
@@ -97,7 +97,7 @@ describe("NimChatModelProvider", () => {
       keys: jest.fn(),
     } as unknown as vscode.Memento;
     provider = new NimChatModelProvider(secrets, "test-ua", globalState);
-    ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
   });
 
   it("streams tool call parts", async () => {
@@ -144,14 +144,14 @@ describe("NimChatModelProvider", () => {
         id: "deepseek-ai/deepseek-v4-pro",
         maxInputTokens: 100000,
         maxOutputTokens: 16384,
-      } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [{ name: "get_weather", description: "Get weather", inputSchema: {} }],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).toHaveBeenCalledWith(
@@ -164,7 +164,9 @@ describe("NimChatModelProvider", () => {
       "test-ua",
       expect.objectContaining({ maxOutputTokens: 16384 }),
     );
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
     expect(toolCallReports.length).toBe(1);
     expect(toolCallReports[0][0].callId).toBe("call_1");
     expect(toolCallReports[0][0].name).toBe("get_weather");
@@ -202,14 +204,18 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [{ name: "get_weather", description: "Get weather", inputSchema: {} }],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(progress.report.mock.calls).toHaveLength(2);
@@ -252,14 +258,18 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [{ name: "get_weather", description: "Get weather", inputSchema: {} }],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(progress.report.mock.calls).toHaveLength(2);
@@ -300,15 +310,19 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "moonshotai/kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      {
+        id: "moonshotai/kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [{ name: "get_weather", description: "Get weather", inputSchema: {} }],
         toolMode: 2,
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
@@ -359,17 +373,23 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Hi" }] }] as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [{ role: 1, content: [{ value: "Hi" }] }] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [{ name: "get_weather", description: "Get weather", inputSchema: {} }],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
     expect(toolCallReports.length).toBe(1);
     expect(toolCallReports[0][0].input).toEqual({ city: "Tokyo" });
   });
@@ -404,8 +424,14 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Read the file" }] }] as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [
+        { role: 1, content: [{ value: "Read the file" }] },
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -419,12 +445,14 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
     expect(toolCallReports).toHaveLength(0);
   });
 
@@ -458,8 +486,14 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Read the file" }] }] as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [
+        { role: 1, content: [{ value: "Read the file" }] },
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -473,12 +507,14 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const textReports = progress.report.mock.calls.filter((c: any) => c[0]?.value);
+    const textReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { value?: string })?.value,
+    );
     expect(textReports).toHaveLength(1);
     expect(textReports[0][0].value).toContain("filePath");
     expect(textReports[0][0].value).toContain("read_file");
@@ -539,8 +575,14 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Read the file" }] }] as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [
+        { role: 1, content: [{ value: "Read the file" }] },
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -558,9 +600,9 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
@@ -583,8 +625,12 @@ describe("NimChatModelProvider", () => {
       ]),
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
-    const textReports = progress.report.mock.calls.filter((c: any) => c[0]?.value);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { value?: string })?.value,
+    );
 
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].name).toBe("read_file");
@@ -662,8 +708,14 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Read the file" }] }] as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [
+        { role: 1, content: [{ value: "Read the file" }] },
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -689,9 +741,9 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
@@ -707,8 +759,12 @@ describe("NimChatModelProvider", () => {
     expect(retryMessage.content).toContain("filePath, startLine, endLine");
     expect(retryMessage.content).not.toContain("list_dir with invalid arguments");
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
-    const textReports = progress.report.mock.calls.filter((c: any) => c[0]?.value);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { value?: string })?.value,
+    );
 
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].name).toBe("read_file");
@@ -764,8 +820,14 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Read the file" }] }] as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [
+        { role: 1, content: [{ value: "Read the file" }] },
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -791,15 +853,19 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
-    const textReports = progress.report.mock.calls.filter((c: any) => c[0]?.value);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { value?: string })?.value,
+    );
 
     expect(toolCallReports).toHaveLength(0);
     expect(textReports).toHaveLength(1);
@@ -841,8 +907,14 @@ describe("NimChatModelProvider", () => {
     };
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Read the file" }] }] as any,
+      {
+        id: "kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      } as unknown as vscode.LanguageModelChatInformation,
+      [
+        { role: 1, content: [{ value: "Read the file" }] },
+      ] as unknown as vscode.LanguageModelChatMessage[],
       {
         modelOptions: {},
         tools: [
@@ -856,12 +928,14 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
       progress,
-      token as any,
+      token as unknown as vscode.CancellationToken,
     );
 
-    const textReports = progress.report.mock.calls.filter((c: any) => c[0]?.value);
+    const textReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { value?: string })?.value,
+    );
     expect(textReports).toHaveLength(2);
     expect(textReports[0][0].value).toBe(" ");
     expect(textReports[1][0].value).toContain("filePath");
