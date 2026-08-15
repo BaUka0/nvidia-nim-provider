@@ -3,7 +3,7 @@
   "publisher": "neuraldock",
   "displayName": "Nvidia NIM agent",
   "description": "Use NVIDIA NIM elite agentic models in GitHub Copilot Chat for VS Code",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "license": "MIT",
   "repository": {
     "type": "git",

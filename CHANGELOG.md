@@ -1,5 +1,19 @@
 # Change Log
 
+## [0.5.3] - 2026-08-16
+
+### Changed
+
+- **Safer adapter access.** The chat provider now uses optional chaining (`adapter?.`) instead of a non-null assertion when reading adapter hooks, so a missing adapter falls back to the shared tool-call parser instead of throwing.
+- **`no-explicit-any` is an error.** `@typescript-eslint/no-explicit-any` is enforced as `error` so `as any` cannot land in `src/` or `tests/` unnoticed.
+- **Shared test factories.** VS Code doubles (`makeToken`, `makeModel`, `makeMessages`, `makeChatOptions`, and related helpers) live in `tests/helpers/fakes.ts`. Call sites no longer use `as any` / `as unknown as` casts.
+- **TypeScript target ES2022.** `tsconfig.json` `target` and `lib` moved from ES2020 to ES2022, matching `vscode ^1.125` and Node 22.
+
+### Removed
+
+- **Dead production APIs.** Removed unused `stripThinkTags`, `StatusBarManager.showUsage`, and `ContextLimitStore.clearForModel`, plus the unreachable token-classification fallback in `classifyPartTokens`.
+- **Unused vision header parse.** `measureImageDataUrl` now returns only the decoded byte length; the unused MIME-type field is gone.
+
 ## [0.5.2] - 2026-08-14
 
 ### Added
