@@ -68,7 +68,7 @@ describe("NimVisionClient", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ choices: [{ message: { content: "Image analysis" } }] }),
-    } as any);
+    });
     const client = new NimVisionClient(secrets as never, modelStorage as never);
 
     const result = await client.analyzeImage("data:image/png;base64,abc", "What is this?");
@@ -113,7 +113,7 @@ describe("NimVisionClient", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ choices: [{ message: { content: "Image analysis" } }] }),
-    } as any);
+    });
 
     const client = new NimVisionClient(secrets as never, modelStorage as never, resolver);
     await client.analyzeImage("data:image/png;base64,abc", "First image");
@@ -163,7 +163,7 @@ describe("NimVisionClient", () => {
       status: 401,
       statusText: "Unauthorized",
       text: async () => "Invalid key",
-    } as any);
+    });
 
     const client = new NimVisionClient(secrets as never, modelStorage as never);
 
@@ -195,7 +195,7 @@ describe("NimVisionClient", () => {
       json: async () => {
         throw new SyntaxError("Unexpected end of JSON input");
       },
-    } as any);
+    });
 
     const client = new NimVisionClient(secrets as never, modelStorage as never);
 
@@ -233,7 +233,7 @@ describe("NimVisionClient", () => {
             reject(error);
           });
         }),
-    ) as any;
+    ) as typeof fetch;
 
     let cancel: (() => void) | undefined;
     const token = {
@@ -287,7 +287,7 @@ describe("NimVisionClient", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ choices: [{ message: { content: "Image analysis" } }] }),
-    } as any);
+    });
 
     const client = new NimVisionClient(secrets as never, modelStorage as never, resolver);
     await expect(client.analyzeImage("data:image/png;base64,abc", "What is this?")).resolves.toBe(
@@ -327,7 +327,7 @@ describe("NimVisionClient", () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ choices: [{ message: { content: "Image analysis" } }] }),
-    } as any);
+    });
 
     const client = new NimVisionClient(secrets as never, modelStorage as never, resolver);
     await client.analyzeImage("data:image/png;base64,abc", "What is this?");

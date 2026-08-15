@@ -3,6 +3,15 @@ import { join } from "node:path";
 import * as vscode from "vscode";
 import { streamChatCompletion } from "../../src/api/client";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
+import {
+  makeChatOptions,
+  makeMemento,
+  makeMessages,
+  makeModel,
+  makeSecrets,
+  makeToken,
+  makeUserMessages,
+} from "../helpers/fakes";
 
 jest.mock("../../src/api/client", () => ({
   fetchModels: jest.fn(),
@@ -43,7 +52,7 @@ jest.mock("vscode", () => ({
   },
   workspace: {
     getConfiguration: jest.fn(() => ({
-      get: jest.fn((key: string, defaultValue: any) => defaultValue),
+      get: jest.fn((key: string, defaultValue: unknown) => defaultValue),
     })),
   },
   LanguageModelError: {
@@ -103,40 +112,31 @@ describe("NimChatModelProvider", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    secrets = {
-      get: jest.fn(),
-      store: jest.fn(),
-      delete: jest.fn(),
-      onDidChange: jest.fn(),
-    } as unknown as vscode.SecretStorage;
-    globalState = {
-      get: jest.fn().mockImplementation((key: string) =>
-        key === "nvidia-nim.models"
-          ? [
-              {
-                id: "kimi-k2.6",
-                displayName: "Kimi K2.6",
-                contextWindow: 262144,
-                maxOutputTokens: 262144,
-                supportsTools: true,
-                supportsVision: true,
-              },
-              {
-                id: "nemotron-70b",
-                displayName: "Nemotron 70B",
-                contextWindow: 131072,
-                maxOutputTokens: 16384,
-                supportsTools: true,
-                supportsVision: false,
-              },
-            ]
-          : undefined,
-      ),
-      update: jest.fn(),
-      keys: jest.fn(),
-    } as unknown as vscode.Memento;
+    secrets = makeSecrets();
+    globalState = makeMemento((key) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "kimi-k2.6",
+              displayName: "Kimi K2.6",
+              contextWindow: 262144,
+              maxOutputTokens: 262144,
+              supportsTools: true,
+              supportsVision: true,
+            },
+            {
+              id: "nemotron-70b",
+              displayName: "Nemotron 70B",
+              contextWindow: 131072,
+              maxOutputTokens: 16384,
+              supportsTools: true,
+              supportsVision: false,
+            },
+          ]
+        : undefined,
+    );
     provider = new NimChatModelProvider(secrets, "test-ua", globalState);
-    ((vscode as any).window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
   });
 
   it("emits a tool call parsed from text-embedded control tokens", async () => {
@@ -157,15 +157,12 @@ describe("NimChatModelProvider", () => {
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
     const progress = { report: jest.fn() };
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Read the file" }] }] as any,
-      {
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Read the file"),
+      makeChatOptions({
         modelOptions: {},
         tools: [
           {
@@ -178,12 +175,14 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      }),
       progress,
-      token as any,
+      token,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].name).toBe("read_file");
     expect(toolCallReports[0][0].input).toEqual({ filePath: "/tmp/example.md" });
@@ -207,15 +206,16 @@ describe("NimChatModelProvider", () => {
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
     const progress = { report: jest.fn() };
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      { id: "deepseek-ai/deepseek-v4-pro", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Read the file" }] }] as any,
-      {
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-pro",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Read the file"),
+      makeChatOptions({
         modelOptions: {},
         tools: [
           {
@@ -228,13 +228,17 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      }),
       progress,
-      token as any,
+      token,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
-    const textReports = progress.report.mock.calls.filter((c: any) => c[0]?.value);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { value?: string })?.value,
+    );
 
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].name).toBe("read_file");
@@ -259,20 +263,23 @@ describe("NimChatModelProvider", () => {
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
     const progress = { report: jest.fn() };
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      { id: "deepseek-ai/deepseek-v4-pro", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Inspect the workspace" }] }] as any,
-      { modelOptions: {} } as any,
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-pro",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Inspect the workspace"),
+      makeChatOptions(),
       progress,
-      token as any,
+      token,
     );
 
-    const textReports = progress.report.mock.calls.filter((c: any) => c[0]?.value);
+    const textReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { value?: string })?.value,
+    );
 
     expect(textReports).toHaveLength(1);
     expect(textReports[0][0].value).toBe("Let me inspect the workspace.\n\n");
@@ -303,24 +310,19 @@ describe("NimChatModelProvider", () => {
       (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
       const progress = { report: jest.fn() };
-      const token = {
-        isCancellationRequested: false,
-        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      } as unknown as vscode.CancellationToken;
-      const model = {
+      const token = makeToken();
+      const model = makeModel({
         id: "deepseek-ai/deepseek-v4-pro",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
-      } as vscode.LanguageModelChatInformation;
-      const requestMessages = [
-        {
-          role: vscode.LanguageModelChatMessageRole.User,
-          content: [new vscode.LanguageModelTextPart("Inspect the workspace")],
-        },
-      ] as unknown as vscode.LanguageModelChatMessage[];
-      const requestOptions = {
+      });
+      const requestMessages = makeMessages({
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [new vscode.LanguageModelTextPart("Inspect the workspace")],
+      });
+      const requestOptions = makeChatOptions({
         modelOptions: {},
-      } as unknown as vscode.ProvideLanguageModelChatResponseOptions;
+      });
 
       await provider.provideLanguageModelChatResponse(
         model,
@@ -365,24 +367,19 @@ describe("NimChatModelProvider", () => {
       (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
       const progress = { report: jest.fn() };
-      const token = {
-        isCancellationRequested: false,
-        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      } as unknown as vscode.CancellationToken;
-      const model = {
+      const token = makeToken();
+      const model = makeModel({
         id: "deepseek-ai/deepseek-v4-pro",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
-      } as vscode.LanguageModelChatInformation;
-      const requestMessages = [
-        {
-          role: vscode.LanguageModelChatMessageRole.User,
-          content: [new vscode.LanguageModelTextPart("Inspect the workspace")],
-        },
-      ] as unknown as vscode.LanguageModelChatMessage[];
-      const requestOptions = {
+      });
+      const requestMessages = makeMessages({
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [new vscode.LanguageModelTextPart("Inspect the workspace")],
+      });
+      const requestOptions = makeChatOptions({
         modelOptions: {},
-      } as unknown as vscode.ProvideLanguageModelChatResponseOptions;
+      });
 
       await provider.provideLanguageModelChatResponse(
         model,
@@ -441,22 +438,17 @@ describe("NimChatModelProvider", () => {
       (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
       const progress = { report: jest.fn() };
-      const token = {
-        isCancellationRequested: false,
-        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      } as unknown as vscode.CancellationToken;
-      const model = {
+      const token = makeToken();
+      const model = makeModel({
         id: "deepseek-ai/deepseek-v4-pro",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
-      } as vscode.LanguageModelChatInformation;
-      const requestMessages = [
-        {
-          role: vscode.LanguageModelChatMessageRole.User,
-          content: [new vscode.LanguageModelTextPart("Inspect the workspace")],
-        },
-      ] as unknown as vscode.LanguageModelChatMessage[];
-      const requestOptions = {
+      });
+      const requestMessages = makeMessages({
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [new vscode.LanguageModelTextPart("Inspect the workspace")],
+      });
+      const requestOptions = makeChatOptions({
         modelOptions: {},
         tools: [
           {
@@ -469,7 +461,7 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as unknown as vscode.ProvideLanguageModelChatResponseOptions;
+      });
 
       await provider.provideLanguageModelChatResponse(
         model,
@@ -523,22 +515,17 @@ describe("NimChatModelProvider", () => {
       (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
       const progress = { report: jest.fn() };
-      const token = {
-        isCancellationRequested: false,
-        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      } as unknown as vscode.CancellationToken;
-      const model = {
+      const token = makeToken();
+      const model = makeModel({
         id: "deepseek-ai/deepseek-v4-pro",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
-      } as vscode.LanguageModelChatInformation;
-      const requestMessages = [
-        {
-          role: vscode.LanguageModelChatMessageRole.User,
-          content: [new vscode.LanguageModelTextPart("Read the file")],
-        },
-      ] as unknown as vscode.LanguageModelChatMessage[];
-      const requestOptions = {
+      });
+      const requestMessages = makeMessages({
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [new vscode.LanguageModelTextPart("Read the file")],
+      });
+      const requestOptions = makeChatOptions({
         modelOptions: {},
         tools: [
           {
@@ -551,7 +538,7 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as unknown as vscode.ProvideLanguageModelChatResponseOptions;
+      });
 
       await provider.provideLanguageModelChatResponse(
         model,
@@ -623,22 +610,13 @@ describe("NimChatModelProvider", () => {
       (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
       const progress = { report: jest.fn() };
-      const token = {
-        isCancellationRequested: false,
-        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      } as unknown as vscode.CancellationToken;
-      const model = {
-        id: "kimi-k2.6",
-        maxInputTokens: 100000,
-        maxOutputTokens: 65536,
-      } as vscode.LanguageModelChatInformation;
-      const requestMessages = [
-        {
-          role: vscode.LanguageModelChatMessageRole.User,
-          content: [new vscode.LanguageModelTextPart("Read the file")],
-        },
-      ] as unknown as vscode.LanguageModelChatMessage[];
-      const requestOptions = {
+      const token = makeToken();
+      const model = makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 });
+      const requestMessages = makeMessages({
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [new vscode.LanguageModelTextPart("Read the file")],
+      });
+      const requestOptions = makeChatOptions({
         modelOptions: {},
         tools: [
           {
@@ -651,7 +629,7 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as unknown as vscode.ProvideLanguageModelChatResponseOptions;
+      });
 
       await provider.provideLanguageModelChatResponse(
         model,
@@ -725,22 +703,17 @@ describe("NimChatModelProvider", () => {
       (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
       const progress = { report: jest.fn() };
-      const token = {
-        isCancellationRequested: false,
-        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      } as unknown as vscode.CancellationToken;
+      const token = makeToken();
       const model = {
         id: modelId,
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       } as vscode.LanguageModelChatInformation;
-      const requestMessages = [
-        {
-          role: vscode.LanguageModelChatMessageRole.User,
-          content: [new vscode.LanguageModelTextPart("List the directory")],
-        },
-      ] as unknown as vscode.LanguageModelChatMessage[];
-      const requestOptions = {
+      const requestMessages = makeMessages({
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [new vscode.LanguageModelTextPart("List the directory")],
+      });
+      const requestOptions = makeChatOptions({
         modelOptions: {},
         tools: [
           {
@@ -752,7 +725,7 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as unknown as vscode.ProvideLanguageModelChatResponseOptions;
+      });
 
       await provider.provideLanguageModelChatResponse(
         model,
@@ -837,22 +810,17 @@ describe("NimChatModelProvider", () => {
         .mockImplementationOnce(() => repairedStream());
 
       const progress = { report: jest.fn() };
-      const token = {
-        isCancellationRequested: false,
-        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      } as unknown as vscode.CancellationToken;
+      const token = makeToken();
       const model = {
         id: modelId,
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       } as vscode.LanguageModelChatInformation;
-      const requestMessages = [
-        {
-          role: vscode.LanguageModelChatMessageRole.User,
-          content: [new vscode.LanguageModelTextPart("List the directory")],
-        },
-      ] as unknown as vscode.LanguageModelChatMessage[];
-      const requestOptions = {
+      const requestMessages = makeMessages({
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [new vscode.LanguageModelTextPart("List the directory")],
+      });
+      const requestOptions = makeChatOptions({
         modelOptions: {},
         tools: [
           {
@@ -864,7 +832,7 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as unknown as vscode.ProvideLanguageModelChatResponseOptions;
+      });
 
       await provider.provideLanguageModelChatResponse(
         model,
@@ -953,15 +921,16 @@ describe("NimChatModelProvider", () => {
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
     const progress = { report: jest.fn() };
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      { id: "deepseek-ai/deepseek-v4-pro", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Inspect the workspace" }] }] as any,
-      {
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-pro",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Inspect the workspace"),
+      makeChatOptions({
         modelOptions: {},
         tools: [
           {
@@ -974,9 +943,9 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      }),
       progress,
-      token as any,
+      token,
     );
 
     const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
@@ -1015,15 +984,16 @@ describe("NimChatModelProvider", () => {
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
     const progress = { report: jest.fn() };
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      { id: "deepseek-ai/deepseek-v4-pro", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Inspect the workspace" }] }] as any,
-      {
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-pro",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Inspect the workspace"),
+      makeChatOptions({
         modelOptions: { temperature: 0.35 },
         tools: [
           {
@@ -1036,9 +1006,9 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      }),
       progress,
-      token as any,
+      token,
     );
 
     const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
@@ -1075,22 +1045,17 @@ describe("NimChatModelProvider", () => {
       (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
       const progress = { report: jest.fn() };
-      const token = {
-        isCancellationRequested: false,
-        onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-      } as unknown as vscode.CancellationToken;
+      const token = makeToken();
       const model = {
         id: modelId,
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       } as vscode.LanguageModelChatInformation;
-      const requestMessages = [
-        {
-          role: vscode.LanguageModelChatMessageRole.User,
-          content: [new vscode.LanguageModelTextPart("Inspect the workspace")],
-        },
-      ] as unknown as vscode.LanguageModelChatMessage[];
-      const requestOptions = {
+      const requestMessages = makeMessages({
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [new vscode.LanguageModelTextPart("Inspect the workspace")],
+      });
+      const requestOptions = makeChatOptions({
         modelOptions: {},
         tools: [
           {
@@ -1103,7 +1068,7 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as unknown as vscode.ProvideLanguageModelChatResponseOptions;
+      });
 
       await provider.provideLanguageModelChatResponse(
         model,
@@ -1145,15 +1110,12 @@ describe("NimChatModelProvider", () => {
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
     const progress = { report: jest.fn() };
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Read the file" }] }] as any,
-      {
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Read the file"),
+      makeChatOptions({
         modelOptions: {},
         tools: [
           {
@@ -1166,9 +1128,9 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      }),
       progress,
-      token as any,
+      token,
     );
 
     expect(progress.report.mock.calls).toHaveLength(3);
@@ -1206,15 +1168,12 @@ describe("NimChatModelProvider", () => {
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
     const progress = { report: jest.fn() };
-    const token = {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn(() => ({ dispose: jest.fn() })),
-    };
+    const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      { id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 } as any,
-      [{ role: 1, content: [{ value: "Read the file" }] }] as any,
-      {
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Read the file"),
+      makeChatOptions({
         modelOptions: {},
         tools: [
           {
@@ -1227,13 +1186,17 @@ describe("NimChatModelProvider", () => {
             },
           },
         ],
-      } as any,
+      }),
       progress,
-      token as any,
+      token,
     );
 
-    const toolCallReports = progress.report.mock.calls.filter((c: any) => c[0]?.callId);
-    const textReports = progress.report.mock.calls.filter((c: any) => c[0]?.value);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { value?: string })?.value,
+    );
 
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].name).toBe("read_file");

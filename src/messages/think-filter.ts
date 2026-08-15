@@ -68,17 +68,6 @@ function findEarliestCaseInsensitiveIndex(
 }
 
 /**
- * Strip `<think>...</think>` and `<mm:think>...</mm:think>` blocks from text.
- * Some reasoning models emit chain-of-thought wrapped in these tags
- * even when a separate reasoning_content field is present.
- */
-export function stripThinkTags(text: string): string {
-  return text
-    .replace(/<think>[\s\S]*?<\/think>/gi, "")
-    .replace(/<mm:think>[\s\S]*?<\/mm:think>/gi, "");
-}
-
-/**
  * Split a streamed chunk into ordered text/thinking segments, capturing the
  * content inside `<think>`/`<mm:think>` blocks as `thinking` segments
  * instead of discarding it. Partial tags are buffered in `state.pendingText`

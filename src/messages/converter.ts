@@ -521,13 +521,6 @@ function classifyPartTokens(
     breakdown.images += Math.max(4, Math.ceil(img.data.length / 750));
     return;
   }
-
-  const tv = getTextPartValue(part) ?? getDataPartTextValue(part);
-  if (tv !== undefined) {
-    return;
-  }
-
-  breakdown.images += 2;
 }
 
 export function estimateMessagesTokensByCategory(

@@ -1,37 +1,28 @@
 import * as vscode from "vscode";
 import { estimateTokens } from "../../src/messages/converter";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
+import {
+  asRequestMessage,
+  makeMemento,
+  makeModel,
+  makeRequestMessage,
+  makeSecrets,
+  makeToken,
+} from "../helpers/fakes";
 
 describe("NimChatModelProvider.provideTokenCount", () => {
   let provider: NimChatModelProvider;
 
   beforeEach(() => {
-    const secrets = {
-      get: jest.fn(),
-      store: jest.fn(),
-      delete: jest.fn(),
-      onDidChange: jest.fn(),
-    } as unknown as vscode.SecretStorage;
-    const globalState = {
-      get: jest.fn(),
-      update: jest.fn(),
-      keys: jest.fn(),
-    } as unknown as vscode.Memento;
+    const secrets = makeSecrets();
+    const globalState = makeMemento();
     provider = new NimChatModelProvider(secrets, "test-ua", globalState);
   });
 
-  const token = {
-    isCancellationRequested: false,
-    onCancellationRequested: jest.fn(),
-  } as unknown as vscode.CancellationToken;
-  const model = {
-    id: "kimi-k2.6",
-    maxInputTokens: 100000,
-    maxOutputTokens: 65536,
-  } as unknown as vscode.LanguageModelChatInformation;
+  const token = makeToken();
+  const model = makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 });
 
-  const msg = (role: number, content: unknown[]) =>
-    ({ role, content }) as unknown as vscode.LanguageModelChatRequestMessage;
+  const msg = (role: number, content: unknown[]) => makeRequestMessage({ role, content });
 
   it("counts tokens for a plain string", async () => {
     await expect(provider.provideTokenCount(model, "Hello world", token)).resolves.toBe(
@@ -130,7 +121,7 @@ describe("NimChatModelProvider.provideTokenCount", () => {
   });
 
   it("resolves to 0 when token counting throws, instead of rejecting", async () => {
-    const malformed = { content: null } as unknown as vscode.LanguageModelChatRequestMessage;
+    const malformed = asRequestMessage({ content: null });
     await expect(provider.provideTokenCount(model, malformed, token)).resolves.toBe(0);
   });
 });

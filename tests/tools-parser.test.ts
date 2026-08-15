@@ -6,9 +6,10 @@ import {
   repairToolArguments,
 } from "../src/tools/parser";
 import { ToolCallStreamAggregator } from "../src/provider/tool-call-aggregator";
+import { makeChatOptions } from "./helpers/fakes";
 
 describe("tool argument parsing and validation", () => {
-  const options = {
+  const options = makeChatOptions({
     tools: [
       {
         name: "read_file",
@@ -24,7 +25,7 @@ describe("tool argument parsing and validation", () => {
         },
       },
     ],
-  } as any;
+  });
 
   it("repairs malformed JSON only after strict parsing fails", () => {
     expect(parseToolArguments('{"filePath":"/tmp/a.ts","startLine":1}')).toEqual({
@@ -74,18 +75,20 @@ describe("tool argument parsing and validation", () => {
   });
 
   it("preserves a schema-declared string field named arguments", () => {
-    const schema = getToolSchemaMap({
-      tools: [
-        {
-          name: "run_query",
-          inputSchema: {
-            type: "object",
-            properties: { arguments: { type: "string" } },
-            required: ["arguments"],
+    const schema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "run_query",
+            inputSchema: {
+              type: "object",
+              properties: { arguments: { type: "string" } },
+              required: ["arguments"],
+            },
           },
-        },
-      ],
-    } as any).get("run_query");
+        ],
+      }),
+    ).get("run_query");
 
     const repaired = repairToolArguments(
       "run_query",
@@ -99,23 +102,25 @@ describe("tool argument parsing and validation", () => {
   });
 
   it("validates required fields inside nested object properties", () => {
-    const nestedSchema = getToolSchemaMap({
-      tools: [
-        {
-          name: "search",
-          inputSchema: {
-            type: "object",
-            properties: {
-              filter: {
-                type: "object",
-                properties: { path: { type: "string" } },
-                required: ["path"],
+    const nestedSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "search",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filter: {
+                  type: "object",
+                  properties: { path: { type: "string" } },
+                  required: ["path"],
+                },
               },
             },
           },
-        },
-      ],
-    } as any).get("search");
+        ],
+      }),
+    ).get("search");
 
     expect(hasRequiredToolArguments({ filter: {} }, nestedSchema)).toBe(false);
     expect(hasRequiredToolArguments({ filter: { path: "/tmp" } }, nestedSchema)).toBe(true);
@@ -216,7 +221,7 @@ describe("tool argument parsing and validation", () => {
     const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
     const skipped: Array<{ name: string; required: string[] }> = [];
     const aggregator = new ToolCallStreamAggregator({
-      options: {
+      options: makeChatOptions({
         tools: [
           {
             name: "read",
@@ -231,7 +236,7 @@ describe("tool argument parsing and validation", () => {
             },
           },
         ],
-      } as any,
+      }),
       messages: [],
       onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
       onSkipToolCall: (name, required) => skipped.push({ name, required }),

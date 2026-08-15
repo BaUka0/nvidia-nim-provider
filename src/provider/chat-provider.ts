@@ -34,7 +34,7 @@ import {
   SECRET_STORAGE_KEY,
 } from "../shared/constants";
 import { getFallbackModel } from "../models/catalog";
-import { getModelAdapter } from "../models/adapters";
+import { getModelAdapter, ModelAdapter } from "../models/adapters";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
 import {
@@ -380,7 +380,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     let contextWindow = 0;
     let effectiveContextWindow = 0;
     let supportsVision = false;
-    let adapter: ReturnType<typeof getModelAdapter> = undefined!;
+    let adapter: ModelAdapter | undefined;
     let activeRequestBody: import("../types").NimChatRequest | undefined;
     let tools: import("../types").NimTool[] | undefined;
     let remainingFetchAttempts = MAX_TOTAL_FETCH_ATTEMPTS;
@@ -628,7 +628,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           }
 
           const parseEmbeddedToolCalls =
-            adapter.parseTextEmbeddedToolCalls ?? parseTextEmbeddedToolCalls;
+            adapter?.parseTextEmbeddedToolCalls ?? parseTextEmbeddedToolCalls;
           const { segments, incompleteText } = parseEmbeddedToolCalls(
             pendingTextEmbeddedContent + text,
           );
@@ -728,7 +728,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               ?.reasoning_content;
             const rawContent = choice?.delta?.content;
             const content = rawContent
-              ? (adapter.sanitizeResponseText?.(rawContent) ?? rawContent)
+              ? (adapter?.sanitizeResponseText?.(rawContent) ?? rawContent)
               : rawContent;
 
             if (debugEnabled()) {

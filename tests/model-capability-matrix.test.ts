@@ -272,12 +272,15 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
 ];
 
 function getReasoningFields(request: NimChatRequest): Record<string, unknown> {
-  const source = request as unknown as Record<string, unknown>;
   const result: Record<string, unknown> = {};
-  for (const key of ["reasoning_effort", "chat_template_kwargs", "enable_thinking"]) {
-    if (key in source) {
-      result[key] = source[key];
-    }
+  if ("reasoning_effort" in request) {
+    result.reasoning_effort = request.reasoning_effort;
+  }
+  if ("chat_template_kwargs" in request) {
+    result.chat_template_kwargs = request.chat_template_kwargs;
+  }
+  if ("enable_thinking" in request) {
+    result.enable_thinking = request.enable_thinking;
   }
   return result;
 }

@@ -1,10 +1,10 @@
 {
   "compilerOptions": {
     "module": "commonjs",
-    "target": "ES2020",
+    "target": "ES2022",
     "rootDir": "src",
     "outDir": "out",
-    "lib": ["ES2020"],
+    "lib": ["ES2022"],
     "types": ["node", "jest"],
     "sourceMap": true,
     "strict": true,

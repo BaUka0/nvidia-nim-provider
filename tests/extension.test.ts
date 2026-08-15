@@ -1,5 +1,6 @@
 import { fetchModels } from "../src/api/client";
 import { NimChatModelProvider } from "../src/provider/chat-provider";
+import packageJson from "../package.json";
 
 const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
 const mockCreateOutputChannel = jest.fn(() => ({
@@ -24,7 +25,7 @@ jest.mock("../src/api/client", () => ({
   fetchModels: jest.fn(),
 }));
 
-let providerInstance: any;
+let providerInstance: { fireModelInfoChanged: jest.Mock } | undefined;
 jest.mock("../src/provider/chat-provider", () => ({
   NimChatModelProvider: jest.fn().mockImplementation(() => {
     providerInstance = {
@@ -228,32 +229,15 @@ describe("activate", () => {
   });
 
   it("declares an API key configuration schema for VS Code model settings", () => {
-    const packageJson = require("../package.json") as {
-      activationEvents?: string[];
-      contributes?: {
-        languageModelChatProviders?: Array<{
-          vendor?: string;
-          managementCommand?: string;
-          configuration?: {
-            properties?: Record<string, { secret?: boolean; type?: string }>;
-            required?: string[];
-          };
-        }>;
-        languageModelTools?: Array<{
-          name?: string;
-          toolReferenceName?: string;
-          inputSchema?: { required?: string[] };
-        }>;
-      };
-    };
-
     expect(packageJson.activationEvents).toContain("onLanguageModelChatProvider:nvidia-nim");
 
     const providerContribution = packageJson.contributes?.languageModelChatProviders?.find(
       (provider) => provider.vendor === "nvidia-nim",
     );
 
-    expect(providerContribution?.managementCommand).toBeUndefined();
+    expect(
+      (providerContribution as { managementCommand?: string } | undefined)?.managementCommand,
+    ).toBeUndefined();
     expect(providerContribution?.configuration?.properties?.apiKey).toEqual(
       expect.objectContaining({
         type: "string",
@@ -314,7 +298,7 @@ describe("activate", () => {
     await flushAsyncWork();
 
     const providerInstance = (NimChatModelProvider as jest.Mock).mock.results[0]?.value;
-    const { version } = require("../package.json");
+    const { version } = packageJson;
     expect(fetchModels).toHaveBeenCalledWith(
       "test-key",
       undefined,
