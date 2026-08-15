@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { chatCompletion } from "../../src/api/client";
 import { NimRequestBuilder } from "../../src/provider/request-builder";
+import { makeChatMessages, makeChatOptions, makeModel } from "../helpers/fakes";
 
 jest.mock("../../src/api/client", () => ({
   chatCompletion: jest.fn(),
@@ -19,19 +20,21 @@ jest.mock("vscode", () => ({
 }));
 
 function createModel(maxInputTokens = 5000): vscode.LanguageModelChatInformation {
-  return {
+  return makeModel({
     id: "deepseek-ai/deepseek-v4-flash",
     name: "DeepSeek V4 Flash",
     maxInputTokens,
     maxOutputTokens: 1000,
-  } as unknown as vscode.LanguageModelChatInformation;
+  });
 }
 
 function createMessages(count: number, chars = 1000): vscode.LanguageModelChatMessage[] {
-  return Array.from({ length: count }, (_, index) => ({
-    role: index % 2 === 0 ? 1 : 2,
-    content: [new vscode.LanguageModelTextPart(`${index}: ${"x".repeat(chars)}`)],
-  })) as unknown as vscode.LanguageModelChatMessage[];
+  return makeChatMessages(
+    ...Array.from({ length: count }, (_, index) => ({
+      role: index % 2 === 0 ? 1 : 2,
+      content: [new vscode.LanguageModelTextPart(`${index}: ${"x".repeat(chars)}`)],
+    })),
+  );
 }
 
 describe("NimRequestBuilder context accounting", () => {
@@ -45,7 +48,7 @@ describe("NimRequestBuilder context accounting", () => {
     const prepared = await NimRequestBuilder.prepareRequest({
       model: createModel(),
       messages: createMessages(10),
-      options: { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
+      options: makeChatOptions(),
       contextWindow: 5000,
       supportsTools: false,
       supportsVision: false,
@@ -73,7 +76,7 @@ describe("NimRequestBuilder context accounting", () => {
       NimRequestBuilder.prepareRequest({
         model: createModel(),
         messages: createMessages(2, 5000),
-        options: { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
+        options: makeChatOptions(),
         contextWindow: 5000,
         supportsTools: false,
         supportsVision: false,
@@ -93,7 +96,7 @@ describe("NimRequestBuilder context accounting", () => {
       NimRequestBuilder.prepareRequest({
         model: createModel(),
         messages: createMessages(10),
-        options: { modelOptions: {} } as unknown as vscode.ProvideLanguageModelChatResponseOptions,
+        options: makeChatOptions(),
         contextWindow: 5000,
         supportsTools: false,
         supportsVision: false,

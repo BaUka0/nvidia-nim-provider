@@ -8,6 +8,7 @@ import {
 import { classifyApiError } from "../src/api/errors";
 import { STREAM_IDLE_TIMEOUT_MS } from "../src/shared/constants";
 import { NvidiaModelSummary, NimStreamResponse } from "../src/types";
+import { makeAbortSignal, makeFetchResponse } from "./helpers/fakes";
 
 const rawModelSummaries: NvidiaModelSummary[] = [
   {
@@ -43,17 +44,17 @@ describe("fetchWithRetry", () => {
       .fn()
       .mockImplementationOnce(async () => {
         order.push("fetch-1");
-        return {
+        return makeFetchResponse({
           ok: false,
           status: 503,
           statusText: "Service Unavailable",
           headers: { get: () => null },
           body: firstBody,
-        } as unknown as Response;
+        });
       })
       .mockImplementationOnce(async () => {
         order.push("fetch-2");
-        return { ok: true, status: 200, statusText: "OK" } as unknown as Response;
+        return makeFetchResponse({ ok: true, status: 200, statusText: "OK" });
       });
 
     const response = await fetchWithRetry("https://example.test", { method: "GET" }, 2);
@@ -68,13 +69,15 @@ describe("fetchWithRetry", () => {
     jest.spyOn(Math, "random").mockReturnValue(1);
     const controller = new AbortController();
     const body = { cancel: jest.fn().mockResolvedValue(undefined) };
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 503,
-      statusText: "Service Unavailable",
-      headers: { get: () => null },
-      body,
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        headers: { get: () => null },
+        body,
+      }),
+    );
 
     const request = fetchWithRetry(
       "https://example.test",
@@ -92,23 +95,17 @@ describe("fetchWithRetry", () => {
 
   it("observes an abort that races with retry-wait listener registration", async () => {
     jest.spyOn(Math, "random").mockReturnValue(1);
-    let abortedReads = 0;
-    const signal = {
-      get aborted() {
-        abortedReads += 1;
-        return abortedReads >= 3;
-      },
-      addEventListener: jest.fn(),
-      removeEventListener: jest.fn(),
-    } as unknown as AbortSignal;
+    const signal = makeAbortSignal({ getAborted: (reads) => reads >= 3 });
     const body = { cancel: jest.fn().mockResolvedValue(undefined) };
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 503,
-      statusText: "Service Unavailable",
-      headers: { get: () => null },
-      body,
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        headers: { get: () => null },
+        body,
+      }),
+    );
 
     await expect(
       fetchWithRetry("https://example.test", { method: "GET", signal }, 3),
@@ -124,13 +121,15 @@ describe("fetchWithRetry", () => {
   it("classifies the final retryable HTTP status", async () => {
     jest.spyOn(Math, "random").mockReturnValue(0);
     const body = { cancel: jest.fn().mockResolvedValue(undefined) };
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 429,
-      statusText: "Too Many Requests",
-      headers: { get: () => null },
-      body,
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        headers: { get: () => null },
+        body,
+      }),
+    );
 
     await expect(
       fetchWithRetry("https://example.test", { method: "GET" }, 2),
@@ -187,12 +186,14 @@ describe("chatCompletion", () => {
   });
 
   it("uses the shared authentication error classification", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      statusText: "Unauthorized",
-      text: async () => "Invalid key",
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        text: async () => "Invalid key",
+      }),
+    );
 
     await expect(
       chatCompletion("bad-key", { model: "test-model", messages: [] }),
@@ -206,10 +207,12 @@ describe("fetchModels", () => {
   });
 
   it("returns raw NVIDIA model summaries on success", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: rawModelSummaries }),
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        json: async () => ({ data: rawModelSummaries }),
+      }),
+    );
 
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
@@ -229,12 +232,14 @@ describe("fetchModels", () => {
   });
 
   it("returns null on failure", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      statusText: "Unauthorized",
-      text: async () => "Invalid key",
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        text: async () => "Invalid key",
+      }),
+    );
 
     const result = await fetchModels("bad-key");
     expect(result).toBeNull();
@@ -244,10 +249,12 @@ describe("fetchModels", () => {
     global.fetch = jest
       .fn()
       .mockRejectedValueOnce(new Error("Network error"))
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: rawModelSummaries }),
-      } as unknown as Response);
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          ok: true,
+          json: async () => ({ data: rawModelSummaries }),
+        }),
+      );
 
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
@@ -265,16 +272,20 @@ describe("fetchModels", () => {
   it("retries on 429 with Retry-After then succeeds", async () => {
     global.fetch = jest
       .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 429,
-        statusText: "Too Many Requests",
-        headers: { get: (name: string) => (name === "retry-after" ? "1" : null) },
-      } as unknown as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: rawModelSummaries }),
-      } as unknown as Response);
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          ok: false,
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: { get: (name: string) => (name === "retry-after" ? "1" : null) },
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          ok: true,
+          json: async () => ({ data: rawModelSummaries }),
+        }),
+      );
 
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
@@ -284,16 +295,20 @@ describe("fetchModels", () => {
   it("retries on 503 then succeeds", async () => {
     global.fetch = jest
       .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 503,
-        statusText: "Service Unavailable",
-        headers: { get: () => null },
-      } as unknown as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: rawModelSummaries }),
-      } as unknown as Response);
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          ok: false,
+          status: 503,
+          statusText: "Service Unavailable",
+          headers: { get: () => null },
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          ok: true,
+          json: async () => ({ data: rawModelSummaries }),
+        }),
+      );
 
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
@@ -304,16 +319,20 @@ describe("fetchModels", () => {
     const retryDate = new Date(Date.now() + 100).toUTCString();
     global.fetch = jest
       .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 429,
-        statusText: "Too Many Requests",
-        headers: new Headers({ "retry-after": retryDate }),
-      } as unknown as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: rawModelSummaries }),
-      } as unknown as Response);
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          ok: false,
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: new Headers({ "retry-after": retryDate }),
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          ok: true,
+          json: async () => ({ data: rawModelSummaries }),
+        }),
+      );
 
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
@@ -323,16 +342,20 @@ describe("fetchModels", () => {
   it("falls back to exponential backoff when Retry-After is unparseable", async () => {
     global.fetch = jest
       .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 429,
-        statusText: "Too Many Requests",
-        headers: new Headers({ "retry-after": "not-a-number" }),
-      } as unknown as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: rawModelSummaries }),
-      } as unknown as Response);
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          ok: false,
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: new Headers({ "retry-after": "not-a-number" }),
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          ok: true,
+          json: async () => ({ data: rawModelSummaries }),
+        }),
+      );
 
     const result = await fetchModels("test-key");
     expect(result).toEqual(rawModelSummaries);
@@ -340,12 +363,14 @@ describe("fetchModels", () => {
   });
 
   it("does not retry on 401 and returns null immediately", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      statusText: "Unauthorized",
-      text: async () => "Invalid key",
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        text: async () => "Invalid key",
+      }),
+    );
 
     const result = await fetchModels("bad-key");
     expect(result).toBeNull();
@@ -353,12 +378,14 @@ describe("fetchModels", () => {
   });
 
   it("preserves structured errors for strict model-list callers", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      statusText: "Unauthorized",
-      text: async () => "Invalid key",
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        text: async () => "Invalid key",
+      }),
+    );
 
     await expect(fetchModelsOrThrow("bad-key")).rejects.toMatchObject({
       name: "NvidiaApiError",
@@ -393,10 +420,12 @@ describe("streamChatCompletion", () => {
       },
     });
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      body: stream,
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: stream,
+      }),
+    );
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     const results: NimStreamResponse[] = [];
@@ -409,24 +438,28 @@ describe("streamChatCompletion", () => {
   });
 
   it("throws on non-ok response", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: "Internal Server Error",
-      text: async () => "Server error",
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        text: async () => "Server error",
+      }),
+    );
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     await expect(gen.next()).rejects.toThrow("[SERVER_ERROR] Server error.");
   });
 
   it("throws authentication error on 401", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      statusText: "Unauthorized",
-      text: async () => "Invalid key",
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        text: async () => "Invalid key",
+      }),
+    );
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     await expect(gen.next()).rejects.toThrow(
@@ -435,12 +468,14 @@ describe("streamChatCompletion", () => {
   });
 
   it("identifies an unavailable model on 404", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 404,
-      statusText: "Not Found",
-      text: async () => "Model not found",
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        text: async () => "Model not found",
+      }),
+    );
 
     const gen = streamChatCompletion("key", {
       model: "thinkingmachines/inkling",
@@ -453,13 +488,15 @@ describe("streamChatCompletion", () => {
   });
 
   it("retries on 429 and eventually throws after exhausting retries", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 429,
-      statusText: "Too Many Requests",
-      headers: { get: (name: string) => (name === "retry-after" ? "0" : null) },
-      text: async () => "Rate limited",
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        headers: { get: (name: string) => (name === "retry-after" ? "0" : null) },
+        text: async () => "Rate limited",
+      }),
+    );
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     await expect(gen.next()).rejects.toThrow("HTTP 429");
@@ -467,13 +504,15 @@ describe("streamChatCompletion", () => {
   });
 
   it("honors a reduced maxFetchAttempts budget for stream connections", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 429,
-      statusText: "Too Many Requests",
-      headers: { get: (name: string) => (name === "retry-after" ? "0" : null) },
-      text: async () => "Rate limited",
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        headers: { get: (name: string) => (name === "retry-after" ? "0" : null) },
+        text: async () => "Rate limited",
+      }),
+    );
 
     const gen = streamChatCompletion(
       "key",
@@ -508,10 +547,12 @@ describe("streamChatCompletion", () => {
       },
     });
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      body: stream,
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: stream,
+      }),
+    );
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     const results: NimStreamResponse[] = [];
@@ -533,10 +574,12 @@ describe("streamChatCompletion", () => {
       },
     });
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      body: stream,
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: stream,
+      }),
+    );
 
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     const results: NimStreamResponse[] = [];
@@ -563,10 +606,12 @@ describe("streamChatCompletion", () => {
         controller.close();
       },
     });
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      body: stream,
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: stream,
+      }),
+    );
 
     const gen = streamChatCompletion(
       "test-key",
@@ -590,24 +635,18 @@ describe("streamChatCompletion", () => {
   });
 
   it("observes an abort that races with stream listener registration", async () => {
-    let abortedReads = 0;
-    const signal = {
-      get aborted() {
-        abortedReads += 1;
-        return abortedReads >= 3;
-      },
-      addEventListener: jest.fn(),
-      removeEventListener: jest.fn(),
-    } as unknown as AbortSignal;
+    const signal = makeAbortSignal({ getAborted: (reads) => reads >= 3 });
     const reader = {
       read: jest.fn(() => new Promise(() => undefined)),
       cancel: jest.fn().mockResolvedValue(undefined),
       releaseLock: jest.fn(),
     };
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      body: { getReader: () => reader },
-    } as unknown as Response);
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: { getReader: () => reader },
+      }),
+    );
 
     const gen = streamChatCompletion(
       "key",
@@ -635,12 +674,14 @@ describe("streamChatCompletion", () => {
         releaseLock: jest.fn(),
       };
 
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        body: {
-          getReader: () => reader,
-        },
-      } as unknown as Response);
+      global.fetch = jest.fn().mockResolvedValue(
+        makeFetchResponse({
+          ok: true,
+          body: {
+            getReader: () => reader,
+          },
+        }),
+      );
 
       const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
       const nextPromise = gen.next();

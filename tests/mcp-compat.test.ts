@@ -233,7 +233,7 @@ describe("NimVisionClient", () => {
             reject(error);
           });
         }),
-    ) as unknown as typeof fetch;
+    ) as typeof fetch;
 
     let cancel: (() => void) | undefined;
     const token = {

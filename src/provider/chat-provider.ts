@@ -628,7 +628,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           }
 
           const parseEmbeddedToolCalls =
-            adapter!.parseTextEmbeddedToolCalls ?? parseTextEmbeddedToolCalls;
+            adapter?.parseTextEmbeddedToolCalls ?? parseTextEmbeddedToolCalls;
           const { segments, incompleteText } = parseEmbeddedToolCalls(
             pendingTextEmbeddedContent + text,
           );
