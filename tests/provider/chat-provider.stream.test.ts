@@ -1877,11 +1877,9 @@ describe("NimChatModelProvider", () => {
             : undefined,
     );
 
-    const capacityError = new NvidiaApiError(
-      "rate_limited",
-      `[RATE_LIMITED] ${capacityLabel}.`,
-      { status },
-    );
+    const capacityError = new NvidiaApiError("rate_limited", `[RATE_LIMITED] ${capacityLabel}.`, {
+      status,
+    });
     const capacityStream = async function* () {
       throw capacityError;
     };

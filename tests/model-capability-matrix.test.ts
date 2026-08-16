@@ -398,7 +398,9 @@ describe("curated model capability matrix", () => {
     },
   );
 
-  it.each(CAPABILITY_MATRIX.filter((entry) => entry.reasoningModes.some((mode) => mode !== "none")))(
+  it.each(
+    CAPABILITY_MATRIX.filter((entry) => entry.reasoningModes.some((mode) => mode !== "none")),
+  )(
     "$modelId keeps a content-only reply visible when reasoning is enabled but never arrives",
     (entry) => {
       const adapter = getModelAdapter(entry.modelId);
