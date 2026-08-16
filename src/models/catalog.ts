@@ -26,15 +26,8 @@ const DEFAULT_CONTEXT_WINDOW = 131072;
 const DEFAULT_MAX_OUTPUT_TOKENS = 65536;
 
 export const ELITE_MODELS_WHITELIST: Record<string, NvidiaModelCatalogEntry> = {
-  "deepseek-ai/deepseek-v4-flash": {
-    displayName: "DeepSeek V4 Flash",
-    contextWindow: 1048576,
-    maxOutputTokens: 131072,
-    supportsTools: true,
-    supportsVision: false,
-  },
-  "deepseek-ai/deepseek-v4-pro": {
-    displayName: "DeepSeek V4 Pro",
+  "deepseek-ai/deepseek-v4-flash-0731": {
+    displayName: "DeepSeek V4 Flash 0731",
     contextWindow: 1048576,
     maxOutputTokens: 131072,
     supportsTools: true,
@@ -58,6 +51,13 @@ export const ELITE_MODELS_WHITELIST: Record<string, NvidiaModelCatalogEntry> = {
     displayName: "Nemotron 3 Ultra 550B",
     contextWindow: 1000000,
     maxOutputTokens: 65536,
+    supportsTools: true,
+    supportsVision: false,
+  },
+  "nvidia/nemotron-3.5-lightning-30b-a3b": {
+    displayName: "Nemotron 3.5 Lightning 30B",
+    contextWindow: 1000000,
+    maxOutputTokens: 32768,
     supportsTools: true,
     supportsVision: false,
   },
@@ -91,7 +91,7 @@ export const ELITE_MODELS_WHITELIST: Record<string, NvidiaModelCatalogEntry> = {
   },
 };
 
-export const FALLBACK_MODEL_ID = "deepseek-ai/deepseek-v4-flash";
+export const FALLBACK_MODEL_ID = "nvidia/nemotron-3.5-lightning-30b-a3b";
 
 export function getFallbackModel(
   currentModelId: string,

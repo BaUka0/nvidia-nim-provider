@@ -17,7 +17,7 @@ import { classifyApiError, isRetryableApiStatus, NvidiaApiError } from "./errors
 
 /**
  * Determine whether an HTTP status code is safe to retry.
- * Retries on 429 (rate limit), 502, 503, 504 (server errors).
+ * Retries on 429 (rate limit), 529 (overloaded), 502, 503, 504 (server errors).
  * Never retries on 400, 401, 403, 404, 422 (client errors).
  */
 function isRetryableHttpError(status: number): boolean {

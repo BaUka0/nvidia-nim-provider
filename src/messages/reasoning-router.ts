@@ -78,6 +78,10 @@ export class ReasoningStreamRouter {
       return;
     }
     this.onFirstResponse?.();
+    if (this.contentBuffer && !this.seenReasoningContent) {
+      this.emitReasoning(this.contentBuffer);
+      this.contentBuffer = "";
+    }
     this.seenReasoningContent = true;
     this.emitReasoning(text);
   }
@@ -121,28 +125,12 @@ export class ReasoningStreamRouter {
           this.onText(segment.text);
         }
       } else if (this.reasoningIsolationExpected && !this.answerStarted) {
-        if (this.seenReasoningContent && !this.contentStartedBeforeReasoning) {
-          this.contentBuffer += segment.text;
-          const closeMatch = findOrphanedCloseTag(this.contentBuffer);
-          if (closeMatch) {
-            const before = this.contentBuffer.slice(0, closeMatch.index);
-            const after = this.contentBuffer.slice(closeMatch.index + closeMatch.tag.length);
-            if (before) {
-              this.emitReasoning(before);
-              this.flushReasoning(true);
-            }
-            this.answerStarted = true;
-            this.contentBuffer = "";
-            if (after) {
-              this.onText(after);
-            }
-          } else if (this.contentBuffer.length > 150) {
-            this.onText(this.contentBuffer);
-            this.contentBuffer = "";
-            this.answerStarted = true;
-          }
-        } else {
+        if (!this.seenReasoningContent) {
+          this.bufferPossibleAnswer(segment.text);
+        } else if (this.contentStartedBeforeReasoning) {
           this.emitReasoning(segment.text, true);
+        } else {
+          this.emitAnswerOrSplitCloseTag(segment.text);
         }
       } else {
         this.onText(segment.text);
@@ -159,14 +147,20 @@ export class ReasoningStreamRouter {
         this.answerStarted = true;
         this.onText(segment.text);
       } else if (this.reasoningIsolationExpected && !this.answerStarted) {
-        this.emitReasoning(segment.text, true);
+        if (!this.seenReasoningContent) {
+          this.contentBuffer += segment.text;
+        } else if (this.contentStartedBeforeReasoning) {
+          this.emitReasoning(segment.text, true);
+        } else {
+          this.emitAnswerOrSplitCloseTag(segment.text);
+        }
       } else {
         this.onText(segment.text);
       }
     }
 
     if (this.contentBuffer) {
-      if (this.contentStartedBeforeReasoning) {
+      if (this.seenReasoningContent && this.contentStartedBeforeReasoning) {
         this.emitReasoning(this.contentBuffer);
       } else {
         this.onText(this.contentBuffer);
@@ -176,6 +170,48 @@ export class ReasoningStreamRouter {
     }
 
     this.flushReasoning(true);
+  }
+
+  private emitAnswerOrSplitCloseTag(text: string): void {
+    const closeMatch = findOrphanedCloseTag(text);
+    if (closeMatch) {
+      const before = text.slice(0, closeMatch.index);
+      const after = text.slice(closeMatch.index + closeMatch.tag.length);
+      if (before) {
+        this.emitReasoning(before);
+      }
+      this.answerStarted = true;
+      if (after) {
+        this.onText(after);
+      }
+      return;
+    }
+    this.answerStarted = true;
+    this.onText(text);
+  }
+
+  private bufferPossibleAnswer(text: string): void {
+    this.contentBuffer += text;
+    const closeMatch = findOrphanedCloseTag(this.contentBuffer);
+    if (closeMatch) {
+      const before = this.contentBuffer.slice(0, closeMatch.index);
+      const after = this.contentBuffer.slice(closeMatch.index + closeMatch.tag.length);
+      if (before) {
+        this.emitReasoning(before);
+        this.flushReasoning(true);
+      }
+      this.answerStarted = true;
+      this.contentBuffer = "";
+      if (after) {
+        this.onText(after);
+      }
+      return;
+    }
+    if (this.contentBuffer.length > 150) {
+      this.onText(this.contentBuffer);
+      this.contentBuffer = "";
+      this.answerStarted = true;
+    }
   }
 
   private emitReasoning(text: string, checkOrphanedClose: boolean = false): void {

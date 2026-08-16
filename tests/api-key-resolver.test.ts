@@ -30,7 +30,7 @@ describe("NvidiaApiKeyResolver", () => {
   it("resolves a provider-group key by model identity and cloned model id", async () => {
     const secrets = createSecrets(undefined);
     const resolver = new NvidiaApiKeyResolver(secrets);
-    const model = { id: "deepseek-ai/deepseek-v4-flash" };
+    const model = { id: "deepseek-ai/deepseek-v4-flash-0731" };
     resolver.registerModelKey(model, "configured-key");
 
     await expect(resolver.resolveForModel(model)).resolves.toEqual({
@@ -47,7 +47,7 @@ describe("NvidiaApiKeyResolver", () => {
   it("clears runtime provider-group bindings and returns to the legacy fallback", async () => {
     const secrets = createSecrets("legacy-key");
     const resolver = new NvidiaApiKeyResolver(secrets);
-    const model = { id: "deepseek-ai/deepseek-v4-flash" };
+    const model = { id: "deepseek-ai/deepseek-v4-flash-0731" };
     resolver.registerModelKey(model, "configured-key");
 
     resolver.clearRuntimeBindings();

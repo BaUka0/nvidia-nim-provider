@@ -262,8 +262,8 @@ describe("activate", () => {
   it("refreshes cached models in the background on activation when an API key exists", async () => {
     const rawModels = [
       {
-        id: "deepseek-ai/deepseek-v4-pro",
-        name: "DeepSeek V4 Pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        name: "DeepSeek V4 Flash",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -307,8 +307,8 @@ describe("activate", () => {
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.rawModels", rawModels);
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
-        id: "deepseek-ai/deepseek-v4-pro",
-        displayName: "DeepSeek V4 Pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        displayName: "DeepSeek V4 Flash 0731",
         contextWindow: 1048576,
         maxOutputTokens: 131072,
         supportsTools: true,
@@ -322,8 +322,8 @@ describe("activate", () => {
   it("stores raw and normalized model caches when the refresh command succeeds", async () => {
     const rawModels = [
       {
-        id: "deepseek-ai/deepseek-v4-pro",
-        name: "DeepSeek V4 Pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        name: "DeepSeek V4 Flash",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -365,8 +365,8 @@ describe("activate", () => {
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.rawModels", rawModels);
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
-        id: "deepseek-ai/deepseek-v4-pro",
-        displayName: "DeepSeek V4 Pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        displayName: "DeepSeek V4 Flash 0731",
         contextWindow: 1048576,
         maxOutputTokens: 131072,
         supportsTools: true,
@@ -471,8 +471,8 @@ describe("activate", () => {
   it("rolls back the raw cache if normalized cache persistence fails", async () => {
     const rawModels = [
       {
-        id: "deepseek-ai/deepseek-v4-pro",
-        name: "DeepSeek V4 Pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        name: "DeepSeek V4 Flash",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -533,8 +533,8 @@ describe("activate", () => {
     expect(update).toHaveBeenNthCalledWith(1, "nvidia-nim.rawModels", rawModels);
     expect(update).toHaveBeenNthCalledWith(2, "nvidia-nim.models", [
       {
-        id: "deepseek-ai/deepseek-v4-pro",
-        displayName: "DeepSeek V4 Pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        displayName: "DeepSeek V4 Flash 0731",
         contextWindow: 1048576,
         maxOutputTokens: 131072,
         supportsTools: true,
@@ -550,18 +550,18 @@ describe("activate", () => {
   it("waits for an in-flight refresh before starting another refresh", async () => {
     const firstRawModels = [
       {
-        id: "deepseek-ai/deepseek-v4-pro",
-        name: "DeepSeek V4 Pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        name: "DeepSeek V4 Flash",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
     ];
     const secondRawModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash",
-        name: "DeepSeek V4 Flash",
-        capabilities: { chat: true, tool_calling: false, vision: false },
-        metadata: { context_window: 64000, max_output_tokens: 4096 },
+        id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+        name: "Nemotron 3.5 Lightning 30B",
+        capabilities: { chat: true, tool_calling: true, vision: false },
+        metadata: { context_window: 1000000, max_output_tokens: 32768 },
       },
     ];
     const firstModelsWrite = createDeferred<void>();
@@ -587,7 +587,7 @@ describe("activate", () => {
             (model) =>
               typeof model === "object" &&
               model !== null &&
-              (model as { id?: string }).id === "deepseek-ai/deepseek-v4-pro",
+              (model as { id?: string }).id === "deepseek-ai/deepseek-v4-flash-0731",
           )
         ) {
           return firstModelsWrite.promise;
@@ -623,8 +623,8 @@ describe("activate", () => {
   it("preserves the normalized cache write error when rollback also fails", async () => {
     const rawModels = [
       {
-        id: "deepseek-ai/deepseek-v4-pro",
-        name: "DeepSeek V4 Pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        name: "DeepSeek V4 Flash",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },

@@ -84,7 +84,7 @@ export const ERROR_MESSAGES: Record<string, StructuredError> = {
   },
 };
 
-const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
+const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504, 529]);
 
 /**
  * Patterns that indicate the server rejected the request due to context overflow.
@@ -218,7 +218,7 @@ function classifyKind(error: unknown, status: number | undefined): ApiErrorKind 
   if (status === 401 || status === 403) {
     return "auth_failed";
   }
-  if (status === 429) {
+  if (status === 429 || status === 529) {
     return "rate_limited";
   }
   if (status === 404) {
@@ -263,7 +263,7 @@ function buildClassifiedMessage(
   if (kind === "auth_failed") {
     cause = "Authentication failed. Your API key may be invalid or expired.";
   } else if (kind === "rate_limited") {
-    cause = "Rate limited.";
+    cause = context.status === 529 ? "Service temporarily overloaded." : "Rate limited.";
   } else if (kind === "model_unavailable" && context.model) {
     cause = `NVIDIA NIM model "${context.model}" is not available for this API key or endpoint.`;
   } else if (kind === "server_error") {

@@ -8,6 +8,7 @@ import { DeepSeekAdapter } from "./deepseek";
 import { KimiAdapter } from "./kimi";
 import { GlmAdapter } from "./glm";
 import { NemotronAdapter } from "./nemotron";
+import { NemotronLightningAdapter } from "./nemotron-lightning";
 import { MinimaxAdapter } from "./minimax";
 import { StepfunAdapter } from "./stepfun";
 import { InklingAdapter } from "./inkling";
@@ -26,6 +27,7 @@ export { DeepSeekAdapter } from "./deepseek";
 export { KimiAdapter } from "./kimi";
 export { GlmAdapter } from "./glm";
 export { NemotronAdapter } from "./nemotron";
+export { NemotronLightningAdapter } from "./nemotron-lightning";
 export { MinimaxAdapter } from "./minimax";
 export { StepfunAdapter } from "./stepfun";
 export { InklingAdapter } from "./inkling";
@@ -43,6 +45,7 @@ const ADAPTERS: ModelAdapter[] = [
   new DeepSeekAdapter(),
   new KimiAdapter(),
   new GlmAdapter(),
+  new NemotronLightningAdapter(),
   new NemotronAdapter(),
   new MinimaxAdapter(),
   new StepfunAdapter(),

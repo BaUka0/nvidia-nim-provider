@@ -38,16 +38,17 @@ The extension fetches the model list from `https://integrate.api.nvidia.com/v1/m
 filters it down to a curated set of elite agentic models. Model-specific adapters tune temperature,
 tool-calling system prompts, and reasoning configuration where required:
 
-| Model                   | Reasoning Modes                              | Tool Calling | Vision |
-| ----------------------- | -------------------------------------------- | ------------ | ------ |
-| DeepSeek V4 Flash / Pro | None, High, Max                              | Yes          | No     |
-| Nemotron 3 Ultra 550B   | None, Medium, High                           | Yes          | No     |
-| Kimi K2.6               | None, On                                     | Yes          | Yes    |
-| MiniMax M3              | None, On, Adaptive                           | Yes          | Yes    |
-| GLM 5.2                 | None, On                                     | Yes          | No     |
-| Step 3.7 Flash          | Always on                                    | Yes          | Yes    |
-| Inkling                 | None, Minimal, Low, Medium, High, XHigh, Max | Yes          | Yes    |
-| Muse Glimmer            | None, Low, Medium, High, XHigh               | Yes          | Yes    |
+| Model                      | Reasoning Modes                              | Tool Calling | Vision |
+| -------------------------- | -------------------------------------------- | ------------ | ------ |
+| DeepSeek V4 Flash 0731     | None, High, Max                              | Yes          | No     |
+| Nemotron 3 Ultra 550B      | None, Medium, High                           | Yes          | No     |
+| Nemotron 3.5 Lightning 30B | None, Medium, High, XHigh                    | Yes          | No     |
+| Kimi K2.6                  | None, On                                     | Yes          | Yes    |
+| MiniMax M3                 | None, On, Adaptive                           | Yes          | Yes    |
+| GLM 5.2                    | None, On                                     | Yes          | No     |
+| Step 3.7 Flash             | Always on                                    | Yes          | Yes    |
+| Inkling                    | None, Minimal, Low, Medium, High, XHigh, Max | Yes          | Yes    |
+| Muse Glimmer               | None, Low, Medium, High, XHigh               | Yes          | Yes    |
 
 When NVIDIA's `/models` response omits tool-calling capability metadata, chat models are treated as
 tool-capable so they remain selectable in Copilot Chat Agent mode.
@@ -129,7 +130,7 @@ Context probes require `NIM_API_KEY` (also accepts `NVIDIA_API_KEY`, `NVIDIA_NIM
 ```bash
 npm run probe:context:262k -- moonshotai/kimi-k2.6
 npm run probe:context:500k -- thinkingmachines/inkling
-npm run probe:context:1048k -- deepseek-ai/deepseek-v4-flash
+npm run probe:context:1048k -- deepseek-ai/deepseek-v4-flash-0731
 ```
 
 Set `NVIDIA_NIM_BASE_URL` to test a compatible endpoint other than

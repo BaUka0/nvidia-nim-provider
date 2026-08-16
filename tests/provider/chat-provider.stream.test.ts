@@ -461,14 +461,14 @@ describe("NimChatModelProvider", () => {
     );
   });
 
-  it("keeps split content after reasoning_content in thinking until orphaned close", async () => {
+  it("streams answer tokens live after reasoning_content instead of waiting for flush", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
       yield { choices: [{ delta: { reasoning_content: "proper reasoning start" } }] };
-      yield { choices: [{ delta: { content: "leaked reasoning part one" } }] };
-      yield { choices: [{ delta: { content: " and part two" + closeTag } }] };
-      yield { choices: [{ delta: { content: "actual answer text" } }] };
+      yield { choices: [{ delta: { content: "Hel" } }] };
+      yield { choices: [{ delta: { content: "lo " } }] };
+      yield { choices: [{ delta: { content: "world" } }] };
     };
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
@@ -476,29 +476,29 @@ describe("NimChatModelProvider", () => {
     const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
       makeUserMessages("Hi"),
       makeChatOptions({
-        modelConfiguration: { reasoningMode: "on" },
+        modelConfiguration: { reasoningMode: "high" },
         modelOptions: {},
       }),
       progress,
       token,
     );
 
-    const allReports = progress.report.mock.calls.map((c) => c[0]);
-    const thinkingText = allReports
-      .filter((r) => r instanceof ThinkingPart)
-      .map((r) => r.value)
-      .join("");
-    const textReports = allReports.filter((r) => r instanceof vscode.LanguageModelTextPart);
-    const textContent = textReports.map((r) => r.value).join("");
+    const textReports = progress.report.mock.calls
+      .map((c) => c[0])
+      .filter((r) => r instanceof vscode.LanguageModelTextPart);
+    const thinkingReports = progress.report.mock.calls
+      .map((c) => c[0])
+      .filter((r) => r instanceof ThinkingPart);
 
-    expect(thinkingText).toContain("proper reasoning start");
-    expect(thinkingText).toContain("leaked reasoning part one and part two");
-    expect(textReports).toHaveLength(1);
-    expect(textContent).toBe("actual answer text");
-    expect(textContent).not.toContain("leaked reasoning");
+    expect(thinkingReports.map((r) => r.value).join("")).toBe("proper reasoning start");
+    expect(textReports.map((r) => r.value)).toEqual(["Hel", "lo ", "world"]);
   });
 
   it("routes content to answer after reasoning_content has finished if no close tag exists in content", async () => {
@@ -591,7 +591,7 @@ describe("NimChatModelProvider", () => {
     }
   });
 
-  it("routes untagged content to thinking and throws empty_stream when no answer follows", async () => {
+  it("keeps isolated content-only replies visible when no reasoning stream appears", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -604,18 +604,20 @@ describe("NimChatModelProvider", () => {
     const progress = { report: jest.fn() };
     const token = makeToken();
 
-    await expect(
-      provider.provideLanguageModelChatResponse(
-        makeModel({ id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 }),
-        makeUserMessages("Hi"),
-        makeChatOptions({
-          modelConfiguration: { reasoningMode: "on" },
-          modelOptions: {},
-        }),
-        progress,
-        token,
-      ),
-    ).rejects.toThrow("[EMPTY_STREAM]");
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions({
+        modelConfiguration: { reasoningMode: "high" },
+        modelOptions: {},
+      }),
+      progress,
+      token,
+    );
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(1);
 
@@ -624,10 +626,11 @@ describe("NimChatModelProvider", () => {
       (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
 
-    expect(thinkingReports.length).toBeGreaterThanOrEqual(1);
-    expect(textReports).toHaveLength(0);
-    const thinkingText = thinkingReports.map((r) => r[0].value).join("");
-    expect(thinkingText).toContain("Now let me look at the code to understand");
+    expect(thinkingReports).toHaveLength(0);
+    expect(textReports).toHaveLength(1);
+    expect(textReports[0][0]).toEqual(
+      expect.objectContaining({ value: "Now let me look at the code to understand" }),
+    );
   });
 
   it("keeps ambiguous content in thinking and throws empty_stream when no close tag appears", async () => {
@@ -994,7 +997,7 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "deepseek-ai/deepseek-v4-flash",
+            id: "deepseek-ai/deepseek-v4-flash-0731",
             displayName: "DeepSeek V4 Flash",
             contextWindow: 1048576,
             maxOutputTokens: 384000,
@@ -1041,8 +1044,8 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (globalState.get as jest.Mock).mockReturnValue([
       {
-        id: "deepseek-ai/deepseek-v4-pro",
-        displayName: "DeepSeek V4 Pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        displayName: "DeepSeek V4 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 384000,
         supportsTools: true,
@@ -1055,7 +1058,7 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       makeModel({
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         maxInputTokens: 100000,
         maxOutputTokens: 384000,
       }),
@@ -1842,7 +1845,10 @@ describe("NimChatModelProvider", () => {
     );
   });
 
-  it("falls back to DeepSeek Flash on rate limit (429)", async () => {
+  it.each([
+    [429, "Rate limited"],
+    [529, "Overloaded"],
+  ] as const)("falls back to Nemotron 3.5 Lightning on HTTP %s", async (status, capacityLabel) => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (globalState.get as jest.Mock).mockImplementation((key: string) =>
       key === "nvidia-nim.models"
@@ -1856,10 +1862,10 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "deepseek-ai/deepseek-v4-flash",
-              displayName: "DeepSeek V4 Flash",
-              contextWindow: 1048576,
-              maxOutputTokens: 384000,
+              id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+              displayName: "Nemotron 3.5 Lightning 30B",
+              contextWindow: 1000000,
+              maxOutputTokens: 32768,
               supportsTools: true,
               supportsVision: false,
             },
@@ -1871,19 +1877,19 @@ describe("NimChatModelProvider", () => {
             : undefined,
     );
 
-    const rateLimitError = new NvidiaApiError(
+    const capacityError = new NvidiaApiError(
       "rate_limited",
-      "[RATE_LIMITED] Rate limited.\nRetry after 30.",
-      { status: 429 },
+      `[RATE_LIMITED] ${capacityLabel}.`,
+      { status },
     );
-    const rateLimitedStream = async function* () {
-      throw rateLimitError;
+    const capacityStream = async function* () {
+      throw capacityError;
     };
     const fallbackStream = async function* () {
       yield { choices: [{ delta: { content: "Fallback response" } }] };
     };
     (streamChatCompletion as jest.Mock)
-      .mockImplementationOnce(() => rateLimitedStream())
+      .mockImplementationOnce(() => capacityStream())
       .mockImplementationOnce(() => fallbackStream());
 
     const progress = { report: jest.fn() };
@@ -1904,9 +1910,9 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(fallbackRequest.model).toBe("deepseek-ai/deepseek-v4-flash");
+    expect(fallbackRequest.model).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      expect.stringContaining("Falling back to DeepSeek V4 Flash"),
+      `${capacityLabel} on Kimi k2.6. Falling back to Nemotron 3.5 Lightning 30B.`,
     );
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Fallback response" }),
@@ -1914,11 +1920,11 @@ describe("NimChatModelProvider", () => {
   });
 
   it.each([
-    ["deepseek-ai/deepseek-v4-flash", false],
-    ["deepseek-ai/deepseek-v4-pro", false],
+    ["deepseek-ai/deepseek-v4-flash-0731", false],
     ["minimaxai/minimax-m3", true],
     ["moonshotai/kimi-k2.6", true],
     ["nvidia/nemotron-3-ultra-550b-a55b", false],
+    ["nvidia/nemotron-3.5-lightning-30b-a3b", false],
     ["z-ai/glm-5.2", false],
     ["stepfun-ai/step-3.7-flash", true],
     ["thinkingmachines/inkling", true],
@@ -2011,7 +2017,7 @@ describe("NimChatModelProvider", () => {
     );
   });
 
-  it("does not fall back on rate limit when DeepSeek Flash is unavailable", async () => {
+  it("does not fall back on rate limit when Nemotron 3.5 Lightning is unavailable", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (globalState.get as jest.Mock).mockImplementation((key: string) =>
       key === "nvidia-nim.models"

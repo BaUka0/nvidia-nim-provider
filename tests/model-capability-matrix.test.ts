@@ -56,28 +56,9 @@ const deepSeekReasoningCases: ReasoningModeCase[] = [
 
 const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   {
-    modelId: "deepseek-ai/deepseek-v4-flash",
+    modelId: "deepseek-ai/deepseek-v4-flash-0731",
     catalog: {
-      displayName: "DeepSeek V4 Flash",
-      contextWindow: 1048576,
-      maxOutputTokens: 131072,
-      supportsTools: true,
-      supportsVision: false,
-    },
-    reasoningModes: ["none", "high", "max"],
-    reasoningCases: deepSeekReasoningCases,
-    reasoningParameterFormat: "chat_template_kwargs",
-    toolCallProtocol: "native-and-text",
-    reasoningRouting: "isolated",
-    responseSanitization: "none",
-    contentOnlyMode: "none",
-    contentOnlyRouting: "text",
-    thinkTag: "think",
-  },
-  {
-    modelId: "deepseek-ai/deepseek-v4-pro",
-    catalog: {
-      displayName: "DeepSeek V4 Pro",
+      displayName: "DeepSeek V4 Flash 0731",
       contextWindow: 1048576,
       maxOutputTokens: 131072,
       supportsTools: true,
@@ -169,6 +150,50 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
       { mode: "high", expectedFields: { reasoning_effort: "high" } },
     ],
     reasoningParameterFormat: "reasoning_effort",
+    toolCallProtocol: "native-and-text",
+    reasoningRouting: "isolated",
+    responseSanitization: "none",
+    contentOnlyMode: "none",
+    contentOnlyRouting: "text",
+    thinkTag: "think",
+  },
+  {
+    modelId: "nvidia/nemotron-3.5-lightning-30b-a3b",
+    catalog: {
+      displayName: "Nemotron 3.5 Lightning 30B",
+      contextWindow: 1000000,
+      maxOutputTokens: 32768,
+      supportsTools: true,
+      supportsVision: false,
+    },
+    reasoningModes: ["none", "medium", "high", "xhigh"],
+    reasoningCases: [
+      {
+        mode: "none",
+        expectedFields: {
+          chat_template_kwargs: { enable_thinking: false, reasoning_budget: 0 },
+        },
+      },
+      {
+        mode: "medium",
+        expectedFields: {
+          chat_template_kwargs: { enable_thinking: true, reasoning_budget: 16384 },
+        },
+      },
+      {
+        mode: "high",
+        expectedFields: {
+          chat_template_kwargs: { enable_thinking: true, reasoning_budget: 26214 },
+        },
+      },
+      {
+        mode: "xhigh",
+        expectedFields: {
+          chat_template_kwargs: { enable_thinking: true, reasoning_budget: 31130 },
+        },
+      },
+    ],
+    reasoningParameterFormat: "chat_template_kwargs",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "isolated",
     responseSanitization: "none",
@@ -373,6 +398,21 @@ describe("curated model capability matrix", () => {
     },
   );
 
+  it.each(CAPABILITY_MATRIX.filter((entry) => entry.reasoningModes.some((mode) => mode !== "none")))(
+    "$modelId keeps a content-only reply visible when reasoning is enabled but never arrives",
+    (entry) => {
+      const adapter = getModelAdapter(entry.modelId);
+      const activeMode = entry.reasoningModes.find((mode) => mode !== "none") ?? "none";
+      const { router, thinking, text } = createRouter(adapter, activeMode);
+
+      router.handleContent("plain answer without reasoning");
+      router.flush();
+
+      expect(text.join("")).toBe("plain answer without reasoning");
+      expect(thinking).toEqual([]);
+    },
+  );
+
   it.each(CAPABILITY_MATRIX)(
     "$modelId routes separate reasoning_content before the answer",
     (entry) => {
@@ -381,7 +421,8 @@ describe("curated model capability matrix", () => {
       const { router, thinking, text } = createRouter(adapter, activeMode);
 
       router.handleReasoningContent("reasoning");
-      router.handleContent("answer");
+      router.handleContent("ans");
+      router.handleContent("wer");
       router.flush();
 
       expect(thinking.join("")).toBe("reasoning");
@@ -508,7 +549,7 @@ describe("curated model capability matrix", () => {
   it("uses curated capabilities instead of trusting an API capability default", () => {
     const normalized = normalizeNvidiaModels([
       {
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         capabilities: { tool_calling: false, vision: true },
       },
     ]);

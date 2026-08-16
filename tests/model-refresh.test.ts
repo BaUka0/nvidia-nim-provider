@@ -60,7 +60,7 @@ describe("model cache key ownership and refresh", () => {
     const resolver = new NvidiaApiKeyResolver(secrets);
     resolver.rememberRuntimeKey("provider-group-key");
     (fetchModels as jest.Mock).mockResolvedValue([
-      { id: "deepseek-ai/deepseek-v4-flash", object: "model" },
+      { id: "deepseek-ai/deepseek-v4-flash-0731", object: "model" },
     ]);
     const globalState = {
       get: jest.fn(() => undefined),
@@ -95,8 +95,8 @@ describe("model cache key ownership and refresh", () => {
   it("does not retain stale normalized models when a changed key returns no curated models", async () => {
     const oldModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash",
-        displayName: "DeepSeek V4 Flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        displayName: "DeepSeek V4 Flash 0731",
         contextWindow: 1000000,
         maxOutputTokens: 384000,
         supportsTools: true,
@@ -130,8 +130,8 @@ describe("model cache key ownership and refresh", () => {
   it("refreshes a legacy cache that has no key fingerprint before serving it", async () => {
     const cachedModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash",
-        displayName: "DeepSeek V4 Flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        displayName: "DeepSeek V4 Flash 0731",
         contextWindow: 1000000,
         maxOutputTokens: 384000,
         supportsTools: true,
@@ -161,8 +161,8 @@ describe("model cache key ownership and refresh", () => {
   it("refreshes a cache written by an older cache version", async () => {
     const cachedModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash",
-        displayName: "DeepSeek V4 Flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        displayName: "DeepSeek V4 Flash 0731",
         contextWindow: 1000000,
         maxOutputTokens: 384000,
         supportsTools: true,
@@ -191,7 +191,7 @@ describe("model cache key ownership and refresh", () => {
   });
 
   it("writes the raw and normalized cache through discovery", async () => {
-    const rawModels = [{ id: "deepseek-ai/deepseek-v4-flash" }];
+    const rawModels = [{ id: "deepseek-ai/deepseek-v4-flash-0731" }];
     const globalState = createMutableGlobalState();
     const secrets = { get: jest.fn(async () => undefined) };
     (fetchModels as jest.Mock).mockResolvedValue(rawModels);
@@ -205,7 +205,7 @@ describe("model cache key ownership and refresh", () => {
 
     expect(globalState.values.get(RAW_MODELS_STATE_KEY)).toEqual(rawModels);
     expect(globalState.values.get(MODELS_STATE_KEY)).toEqual([
-      expect.objectContaining({ id: "deepseek-ai/deepseek-v4-flash" }),
+      expect.objectContaining({ id: "deepseek-ai/deepseek-v4-flash-0731" }),
     ]);
     expect(globalState.values.get(MODELS_CACHE_VERSION_STATE_KEY)).toBe(MODELS_CACHE_VERSION);
     expect(globalState.values.get(MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY)).toBe(
@@ -215,8 +215,8 @@ describe("model cache key ownership and refresh", () => {
 
   it("filters malformed and non-curated normalized cache entries", () => {
     const curatedModel = {
-      id: "deepseek-ai/deepseek-v4-flash",
-      displayName: "DeepSeek V4 Flash",
+      id: "deepseek-ai/deepseek-v4-flash-0731",
+      displayName: "DeepSeek V4 Flash 0731",
       contextWindow: 1000000,
       maxOutputTokens: 384000,
       supportsTools: true,
@@ -240,14 +240,14 @@ describe("model cache key ownership and refresh", () => {
   });
 
   it("serializes discovery rollback before a queued manual refresh write", async () => {
-    const initialRawModels = [{ id: "deepseek-ai/deepseek-v4-pro" }];
+    const initialRawModels = [{ id: "deepseek-ai/deepseek-v4-flash-0731" }];
     const initialNormalizedModels = [
       {
-        id: "deepseek-ai/deepseek-v4-pro",
-        ...ELITE_MODELS_WHITELIST["deepseek-ai/deepseek-v4-pro"],
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        ...ELITE_MODELS_WHITELIST["deepseek-ai/deepseek-v4-flash-0731"],
       },
     ];
-    const discoveryRawModels = [{ id: "deepseek-ai/deepseek-v4-flash" }];
+    const discoveryRawModels = [{ id: "nvidia/nemotron-3.5-lightning-30b-a3b" }];
     const manualRawModels = [{ id: "minimaxai/minimax-m3" }];
     const discoveryWriteBlocked = createDeferred();
     const failDiscoveryWrite = createDeferred();
@@ -264,7 +264,7 @@ describe("model cache key ownership and refresh", () => {
         if (
           shouldFailDiscoveryWrite &&
           key === MODELS_STATE_KEY &&
-          normalized?.id === "deepseek-ai/deepseek-v4-flash"
+          normalized?.id === "nvidia/nemotron-3.5-lightning-30b-a3b"
         ) {
           shouldFailDiscoveryWrite = false;
           discoveryWriteBlocked.resolve();
@@ -333,7 +333,7 @@ describe("model cache key ownership and refresh", () => {
     expect(outputLog).toHaveBeenCalledWith(
       "models",
       expect.stringContaining(
-        "Curated NVIDIA NIM models missing from the current API response: deepseek-ai/deepseek-v4-pro",
+        "Curated NVIDIA NIM models missing from the current API response: deepseek-ai/deepseek-v4-flash-0731",
       ),
     );
   });

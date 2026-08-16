@@ -170,4 +170,68 @@ describe("applyReasoningMode", () => {
     adapter.applyReasoningMode!(request, "none");
     expect(request.reasoning_effort).toBe("none");
   });
+
+  it("maps Lightning reasoning modes to OpenRouter-style reasoning_budget percentages", () => {
+    const adapter = getModelAdapter("nvidia/nemotron-3.5-lightning-30b-a3b");
+    const request: NimChatRequest = {
+      model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+      messages: [],
+    };
+
+    expect(adapter.supportedReasoningModes).toEqual(["none", "medium", "high", "xhigh"]);
+    expect(adapter.getProfile({ toolsEnabled: true }).defaultTemperature).toBe(1);
+    expect(adapter.getProfile({ toolsEnabled: true }).toolTemperature).toBe(1);
+
+    adapter.applyReasoningMode!(request, "medium");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      reasoning_budget: 16384,
+    });
+    expect(request.reasoning_effort).toBeUndefined();
+
+    adapter.applyReasoningMode!(request, "high");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      reasoning_budget: 26214,
+    });
+
+    adapter.applyReasoningMode!(request, "xhigh");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      reasoning_budget: 31130,
+    });
+
+    adapter.applyReasoningMode!(request, "none");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: false,
+      reasoning_budget: 0,
+    });
+  });
+
+  it("scales Lightning reasoning_budget from the request max_tokens cap", () => {
+    const adapter = getModelAdapter("nvidia/nemotron-3.5-lightning-30b-a3b");
+    const request: NimChatRequest = {
+      model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+      messages: [],
+      max_tokens: 8000,
+    };
+
+    adapter.applyReasoningMode!(request, "medium");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      reasoning_budget: 4000,
+    });
+
+    adapter.applyReasoningMode!(request, "high");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      reasoning_budget: 6400,
+    });
+
+    adapter.applyReasoningMode!(request, "xhigh");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      reasoning_budget: 7600,
+    });
+  });
 });

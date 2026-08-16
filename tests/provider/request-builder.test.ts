@@ -21,7 +21,7 @@ jest.mock("vscode", () => ({
 
 function createModel(maxInputTokens = 5000): vscode.LanguageModelChatInformation {
   return makeModel({
-    id: "deepseek-ai/deepseek-v4-flash",
+    id: "deepseek-ai/deepseek-v4-flash-0731",
     name: "DeepSeek V4 Flash",
     maxInputTokens,
     maxOutputTokens: 1000,

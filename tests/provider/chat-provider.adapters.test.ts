@@ -210,7 +210,7 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       makeModel({
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       }),
@@ -267,7 +267,7 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       makeModel({
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       }),
@@ -312,7 +312,7 @@ describe("NimChatModelProvider", () => {
       const progress = { report: jest.fn() };
       const token = makeToken();
       const model = makeModel({
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       });
@@ -369,7 +369,7 @@ describe("NimChatModelProvider", () => {
       const progress = { report: jest.fn() };
       const token = makeToken();
       const model = makeModel({
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       });
@@ -440,7 +440,7 @@ describe("NimChatModelProvider", () => {
       const progress = { report: jest.fn() };
       const token = makeToken();
       const model = makeModel({
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       });
@@ -517,7 +517,7 @@ describe("NimChatModelProvider", () => {
       const progress = { report: jest.fn() };
       const token = makeToken();
       const model = makeModel({
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       });
@@ -779,7 +779,7 @@ describe("NimChatModelProvider", () => {
     },
     {
       name: "DeepSeek-style optional tool call",
-      modelId: "deepseek-ai/deepseek-v4-pro",
+      modelId: "deepseek-ai/deepseek-v4-flash-0731",
       invalidChunks: [
         '<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>list_dir\n```json\n{"path":"/tmp"\n```<｜tool▁call▁end｜><｜tool▁calls▁end｜>',
       ],
@@ -904,7 +904,7 @@ describe("NimChatModelProvider", () => {
       key === "nvidia-nim.models"
         ? [
             {
-              id: "deepseek-ai/deepseek-v4-pro",
+              id: "deepseek-ai/deepseek-v4-flash-0731",
               displayName: "deepseek-v4-pro",
               contextWindow: 131072,
               maxOutputTokens: 16384,
@@ -925,7 +925,7 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       makeModel({
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       }),
@@ -967,7 +967,7 @@ describe("NimChatModelProvider", () => {
       key === "nvidia-nim.models"
         ? [
             {
-              id: "deepseek-ai/deepseek-v4-pro",
+              id: "deepseek-ai/deepseek-v4-flash-0731",
               displayName: "deepseek-v4-pro",
               contextWindow: 131072,
               maxOutputTokens: 16384,
@@ -988,7 +988,7 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       makeModel({
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       }),

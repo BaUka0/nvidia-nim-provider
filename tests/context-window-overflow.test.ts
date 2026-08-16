@@ -166,6 +166,20 @@ describe("classifyApiError context overflow", () => {
     const classified = classifyApiError(error, { status: 429 });
     expect(classified).toBeInstanceOf(NvidiaApiError);
     expect((classified as NvidiaApiError).kind).toBe("rate_limited");
+    expect((classified as NvidiaApiError).retryable).toBe(true);
+  });
+
+  it("classifies HTTP 529 overloaded as a retryable rate_limited capacity error", () => {
+    const detail = '{"message":"Service temporarily overloaded","type":"Overloaded","code":529}';
+    const classified = classifyApiError(new Error(`HTTP 529: ${detail}`), {
+      status: 529,
+      detail,
+    });
+    expect(classified).toBeInstanceOf(NvidiaApiError);
+    expect((classified as NvidiaApiError).kind).toBe("rate_limited");
+    expect((classified as NvidiaApiError).retryable).toBe(true);
+    expect((classified as NvidiaApiError).status).toBe(529);
+    expect(classified.message).toContain("Service temporarily overloaded");
   });
 
   it("classifies 'resulted in' format as context_overflow with correct values", () => {

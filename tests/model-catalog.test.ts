@@ -1,11 +1,16 @@
-import { isNormalizedNvidiaModel, normalizeNvidiaModels } from "../src/models/catalog";
+import {
+  FALLBACK_MODEL_ID,
+  getFallbackModel,
+  isNormalizedNvidiaModel,
+  normalizeNvidiaModels,
+} from "../src/models/catalog";
 import type { NvidiaModelSummary } from "../src/types";
 
 describe("normalizeNvidiaModels", () => {
   it("keeps whitelisted models and applies overrides", () => {
     const raw: NvidiaModelSummary[] = [
       {
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
       },
       {
         id: "unknown/model-that-should-be-filtered",
@@ -14,8 +19,8 @@ describe("normalizeNvidiaModels", () => {
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       {
-        id: "deepseek-ai/deepseek-v4-flash",
-        displayName: "DeepSeek V4 Flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        displayName: "DeepSeek V4 Flash 0731",
         contextWindow: 1048576,
         maxOutputTokens: 131072,
         supportsTools: true,
@@ -77,6 +82,25 @@ describe("normalizeNvidiaModels", () => {
         maxOutputTokens: 32768,
         supportsTools: true,
         supportsVision: true,
+      },
+    ]);
+  });
+
+  it("normalizes nvidia/nemotron-3.5-lightning-30b-a3b with its curated 1M / 32K limits", () => {
+    const raw: NvidiaModelSummary[] = [
+      {
+        id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+      },
+    ];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([
+      {
+        id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+        displayName: "Nemotron 3.5 Lightning 30B",
+        contextWindow: 1000000,
+        maxOutputTokens: 32768,
+        supportsTools: true,
+        supportsVision: false,
       },
     ]);
   });
@@ -156,5 +180,45 @@ describe("normalizeNvidiaModels", () => {
         supportsVision: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("getFallbackModel", () => {
+  const lightning = {
+    id: FALLBACK_MODEL_ID,
+    displayName: "Nemotron 3.5 Lightning 30B",
+    contextWindow: 1000000,
+    maxOutputTokens: 32768,
+    supportsTools: true,
+    supportsVision: false,
+  };
+  const kimi = {
+    id: "moonshotai/kimi-k2.6",
+    displayName: "Kimi k2.6",
+    contextWindow: 262144,
+    maxOutputTokens: 65536,
+    supportsTools: true,
+    supportsVision: true,
+  };
+
+  it("selects Nemotron 3.5 Lightning as the rate-limit and summarizer fallback", () => {
+    expect(FALLBACK_MODEL_ID).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
+    expect(getFallbackModel(kimi.id, [kimi, lightning])).toEqual(lightning);
+  });
+
+  it("does not fall back when the current model is already Lightning", () => {
+    expect(getFallbackModel(lightning.id, [kimi, lightning])).toBeUndefined();
+  });
+
+  it("does not fall back to DeepSeek V4 Flash", () => {
+    const flash = {
+      id: "deepseek-ai/deepseek-v4-flash-0731",
+      displayName: "DeepSeek V4 Flash",
+      contextWindow: 1048576,
+      maxOutputTokens: 131072,
+      supportsTools: true,
+      supportsVision: false,
+    };
+    expect(getFallbackModel(kimi.id, [kimi, flash])).toBeUndefined();
   });
 });

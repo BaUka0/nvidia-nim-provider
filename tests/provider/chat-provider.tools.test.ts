@@ -85,7 +85,7 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "deepseek-ai/deepseek-v4-pro",
+              id: "deepseek-ai/deepseek-v4-flash-0731",
               displayName: "Llama 4 Maverick 17B 128E Instruct",
               contextWindow: 131072,
               maxOutputTokens: 16384,
@@ -103,7 +103,7 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (globalState.get as jest.Mock).mockReturnValue([
       {
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         displayName: "Llama 4 Maverick 17B 128E Instruct",
         contextWindow: 131072,
         maxOutputTokens: 16384,
@@ -137,7 +137,7 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       makeModel({
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         maxInputTokens: 100000,
         maxOutputTokens: 16384,
       }),
@@ -153,7 +153,7 @@ describe("NimChatModelProvider", () => {
     expect(streamChatCompletion).toHaveBeenCalledWith(
       "test-key",
       expect.objectContaining({
-        model: "deepseek-ai/deepseek-v4-pro",
+        model: "deepseek-ai/deepseek-v4-flash-0731",
         tools: expect.any(Array),
       }),
       expect.any(AbortSignal),

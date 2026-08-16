@@ -88,8 +88,8 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "deepseek-ai/deepseek-v4-pro",
-              displayName: "DeepSeek V4 Pro",
+              id: "deepseek-ai/deepseek-v4-flash-0731",
+              displayName: "DeepSeek V4 Flash",
               contextWindow: 131072,
               maxOutputTokens: 16384,
               supportsTools: true,
@@ -117,7 +117,7 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
     (fetchModels as jest.Mock).mockResolvedValue([
       {
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         object: "model",
         owned_by: "integrate.api.nvidia.com",
       },
@@ -135,8 +135,8 @@ describe("NimChatModelProvider", () => {
     expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
-        id: "deepseek-ai/deepseek-v4-flash",
-        displayName: "DeepSeek V4 Flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        displayName: "DeepSeek V4 Flash 0731",
         contextWindow: 1048576,
         maxOutputTokens: 131072,
         supportsTools: true,
@@ -145,8 +145,8 @@ describe("NimChatModelProvider", () => {
     ]);
     expect(infos).toEqual([
       expect.objectContaining({
-        id: "deepseek-ai/deepseek-v4-flash",
-        name: "DeepSeek V4 Flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        name: "DeepSeek V4 Flash 0731",
         detail: "NVIDIA NIM",
       }),
     ]);
@@ -159,7 +159,7 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue(undefined);
     (fetchModels as jest.Mock).mockResolvedValue([
       {
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         object: "model",
         owned_by: "integrate.api.nvidia.com",
       },
@@ -178,7 +178,7 @@ describe("NimChatModelProvider", () => {
     expect(secrets.get).not.toHaveBeenCalledWith("nvidia-nim.apiKey");
     expect(infos).toEqual([
       expect.objectContaining({
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
       }),
     ]);
     expect(infos[0]).not.toHaveProperty("apiKey");
@@ -189,8 +189,8 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "deepseek-ai/deepseek-v4-pro",
-            displayName: "DeepSeek V4 Pro",
+            id: "deepseek-ai/deepseek-v4-flash-0731",
+            displayName: "DeepSeek V4 Flash",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -217,8 +217,8 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "deepseek-ai/deepseek-v4-pro",
-            displayName: "DeepSeek V4 Pro",
+            id: "deepseek-ai/deepseek-v4-flash-0731",
+            displayName: "DeepSeek V4 Flash",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -252,7 +252,7 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
     (fetchModels as jest.Mock).mockResolvedValue([
       {
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         object: "model",
         owned_by: "deepseek-ai",
       },
@@ -267,8 +267,8 @@ describe("NimChatModelProvider", () => {
     expect(fetchModels).toHaveBeenCalledWith("legacy-key", undefined, "test-ua");
     expect(infos).toEqual([
       expect.objectContaining({
-        id: "deepseek-ai/deepseek-v4-pro",
-        name: "DeepSeek V4 Pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        name: "DeepSeek V4 Flash 0731",
         isUserSelectable: true,
       }),
     ]);
@@ -279,8 +279,8 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "deepseek-ai/deepseek-v4-pro",
-            displayName: "DeepSeek V4 Pro",
+            id: "deepseek-ai/deepseek-v4-flash-0731",
+            displayName: "DeepSeek V4 Flash",
             contextWindow: 131072,
             maxOutputTokens: 16384,
             supportsTools: true,
@@ -312,7 +312,7 @@ describe("NimChatModelProvider", () => {
     expect(groupInfos).toHaveLength(1);
     expect(groupInfos[0]).toEqual(
       expect.objectContaining({
-        id: "deepseek-ai/deepseek-v4-pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         isUserSelectable: true,
       }),
     );
@@ -324,7 +324,7 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "deepseek-ai/deepseek-v4-flash",
+            id: "deepseek-ai/deepseek-v4-flash-0731",
             displayName: "DeepSeek V4 Flash",
             contextWindow: 131072,
             maxOutputTokens: 16384,
@@ -369,7 +369,7 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "deepseek-ai/deepseek-v4-flash",
+            id: "deepseek-ai/deepseek-v4-flash-0731",
             displayName: "DeepSeek V4 Flash",
             contextWindow: 131072,
             maxOutputTokens: 16384,
@@ -413,7 +413,7 @@ describe("NimChatModelProvider", () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
     (fetchModels as jest.Mock).mockResolvedValue([
-      { id: "deepseek-ai/deepseek-v4-flash", object: "model" },
+      { id: "deepseek-ai/deepseek-v4-flash-0731", object: "model" },
     ]);
     (streamChatCompletion as jest.Mock).mockImplementation(() =>
       (async function* () {
@@ -462,7 +462,7 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "deepseek-ai/deepseek-v4-flash",
+            id: "deepseek-ai/deepseek-v4-flash-0731",
             displayName: "DeepSeek V4 Flash",
             contextWindow: 131072,
             maxOutputTokens: 16384,
@@ -522,7 +522,7 @@ describe("NimChatModelProvider", () => {
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
     (fetchModels as jest.Mock).mockResolvedValue([
       {
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         object: "model",
         owned_by: "integrate.api.nvidia.com",
       },
@@ -540,7 +540,7 @@ describe("NimChatModelProvider", () => {
     expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
     expect(infos[0]).toEqual(
       expect.objectContaining({
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         isUserSelectable: true,
       }),
     );
@@ -583,7 +583,7 @@ describe("NimChatModelProvider", () => {
   it("provideLanguageModelChatInformation returns cached normalized models for a configured provider group", async () => {
     const cachedModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         displayName: "DeepSeek V4 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 131072,
@@ -613,7 +613,7 @@ describe("NimChatModelProvider", () => {
       token,
     );
     expect(infos.length).toBe(1);
-    expect(infos[0].id).toBe("deepseek-ai/deepseek-v4-flash");
+    expect(infos[0].id).toBe("deepseek-ai/deepseek-v4-flash-0731");
     expect(infos[0].detail).toBe("NVIDIA NIM");
     expect(infos[0].tooltip).toBe("NVIDIA NIM DeepSeek V4 Flash");
     expect(infos[0].family).toBe("nvidia-nim");
@@ -625,7 +625,7 @@ describe("NimChatModelProvider", () => {
   it("does not refetch a fresh cache on repeated provider-group resolution", async () => {
     const cachedModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         displayName: "DeepSeek V4 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 131072,
@@ -660,7 +660,7 @@ describe("NimChatModelProvider", () => {
   it("migrates an older cache version during provider-group resolution", async () => {
     const cachedModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         displayName: "DeepSeek V4 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 131072,
@@ -678,7 +678,7 @@ describe("NimChatModelProvider", () => {
     });
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
     (fetchModels as jest.Mock).mockResolvedValue([
-      { id: "deepseek-ai/deepseek-v4-pro", object: "model" },
+      { id: "deepseek-ai/deepseek-v4-flash-0731", object: "model" },
     ]);
     const token = makeToken();
 
@@ -691,7 +691,7 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
-    expect(infos).toEqual([expect.objectContaining({ id: "deepseek-ai/deepseek-v4-pro" })]);
+    expect(infos).toEqual([expect.objectContaining({ id: "deepseek-ai/deepseek-v4-flash-0731" })]);
     expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
   });
 
@@ -719,8 +719,8 @@ describe("NimChatModelProvider", () => {
   it("does not advertise image input for non-vision normalized models", async () => {
     const cachedModels = [
       {
-        id: "deepseek-ai/deepseek-v4-pro",
-        displayName: "DeepSeek V4 Pro",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        displayName: "DeepSeek V4 Flash",
         contextWindow: 131072,
         maxOutputTokens: 16384,
         supportsTools: true,
@@ -763,7 +763,7 @@ describe("NimChatModelProvider", () => {
   it("refreshes cached models when the provider-group key changes", async () => {
     const cachedModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         displayName: "DeepSeek V4 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 131072,
@@ -784,7 +784,7 @@ describe("NimChatModelProvider", () => {
       return undefined;
     });
     (fetchModels as jest.Mock).mockResolvedValue([
-      { id: "deepseek-ai/deepseek-v4-pro", object: "model" },
+      { id: "nvidia/nemotron-3.5-lightning-30b-a3b", object: "model" },
     ]);
     const token = makeToken();
 
@@ -805,8 +805,8 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
-    expect(firstInfos[0].id).toBe("deepseek-ai/deepseek-v4-flash");
-    expect(secondInfos[0].id).toBe("deepseek-ai/deepseek-v4-pro");
+    expect(firstInfos[0].id).toBe("deepseek-ai/deepseek-v4-flash-0731");
+    expect(secondInfos[0].id).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
     expect(secondInfos[0]).toEqual(expect.objectContaining({ isUserSelectable: true }));
     expect(fetchModels).toHaveBeenCalledWith("key-b", undefined, "test-ua");
   });
@@ -814,7 +814,7 @@ describe("NimChatModelProvider", () => {
   it("invalidates the model cache when model information changes", async () => {
     const cachedModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         displayName: "DeepSeek V4 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 131072,
@@ -835,7 +835,7 @@ describe("NimChatModelProvider", () => {
       return undefined;
     });
     (fetchModels as jest.Mock).mockResolvedValue([
-      { id: "deepseek-ai/deepseek-v4-pro", object: "model" },
+      { id: "nvidia/nemotron-3.5-lightning-30b-a3b", object: "model" },
     ]);
     const token = makeToken();
 
@@ -857,8 +857,8 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
-    expect(before[0].id).toBe("deepseek-ai/deepseek-v4-flash");
-    expect(after[0].id).toBe("deepseek-ai/deepseek-v4-pro");
+    expect(before[0].id).toBe("deepseek-ai/deepseek-v4-flash-0731");
+    expect(after[0].id).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
     expect(fetchModels).toHaveBeenCalledWith("key-a", undefined, "test-ua");
   });
 
@@ -910,7 +910,7 @@ describe("NimChatModelProvider", () => {
   it("clears runtime model-info metadata when a provider-group API key changes", async () => {
     const cachedModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         displayName: "DeepSeek V4 Flash",
         contextWindow: 1000000,
         maxOutputTokens: 131072,
@@ -927,7 +927,7 @@ describe("NimChatModelProvider", () => {
       return undefined;
     });
     (fetchModels as jest.Mock).mockResolvedValue([
-      { id: "deepseek-ai/deepseek-v4-pro", object: "model" },
+      { id: "deepseek-ai/deepseek-v4-flash-0731", object: "model" },
     ]);
     const cacheHarness = asRuntimeInfoCache(provider);
     const token = makeToken();
@@ -940,7 +940,7 @@ describe("NimChatModelProvider", () => {
       }),
       token,
     );
-    cacheHarness.setRuntimeInfoCache("deepseek-ai/deepseek-v4-flash", {
+    cacheHarness.setRuntimeInfoCache("deepseek-ai/deepseek-v4-flash-0731", {
       supportsTools: true,
       supportsVision: false,
       contextWindow: 1048576,

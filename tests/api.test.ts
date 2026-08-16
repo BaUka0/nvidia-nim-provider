@@ -169,6 +169,7 @@ describe("classifyApiError", () => {
     [401, "AUTH_FAILED"],
     [404, "MODEL_UNAVAILABLE"],
     [429, "RATE_LIMITED"],
+    [529, "RATE_LIMITED"],
     [503, "SERVER_ERROR"],
   ])("maps HTTP %s to %s", (status, code) => {
     const error = classifyApiError(new Error(`HTTP ${status}`), {

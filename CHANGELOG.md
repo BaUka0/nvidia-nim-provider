@@ -1,5 +1,31 @@
 # Change Log
 
+## [0.5.4] - 2026-08-17
+
+### Added
+
+- **DeepSeek V4 Flash 0731.** NVIDIA withdrew the previous DeepSeek V4 Flash and V4 Pro endpoints. The catalog now ships `deepseek-ai/deepseek-v4-flash-0731` (picker name **DeepSeek V4 Flash 0731**) with the same 1,048,576-token window, 131,072-token output limit, tool calling, and `None` / `High` / `Max` reasoning modes.
+- **Nemotron 3.5 Lightning 30B.** Added `nvidia/nemotron-3.5-lightning-30b-a3b` as a compact 30B/3B-active text model: 1,000,000-token context (confirmed by the live 1,048,576-token probe, which the hosted API rejected at exactly 1,000,000), 32,768-token output, tool calling, no vision. A dedicated adapter is registered ahead of the generic Nemotron adapter because Lightning uses `chat_template_kwargs.enable_thinking` plus `reasoning_budget`, not Ultra's `reasoning_effort`.
+- **OpenRouter-style Lightning reasoning budgets.** Picker modes are `None` / `Medium` / `High` / `XHigh`. They map to `reasoning_budget` 0 / 50% / 80% / 95% of the request `max_tokens`, capped at 32,768. `None` sends `enable_thinking: false`.
+- **HTTP 529 capacity fallback.** NVIDIA's `529 Overloaded` (`Service temporarily overloaded`) is classified as a retryable `rate_limited` error instead of a generic 5xx. After retries fail, the same Lightning fallback used for HTTP 429 fires, with an `Overloaded on …` notification.
+
+### Changed
+
+- **Rate-limit and summarizer fallback is Lightning.** DeepSeek Flash is no longer the automatic fallback: it is itself the model that is currently overloaded. `FALLBACK_MODEL_ID` is `nvidia/nemotron-3.5-lightning-30b-a3b` for both 429/529 recovery and conversation summarization. Lightning's 1M window is large enough to summarize an overflowed elite-model thread.
+- **Isolated content-only replies stay visible.** When High/Max (or any isolated reasoning mode) is on but the model never emits `reasoning_content` or think tags, the reply is no longer stuffed into a `ThinkingPart` and no longer fails as `[EMPTY_STREAM]`. Untagged content is buffered until the stream ends or a reasoning signal appears; only then is it classified as thinking or as the answer.
+- **Answer tokens stream after reasoning.** Once `reasoning_content` has finished, each `content` delta is flushed to the chat immediately. Previously the router held the answer until 150 characters or `</think>`, and the provider refused to flush text until `answerStarted`, so the whole answer appeared in one dump after the stream ended. An in-chunk `</think>` still splits leaked reasoning from the visible answer.
+- **Model cache invalidated.** `MODELS_CACHE_VERSION` is 12 so stale Flash / Pro / old Lightning limits are dropped on the next refresh.
+
+### Removed
+
+- **DeepSeek V4 Flash (`deepseek-ai/deepseek-v4-flash`) and DeepSeek V4 Pro.** Both IDs are gone from NVIDIA NIM and from the curated whitelist, capability matrix, model-list probe, and README.
+
+### Tests
+
+- Extended the curated capability matrix for Flash 0731 and Lightning, including OpenRouter budget percentages and content-only High visibility.
+- Added live 429/529 fallback coverage onto Lightning, 529 classification/retryability, and post-reasoning streamed text parts (`Hel` / `lo ` / `world`).
+- Replaced leftover V4 Pro / old Flash fixtures so discovery, refresh, and picker tests use current whitelist IDs.
+
 ## [0.5.3] - 2026-08-16
 
 ### Changed

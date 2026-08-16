@@ -616,6 +616,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           },
           onText: (text) => {
             processAnswerText(text);
+            flushPendingText();
           },
           onFirstResponse: () => {
             markFirstResponse();
@@ -1243,12 +1244,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             },
           };
           const currentName = model.name ?? model.id;
+          const capacityLabel = err.status === 529 ? "Overloaded" : "Rate limited";
           vscode.window.showInformationMessage(
-            `Rate limited on ${currentName}. Falling back to ${fallbackModel.displayName}.`,
+            `${capacityLabel} on ${currentName}. Falling back to ${fallbackModel.displayName}.`,
           );
           outputLog(
             "fallback",
-            `Rate limited on ${model.id}, falling back to ${fallbackModel.id}.`,
+            `${capacityLabel} on ${model.id}, falling back to ${fallbackModel.id}.`,
           );
           await this.provideLanguageModelChatResponse(
             fallbackInfo,
