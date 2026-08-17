@@ -458,6 +458,30 @@ describe("filterThinkTagsFromChunk think-block capture", () => {
       { type: "text", text: "after" },
     ]);
   });
+
+  it("handles [THINK], <thought>, and <reasoning> tag pairs seamlessly", () => {
+    const state1 = { insideThinkBlock: false, pendingText: "" };
+    const res1 = filterThinkTagsFromChunk("Intro [THINK]hidden thoughts[/THINK] Outro", state1);
+    expect(res1).toEqual([
+      { type: "text", text: "Intro " },
+      { type: "thinking", text: "hidden thoughts" },
+      { type: "text", text: " Outro" },
+    ]);
+
+    const state2 = { insideThinkBlock: false, pendingText: "" };
+    const res2 = filterThinkTagsFromChunk("<thought>planning</thought>action", state2);
+    expect(res2).toEqual([
+      { type: "thinking", text: "planning" },
+      { type: "text", text: "action" },
+    ]);
+
+    const state3 = { insideThinkBlock: false, pendingText: "" };
+    const res3 = filterThinkTagsFromChunk("<reasoning>logic</reasoning>result", state3);
+    expect(res3).toEqual([
+      { type: "thinking", text: "logic" },
+      { type: "text", text: "result" },
+    ]);
+  });
 });
 
 describe("estimateMessagesTokensByCategory", () => {

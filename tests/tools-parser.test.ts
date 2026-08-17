@@ -1,9 +1,13 @@
 import {
   buildToolCallCanonicalKey,
+  extractStandaloneXmlParameters,
+  getIncompleteTextToolCallName,
   getToolSchemaMap,
   hasRequiredToolArguments,
+  parseTextEmbeddedToolCalls,
   parseToolArguments,
   repairToolArguments,
+  stripKnownControlText,
 } from "../src/tools/parser";
 import { ToolCallStreamAggregator } from "../src/provider/tool-call-aggregator";
 import { makeChatOptions } from "./helpers/fakes";
@@ -310,6 +314,216 @@ describe("tool argument parsing and validation", () => {
         name: "read_file",
         args: { filePath: "/tmp/a.ts" },
       },
+    ]);
+  });
+
+  it("parses Hermes/Nemotron XML tool calls and strips XML tags from text", () => {
+    const rawStreamText =
+      'Now I will create the file.\n<tool_call>\n<function=create_file>\n<parameter=filePath>\n/workspace/src/app.ts\n</parameter>\n<parameter=content>\nconsole.log("hello");\n</parameter>\n</function>\n</tool_call>\nDone creating file.';
+
+    const { segments } = parseTextEmbeddedToolCalls(rawStreamText);
+
+    expect(segments).toEqual([
+      { type: "text", text: "Now I will create the file.\n" },
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "create_file",
+          args: {
+            filePath: "/workspace/src/app.ts",
+            content: 'console.log("hello");',
+          },
+        },
+      },
+      { type: "text", text: "\nDone creating file." },
+    ]);
+  });
+
+  it("parses Standard/Anthropic XML tool calls", () => {
+    const rawStreamText =
+      '<tool_call name="read_file">\n<parameter name="filePath">/workspace/package.json</parameter>\n<parameter name="startLine">1</parameter>\n</tool_call>';
+
+    const { segments } = parseTextEmbeddedToolCalls(rawStreamText);
+
+    expect(segments).toEqual([
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "read_file",
+          args: {
+            filePath: "/workspace/package.json",
+            startLine: 1,
+          },
+        },
+      },
+    ]);
+  });
+
+  it("parses Qwen JSON inside XML tool calls", () => {
+    const rawStreamText =
+      '<tool_call>\n{"name": "read_file", "arguments": {"filePath": "/tmp/test.ts"}}\n</tool_call>';
+
+    const { segments } = parseTextEmbeddedToolCalls(rawStreamText);
+
+    expect(segments).toEqual([
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "read_file",
+          args: { filePath: "/tmp/test.ts" },
+        },
+      },
+    ]);
+  });
+
+  it("extracts standalone XML parameters and strips them from the text stream", () => {
+    const rawText =
+      "I am preparing the code:\n<parameter=filePath>\n/workspace/src/index.ts\n</parameter>\nLet us proceed.";
+
+    const { cleanText, extractedParams } = extractStandaloneXmlParameters(rawText);
+
+    expect(extractedParams).toEqual({
+      filePath: "/workspace/src/index.ts",
+    });
+    expect(cleanText).toBe("I am preparing the code:\n\nLet us proceed.");
+  });
+
+  it("fuses standalone XML parameters into native tool call arguments missing required fields", () => {
+    const createFileSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "create_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                content: { type: "string" },
+              },
+              required: ["filePath", "content"],
+            },
+          },
+        ],
+      }),
+    ).get("create_file");
+
+    // Native tool call received only content
+    const nativeArgs = { content: "export const x = 10;" };
+    const requestContext = {
+      extractedParameters: {
+        filePath: "/workspace/src/constants.ts",
+      },
+    };
+
+    const repaired = repairToolArguments(
+      "create_file",
+      nativeArgs,
+      requestContext,
+      createFileSchema,
+    );
+
+    expect(repaired).toEqual({
+      filePath: "/workspace/src/constants.ts",
+      content: "export const x = 10;",
+    });
+    expect(hasRequiredToolArguments(repaired, createFileSchema)).toBe(true);
+  });
+
+  it("resolves common property aliases (path -> filePath, code -> content)", () => {
+    const createFileSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "create_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                content: { type: "string" },
+              },
+              required: ["filePath", "content"],
+            },
+          },
+        ],
+      }),
+    ).get("create_file");
+
+    const rawArgs = { path: "/workspace/main.py", code: 'print("hello")' };
+    const repaired = repairToolArguments("create_file", rawArgs, undefined, createFileSchema);
+
+    expect(repaired).toEqual({
+      path: "/workspace/main.py",
+      code: 'print("hello")',
+      filePath: "/workspace/main.py",
+      content: 'print("hello")',
+    });
+    expect(hasRequiredToolArguments(repaired, createFileSchema)).toBe(true);
+  });
+
+  it("rejects invalid/multi-line code text in getIncompleteTextToolCallName", () => {
+    const codeSnippet =
+      '<|tool_call_begin|>";\nconst deepSeekCallsBeginToken = "";\nconst x = 1;\n';
+
+    // Must return undefined because it is TypeScript source code, not a valid tool name
+    expect(getIncompleteTextToolCallName(codeSnippet)).toBeUndefined();
+
+    // Valid tool name should still be extracted
+    expect(
+      getIncompleteTextToolCallName("<|tool_call_begin|>read_file<|tool_call_argument_begin|>"),
+    ).toBe("read_file");
+    expect(getIncompleteTextToolCallName("<tool_call>\n<function=create_file>")).toBe(
+      "create_file",
+    );
+  });
+
+  it("strips Llama 3/4, GLM, ChatML, and orphaned XML tool tags", () => {
+    const rawText =
+      "<|python_tag|><|start_header_id|>assistant<|end_header_id|>Hello [gMASK]<sop> world!<|eot_id|></parameter></function></tool_call>";
+
+    expect(stripKnownControlText(rawText)).toBe("Hello  world!");
+  });
+
+  it("preserves source code containing XML token string literals without corrupting text", () => {
+    const codeSnippet =
+      'Here is the source code:\n```typescript\nconst toolCallsStartToken = "<tool_calls>";\nconst toolCallsEndPattern = /^\\s*<\\/tool_calls>/;\n```\nAll done.';
+
+    const { segments, incompleteText } = parseTextEmbeddedToolCalls(codeSnippet);
+
+    expect(incompleteText).toBe("");
+    expect(segments).toEqual([
+      {
+        type: "text",
+        text: 'Here is the source code:\n```typescript\nconst toolCallsStartToken = "<tool_calls>";\nconst toolCallsEndPattern = /^\\s*<\\/tool_calls>/;\n```\nAll done.',
+      },
+    ]);
+  });
+
+  it("buffers in-flight Hermes XML tool calls across chunks even when content contains quotes and tag strings", () => {
+    const chunk1 =
+      'Now let me create the file.\n<tool_call>\n<function=create_file>\n<parameter=filePath>\n/src/parser.ts\n</parameter>\n<parameter=content>\nconst token = "<tool_calls>";\n';
+
+    const res1 = parseTextEmbeddedToolCalls(chunk1);
+    expect(res1.segments).toEqual([{ type: "text", text: "Now let me create the file.\n" }]);
+    expect(res1.incompleteText).toBe(
+      '<tool_call>\n<function=create_file>\n<parameter=filePath>\n/src/parser.ts\n</parameter>\n<parameter=content>\nconst token = "<tool_calls>";\n',
+    );
+
+    const chunk2 = "const x = 1;\n</parameter>\n</function>\n</tool_call>\nDone.";
+    const res2 = parseTextEmbeddedToolCalls(res1.incompleteText + chunk2);
+
+    expect(res2.incompleteText).toBe("");
+    expect(res2.segments).toEqual([
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "create_file",
+          args: {
+            filePath: "/src/parser.ts",
+            content: 'const token = "<tool_calls>";\nconst x = 1;',
+          },
+        },
+      },
+      { type: "text", text: "\nDone." },
     ]);
   });
 });

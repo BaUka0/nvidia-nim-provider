@@ -17,6 +17,9 @@ interface ThinkTagPair {
 const THINK_TAG_PAIRS: ThinkTagPair[] = [
   { open: "<think>", close: "</think>" },
   { open: "<mm:think>", close: "</mm:think>" },
+  { open: "<thought>", close: "</thought>" },
+  { open: "[THINK]", close: "[/THINK]" },
+  { open: "<reasoning>", close: "</reasoning>" },
 ];
 
 function findTrailingCaseInsensitivePrefixStart(text: string, token: string): number {

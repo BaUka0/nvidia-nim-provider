@@ -2,15 +2,26 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-format XML tool call parsing.** Added parser support for Hermes/Nemotron (`<tool_call><function=name><parameter=key>value</parameter></function></tool_call>`), Anthropic/Standard XML (`<tool_call name="name">`), Qwen JSON within XML, and Simple Invoke (`<invoke name="name">`), converting them directly into native `LanguageModelToolCallPart` instances.
+- **Argument Fusion Engine.** Text-streamed XML parameters (e.g. `<parameter=filePath>...</parameter>`) are automatically extracted from the stream buffer and merged into native tool call argument objects when the model omits them in native JSON deltas.
+- **Comprehensive property alias resolution.** Missing tool arguments are automatically resolved against standard aliases (`filePath` <= `path`/`targetFile`/`file`/`filename`/`uri`, `content` <= `code`/`text`/`data`/`body`, `startLine` <= `start`/`fromLine`, `endLine` <= `end`/`toLine`, `path` <= `directory`/`dir`/`cwd`, `query` <= `pattern`/`regex`).
+- **Extended thinking tags.** The reasoning filter and stream router now recognize `<thought>...</thought>`, `[THINK]...[/THINK]`, and `<reasoning>...</reasoning>`, routing them to thinking parts and stripping orphaned tags.
+
 ### Fixed
 
+- **Markdown code fence protection & stream chunk buffering.** The text stream parser now tracks markdown code fences (` ``` `), ensuring code snippets containing XML tool call literals (such as `const token = "<tool_calls>";`) are preserved without corruption or false-positive tool interception. Streaming XML tool calls split across SSE chunks are buffered until their closing tags arrive, preventing partial code dumps or orphaned quotes (`";`) in the chat UI.
+- **XML and control token leak prevention.** Intercepted and stripped all raw XML tool tags, parameter wrappers, and model control tokens (Llama 3/4 `<|python_tag|>`, `<|start_header_id|>`, ChatML `<|im_start|>`, GLM `[gMASK]`, `<sop>`) to ensure zero leakage into the visible chat interface.
+- **Source code string literal collision protection.** `getIncompleteTextToolCallName` now strictly validates tool identifiers (`/^[a-zA-Z0-9_.-]{1,64}$/`), preventing generated code containing token literals (e.g. `const beginToken = "<|tool_call_begin|>";`) from being misclassified as tool calls.
 - **Stringified JSON tool arguments repair.** Models that emit serialized JSON strings or malformed quotes inside array and object tool arguments (such as `manage_todo_list.todoList: "[{\"id\": 1...}, {\"id\": 4\"...}]"`) are now automatically parsed and repaired via `jsonrepair` into valid native arrays and objects instead of being rejected.
 - **Fallback on HTTP 404 Model Unavailable.** When an upstream NVIDIA NIM model endpoint returns `HTTP 404` (e.g. when heavy 550B models are temporarily offline or during pod maintenance), the provider now automatically triggers failover to `nvidia/nemotron-3.5-lightning-30b-a3b` with a notification, preventing agent pipelines from breaking.
 - **Deduplicated error traces in VS Code UI.** Cleaned `NvidiaApiError.stack` of duplicate message prefixes and unified all error throws under `createStructuredError`, preventing VS Code Copilot Chat from repeating error text twice in the chat interface.
 
 ### Tests
 
-- Added parser unit tests for stringified array/object argument repair and broken quote recovery in `tests/tools-parser.test.ts`.
+- Added parser unit tests for Hermes/Nemotron XML, Anthropic XML, Qwen JSON within XML, standalone XML parameter extraction, argument fusion, property aliases, markdown code fence protection, and multi-chunk XML buffering in `tests/tools-parser.test.ts`.
+- Extended `tests/utils.test.ts` to test `<thought>`, `[THINK]`, and `<reasoning>` tag pair isolation.
 - Extended stream tests in `tests/provider/chat-provider.stream.test.ts` to verify failover onto Nemotron 3.5 Lightning on HTTP 404 `model_unavailable`.
 
 ## [0.5.4] - 2026-08-17

@@ -63,6 +63,16 @@ export class ToolCallStreamAggregator {
     return this.requestContext;
   }
 
+  public recordExtractedParameters(params: Record<string, unknown>): void {
+    if (!this.requestContext) {
+      this.requestContext = {};
+    }
+    this.requestContext.extractedParameters = {
+      ...(this.requestContext.extractedParameters ?? {}),
+      ...params,
+    };
+  }
+
   public getEmittedTextToolCallKeys(): Set<string> {
     return this.emittedTextToolCallKeys;
   }
