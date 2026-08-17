@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { fetchModels, streamChatCompletion } from "../../src/api/client";
 import { CONTEXT_WINDOW_SAFETY_MARGIN } from "../../src/shared/constants";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
-import { NvidiaApiError } from "../../src/api/errors";
+import { ApiErrorKind, NvidiaApiError } from "../../src/api/errors";
 import { getApiKeyFingerprint } from "../../src/api/key-resolver";
 import {
   getLanguageModelThinkingPart,
@@ -1846,76 +1846,80 @@ describe("NimChatModelProvider", () => {
   });
 
   it.each([
-    [429, "Rate limited"],
-    [529, "Overloaded"],
-  ] as const)("falls back to Nemotron 3.5 Lightning on HTTP %s", async (status, capacityLabel) => {
-    (secrets.get as jest.Mock).mockResolvedValue("test-key");
-    (globalState.get as jest.Mock).mockImplementation((key: string) =>
-      key === "nvidia-nim.models"
-        ? [
-            {
-              id: "moonshotai/kimi-k2.6",
-              displayName: "Kimi k2.6",
-              contextWindow: 262144,
-              maxOutputTokens: 262144,
-              supportsTools: true,
-              supportsVision: true,
-            },
-            {
-              id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-              displayName: "Nemotron 3.5 Lightning 30B",
-              contextWindow: 1000000,
-              maxOutputTokens: 32768,
-              supportsTools: true,
-              supportsVision: false,
-            },
-          ]
-        : key === MODELS_CACHE_VERSION_STATE_KEY
-          ? MODELS_CACHE_VERSION
-          : key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY
-            ? getApiKeyFingerprint("test-key")
-            : undefined,
-    );
+    [429, "Rate limited", "rate_limited"],
+    [529, "Overloaded", "rate_limited"],
+    [404, "Model unavailable", "model_unavailable"],
+  ] as const)(
+    "falls back to Nemotron 3.5 Lightning on HTTP %s",
+    async (status: number, capacityLabel: string, kind: ApiErrorKind) => {
+      (secrets.get as jest.Mock).mockResolvedValue("test-key");
+      (globalState.get as jest.Mock).mockImplementation((key: string) =>
+        key === "nvidia-nim.models"
+          ? [
+              {
+                id: "moonshotai/kimi-k2.6",
+                displayName: "Kimi k2.6",
+                contextWindow: 262144,
+                maxOutputTokens: 262144,
+                supportsTools: true,
+                supportsVision: true,
+              },
+              {
+                id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+                displayName: "Nemotron 3.5 Lightning 30B",
+                contextWindow: 1000000,
+                maxOutputTokens: 32768,
+                supportsTools: true,
+                supportsVision: false,
+              },
+            ]
+          : key === MODELS_CACHE_VERSION_STATE_KEY
+            ? MODELS_CACHE_VERSION
+            : key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY
+              ? getApiKeyFingerprint("test-key")
+              : undefined,
+      );
 
-    const capacityError = new NvidiaApiError("rate_limited", `[RATE_LIMITED] ${capacityLabel}.`, {
-      status,
-    });
-    const capacityStream = async function* () {
-      throw capacityError;
-    };
-    const fallbackStream = async function* () {
-      yield { choices: [{ delta: { content: "Fallback response" } }] };
-    };
-    (streamChatCompletion as jest.Mock)
-      .mockImplementationOnce(() => capacityStream())
-      .mockImplementationOnce(() => fallbackStream());
+      const capacityError = new NvidiaApiError(kind, `[${kind.toUpperCase()}] ${capacityLabel}.`, {
+        status,
+      });
+      const capacityStream = async function* () {
+        throw capacityError;
+      };
+      const fallbackStream = async function* () {
+        yield { choices: [{ delta: { content: "Fallback response" } }] };
+      };
+      (streamChatCompletion as jest.Mock)
+        .mockImplementationOnce(() => capacityStream())
+        .mockImplementationOnce(() => fallbackStream());
 
-    const progress = { report: jest.fn() };
-    const token = makeToken();
+      const progress = { report: jest.fn() };
+      const token = makeToken();
 
-    await provider.provideLanguageModelChatResponse(
-      makeModel({
-        id: "moonshotai/kimi-k2.6",
-        name: "Kimi k2.6",
-        maxInputTokens: 200000,
-        maxOutputTokens: 65536,
-      }),
-      makeUserMessages("Hi"),
-      makeChatOptions(),
-      progress,
-      token,
-    );
+      await provider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "moonshotai/kimi-k2.6",
+          name: "Kimi k2.6",
+          maxInputTokens: 200000,
+          maxOutputTokens: 65536,
+        }),
+        makeUserMessages("Hi"),
+        makeChatOptions(),
+        progress,
+        token,
+      );
 
-    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
-    const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(fallbackRequest.model).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      `${capacityLabel} on Kimi k2.6. Falling back to Nemotron 3.5 Lightning 30B.`,
-    );
-    expect(progress.report).toHaveBeenCalledWith(
-      expect.objectContaining({ value: "Fallback response" }),
-    );
-  });
+      expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+      const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+      expect(fallbackRequest.model).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        `${capacityLabel} on Kimi k2.6. Falling back to Nemotron 3.5 Lightning 30B.`,
+      );
+      expect(progress.report).toHaveBeenCalledWith(
+        expect.objectContaining({ value: "Fallback response" }),
+      );
+    },
+  );
 
   it.each([
     ["deepseek-ai/deepseek-v4-flash-0731", false],

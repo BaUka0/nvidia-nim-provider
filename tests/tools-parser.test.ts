@@ -126,6 +126,51 @@ describe("tool argument parsing and validation", () => {
     expect(hasRequiredToolArguments({ filter: { path: "/tmp" } }, nestedSchema)).toBe(true);
   });
 
+  it("normalizes and repairs stringified array and object properties", () => {
+    const todoSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "manage_todo_list",
+            inputSchema: {
+              type: "object",
+              properties: {
+                todoList: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      id: { type: "integer" },
+                      title: { type: "string" },
+                      status: { type: "string" },
+                    },
+                    required: ["id", "title", "status"],
+                  },
+                },
+              },
+              required: ["todoList"],
+            },
+          },
+        ],
+      }),
+    ).get("manage_todo_list");
+
+    const rawArgs = {
+      todoList:
+        '[{"id": 1, "title": "A", "status": "in-progress"}, {"id": 2, "title": "B", "status": "not-started"}, {"id": 4", "title": "C", "status": "not-started"}]',
+    };
+
+    const repaired = repairToolArguments("manage_todo_list", rawArgs, undefined, todoSchema);
+    expect(hasRequiredToolArguments(repaired, todoSchema)).toBe(true);
+    expect(repaired).toEqual({
+      todoList: [
+        { id: 1, title: "A", status: "in-progress" },
+        { id: 2, title: "B", status: "not-started" },
+        { id: 4, title: "C", status: "not-started" },
+      ],
+    });
+  });
+
   it("uses stable keys for duplicate calls with reordered fields", () => {
     expect(buildToolCallCanonicalKey("read_file", { b: 2, a: 1 })).toBe(
       buildToolCallCanonicalKey("read_file", { a: 1, b: 2 }),

@@ -52,7 +52,7 @@ import {
   NvidiaLanguageModelChatInformation,
 } from "../models/discovery";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver";
-import { formatStructuredError, NvidiaApiError, parseContextOverflowDetail } from "../api/errors";
+import { createStructuredError, NvidiaApiError, parseContextOverflowDetail } from "../api/errors";
 import { NimRequestBuilder } from "./request-builder";
 import { ToolCallStreamAggregator } from "./tool-call-aggregator";
 import { splitMessagesForSummarization, summarizeOldMessages } from "../models/summarizer";
@@ -479,11 +479,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           effectiveContextWindow - calculateSafetyMargin(effectiveContextWindow),
         );
         if (payloadInputTokenCount > maximumInputTokens) {
-          throw new Error(
-            formatStructuredError(
-              "token_limit",
-              `Retry payload exceeds context: ${payloadInputTokenCount} tokens, max: ${maximumInputTokens}`,
-            ),
+          throw createStructuredError(
+            "token_limit",
+            `Retry payload exceeds context: ${payloadInputTokenCount} tokens, max: ${maximumInputTokens}`,
           );
         }
 
@@ -984,23 +982,21 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       }
 
       if (!hasReportedVisibleContent && !sawToolCallOverall && !deferredInvalidToolFallbackText) {
-        throw new Error(
-          formatStructuredError(
-            "empty_stream",
-            [
-              `Model: ${model.name ?? model.id}`,
-              `Attempts: ${totalAttempts}`,
-              everSawReasoning
-                ? "The model emitted reasoning but no visible answer or tool call."
-                : "The model returned no text, tool call, or reasoning.",
-              lastFinishReasonOverall !== undefined
-                ? `Last finish_reason: ${String(lastFinishReasonOverall)}`
-                : null,
-              "Try again, reduce reasoning effort, or switch to a different model.",
-            ]
-              .filter(Boolean)
-              .join("\n"),
-          ),
+        throw createStructuredError(
+          "empty_stream",
+          [
+            `Model: ${model.name ?? model.id}`,
+            `Attempts: ${totalAttempts}`,
+            everSawReasoning
+              ? "The model emitted reasoning but no visible answer or tool call."
+              : "The model returned no text, tool call, or reasoning.",
+            lastFinishReasonOverall !== undefined
+              ? `Last finish_reason: ${String(lastFinishReasonOverall)}`
+              : null,
+            "Try again, reduce reasoning effort, or switch to a different model.",
+          ]
+            .filter(Boolean)
+            .join("\n"),
         );
       }
 
@@ -1179,11 +1175,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                   progress.report(new vscode.LanguageModelTextPart(retryFallbackText));
                   hasReportedVisibleContent = true;
                 } else {
-                  throw new Error(
-                    formatStructuredError(
-                      "empty_stream",
-                      `Compacted retry on ${model.name ?? model.id} produced no visible answer or tool call.`,
-                    ),
+                  throw createStructuredError(
+                    "empty_stream",
+                    `Compacted retry on ${model.name ?? model.id} produced no visible answer or tool call.`,
                   );
                 }
               }
@@ -1201,26 +1195,28 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         }
 
         // If we get here, compaction did not help — throw a clear message.
-        throw new Error(
-          formatStructuredError(
-            "context_overflow",
-            [
-              `Model: ${model.name ?? model.id}`,
-              reportedMax !== undefined
-                ? `Server-reported limit: ${reportedMax.toLocaleString()} tokens`
-                : null,
-              actualUsage !== undefined
-                ? `Prompt used: ${actualUsage.toLocaleString()} tokens`
-                : null,
-              "Start a new chat, reduce attachments, or switch to a model with a larger context window.",
-            ]
-              .filter(Boolean)
-              .join("\n"),
-          ),
+        throw createStructuredError(
+          "context_overflow",
+          [
+            `Model: ${model.name ?? model.id}`,
+            reportedMax !== undefined
+              ? `Server-reported limit: ${reportedMax.toLocaleString()} tokens`
+              : null,
+            actualUsage !== undefined
+              ? `Prompt used: ${actualUsage.toLocaleString()} tokens`
+              : null,
+            "Start a new chat, reduce attachments, or switch to a model with a larger context window.",
+          ]
+            .filter(Boolean)
+            .join("\n"),
         );
       }
 
-      if (!hasReportedContent && err instanceof NvidiaApiError && err.kind === "rate_limited") {
+      if (
+        !hasReportedContent &&
+        err instanceof NvidiaApiError &&
+        (err.kind === "rate_limited" || err.kind === "model_unavailable")
+      ) {
         const modelApiKey = (await this.apiKeyResolver.resolveForModel(model))?.value;
         const fallbackModel = getFallbackModel(
           model.id,
@@ -1244,7 +1240,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             },
           };
           const currentName = model.name ?? model.id;
-          const capacityLabel = err.status === 529 ? "Overloaded" : "Rate limited";
+          const capacityLabel =
+            err.kind === "model_unavailable"
+              ? "Model unavailable"
+              : err.status === 529
+                ? "Overloaded"
+                : "Rate limited";
           vscode.window.showInformationMessage(
             `${capacityLabel} on ${currentName}. Falling back to ${fallbackModel.displayName}.`,
           );

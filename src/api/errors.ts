@@ -183,12 +183,30 @@ export class NvidiaApiError extends Error {
     super(message);
     this.name = "NvidiaApiError";
     this.kind = kind;
-    this.code = ERROR_MESSAGES[kind].code;
+    this.code = ERROR_MESSAGES[kind]?.code ?? "NVIDIA_NIM_ERROR";
     this.status = context.status;
     this.operation = context.operation;
     this.retryable = context.status !== undefined && RETRYABLE_STATUS_CODES.has(context.status);
     this.contextOverflow = context.contextOverflow;
+
+    if (typeof this.stack === "string") {
+      const lines = this.stack.split("\n");
+      const atIndex = lines.findIndex((line) => line.trimStart().startsWith("at "));
+      if (atIndex > 0) {
+        this.stack = lines.slice(atIndex).join("\n");
+      }
+    }
   }
+}
+
+export function createStructuredError(
+  key: string,
+  detail?: string,
+  context: ApiErrorContext = {},
+): NvidiaApiError {
+  const kind = (key in ERROR_MESSAGES ? key : "unknown") as ApiErrorKind;
+  const message = formatStructuredError(key, detail);
+  return new NvidiaApiError(kind, message, context);
 }
 
 function getErrorStatus(error: unknown, context: ApiErrorContext): number | undefined {

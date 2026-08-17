@@ -274,8 +274,44 @@ function normalizeScalar(value: unknown, schema: ToolPropertySchema): unknown {
   return value;
 }
 
+export function tryParseJsonValue(text: string): unknown {
+  if (!text) return text;
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Attempt jsonrepair if strict parse fails
+  }
+
+  try {
+    return JSON.parse(jsonrepair(text));
+  } catch {
+    return text;
+  }
+}
+
 function normalizeValue(value: unknown, schema: ToolPropertySchema): unknown {
-  const normalized = normalizeScalar(value, schema);
+  let normalized = normalizeScalar(value, schema);
+  if (typeof normalized === "string") {
+    const trimmed = normalized.trim();
+    if (
+      schema.type === "array" ||
+      (!schema.type && trimmed.startsWith("[") && trimmed.endsWith("]"))
+    ) {
+      const parsed = tryParseJsonValue(trimmed);
+      if (Array.isArray(parsed)) {
+        normalized = parsed;
+      }
+    } else if (
+      schema.type === "object" ||
+      (!schema.type && trimmed.startsWith("{") && trimmed.endsWith("}"))
+    ) {
+      const parsed = tryParseJsonValue(trimmed);
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        normalized = parsed;
+      }
+    }
+  }
+
   if (
     schema.type === "object" &&
     typeof normalized === "object" &&
@@ -286,8 +322,10 @@ function normalizeValue(value: unknown, schema: ToolPropertySchema): unknown {
       properties: schema.properties,
     });
   }
-  if (schema.type === "array" && Array.isArray(normalized) && schema.items) {
-    return normalized.map((item) => normalizeValue(item, schema.items!));
+  if (schema.type === "array" && Array.isArray(normalized)) {
+    return schema.items
+      ? normalized.map((item) => normalizeValue(item, schema.items!))
+      : normalized;
   }
   return normalized;
 }

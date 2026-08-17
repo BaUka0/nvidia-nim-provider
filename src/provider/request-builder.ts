@@ -11,7 +11,7 @@ import {
 } from "../messages/converter";
 import { splitMessagesForSummarization, summarizeOldMessages } from "../models/summarizer";
 import { getModelAdapter } from "../models/adapters";
-import { formatStructuredError } from "../api/errors";
+import { createStructuredError } from "../api/errors";
 import { debugLog } from "../shared/logging";
 import { NimChatRequest, NimChatMessage, NimTool } from "../types";
 
@@ -227,11 +227,9 @@ export class NimRequestBuilder {
           `After truncation fallback: ${payloadInputTokenCount} tokens.`,
         );
         if (payloadInputTokenCount > effectiveMaxInputTokens) {
-          throw new Error(
-            formatStructuredError(
-              "token_limit",
-              `Even after compression and truncation: ${payloadInputTokenCount} tokens, max: ${effectiveMaxInputTokens}`,
-            ),
+          throw createStructuredError(
+            "token_limit",
+            `Even after compression and truncation: ${payloadInputTokenCount} tokens, max: ${effectiveMaxInputTokens}`,
           );
         }
       }
@@ -240,11 +238,9 @@ export class NimRequestBuilder {
     apiTokenCount = estimateNimMessagesTokens(apiMessages);
     payloadInputTokenCount = apiTokenCount + toolDefinitionTokens;
     if (payloadInputTokenCount > effectiveMaxInputTokens) {
-      throw new Error(
-        formatStructuredError(
-          "token_limit",
-          `Prepared payload exceeds context after compression: ${payloadInputTokenCount} tokens, max: ${effectiveMaxInputTokens}`,
-        ),
+      throw createStructuredError(
+        "token_limit",
+        `Prepared payload exceeds context after compression: ${payloadInputTokenCount} tokens, max: ${effectiveMaxInputTokens}`,
       );
     }
 
