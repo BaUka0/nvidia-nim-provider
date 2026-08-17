@@ -8,7 +8,7 @@
 - **Argument Fusion Engine.** Text-streamed XML parameters are merged into native tool-call JSON when the model omitted those keys.
 - **Property alias resolution.** Missing required fields are filled from aliases (`filePath` <= `path`/`targetFile`/`file`/`filename`/`uri`, `content` <= `code`/`text`/`data`/`body`, `startLine` <= `start`/`fromLine`, `endLine` <= `end`/`toLine`, `path` <= `directory`/`dir`/`cwd`, `query` <= `pattern`/`regex`, `command` <= `cmd`/`script`).
 - **Narrow terminal repair.** For terminal/command tools only, a missing `goal` is copied from `explanation` (or a short `Run: …` prefix of `command`), a missing `explanation` is copied from `goal`, and a missing `mode` uses the first schema enum or `sync`. Missing file payloads and MCP fields are not invented.
-- **Native stream tool-call normalization.** `delta.tool_calls` and final `message.tool_calls` accept object arguments, missing ids, JSON strings, and index-keyed maps. An empty `tool_calls: []` no longer counts as a real call. `finish_reason: tool_calls` with no payload now surfaces a fallback instead of a silent turn.
+- **Native stream tool-call normalization.** `delta.tool_calls` and final `message.tool_calls` accept object arguments, missing ids, JSON strings, and index-keyed maps. An empty `tool_calls: []` no longer counts as a real call. `finish_reason: tool_calls` with no payload now retries once even after thinking, then surfaces a fallback instead of a silent turn. Duplicate same-argument calls are recorded as skips instead of disappearing.
 - **Extended thinking tags.** The reasoning filter recognizes `<thought>`, `[THINK]`, and `<reasoning>`.
 
 ### Fixed

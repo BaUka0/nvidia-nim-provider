@@ -1,4 +1,6 @@
 import {
+  buildInvalidToolCallFallback,
+  buildInvalidToolCallRetryMessage,
   buildToolCallCanonicalKey,
   extractStandaloneXmlParameters,
   getIncompleteTextToolCallName,
@@ -345,6 +347,64 @@ describe("tool argument parsing and validation", () => {
     expect(emitted[0].name).toBe("read_file");
     expect(emitted[0].args).toEqual({ filePath: "/tmp/a.ts", startLine: 1, mode: "full" });
     expect(emitted[0].id.length).toBeGreaterThan(0);
+  });
+
+  it("reports a completed duplicate instead of dropping it silently", () => {
+    const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+    const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
+    const aggregator = new ToolCallStreamAggregator({
+      options,
+      messages: [
+        {
+          role: 2,
+          content: [
+            {
+              callId: "read_file:0",
+              name: "read_file",
+              input: { filePath: "/tmp/a.ts", startLine: 1, mode: "full" },
+            },
+          ],
+        } as never,
+        {
+          role: 1,
+          content: [{ callId: "read_file:0", content: [{ value: "ok" }] }],
+        } as never,
+      ],
+      onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
+      onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
+    });
+
+    aggregator.handleToolCalls([
+      {
+        index: 0,
+        id: "read_file:1",
+        type: "function",
+        function: {
+          name: "read_file",
+          arguments: '{"filePath":"/tmp/a.ts","startLine":1,"mode":"full"}',
+        },
+      },
+    ]);
+    aggregator.flushRemaining();
+
+    expect(emitted).toEqual([]);
+    expect(skipped).toEqual([{ name: "read_file", required: [], reason: "duplicate" }]);
+  });
+
+  it("explains missing tool-call payloads and duplicates in fallback text", () => {
+    expect(
+      buildInvalidToolCallFallback([
+        { name: "tool_call", required: [], reason: "missing_payload" },
+      ]),
+    ).toContain("did not include tool arguments");
+    expect(
+      buildInvalidToolCallRetryMessage([
+        { name: "tool_call", required: [], reason: "missing_payload" },
+      ]),
+    ).toContain("empty tool_calls array");
+    expect(
+      buildInvalidToolCallFallback([{ name: "read_file", required: [], reason: "duplicate" }]),
+    ).toContain("already completed");
   });
 
   it("parses Hermes/Nemotron XML tool calls and strips XML tags from text", () => {

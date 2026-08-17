@@ -349,15 +349,67 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({ city: "Tokyo" });
   });
 
-  it("surfaces a fallback when finish_reason is tool_calls but the payload is missing", async () => {
+  it("retries once after finish_reason tool_calls with no payload even if thinking already streamed", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
-    const mockStream = async function* () {
+    const emptyToolFinish = async function* () {
       yield { choices: [{ delta: { reasoning_content: "I will call a tool." } }] };
       yield { choices: [{ delta: { content: "\n" } }] };
       yield { choices: [{ delta: { tool_calls: [] }, finish_reason: "tool_calls" }] };
     };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+    const repairedStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_2",
+                  type: "function",
+                  function: { name: "get_weather", arguments: '{"city":"Tokyo"}' },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => emptyToolFinish())
+      .mockImplementationOnce(() => repairedStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Hi"),
+      makeChatOptions({
+        modelOptions: {},
+        tools: [{ name: "get_weather", description: "Get weather", inputSchema: {} }],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    expect(toolCallReports).toHaveLength(1);
+    expect(toolCallReports[0][0].name).toBe("get_weather");
+    expect(toolCallReports[0][0].input).toEqual({ city: "Tokyo" });
+  });
+
+  it("surfaces a fallback when the tool-call retry still has no payload", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const emptyToolFinish = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "I will call a tool." } }] };
+      yield { choices: [{ delta: { tool_calls: [] }, finish_reason: "tool_calls" }] };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => emptyToolFinish())
+      .mockImplementationOnce(() => emptyToolFinish());
 
     const progress = { report: jest.fn() };
     await provider.provideLanguageModelChatResponse(
@@ -373,7 +425,10 @@ describe("NimChatModelProvider", () => {
 
     const textReports = progress.report.mock.calls
       .map((c: unknown[]) => c[0] as { value?: string })
-      .filter((part) => typeof part.value === "string" && part.value.includes("invalid arguments"));
+      .filter(
+        (part) =>
+          typeof part.value === "string" && part.value.includes("did not include tool arguments"),
+      );
     expect(textReports.length).toBeGreaterThan(0);
   });
 

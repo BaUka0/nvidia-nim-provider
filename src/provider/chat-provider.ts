@@ -587,8 +587,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                 firstToolCallAtMs = Date.now();
               }
             },
-            onSkipToolCall: (name, required) => {
-              skippedToolCalls.push({ name, required });
+            onSkipToolCall: (name, required, reason) => {
+              skippedToolCalls.push({ name, required, reason });
             },
           });
 
@@ -667,6 +667,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             );
             const canonicalKey = buildToolCallCanonicalKey(toolCall.name, repairedArgs);
             if (getToolAggregator().getEmittedTextToolCallKeys().has(canonicalKey)) {
+              skippedToolCalls.push({
+                name: toolCall.name,
+                required: [],
+                reason: "duplicate",
+              });
+              debugLog("Skipped duplicate text tool call", { name: toolCall.name });
               continue;
             }
 
@@ -832,7 +838,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           sawToolCall = true;
           sawToolCallOverall = true;
           if (skippedToolCalls.length === 0) {
-            skippedToolCalls.push({ name: "tool_call", required: [] });
+            skippedToolCalls.push({
+              name: "tool_call",
+              required: [],
+              reason: "missing_payload",
+            });
             debugLog("Missing tool call payload after finish_reason=tool_calls", {
               streamChunkCount,
               aggregatorSawToolCall: toolAggregator?.getSawToolCall() ?? false,
@@ -863,12 +873,16 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         const retryMessage = sawToolCall
           ? buildInvalidToolCallRetryMessage(skippedToolCalls)
           : undefined;
+        const hasOnlyDuplicateSkips =
+          skippedToolCalls.length > 0 &&
+          skippedToolCalls.every((toolCall) => toolCall.reason === "duplicate");
         const willRetryAfterInvalidToolCall =
           sawToolCall &&
           !emittedToolCall &&
           attempt === 0 &&
-          !reportedContent &&
-          Boolean(fallbackText && retryMessage);
+          !hasOnlyDuplicateSkips &&
+          Boolean(fallbackText && retryMessage) &&
+          (lastFinishReason === "tool_calls" || !reportedContent);
         const willRetryEmptyStream =
           !sawReasoning &&
           !sawToolCall &&
@@ -947,7 +961,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         }
 
         if (sawToolCall && !emittedToolCall) {
-          if (attempt === 0 && !reportedContent && fallbackText && retryMessage) {
+          if (willRetryAfterInvalidToolCall && retryMessage) {
             deferredInvalidToolFallbackText = fallbackText;
             retryReason = "invalid_tool_call";
             retryReasonHistory.push("invalid_tool_call");

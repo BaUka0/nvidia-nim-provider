@@ -12,6 +12,7 @@ import {
   repairToolArguments,
   ChatRequestContext,
   ToolSchema,
+  SkippedToolCallReason,
 } from "../tools/parser";
 import { debugLog } from "../shared/logging";
 import { NimToolCall } from "../types";
@@ -20,7 +21,7 @@ export interface ToolCallStreamAggregatorOptions {
   options: vscode.ProvideLanguageModelChatResponseOptions;
   messages: readonly vscode.LanguageModelChatMessage[];
   onEmitToolCall: (id: string, name: string, args: Record<string, unknown>) => void;
-  onSkipToolCall: (name: string, required: string[]) => void;
+  onSkipToolCall: (name: string, required: string[], reason?: SkippedToolCallReason) => void;
 }
 
 export class ToolCallStreamAggregator {
@@ -28,7 +29,11 @@ export class ToolCallStreamAggregator {
   private requestContext: ChatRequestContext | undefined;
   private emittedTextToolCallKeys: Set<string>;
   private onEmitToolCall: (id: string, name: string, args: Record<string, unknown>) => void;
-  private onSkipToolCall: (name: string, required: string[]) => void;
+  private onSkipToolCall: (
+    name: string,
+    required: string[],
+    reason?: SkippedToolCallReason,
+  ) => void;
 
   private toolCallBuffers = new Map<number, { id?: string; name?: string; args: string }>();
   private completedToolCallIndices = new Set<number>();
@@ -137,6 +142,7 @@ export class ToolCallStreamAggregator {
         if (buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
           const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
           if (this.emittedTextToolCallKeys.has(canonicalKey)) {
+            this.onSkipToolCall(buf.name, [], "duplicate");
             this.completedToolCallIndices.add(idx);
             this.toolCallBuffers.delete(idx);
             continue;
@@ -180,6 +186,7 @@ export class ToolCallStreamAggregator {
         if (buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
           const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
           if (this.emittedTextToolCallKeys.has(canonicalKey)) {
+            this.onSkipToolCall(buf.name, [], "duplicate");
             this.completedToolCallIndices.add(idx);
             this.toolCallBuffers.delete(idx);
             continue;

@@ -53,9 +53,12 @@ export interface ToolSchema {
   properties?: Record<string, ToolPropertySchema>;
 }
 
+export type SkippedToolCallReason = "invalid" | "duplicate" | "missing_payload";
+
 export interface SkippedToolCall {
   name: string;
   required: string[];
+  reason?: SkippedToolCallReason;
 }
 
 export interface ParsedTextToolCall {
@@ -418,6 +421,17 @@ export function hasRequiredToolArguments(args: unknown, schema: ToolSchema | und
 export function buildInvalidToolCallFallback(
   skippedToolCalls: readonly SkippedToolCall[],
 ): string | undefined {
+  if (skippedToolCalls.some((toolCall) => toolCall.reason === "missing_payload")) {
+    return "The model indicated a tool call but the stream did not include tool arguments. Retry the request.";
+  }
+
+  if (
+    skippedToolCalls.length > 0 &&
+    skippedToolCalls.every((toolCall) => toolCall.reason === "duplicate")
+  ) {
+    return `Tool call \`${skippedToolCalls[0].name}\` was not repeated because it already completed with the same arguments. Call it again only with different arguments.`;
+  }
+
   const skippedWithRequiredArgs = skippedToolCalls.find((toolCall) => toolCall.required.length > 0);
   if (skippedWithRequiredArgs) {
     const requiredArgs = skippedWithRequiredArgs.required.map((arg) => `\`${arg}\``).join(", ");
@@ -435,6 +449,26 @@ export function buildInvalidToolCallFallback(
 export function buildInvalidToolCallRetryMessage(
   skippedToolCalls: readonly SkippedToolCall[],
 ): string | undefined {
+  if (skippedToolCalls.some((toolCall) => toolCall.reason === "missing_payload")) {
+    return [
+      "Your previous response finished with tool_calls but no tool function arguments were received.",
+      "Retry NOW with a native tool call that includes the function name and a complete JSON arguments object.",
+      "Do not emit an empty tool_calls array.",
+      "Do not ask the user to retry. Do not explain the error.",
+    ].join(" ");
+  }
+
+  if (
+    skippedToolCalls.length > 0 &&
+    skippedToolCalls.every((toolCall) => toolCall.reason === "duplicate")
+  ) {
+    return [
+      `Your previous tool call "${skippedToolCalls[0].name}" was identical to one that already completed.`,
+      "Retry NOW with different arguments (for read_file, pass a new startLine/endLine for the unread range).",
+      "Do not ask the user to retry. Do not explain the error.",
+    ].join(" ");
+  }
+
   const skippedWithRequiredArgs = skippedToolCalls.find((toolCall) => toolCall.required.length > 0);
   if (skippedWithRequiredArgs) {
     const requiredList = skippedWithRequiredArgs.required.join(", ");
