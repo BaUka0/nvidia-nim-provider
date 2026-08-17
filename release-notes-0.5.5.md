@@ -19,12 +19,6 @@ This release always sends `tool_choice: "auto"` (or `"required"` when Copilot re
 - Edits whose contents include literals like `"</tool_call>"` or `const token = "<tool_calls>";` are no longer truncated or spilled into the chat.
 - Raw XML tool tags and control tokens (DSML, Llama, ChatML, GLM) are stripped from the visible reply. The same tokens inside quotes or regexes are left alone.
 
-## Fallback (unchanged from 0.5.4)
-
-Automatic fallback is only for HTTP 429 / 529 and 404 unavailable. It switches to **Nemotron 3.5 Lightning 30B**, not DeepSeek Flash.
-
 ## Install
 
-Download `nvidia-nim-agent-0.5.5.vsix` and install it from the Extensions view (**Install from VSIX...**). If you already had 0.5.4, replace that install. Run **NVIDIA NIM: Refresh Models** if the picker looks stale.
-
-Debug logs: Output → **NVIDIA NIM**. Enable with **NVIDIA NIM: Toggle Debug Logging**.
+Download `nvidia-nim-agent-0.5.5.vsix` and install it from the Extensions view (**Install from VSIX...**).
