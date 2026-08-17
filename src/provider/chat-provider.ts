@@ -24,6 +24,7 @@ import {
   repairToolArguments,
   SkippedToolCall,
 } from "../tools/parser";
+import { collectChoiceToolCalls } from "../tools/stream-tool-calls";
 import { streamChatCompletion } from "../api/client";
 import {
   calculateSafetyMargin,
@@ -733,6 +734,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               ? (adapter?.sanitizeResponseText?.(rawContent) ?? rawContent)
               : rawContent;
 
+            const streamedToolCalls = choice ? collectChoiceToolCalls(choice) : [];
+
             if (debugEnabled()) {
               debugLog("stream chunk", {
                 rc: Boolean(reasoningContent),
@@ -740,6 +743,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                 content: Boolean(content),
                 contentHead: content?.slice(0, 64),
                 contentTail: content?.slice(-32),
+                toolCallCount: streamedToolCalls.length,
+                toolCalls: streamedToolCalls.map((toolCall) => ({
+                  index: toolCall.index,
+                  id: toolCall.id,
+                  name: toolCall.function?.name,
+                  argsChars: toolCall.function?.arguments?.length ?? 0,
+                })),
                 finish: choice?.finish_reason ?? null,
               });
             }
@@ -755,11 +765,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               }
             }
 
-            if (choice?.delta?.tool_calls) {
+            if (streamedToolCalls.length > 0) {
               markFirstResponse();
               sawToolCall = true;
               sawToolCallOverall = true;
-              getToolAggregator().handleToolCalls(choice.delta.tool_calls);
+              getToolAggregator().handleToolCalls(streamedToolCalls);
             }
           }
 
@@ -817,6 +827,18 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         }
         lastFinishReasonOverall = lastFinishReason;
         router.flush();
+
+        if (lastFinishReason === "tool_calls" && !emittedToolCall) {
+          sawToolCall = true;
+          sawToolCallOverall = true;
+          if (skippedToolCalls.length === 0) {
+            skippedToolCalls.push({ name: "tool_call", required: [] });
+            debugLog("Missing tool call payload after finish_reason=tool_calls", {
+              streamChunkCount,
+              aggregatorSawToolCall: toolAggregator?.getSawToolCall() ?? false,
+            });
+          }
+        }
 
         const incompleteTextToolName = getIncompleteTextToolCallName(pendingTextEmbeddedContent);
         if (incompleteTextToolName) {
@@ -1167,8 +1189,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                   hasReportedContent = true;
                   hasReportedVisibleContent = true;
                 }
-                if (choice?.delta?.tool_calls) {
-                  retryToolAggregator.handleToolCalls(choice.delta.tool_calls);
+                const retryToolCalls = choice ? collectChoiceToolCalls(choice) : [];
+                if (retryToolCalls.length > 0) {
+                  retryToolAggregator.handleToolCalls(retryToolCalls);
                 }
               }
               retryToolAggregator.flushRemaining();

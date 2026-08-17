@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import {
   getToolSchemaMap,
@@ -133,14 +134,15 @@ export class ToolCallStreamAggregator {
           this.requestContext,
           schema,
         );
-        if (buf.id && buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
+        if (buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
           const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
           if (this.emittedTextToolCallKeys.has(canonicalKey)) {
             this.completedToolCallIndices.add(idx);
             this.toolCallBuffers.delete(idx);
             continue;
           }
-          this.onEmitToolCall(buf.id, buf.name, args);
+          const id = buf.id && buf.id.length > 0 ? buf.id : `tool_${randomUUID()}`;
+          this.onEmitToolCall(id, buf.name, args);
           this.emittedToolCall = true;
           this.emittedTextToolCallKeys.add(canonicalKey);
           this.completedToolCallIndices.add(idx);
@@ -175,14 +177,15 @@ export class ToolCallStreamAggregator {
           this.requestContext,
           schema,
         );
-        if (buf.id && buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
+        if (buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
           const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
           if (this.emittedTextToolCallKeys.has(canonicalKey)) {
             this.completedToolCallIndices.add(idx);
             this.toolCallBuffers.delete(idx);
             continue;
           }
-          this.onEmitToolCall(buf.id, buf.name, args);
+          const id = buf.id && buf.id.length > 0 ? buf.id : `tool_${randomUUID()}`;
+          this.onEmitToolCall(id, buf.name, args);
           this.emittedToolCall = true;
 
           this.emittedTextToolCallKeys.add(canonicalKey);

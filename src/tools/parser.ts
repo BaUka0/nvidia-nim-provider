@@ -1083,11 +1083,11 @@ export function repairToolArguments(
     if (needsStringField(repaired.filePath, "filePath") && context.filePath) {
       repaired.filePath = context.filePath;
     }
-    if (needsNumberField(repaired.startLine, "startLine")) {
-      repaired.startLine = context.startLine ?? 1;
+    if (needsNumberField(repaired.startLine, "startLine") && context.startLine !== undefined) {
+      repaired.startLine = context.startLine;
     }
-    if (needsNumberField(repaired.endLine, "endLine")) {
-      repaired.endLine = context.endLine ?? 200;
+    if (needsNumberField(repaired.endLine, "endLine") && context.endLine !== undefined) {
+      repaired.endLine = context.endLine;
     }
   } else if (
     normalizedToolName.includes("file") ||

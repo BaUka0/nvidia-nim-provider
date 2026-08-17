@@ -369,7 +369,7 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({ filePath: "/tmp/example.md" });
   });
 
-  it("defaults read_file line arguments when the schema requires a range but chat only provides the current file", async () => {
+  it("does not invent a 1-200 read_file range when the editor has no selection", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -429,12 +429,11 @@ describe("NimChatModelProvider", () => {
     );
 
     const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
-    expect(toolCallReports).toHaveLength(1);
-    expect(toolCallReports[0][0].input).toEqual({
-      filePath: "/tmp/example.md",
-      startLine: 1,
-      endLine: 200,
-    });
+    expect(toolCallReports).toHaveLength(0);
+    const fallbackReports = progress.report.mock.calls.filter((c) =>
+      String((c[0] as { value?: string }).value ?? "").includes("missing"),
+    );
+    expect(fallbackReports.length).toBeGreaterThan(0);
   });
 
   it("repairs list_dir with the current working directory from chat context", async () => {

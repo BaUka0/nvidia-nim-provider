@@ -53,7 +53,11 @@ export interface NimStreamChoice {
     role?: string;
     content?: string;
     reasoning_content?: string;
-    tool_calls?: NimToolCall[];
+    tool_calls?: NimToolCall[] | NimToolCall | string;
+  };
+  message?: {
+    content?: string;
+    tool_calls?: NimToolCall[] | NimToolCall | string;
   };
   finish_reason: string | null;
 }

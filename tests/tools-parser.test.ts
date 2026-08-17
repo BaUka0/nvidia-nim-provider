@@ -317,6 +317,36 @@ describe("tool argument parsing and validation", () => {
     ]);
   });
 
+  it("emits a native tool call when the stream omits id and sends object arguments", () => {
+    const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+    const skipped: Array<{ name: string; required: string[] }> = [];
+    const aggregator = new ToolCallStreamAggregator({
+      options,
+      messages: [],
+      onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
+      onSkipToolCall: (name, required) => skipped.push({ name, required }),
+    });
+
+    aggregator.handleToolCalls([
+      {
+        index: 0,
+        id: "",
+        type: "function",
+        function: {
+          name: "read_file",
+          arguments: JSON.stringify({ filePath: "/tmp/a.ts", startLine: 1, mode: "full" }),
+        },
+      },
+    ]);
+    aggregator.flushRemaining();
+
+    expect(skipped).toEqual([]);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].name).toBe("read_file");
+    expect(emitted[0].args).toEqual({ filePath: "/tmp/a.ts", startLine: 1, mode: "full" });
+    expect(emitted[0].id.length).toBeGreaterThan(0);
+  });
+
   it("parses Hermes/Nemotron XML tool calls and strips XML tags from text", () => {
     const rawStreamText =
       'Now I will create the file.\n<tool_call>\n<function=create_file>\n<parameter=filePath>\n/workspace/src/app.ts\n</parameter>\n<parameter=content>\nconsole.log("hello");\n</parameter>\n</function>\n</tool_call>\nDone creating file.';

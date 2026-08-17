@@ -304,6 +304,79 @@ describe("NimChatModelProvider", () => {
     expect(requestBody.tool_choice).toBe("required");
   });
 
+  it("emits tool calls from the final message.tool_calls field", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Need weather." } }] };
+      yield {
+        choices: [
+          {
+            delta: {},
+            finish_reason: "tool_calls",
+            message: {
+              tool_calls: [
+                {
+                  index: 0,
+                  type: "function",
+                  function: { name: "get_weather", arguments: { city: "Tokyo" } },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Hi"),
+      makeChatOptions({
+        modelOptions: {},
+        tools: [{ name: "get_weather", description: "Get weather", inputSchema: {} }],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    expect(toolCallReports).toHaveLength(1);
+    expect(toolCallReports[0][0].name).toBe("get_weather");
+    expect(toolCallReports[0][0].input).toEqual({ city: "Tokyo" });
+  });
+
+  it("surfaces a fallback when finish_reason is tool_calls but the payload is missing", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "I will call a tool." } }] };
+      yield { choices: [{ delta: { content: "\n" } }] };
+      yield { choices: [{ delta: { tool_calls: [] }, finish_reason: "tool_calls" }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Hi"),
+      makeChatOptions({
+        modelOptions: {},
+        tools: [{ name: "get_weather", description: "Get weather", inputSchema: {} }],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    const textReports = progress.report.mock.calls
+      .map((c: unknown[]) => c[0] as { value?: string })
+      .filter((part) => typeof part.value === "string" && part.value.includes("invalid arguments"));
+    expect(textReports.length).toBeGreaterThan(0);
+  });
+
   it("assembles tool call arguments split across chunks", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
