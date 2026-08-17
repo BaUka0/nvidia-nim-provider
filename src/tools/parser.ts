@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import { LanguageModelChatMessage, ProvideLanguageModelChatResponseOptions } from "vscode";
 import { jsonrepair } from "jsonrepair";
+import {
+  extractStandaloneXmlParameters as scanStandaloneXmlParameters,
+  findXmlConstructStart,
+  scanXmlToolConstruct,
+} from "./xml-tool-scanner";
 
 function safeJsonParse(text: string): Record<string, unknown> {
   if (!text) return {};
@@ -552,48 +557,34 @@ export function stripKnownControlText(text: string): string {
 }
 
 export function parseXmlParameters(content: string): Record<string, unknown> {
-  const args: Record<string, unknown> = {};
   const trimmed = content.trim();
-
-  // If the content itself is a JSON object
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     try {
       const parsed = safeJsonParse(trimmed);
       if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
         return parsed;
       }
-    } catch {}
-  }
-
-  const paramRegex =
-    /<(?:parameter=([a-zA-Z0-9_.-]+)|parameter\s+name="([a-zA-Z0-9_.-]+)"|tool_parameter\s+name="([a-zA-Z0-9_.-]+)")>([\s\S]*?)<\/(?:parameter|tool_parameter)>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = paramRegex.exec(content)) !== null) {
-    const key = (match[1] || match[2] || match[3])?.trim();
-    if (key) {
-      args[key] = parseEmbeddedToolParameterValue(match[4] ?? "");
+    } catch {
+      // Fall through to the tag-stack scan of parameter tags.
     }
   }
-  return args;
+
+  const scanned = scanXmlToolConstruct(
+    `<tool_call name="_">${content}</tool_call>`,
+    parseEmbeddedToolParameterValue,
+    () => true,
+  );
+  if (scanned.status === "complete" && scanned.toolCall) {
+    return scanned.toolCall.args;
+  }
+  return {};
 }
 
 export function extractStandaloneXmlParameters(text: string): {
   cleanText: string;
   extractedParams: Record<string, unknown>;
 } {
-  const extractedParams: Record<string, unknown> = {};
-  const paramRegex =
-    /<(?:parameter=([a-zA-Z0-9_.-]+)|parameter\s+name="([a-zA-Z0-9_.-]+)"|tool_parameter\s+name="([a-zA-Z0-9_.-]+)")>([\s\S]*?)<\/(?:parameter|tool_parameter)>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = paramRegex.exec(text)) !== null) {
-    const key = (match[1] || match[2] || match[3])?.trim();
-    if (key) {
-      extractedParams[key] = parseEmbeddedToolParameterValue(match[4] ?? "");
-    }
-  }
-
-  const cleanText = text.replace(paramRegex, "");
-  return { cleanText, extractedParams };
+  return scanStandaloneXmlParameters(text, parseEmbeddedToolParameterValue);
 }
 
 export function findControlTextTerminatorIndex(text: string): number {
@@ -668,10 +659,7 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
   let incompleteText = "";
 
   const appendText = (value: string): void => {
-    const { cleanText, extractedParams: newParams } = extractStandaloneXmlParameters(value);
-    Object.assign(extractedParams, newParams);
-
-    const sanitizedValue = stripKnownControlText(cleanText);
+    const sanitizedValue = stripKnownControlText(value);
     if (!sanitizedValue) {
       return;
     }
@@ -684,11 +672,7 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
   };
 
   while (remaining.length > 0) {
-    // Check for XML tool call start (<tool_calls, <tool_call, or <invoke)
-    const xmlStartMatch = remaining.match(
-      /<(?:tool_calls|tool_call(?:\s+name="([^"]+)")?|invoke\s+name="([^"]+)")/i,
-    );
-    const xmlStartIndex = xmlStartMatch?.index ?? -1;
+    const xmlStartIndex = findXmlConstructStart(remaining);
 
     const accumulatedSoFar = segments.map((s) => (s.type === "text" ? s.text : "")).join("");
 
@@ -726,7 +710,7 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
         index: remaining.indexOf(asciiDsmlToken),
       },
       ...(xmlStartIndex !== -1
-        ? [{ kind: "xml" as const, token: xmlStartMatch![0], index: xmlStartIndex }]
+        ? [{ kind: "xml" as const, token: remaining[xmlStartIndex], index: xmlStartIndex }]
         : []),
     ].filter((match) => match.index !== -1 && !isInsideCodeFence(match.index));
 
@@ -764,113 +748,30 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
     }
 
     if (nextTokenMatch.kind === "xml") {
-      // 1. Container tags <tool_calls> or </tool_calls> -> strip container tag cleanly
-      const containerMatch = remaining.match(/^<\/?tool_calls>\s*/i);
-      if (containerMatch) {
-        remaining = remaining.slice(containerMatch[0].length);
+      const scanned = scanXmlToolConstruct(
+        remaining,
+        parseEmbeddedToolParameterValue,
+        isValidToolIdentifier,
+      );
+      if (scanned.status === "incomplete") {
+        incompleteText = remaining;
+        break;
+      }
+      if (scanned.status === "not-a-tag") {
+        appendText(remaining.slice(0, scanned.skip));
+        remaining = remaining.slice(scanned.skip);
         continue;
       }
-
-      // 2. Hermes style: <tool_call>\s*<function=([a-zA-Z0-9_.-]+)>([\s\S]*?)</function>\s*</tool_call>
-      const isHermesStart = /^<tool_call>\s*<function=([a-zA-Z0-9_.-]+)>/i.test(remaining);
-      if (isHermesStart) {
-        const hermesPattern =
-          /^<tool_call>\s*<function=([a-zA-Z0-9_.-]+)>([\s\S]*?)<\/function>\s*<\/tool_call>/i;
-        const hermesMatch = remaining.match(hermesPattern);
-        if (hermesMatch) {
-          const name = hermesMatch[1].trim();
-          const innerContent = hermesMatch[2];
-          const args = parseXmlParameters(innerContent);
-          segments.push({
-            type: "toolCall",
-            toolCall: { name, args },
-          });
-          remaining = remaining.slice(hermesMatch[0].length);
-          continue;
-        }
-        // Hermes tool call is in-flight across chunks -> BUFFER until completion
-        incompleteText = remaining;
-        break;
+      if (scanned.extractedParams) {
+        Object.assign(extractedParams, scanned.extractedParams);
       }
-
-      // 3. Standard/Anthropic style: <tool_call\s+name="([a-zA-Z0-9_.-]+)">([\s\S]*?)</tool_call>
-      const isStandardStart = /^<tool_call\s+name="([a-zA-Z0-9_.-]+)">/i.test(remaining);
-      if (isStandardStart) {
-        const standardPattern = /^<tool_call\s+name="([a-zA-Z0-9_.-]+)">([\s\S]*?)<\/tool_call>/i;
-        const standardMatch = remaining.match(standardPattern);
-        if (standardMatch) {
-          const name = standardMatch[1].trim();
-          const innerContent = standardMatch[2];
-          const args = parseXmlParameters(innerContent);
-          segments.push({
-            type: "toolCall",
-            toolCall: { name, args },
-          });
-          remaining = remaining.slice(standardMatch[0].length);
-          continue;
-        }
-        // Standard tool call is in-flight across chunks -> BUFFER until completion
-        incompleteText = remaining;
-        break;
+      if (scanned.toolCall) {
+        segments.push({
+          type: "toolCall",
+          toolCall: scanned.toolCall,
+        });
       }
-
-      // 4. Invoke style: <invoke\s+name="([a-zA-Z0-9_.-]+)">([\s\S]*?)</invoke>
-      const isInvokeStart = /^<invoke\s+name="([a-zA-Z0-9_.-]+)">/i.test(remaining);
-      if (isInvokeStart) {
-        const invokePattern = /^<invoke\s+name="([a-zA-Z0-9_.-]+)">([\s\S]*?)<\/invoke>/i;
-        const invokeMatch = remaining.match(invokePattern);
-        if (invokeMatch) {
-          const name = invokeMatch[1].trim();
-          const innerContent = invokeMatch[2];
-          const args = parseXmlParameters(innerContent);
-          segments.push({
-            type: "toolCall",
-            toolCall: { name, args },
-          });
-          remaining = remaining.slice(invokeMatch[0].length);
-          continue;
-        }
-        // Invoke tool call is in-flight across chunks -> BUFFER until completion
-        incompleteText = remaining;
-        break;
-      }
-
-      // 5. Qwen JSON in tool_call: <tool_call>\s*(\{[\s\S]*?\})\s*</tool_call>
-      const isQwenStart = /^<tool_call>\s*\{/i.test(remaining);
-      if (isQwenStart) {
-        const qwenPattern = /^<tool_call>\s*(\{[\s\S]*?\})\s*<\/tool_call>/i;
-        const qwenMatch = remaining.match(qwenPattern);
-        if (qwenMatch) {
-          try {
-            const parsed = safeJsonParse(qwenMatch[1]);
-            const name = String(parsed.name ?? parsed.tool ?? parsed.function ?? "");
-            const args =
-              typeof parsed.arguments === "object" && parsed.arguments !== null
-                ? (parsed.arguments as Record<string, unknown>)
-                : typeof parsed.parameters === "object" && parsed.parameters !== null
-                  ? (parsed.parameters as Record<string, unknown>)
-                  : parsed;
-            if (name && isValidToolIdentifier(name)) {
-              segments.push({
-                type: "toolCall",
-                toolCall: { name, args },
-              });
-              remaining = remaining.slice(qwenMatch[0].length);
-              continue;
-            }
-          } catch {}
-        }
-        // Qwen tool call is in-flight across chunks -> BUFFER until completion
-        if (!remaining.includes("</tool_call>")) {
-          incompleteText = remaining;
-          break;
-        }
-      }
-
-      // If it starts with <tool_call> but is not a tool invocation (e.g. inside code literals),
-      // advance past opening token and treat as plain text
-      appendText(nextTokenMatch.token);
-      remaining = remaining.slice(nextTokenMatch.token.length);
+      remaining = remaining.slice(scanned.consumed);
       continue;
     }
 
@@ -972,6 +873,11 @@ export function getIncompleteTextToolCallName(text: string): string | undefined 
   const xmlInvokeMatch = text.match(/<invoke\s+name="([a-zA-Z0-9_.-]+)"/i);
   if (xmlInvokeMatch) {
     return isValidToolIdentifier(xmlInvokeMatch[1]) ? xmlInvokeMatch[1].trim() : undefined;
+  }
+
+  const xmlFunctionMatch = text.match(/<function=([a-zA-Z0-9_.-]+)/i);
+  if (xmlFunctionMatch) {
+    return isValidToolIdentifier(xmlFunctionMatch[1]) ? xmlFunctionMatch[1].trim() : undefined;
   }
 
   return undefined;
@@ -1144,12 +1050,34 @@ export function repairToolArguments(
     }
   }
 
+  const normalizedToolName = toolName.toLowerCase();
+  if (
+    normalizedToolName.includes("terminal") ||
+    normalizedToolName.includes("command") ||
+    normalizedToolName.includes("exec") ||
+    normalizedToolName === "run_in_terminal"
+  ) {
+    if (needsStringField(repaired.goal, "goal")) {
+      if (typeof repaired.explanation === "string" && repaired.explanation.trim()) {
+        repaired.goal = repaired.explanation;
+      } else if (typeof repaired.command === "string" && repaired.command.trim()) {
+        repaired.goal = `Run: ${repaired.command.slice(0, 60)}`;
+      }
+    }
+    if (needsStringField(repaired.explanation, "explanation")) {
+      if (typeof repaired.goal === "string" && repaired.goal.trim()) {
+        repaired.explanation = repaired.goal;
+      }
+    }
+    if (needsStringField(repaired.mode, "mode")) {
+      repaired.mode = schema?.enumValues?.mode?.[0] ?? "sync";
+    }
+  }
+
   const context = requestContext;
   if (!context) {
     return normalizeArguments(repaired, schema ?? {});
   }
-
-  const normalizedToolName = toolName.toLowerCase();
 
   if (normalizedToolName === "read_file") {
     if (needsStringField(repaired.filePath, "filePath") && context.filePath) {

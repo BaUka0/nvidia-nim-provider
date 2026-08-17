@@ -1,28 +1,30 @@
 # Change Log
 
-## [Unreleased]
+## [0.5.4-patch.1] - 2026-08-17
 
 ### Added
 
-- **Multi-format XML tool call parsing.** Added parser support for Hermes/Nemotron (`<tool_call><function=name><parameter=key>value</parameter></function></tool_call>`), Anthropic/Standard XML (`<tool_call name="name">`), Qwen JSON within XML, and Simple Invoke (`<invoke name="name">`), converting them directly into native `LanguageModelToolCallPart` instances.
-- **Argument Fusion Engine.** Text-streamed XML parameters (e.g. `<parameter=filePath>...</parameter>`) are automatically extracted from the stream buffer and merged into native tool call argument objects when the model omits them in native JSON deltas.
-- **Comprehensive property alias resolution.** Missing tool arguments are automatically resolved against standard aliases (`filePath` <= `path`/`targetFile`/`file`/`filename`/`uri`, `content` <= `code`/`text`/`data`/`body`, `startLine` <= `start`/`fromLine`, `endLine` <= `end`/`toLine`, `path` <= `directory`/`dir`/`cwd`, `query` <= `pattern`/`regex`).
-- **Extended thinking tags.** The reasoning filter and stream router now recognize `<thought>...</thought>`, `[THINK]...[/THINK]`, and `<reasoning>...</reasoning>`, routing them to thinking parts and stripping orphaned tags.
+- **Tag-stack XML tool scanner.** Hermes/Nemotron, Anthropic/Standard, Invoke, Qwen JSON inside `<tool_call>`, standalone `<function=name>`, and standalone `<parameter>` are parsed by a single cursor/stack in `src/tools/xml-tool-scanner.ts`. Inside a parameter, only `</parameter>` / `</tool_parameter>` ends the value, so string literals such as `const endToken = "</tool_call>";` stay in the argument instead of truncating the call.
+- **Argument Fusion Engine.** Text-streamed XML parameters are merged into native tool-call JSON when the model omitted those keys.
+- **Property alias resolution.** Missing required fields are filled from aliases (`filePath` <= `path`/`targetFile`/`file`/`filename`/`uri`, `content` <= `code`/`text`/`data`/`body`, `startLine` <= `start`/`fromLine`, `endLine` <= `end`/`toLine`, `path` <= `directory`/`dir`/`cwd`, `query` <= `pattern`/`regex`, `command` <= `cmd`/`script`).
+- **Narrow terminal repair.** For terminal/command tools only, a missing `goal` is copied from `explanation` (or a short `Run: …` prefix of `command`), a missing `explanation` is copied from `goal`, and a missing `mode` uses the first schema enum or `sync`. Missing file payloads and MCP fields are not invented.
+- **Extended thinking tags.** The reasoning filter recognizes `<thought>`, `[THINK]`, and `<reasoning>`.
 
 ### Fixed
 
-- **Markdown code fence protection & stream chunk buffering.** The text stream parser now tracks markdown code fences (` ``` `), ensuring code snippets containing XML tool call literals (such as `const token = "<tool_calls>";`) are preserved without corruption or false-positive tool interception. Streaming XML tool calls split across SSE chunks are buffered until their closing tags arrive, preventing partial code dumps or orphaned quotes (`";`) in the chat UI.
-- **XML and control token leak prevention.** Intercepted and stripped all raw XML tool tags, parameter wrappers, and model control tokens (Llama 3/4 `<|python_tag|>`, `<|start_header_id|>`, ChatML `<|im_start|>`, GLM `[gMASK]`, `<sop>`) to ensure zero leakage into the visible chat interface.
-- **Source code string literal collision protection.** `getIncompleteTextToolCallName` now strictly validates tool identifiers (`/^[a-zA-Z0-9_.-]{1,64}$/`), preventing generated code containing token literals (e.g. `const beginToken = "<|tool_call_begin|>";`) from being misclassified as tool calls.
-- **Stringified JSON tool arguments repair.** Models that emit serialized JSON strings or malformed quotes inside array and object tool arguments (such as `manage_todo_list.todoList: "[{\"id\": 1...}, {\"id\": 4\"...}]"`) are now automatically parsed and repaired via `jsonrepair` into valid native arrays and objects instead of being rejected.
-- **Fallback on HTTP 404 Model Unavailable.** When an upstream NVIDIA NIM model endpoint returns `HTTP 404` (e.g. when heavy 550B models are temporarily offline or during pod maintenance), the provider now automatically triggers failover to `nvidia/nemotron-3.5-lightning-30b-a3b` with a notification, preventing agent pipelines from breaking.
-- **Deduplicated error traces in VS Code UI.** Cleaned `NvidiaApiError.stack` of duplicate message prefixes and unified all error throws under `createStructuredError`, preventing VS Code Copilot Chat from repeating error text twice in the chat interface.
+- **Tag-literal collision.** Non-greedy regex over a whole `<tool_call>…</tool_call>` no longer cuts file edits that contain `</tool_call>` or `</function>` in source.
+- **Markdown code fence protection & stream chunk buffering.** XML inside ` ``` ` fences is left as text. In-flight tool tags split across SSE chunks stay in `incompleteText` until they close.
+- **XML and control token leak prevention.** Orphan tool close tags and Llama/ChatML/GLM control tokens are stripped from visible text, not from parameter values.
+- **Source code string literal collision protection.** `getIncompleteTextToolCallName` only accepts `/^[a-zA-Z0-9_.-]{1,64}$/` identifiers.
+- **Stringified JSON tool arguments repair.** Malformed array/object argument strings are repaired with `jsonrepair`.
+- **Fallback on HTTP 404 Model Unavailable.** Fail over to `nvidia/nemotron-3.5-lightning-30b-a3b`.
+- **Deduplicated error traces in VS Code UI.**
 
 ### Tests
 
-- Added parser unit tests for Hermes/Nemotron XML, Anthropic XML, Qwen JSON within XML, standalone XML parameter extraction, argument fusion, property aliases, markdown code fence protection, and multi-chunk XML buffering in `tests/tools-parser.test.ts`.
-- Extended `tests/utils.test.ts` to test `<thought>`, `[THINK]`, and `<reasoning>` tag pair isolation.
-- Extended stream tests in `tests/provider/chat-provider.stream.test.ts` to verify failover onto Nemotron 3.5 Lightning on HTTP 404 `model_unavailable`.
+- Parser tests for Hermes/Anthropic/Qwen XML, standalone parameters, argument fusion, aliases, fence protection, multi-chunk buffering, `</tool_call>` / `</function>` collisions, split `newString` chunks, terminal `goal` copy, and refusal to invent `content` or `rollbackOnFailure`.
+- Extended `tests/utils.test.ts` for extra think-tag pairs.
+- Stream tests for HTTP 404 failover onto Lightning.
 
 ## [0.5.4] - 2026-08-17
 

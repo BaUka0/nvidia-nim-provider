@@ -526,4 +526,199 @@ describe("tool argument parsing and validation", () => {
       { type: "text", text: "\nDone." },
     ]);
   });
+
+  it("keeps literal </tool_call> and </function> inside Hermes parameter values", () => {
+    const fullCode =
+      'export function parseXmlStyleToolCall(text: string): ParsedXmlStyleToolCallResult {\n  const toolCallsStartToken = "<tool_calls>";\n  const toolCallEndToken = "</tool_call>";\n  const funcEnd = "</function>";\n  return { consumed: 0 };\n}';
+    const text = `<tool_call>\n<function=edit_file>\n<parameter=filePath>src/parser.ts</parameter>\n<parameter=newString>${fullCode}</parameter>\n</function>\n</tool_call>`;
+
+    const result = parseTextEmbeddedToolCalls(text);
+
+    expect(result.incompleteText).toBe("");
+    expect(result.segments).toEqual([
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "edit_file",
+          args: {
+            filePath: "src/parser.ts",
+            newString: fullCode,
+          },
+        },
+      },
+    ]);
+  });
+
+  it("keeps literal </function> inside a standalone function parameter", () => {
+    const content = 'const close = "</function>";';
+    const text = `<function=edit_file><parameter=filePath>src/index.ts</parameter><parameter=content>${content}</parameter></function>`;
+
+    const result = parseTextEmbeddedToolCalls(text);
+
+    expect(result.incompleteText).toBe("");
+    expect(result.segments).toEqual([
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "edit_file",
+          args: {
+            filePath: "src/index.ts",
+            content,
+          },
+        },
+      },
+    ]);
+  });
+
+  it("keeps literal </tool_call> inside a Standard tool_parameter value", () => {
+    const fullCode = 'const end = "</tool_call>";';
+    const text = `<tool_call name="edit_file">\n<tool_parameter name="newString">${fullCode}</tool_parameter>\n</tool_call>`;
+
+    const result = parseTextEmbeddedToolCalls(text);
+
+    expect(result.incompleteText).toBe("");
+    expect(result.segments).toEqual([
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "edit_file",
+          args: {
+            newString: fullCode,
+          },
+        },
+      },
+    ]);
+  });
+
+  it("buffers a split newString that contains a quoted </tool_call> across chunks", () => {
+    const chunk1 =
+      '<tool_call>\n<function=edit_file>\n<parameter=filePath>src/parser.ts</parameter>\n<parameter=newString>\nconst toolCallEndToken = "</tool_';
+    const result1 = parseTextEmbeddedToolCalls(chunk1);
+
+    expect(result1.segments).toEqual([]);
+    expect(result1.incompleteText).toContain("<parameter=newString>");
+
+    const chunk2 = `${result1.incompleteText}call>";\n</parameter>\n</function>\n</tool_call>\nDone.`;
+    const result2 = parseTextEmbeddedToolCalls(chunk2);
+
+    expect(result2.incompleteText).toBe("");
+    expect(result2.segments).toEqual([
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "edit_file",
+          args: {
+            filePath: "src/parser.ts",
+            newString: 'const toolCallEndToken = "</tool_call>";',
+          },
+        },
+      },
+      { type: "text", text: "\nDone." },
+    ]);
+  });
+
+  it("copies explanation into a missing terminal goal and does not invent file payloads", () => {
+    const terminalSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "run_in_terminal",
+            inputSchema: {
+              type: "object",
+              properties: {
+                command: { type: "string" },
+                explanation: { type: "string" },
+                goal: { type: "string" },
+                mode: { type: "string", enum: ["sync", "terminal"] },
+              },
+              required: ["command", "explanation", "goal", "mode"],
+            },
+          },
+        ],
+      }),
+    ).get("run_in_terminal");
+
+    const repaired = repairToolArguments(
+      "run_in_terminal",
+      {
+        mode: "sync",
+        explanation: "Check if node_modules was created",
+        command: "cd /tmp && ls node_modules",
+      },
+      undefined,
+      terminalSchema,
+    );
+
+    expect(repaired).toEqual({
+      mode: "sync",
+      explanation: "Check if node_modules was created",
+      goal: "Check if node_modules was created",
+      command: "cd /tmp && ls node_modules",
+    });
+    expect(hasRequiredToolArguments(repaired, terminalSchema)).toBe(true);
+  });
+
+  it("does not invent missing file content so the call stays invalid", () => {
+    const createFileSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "create_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                content: { type: "string" },
+              },
+              required: ["filePath", "content"],
+            },
+          },
+        ],
+      }),
+    ).get("create_file");
+
+    const repaired = repairToolArguments(
+      "create_file",
+      { filePath: "src/a.ts" },
+      undefined,
+      createFileSchema,
+    );
+
+    expect(repaired).toEqual({ filePath: "src/a.ts" });
+    expect(hasRequiredToolArguments(repaired, createFileSchema)).toBe(false);
+  });
+
+  it("does not invent MCP rollback or empty collections to force schema success", () => {
+    const deploySchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "custom_mcp_service.deploy",
+            inputSchema: {
+              type: "object",
+              properties: {
+                environment: { type: "string", enum: ["staging", "production"] },
+                rollbackOnFailure: { type: "boolean" },
+                timeoutSeconds: { type: "integer" },
+                tags: { type: "array" },
+                metadata: { type: "object" },
+              },
+              required: ["environment", "rollbackOnFailure", "timeoutSeconds", "tags", "metadata"],
+            },
+          },
+        ],
+      }),
+    ).get("custom_mcp_service.deploy");
+
+    const repaired = repairToolArguments(
+      "custom_mcp_service.deploy",
+      { environment: "staging" },
+      undefined,
+      deploySchema,
+    );
+
+    expect(repaired).toEqual({ environment: "staging" });
+    expect(repaired.rollbackOnFailure).toBeUndefined();
+    expect(hasRequiredToolArguments(repaired, deploySchema)).toBe(false);
+  });
 });
