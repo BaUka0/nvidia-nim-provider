@@ -677,6 +677,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             }
 
             if (hasRequiredToolArguments(repairedArgs, schema)) {
+              debugLog("xml_tool_fallback", { name: toolCall.name });
               flushPendingText();
               reportPart(
                 new vscode.LanguageModelToolCallPart(

@@ -212,55 +212,58 @@ export function getToolResultTexts(part: vscode.LanguageModelInputPart | LegacyP
   return results;
 }
 
+const AUXILIARY_REQUIRED_FIELDS = new Set([
+  "goal",
+  "explanation",
+  "mode",
+  "summary",
+  "description",
+  "isRegexp",
+]);
+
+function payloadRequiredFields(schema: Record<string, unknown> | undefined): string[] {
+  if (!Array.isArray(schema?.required)) {
+    return [];
+  }
+  return schema.required.filter(
+    (item): item is string => typeof item === "string" && !AUXILIARY_REQUIRED_FIELDS.has(item),
+  );
+}
+
+function toModelFacingSchema(inputSchema: unknown): JsonObject | undefined {
+  const schema = asObjectRecord(inputSchema);
+  if (!schema) {
+    return inputSchema as JsonObject | undefined;
+  }
+
+  const required = payloadRequiredFields(schema);
+  return {
+    ...schema,
+    ...(Array.isArray(schema.required) ? { required } : {}),
+  };
+}
+
 function buildToolDescription(
   description: string | undefined,
   inputSchema: unknown,
 ): string | undefined {
   const schema = asObjectRecord(inputSchema);
-  const required = Array.isArray(schema?.required)
-    ? schema.required.filter((item): item is string => typeof item === "string" && item.length > 0)
-    : [];
+  const required = payloadRequiredFields(schema);
+  const properties = asObjectRecord(schema?.properties);
+  const requiredHints = required.map((name) => {
+    const propertySchema = asObjectRecord(properties?.[name]);
+    const enumValues = Array.isArray(propertySchema?.enum)
+      ? propertySchema.enum.filter((item): item is string => typeof item === "string")
+      : [];
+    return enumValues.length > 0 ? `${name} (${enumValues.join(", ")})` : name;
+  });
 
-  const guidance: string[] = [];
-  if (schema?.type === "object") {
-    guidance.push("Return a valid JSON object that matches this schema.");
-    if (required.length > 0) {
-      guidance.push(`Required arguments: ${required.join(", ")}.`);
-      guidance.push("Do not call this tool with an empty object.");
-    }
+  const parts = [
+    typeof description === "string" ? description.trim() : "",
+    requiredHints.length > 0 ? `Required: ${requiredHints.join(", ")}.` : "",
+  ].filter((part) => part.length > 0);
 
-    const properties = asObjectRecord(schema.properties);
-    const propertyNames = properties ? Object.keys(properties) : [];
-    const highlightedNames = propertyNames
-      .filter((name) => required.includes(name) || propertyNames.length <= 5)
-      .slice(0, 5);
-    if (highlightedNames.length > 0) {
-      const propertyLines = highlightedNames.map((name) => {
-        const propertySchema = asObjectRecord(properties?.[name]);
-        const propertyType = typeof propertySchema?.type === "string" ? propertySchema.type : "any";
-        const propertyDescription =
-          typeof propertySchema?.description === "string" ? propertySchema.description.trim() : "";
-        const enumValues = Array.isArray(propertySchema?.enum)
-          ? propertySchema.enum.filter(
-              (item): item is string => typeof item === "string" && item.length > 0,
-            )
-          : [];
-        const enumGuidance =
-          enumValues.length > 0 ? ` Allowed values: ${enumValues.join(", ")}.` : "";
-        return propertyDescription
-          ? `- ${name} (${propertyType}): ${propertyDescription}${enumGuidance}`
-          : `- ${name} (${propertyType})${enumGuidance}`;
-      });
-      guidance.push(`Arguments:\n${propertyLines.join("\n")}`);
-    }
-  }
-
-  const baseDescription = typeof description === "string" ? description.trim() : "";
-  const guidanceText = guidance.join("\n");
-  if (baseDescription && guidanceText) {
-    return `${baseDescription}\n\n${guidanceText}`;
-  }
-  return baseDescription || guidanceText || undefined;
+  return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
 export function convertMessages(
@@ -387,14 +390,17 @@ export function convertTools(options: vscode.ProvideLanguageModelChatResponseOpt
     return {};
   }
 
-  const tools: NimTool[] = toolsInput.map((tool) => ({
-    type: "function",
-    function: {
-      name: tool.name,
-      description: buildToolDescription(tool.description, tool.inputSchema),
-      parameters: tool.inputSchema as JsonObject,
-    },
-  }));
+  const tools: NimTool[] = toolsInput.map((tool) => {
+    const parameters = toModelFacingSchema(tool.inputSchema);
+    return {
+      type: "function",
+      function: {
+        name: tool.name,
+        description: buildToolDescription(tool.description, parameters ?? tool.inputSchema),
+        ...(parameters ? { parameters } : {}),
+      },
+    };
+  });
 
   if (
     options.toolMode ===
@@ -404,7 +410,7 @@ export function convertTools(options: vscode.ProvideLanguageModelChatResponseOpt
     return { tools, tool_choice: "required" };
   }
 
-  return { tools };
+  return { tools, tool_choice: "auto" };
 }
 
 export function estimateTokens(text: string): number {

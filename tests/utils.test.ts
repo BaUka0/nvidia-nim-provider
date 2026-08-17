@@ -154,6 +154,41 @@ describe("convertTools", () => {
     expect(result.tools).toHaveLength(1);
     expect(result.tools?.[0].type).toBe("function");
     expect(result.tools?.[0].function.name).toBe("test_tool");
+    expect(result.tool_choice).toBe("auto");
+  });
+
+  it("keeps only payload fields in the model-facing required list", () => {
+    const result = convertTools(
+      makeChatOptions({
+        tools: [
+          {
+            name: "run_in_terminal",
+            description: "Run a shell command",
+            inputSchema: {
+              type: "object",
+              properties: {
+                command: { type: "string" },
+                explanation: { type: "string" },
+                goal: { type: "string" },
+                mode: { type: "string", enum: ["sync", "terminal"] },
+              },
+              required: ["command", "explanation", "goal", "mode"],
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(result.tool_choice).toBe("auto");
+    expect(result.tools?.[0].function.parameters).toEqual(
+      expect.objectContaining({
+        required: ["command"],
+      }),
+    );
+    const description = result.tools?.[0].function.description ?? "";
+    expect(description).toContain("Required: command");
+    expect(description).not.toContain("goal");
+    expect(description).not.toContain("explanation");
   });
 
   it("augments tool descriptions with required parameter guidance", () => {
@@ -177,9 +212,8 @@ describe("convertTools", () => {
     );
     expect(result.tools).toHaveLength(1);
     const description = result.tools?.[0].function.description ?? "";
-    expect(description).toContain("Required arguments");
-    expect(description).toContain("filePath");
-    expect(description).toContain("Return a valid JSON object");
+    expect(description).toContain("Required: filePath");
+    expect(description).toContain("Read a file from disk");
   });
 
   it("includes enum choices for required string arguments", () => {
@@ -210,11 +244,9 @@ describe("convertTools", () => {
     );
 
     const description = result.tools?.[0].function.description ?? "";
-    expect(description).toContain("command");
-    expect(description).toContain("Required arguments");
-    expect(description).toContain("Allowed values");
-    expect(description).toContain("view");
-    expect(description).toContain("create");
+    expect(description).toContain(
+      "Required: command (view, create, str_replace, insert, delete, rename)",
+    );
   });
 });
 

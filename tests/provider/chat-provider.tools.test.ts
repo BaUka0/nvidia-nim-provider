@@ -155,6 +155,7 @@ describe("NimChatModelProvider", () => {
       expect.objectContaining({
         model: "deepseek-ai/deepseek-v4-flash-0731",
         tools: expect.any(Array),
+        tool_choice: "auto",
       }),
       expect.any(AbortSignal),
       "test-ua",
