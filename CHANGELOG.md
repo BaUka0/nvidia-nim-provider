@@ -1,5 +1,18 @@
 # Change Log
 
+## [Unreleased]
+
+### Fixed
+
+- **Stringified JSON tool arguments repair.** Models that emit serialized JSON strings or malformed quotes inside array and object tool arguments (such as `manage_todo_list.todoList: "[{\"id\": 1...}, {\"id\": 4\"...}]"`) are now automatically parsed and repaired via `jsonrepair` into valid native arrays and objects instead of being rejected.
+- **Fallback on HTTP 404 Model Unavailable.** When an upstream NVIDIA NIM model endpoint returns `HTTP 404` (e.g. when heavy 550B models are temporarily offline or during pod maintenance), the provider now automatically triggers failover to `nvidia/nemotron-3.5-lightning-30b-a3b` with a notification, preventing agent pipelines from breaking.
+- **Deduplicated error traces in VS Code UI.** Cleaned `NvidiaApiError.stack` of duplicate message prefixes and unified all error throws under `createStructuredError`, preventing VS Code Copilot Chat from repeating error text twice in the chat interface.
+
+### Tests
+
+- Added parser unit tests for stringified array/object argument repair and broken quote recovery in `tests/tools-parser.test.ts`.
+- Extended stream tests in `tests/provider/chat-provider.stream.test.ts` to verify failover onto Nemotron 3.5 Lightning on HTTP 404 `model_unavailable`.
+
 ## [0.5.4] - 2026-08-17
 
 ### Added
