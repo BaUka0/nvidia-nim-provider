@@ -5,6 +5,7 @@ import {
   extractChatRequestContext,
   getCompletedToolCallKeys,
   buildToolCallCanonicalKey,
+  isDuplicateSuppressionEnabled,
   isToolCallInput,
   hasRequiredToolArguments,
   parseToolArguments,
@@ -141,7 +142,10 @@ export class ToolCallStreamAggregator {
         );
         if (buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
           const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
-          if (this.emittedTextToolCallKeys.has(canonicalKey)) {
+          if (
+            isDuplicateSuppressionEnabled(buf.name) &&
+            this.emittedTextToolCallKeys.has(canonicalKey)
+          ) {
             this.onSkipToolCall(buf.name, [], "duplicate");
             this.completedToolCallIndices.add(idx);
             this.toolCallBuffers.delete(idx);
@@ -185,7 +189,10 @@ export class ToolCallStreamAggregator {
         );
         if (buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
           const canonicalKey = buildToolCallCanonicalKey(buf.name, args);
-          if (this.emittedTextToolCallKeys.has(canonicalKey)) {
+          if (
+            isDuplicateSuppressionEnabled(buf.name) &&
+            this.emittedTextToolCallKeys.has(canonicalKey)
+          ) {
             this.onSkipToolCall(buf.name, [], "duplicate");
             this.completedToolCallIndices.add(idx);
             this.toolCallBuffers.delete(idx);

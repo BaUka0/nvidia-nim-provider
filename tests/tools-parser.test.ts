@@ -391,6 +391,70 @@ describe("tool argument parsing and validation", () => {
     expect(skipped).toEqual([{ name: "read_file", required: [], reason: "duplicate" }]);
   });
 
+  it("re-emits run_in_terminal even when the same command already completed", () => {
+    const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+    const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
+    const terminalArgs = {
+      command: "npm run compile",
+      explanation: "Compile again",
+      goal: "Compile again",
+      mode: "sync",
+    };
+    const aggregator = new ToolCallStreamAggregator({
+      options: makeChatOptions({
+        tools: [
+          {
+            name: "run_in_terminal",
+            inputSchema: {
+              type: "object",
+              properties: {
+                command: { type: "string" },
+                explanation: { type: "string" },
+                goal: { type: "string" },
+                mode: { type: "string", enum: ["sync", "terminal"] },
+              },
+              required: ["command", "explanation", "goal", "mode"],
+            },
+          },
+        ],
+      }),
+      messages: [
+        {
+          role: 2,
+          content: [
+            {
+              callId: "term:0",
+              name: "run_in_terminal",
+              input: terminalArgs,
+            },
+          ],
+        } as never,
+        {
+          role: 1,
+          content: [{ callId: "term:0", content: [{ value: "error TS" }] }],
+        } as never,
+      ],
+      onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
+      onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
+    });
+
+    aggregator.handleToolCalls([
+      {
+        index: 0,
+        id: "term:1",
+        type: "function",
+        function: {
+          name: "run_in_terminal",
+          arguments: JSON.stringify(terminalArgs),
+        },
+      },
+    ]);
+    aggregator.flushRemaining();
+
+    expect(skipped).toEqual([]);
+    expect(emitted).toEqual([{ id: "term:1", name: "run_in_terminal", args: terminalArgs }]);
+  });
+
   it("explains missing tool-call payloads and duplicates in fallback text", () => {
     expect(
       buildInvalidToolCallFallback([

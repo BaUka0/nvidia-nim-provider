@@ -106,6 +106,25 @@ export function buildToolCallCanonicalKey(name: string, args: unknown): string {
   return `${name}:${JSON.stringify(sortObjectKeys(args))}`;
 }
 
+export function isDuplicateSuppressionEnabled(toolName: string): boolean {
+  const normalized = toolName.toLowerCase();
+  if (
+    normalized.includes("terminal") ||
+    normalized.includes("command") ||
+    normalized.includes("exec") ||
+    normalized.includes("write") ||
+    normalized.includes("edit") ||
+    normalized.includes("create") ||
+    normalized.includes("delete") ||
+    normalized.includes("patch") ||
+    normalized.includes("replace") ||
+    normalized.includes("apply")
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function sortObjectKeys(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sortObjectKeys);

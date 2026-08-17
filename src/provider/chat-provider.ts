@@ -18,6 +18,7 @@ import {
   buildInvalidToolCallFallback,
   buildInvalidToolCallRetryMessage,
   buildToolCallCanonicalKey,
+  isDuplicateSuppressionEnabled,
   getIncompleteTextToolCallName,
   hasRequiredToolArguments,
   parseTextEmbeddedToolCalls,
@@ -666,7 +667,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               schema,
             );
             const canonicalKey = buildToolCallCanonicalKey(toolCall.name, repairedArgs);
-            if (getToolAggregator().getEmittedTextToolCallKeys().has(canonicalKey)) {
+            if (
+              isDuplicateSuppressionEnabled(toolCall.name) &&
+              getToolAggregator().getEmittedTextToolCallKeys().has(canonicalKey)
+            ) {
               skippedToolCalls.push({
                 name: toolCall.name,
                 required: [],
