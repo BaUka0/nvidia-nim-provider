@@ -13,7 +13,7 @@
 
 ### Fixed
 
-- **Tag-literal collision.** Non-greedy regex over a whole `<tool_call>…</tool_call>` no longer cuts file edits that contain `</tool_call>` or `</function>` in source.
+- **Tag-literal collision.** Non-greedy regex over a whole `<tool_call>…</tool_call>` no longer cuts file edits that contain `</tool_call>` or `</function>` in source. Quoted and regex literals such as `const token = "<tool_calls>";` or `/^\s*<\/tool_calls>/` are left as source text so the parser no longer swallows the token and dumps `";` plus the rest of the file into chat.
 - **Markdown code fence protection & stream chunk buffering.** XML inside ` ``` ` fences is left as text. In-flight tool tags split across SSE chunks stay in `incompleteText` until they close.
 - **XML and control token leak prevention.** Orphan tool close tags and Llama/ChatML/GLM control tokens are stripped from visible text, not from parameter values.
 - **Source code string literal collision protection.** `getIncompleteTextToolCallName` only accepts `/^[a-zA-Z0-9_.-]{1,64}$/` identifiers.

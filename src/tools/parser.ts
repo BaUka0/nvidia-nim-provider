@@ -4,6 +4,8 @@ import { jsonrepair } from "jsonrepair";
 import {
   extractStandaloneXmlParameters as scanStandaloneXmlParameters,
   findXmlConstructStart,
+  indexOfUnquoted,
+  isTokenInStringOrRegexLiteral,
   scanXmlToolConstruct,
 } from "./xml-tool-scanner";
 
@@ -548,45 +550,56 @@ export function parseEmbeddedToolParameterValue(rawValue: string): unknown {
   return trimmed;
 }
 
-export function stripKnownControlText(text: string): string {
-  const sanitized = text
-    // DeepSeek & DSML
-    .replace(/<｜DSML｜[^\s<]*/g, "")
-    .replace(/<\|DSML\|>[^\s<]*/g, "")
-    // Llama 3 / 4
-    .replace(/<\|python_tag\|>/g, "")
-    .replace(/<\|start_header_id\|>.*?<\|end_header_id\|>/g, "")
-    .replace(/<\|eot_id\|>/g, "")
-    .replace(/<\|eom_id\|>/g, "")
-    // ChatML / Qwen
-    .replace(/<\|im_start\|>[^\n]*/g, "")
-    .replace(/<\|im_end\|>/g, "")
-    // GLM
-    .replace(/<\|observation\|>/g, "")
-    .replace(/<\|assistant\|>/g, "")
-    .replace(/\[gMASK\]/g, "")
-    .replace(/<sop>/g, "")
-    .replace(/<eop>/g, "");
+function stripPatternOutsideLiterals(text: string, pattern: RegExp, contextPrefix = ""): string {
+  const global = new RegExp(
+    pattern.source,
+    pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`,
+  );
+  return text.replace(global, (match, ...rest) => {
+    const offset = rest[rest.length - 2] as number;
+    return isTokenInStringOrRegexLiteral(contextPrefix + text, contextPrefix.length + offset)
+      ? match
+      : "";
+  });
+}
 
-  // If no code fences present, strip orphaned closing tags
-  if (!sanitized.includes("```")) {
-    return sanitized.replace(
-      /<\/(?:tool_calls|tool_call|function|parameter|tool_parameter|invoke)>/gi,
-      "",
-    );
+export function stripKnownControlText(text: string, contextPrefix = ""): string {
+  const controlPatterns = [
+    /<｜DSML｜[^\s<]*/g,
+    /<\|DSML\|>[^\s<]*/g,
+    /<\|python_tag\|>/g,
+    /<\|start_header_id\|>.*?<\|end_header_id\|>/g,
+    /<\|eot_id\|>/g,
+    /<\|eom_id\|>/g,
+    /<\|im_start\|>[^\n]*/g,
+    /<\|im_end\|>/g,
+    /<\|observation\|>/g,
+    /<\|assistant\|>/g,
+    /\[gMASK\]/g,
+    /<sop>/g,
+    /<eop>/g,
+  ];
+
+  let sanitized = text;
+  for (const pattern of controlPatterns) {
+    sanitized = stripPatternOutsideLiterals(sanitized, pattern, contextPrefix);
   }
 
-  // Preserve everything inside code fences while stripping orphaned tags outside
+  const orphanClose = /<\/(?:tool_calls|tool_call|function|parameter|tool_parameter|invoke)>/gi;
+  if (!sanitized.includes("```")) {
+    return stripPatternOutsideLiterals(sanitized, orphanClose, contextPrefix);
+  }
+
   const parts = sanitized.split(/(```[\s\S]*?```)/g);
+  let walked = contextPrefix;
   return parts
-    .map((part) =>
-      part.startsWith("```")
+    .map((part) => {
+      const next = part.startsWith("```")
         ? part
-        : part.replace(
-            /<\/(?:tool_calls|tool_call|function|parameter|tool_parameter|invoke)>/gi,
-            "",
-          ),
-    )
+        : stripPatternOutsideLiterals(part, orphanClose, walked);
+      walked += part;
+      return next;
+    })
     .join("");
 }
 
@@ -692,8 +705,11 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
   let remaining = text;
   let incompleteText = "";
 
+  const textContextPrefix = (): string =>
+    segments.map((segment) => (segment.type === "text" ? segment.text : "")).join("");
+
   const appendText = (value: string): void => {
-    const sanitizedValue = stripKnownControlText(value);
+    const sanitizedValue = stripKnownControlText(value, textContextPrefix());
     if (!sanitizedValue) {
       return;
     }
@@ -706,9 +722,8 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
   };
 
   while (remaining.length > 0) {
-    const xmlStartIndex = findXmlConstructStart(remaining);
-
-    const accumulatedSoFar = segments.map((s) => (s.type === "text" ? s.text : "")).join("");
+    const accumulatedSoFar = textContextPrefix();
+    const xmlStartIndex = findXmlConstructStart(remaining, accumulatedSoFar);
 
     const isInsideCodeFence = (offset: number): boolean => {
       const textUpToOffset = accumulatedSoFar + remaining.slice(0, offset);
@@ -717,31 +732,35 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
     };
 
     const tokenMatches = [
-      { kind: "openai" as const, token: beginToken, index: remaining.indexOf(beginToken) },
+      {
+        kind: "openai" as const,
+        token: beginToken,
+        index: indexOfUnquoted(remaining, beginToken, 0, accumulatedSoFar),
+      },
       {
         kind: "strip" as const,
         token: deepSeekCallsBeginToken,
-        index: remaining.indexOf(deepSeekCallsBeginToken),
+        index: indexOfUnquoted(remaining, deepSeekCallsBeginToken, 0, accumulatedSoFar),
       },
       {
         kind: "deepseek" as const,
         token: deepSeekCallBeginToken,
-        index: remaining.indexOf(deepSeekCallBeginToken),
+        index: indexOfUnquoted(remaining, deepSeekCallBeginToken, 0, accumulatedSoFar),
       },
       {
         kind: "strip" as const,
         token: deepSeekCallsEndToken,
-        index: remaining.indexOf(deepSeekCallsEndToken),
+        index: indexOfUnquoted(remaining, deepSeekCallsEndToken, 0, accumulatedSoFar),
       },
       {
         kind: "control" as const,
         token: unicodeDsmlToken,
-        index: remaining.indexOf(unicodeDsmlToken),
+        index: indexOfUnquoted(remaining, unicodeDsmlToken, 0, accumulatedSoFar),
       },
       {
         kind: "control" as const,
         token: asciiDsmlToken,
-        index: remaining.indexOf(asciiDsmlToken),
+        index: indexOfUnquoted(remaining, asciiDsmlToken, 0, accumulatedSoFar),
       },
       ...(xmlStartIndex !== -1
         ? [{ kind: "xml" as const, token: remaining[xmlStartIndex], index: xmlStartIndex }]
@@ -753,7 +772,13 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
 
     if (!nextTokenMatch) {
       const partialBeginIndex = findTrailingTokenPrefixStartAny(remaining, partialTokens);
-      if (partialBeginIndex === -1) {
+      if (
+        partialBeginIndex === -1 ||
+        isTokenInStringOrRegexLiteral(
+          accumulatedSoFar + remaining,
+          accumulatedSoFar.length + partialBeginIndex,
+        )
+      ) {
         appendText(remaining);
       } else {
         appendText(remaining.slice(0, partialBeginIndex));

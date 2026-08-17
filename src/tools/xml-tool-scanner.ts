@@ -48,6 +48,50 @@ const TOOL_KINDS = new Set<string>([
 const IDENT_RE = /^[a-zA-Z0-9_.-]+/;
 const TAG_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_.-]*/;
 
+/**
+ * True when `index` sits inside a JS/TS string or regex literal, e.g.
+ * `const token = "<tool_calls>";` or `/^\s*<\/tool_calls>/`.
+ * Real Hermes/Anthropic tool tags sit on their own line after prose.
+ */
+export function isTokenInStringOrRegexLiteral(text: string, index: number): boolean {
+  if (index <= 0) {
+    return false;
+  }
+
+  const prev = text[index - 1];
+  if (prev === "\\" || prev === '"' || prev === "'" || prev === "`" || prev === "/") {
+    return true;
+  }
+
+  const lineStart = text.lastIndexOf("\n", index - 1) + 1;
+  const prefix = text.slice(lineStart, index);
+  if (/(?:^|[=:(,[{]\s*)["'][^"'\n]*$/.test(prefix)) {
+    return true;
+  }
+  if (/(?:^|[=:(,[{]\s*)`[^`\n]*$/.test(prefix)) {
+    return true;
+  }
+  if (/(?:^|[=:(,[{]\s*)\/(?:\^)?[^/\n]*$/.test(prefix)) {
+    return true;
+  }
+  return false;
+}
+
+export function indexOfUnquoted(text: string, token: string, from = 0, contextPrefix = ""): number {
+  let pos = from;
+  while (pos < text.length) {
+    const index = text.indexOf(token, pos);
+    if (index === -1) {
+      return -1;
+    }
+    if (!isTokenInStringOrRegexLiteral(contextPrefix + text, contextPrefix.length + index)) {
+      return index;
+    }
+    pos = index + 1;
+  }
+  return -1;
+}
+
 function isWhitespace(char: string): boolean {
   return char === " " || char === "\n" || char === "\r" || char === "\t";
 }
@@ -282,10 +326,13 @@ function isPlausibleToolContinuation(text: string, afterTag: number): "yes" | "n
   if (next.incomplete) {
     return "incomplete";
   }
-  if (isParameterKind(next.kind) || next.kind === "function") {
-    return "yes";
-  }
-  if (next.closing && (next.kind === "tool_call" || next.kind === "invoke")) {
+  if (
+    isParameterKind(next.kind) ||
+    next.kind === "function" ||
+    next.kind === "tool_call" ||
+    next.kind === "invoke" ||
+    next.kind === "tool_calls"
+  ) {
     return "yes";
   }
   return "no";
@@ -431,12 +478,16 @@ function scanToolRegion(
   return { status: "complete", consumed: cursor };
 }
 
-export function findXmlConstructStart(text: string): number {
+export function findXmlConstructStart(text: string, contextPrefix = ""): number {
   let pos = 0;
   while (pos < text.length) {
     const lt = text.indexOf("<", pos);
     if (lt === -1) {
       return -1;
+    }
+    if (isTokenInStringOrRegexLiteral(contextPrefix + text, contextPrefix.length + lt)) {
+      pos = lt + 1;
+      continue;
     }
     const tag = readXmlTag(text, lt);
     if (tag?.incomplete) {
@@ -462,7 +513,17 @@ export function scanXmlToolConstruct(
   if (!tag) {
     return { status: "not-a-tag", skip: 1 };
   }
-  if (tag.closing || tag.kind === "tool_calls") {
+  if (tag.closing) {
+    return { status: "complete", consumed: tag.rawLength };
+  }
+  if (tag.kind === "tool_calls") {
+    const peek = isPlausibleToolContinuation(text, tag.rawLength);
+    if (peek === "incomplete") {
+      return { status: "incomplete" };
+    }
+    if (peek === "no") {
+      return { status: "not-a-tag", skip: tag.rawLength };
+    }
     return { status: "complete", consumed: tag.rawLength };
   }
 
@@ -531,7 +592,13 @@ export function extractStandaloneXmlParameters(
     }
 
     const tag = readXmlTag(text, cursor);
-    if (tag && !tag.incomplete && !tag.closing && isParameterKind(tag.kind)) {
+    if (
+      tag &&
+      !tag.incomplete &&
+      !tag.closing &&
+      isParameterKind(tag.kind) &&
+      !isTokenInStringOrRegexLiteral(text, cursor)
+    ) {
       const scanned = scanParameterValue(text, cursor + tag.rawLength, parseValue, tag.name);
       if (scanned.status === "complete") {
         Object.assign(extractedParams, scanned.extractedParams);

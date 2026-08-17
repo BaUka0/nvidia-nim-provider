@@ -588,6 +588,43 @@ describe("tool argument parsing and validation", () => {
     ]);
   });
 
+  it("does not leak '; after quoted tool tokens in unfenced TypeScript source", () => {
+    const source = [
+      'const toolCallsStartToken = "<tool_calls>";',
+      "const toolCallsEndPattern = /^\\s*<\\/tool_calls>/;",
+      'const toolCallEndToken = "</tool_call>";',
+      'const beginToken = "<|tool_call_begin|>";',
+      'const unicodeDsmlToken = "<｜DSML｜";',
+      'const asciiDsmlToken = "<|DSML|>";',
+      'const xmlStartTokens = ["<tool_call>", "<tool_call "] as const;',
+    ].join("\n");
+
+    const { segments, incompleteText } = parseTextEmbeddedToolCalls(source);
+
+    expect(incompleteText).toBe("");
+    expect(segments).toEqual([{ type: "text", text: source }]);
+  });
+
+  it('does not treat <tool_calls>"; as a container and leak the trailing quote', () => {
+    const chunk = '<tool_calls>";\nconst toolCallsEndPattern = /^\\s*<\\/tool_calls>/;';
+    const result = parseTextEmbeddedToolCalls(chunk);
+    expect(result.incompleteText).toBe("");
+    expect(result.segments).toEqual([{ type: "text", text: chunk }]);
+  });
+
+  it("still strips a real <tool_calls> wrapper around a Hermes call", () => {
+    const text =
+      "<tool_calls>\n<tool_call>\n<function=read_file>\n<parameter=filePath>/tmp/a.ts</parameter>\n</function>\n</tool_call>\n</tool_calls>";
+    const result = parseTextEmbeddedToolCalls(text);
+    expect(result.incompleteText).toBe("");
+    expect(result.segments.filter((segment) => segment.type === "toolCall")).toEqual([
+      {
+        type: "toolCall",
+        toolCall: { name: "read_file", args: { filePath: "/tmp/a.ts" } },
+      },
+    ]);
+  });
+
   it("buffers in-flight Hermes XML tool calls across chunks even when content contains quotes and tag strings", () => {
     const chunk1 =
       'Now let me create the file.\n<tool_call>\n<function=create_file>\n<parameter=filePath>\n/src/parser.ts\n</parameter>\n<parameter=content>\nconst token = "<tool_calls>";\n';
