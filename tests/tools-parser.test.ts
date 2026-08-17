@@ -455,6 +455,84 @@ describe("tool argument parsing and validation", () => {
     expect(emitted).toEqual([{ id: "term:1", name: "run_in_terminal", args: terminalArgs }]);
   });
 
+  it("defaults missing grep isRegexp to false so the call is not rejected", () => {
+    const grepSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "grep_search",
+            inputSchema: {
+              type: "object",
+              properties: {
+                query: { type: "string" },
+                isRegexp: { type: "boolean" },
+              },
+              required: ["query", "isRegexp"],
+            },
+          },
+        ],
+      }),
+    ).get("grep_search");
+
+    const repaired = repairToolArguments(
+      "grep_search",
+      { query: "static fields" },
+      undefined,
+      grepSchema,
+    );
+
+    expect(repaired).toEqual({ query: "static fields", isRegexp: false });
+    expect(hasRequiredToolArguments(repaired, grepSchema)).toBe(true);
+  });
+
+  it("re-emits grep_search even when the same query already completed", () => {
+    const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+    const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
+    const grepArgs = { query: "static fields", isRegexp: false };
+    const aggregator = new ToolCallStreamAggregator({
+      options: makeChatOptions({
+        tools: [
+          {
+            name: "grep_search",
+            inputSchema: {
+              type: "object",
+              properties: {
+                query: { type: "string" },
+                isRegexp: { type: "boolean" },
+              },
+              required: ["query", "isRegexp"],
+            },
+          },
+        ],
+      }),
+      messages: [
+        {
+          role: 2,
+          content: [{ callId: "grep:0", name: "grep_search", input: grepArgs }],
+        } as never,
+        {
+          role: 1,
+          content: [{ callId: "grep:0", content: [{ value: "matches" }] }],
+        } as never,
+      ],
+      onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
+      onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
+    });
+
+    aggregator.handleToolCalls([
+      {
+        index: 0,
+        id: "grep:1",
+        type: "function",
+        function: { name: "grep_search", arguments: JSON.stringify(grepArgs) },
+      },
+    ]);
+    aggregator.flushRemaining();
+
+    expect(skipped).toEqual([]);
+    expect(emitted).toEqual([{ id: "grep:1", name: "grep_search", args: grepArgs }]);
+  });
+
   it("explains missing tool-call payloads and duplicates in fallback text", () => {
     expect(
       buildInvalidToolCallFallback([

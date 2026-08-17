@@ -307,7 +307,7 @@ describe("NimChatModelProvider", () => {
           };
         }
       };
-      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+      (streamChatCompletion as jest.Mock).mockImplementation(() => mockStream());
 
       const progress = { report: jest.fn() };
       const token = makeToken();
@@ -364,7 +364,7 @@ describe("NimChatModelProvider", () => {
           };
         }
       };
-      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+      (streamChatCompletion as jest.Mock).mockImplementation(() => mockStream());
 
       const progress = { report: jest.fn() };
       const token = makeToken();
@@ -394,14 +394,12 @@ describe("NimChatModelProvider", () => {
           typeof call[0] === "object" && call[0] !== null && "value" in (call[0] as object),
       );
 
-      const bodyWasTruncated = _fixtureName.includes("body-truncated");
-      expect(textReports).toHaveLength(bodyWasTruncated ? 2 : 1);
       expect(textReports[0][0]).toEqual(expect.objectContaining({ value: expectedText }));
-      if (bodyWasTruncated) {
-        expect(textReports[1][0]).toEqual(
-          expect.objectContaining({ value: expect.stringContaining("read_file") }),
-        );
-      }
+      expect(
+        textReports.some((call) =>
+          String((call[0] as { value?: string }).value).includes("was rejected"),
+        ),
+      ).toBe(false);
     },
   );
 
@@ -435,7 +433,7 @@ describe("NimChatModelProvider", () => {
           };
         }
       };
-      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+      (streamChatCompletion as jest.Mock).mockImplementation(() => mockStream());
 
       const progress = { report: jest.fn() };
       const token = makeToken();
@@ -495,7 +493,7 @@ describe("NimChatModelProvider", () => {
       _fixtureName: string,
       chunks: string[],
       expectedToolName: string,
-      expectedRequiredArgs: string[],
+      _expectedRequiredArgs: string[],
     ) => {
       (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
@@ -512,7 +510,7 @@ describe("NimChatModelProvider", () => {
           };
         }
       };
-      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+      (streamChatCompletion as jest.Mock).mockImplementation(() => mockStream());
 
       const progress = { report: jest.fn() };
       const token = makeToken();
@@ -558,24 +556,15 @@ describe("NimChatModelProvider", () => {
       );
 
       expect(toolCallReports).toHaveLength(0);
-      expect(textReports).toHaveLength(1);
-      expect(textReports[0][0]).toEqual(
-        expect.objectContaining({
-          value: expect.stringContaining(expectedToolName),
-        }),
-      );
-      for (const arg of expectedRequiredArgs) {
-        expect(textReports[0][0]).toEqual(
-          expect.objectContaining({
-            value: expect.stringContaining(arg),
-          }),
-        );
-      }
-      expect(textReports[0][0]).toEqual(
-        expect.not.objectContaining({
-          value: expect.stringContaining("<｜tool"),
-        }),
-      );
+      expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+      expect(
+        (streamChatCompletion as jest.Mock).mock.calls[1][1].messages.at(-1).content,
+      ).toContain(expectedToolName);
+      expect(
+        textReports.some((call) =>
+          String((call[0] as { value?: string }).value).includes("missing"),
+        ),
+      ).toBe(false);
     },
   );
 
@@ -590,7 +579,7 @@ describe("NimChatModelProvider", () => {
       _fixtureName: string,
       chunks: string[],
       expectedToolName: string,
-      expectedRequiredArgs: string[],
+      _expectedRequiredArgs: string[],
     ) => {
       (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
@@ -607,7 +596,7 @@ describe("NimChatModelProvider", () => {
           };
         }
       };
-      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+      (streamChatCompletion as jest.Mock).mockImplementation(() => mockStream());
 
       const progress = { report: jest.fn() };
       const token = makeToken();
@@ -649,24 +638,15 @@ describe("NimChatModelProvider", () => {
       );
 
       expect(toolCallReports).toHaveLength(0);
-      expect(textReports).toHaveLength(1);
-      expect(textReports[0][0]).toEqual(
-        expect.objectContaining({
-          value: expect.stringContaining(expectedToolName),
-        }),
-      );
-      for (const arg of expectedRequiredArgs) {
-        expect(textReports[0][0]).toEqual(
-          expect.objectContaining({
-            value: expect.stringContaining(arg),
-          }),
-        );
-      }
-      expect(textReports[0][0]).toEqual(
-        expect.not.objectContaining({
-          value: expect.stringContaining("<|tool_call"),
-        }),
-      );
+      expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+      expect(
+        (streamChatCompletion as jest.Mock).mock.calls[1][1].messages.at(-1).content,
+      ).toContain(expectedToolName);
+      expect(
+        textReports.some((call) =>
+          String((call[0] as { value?: string }).value).includes("missing"),
+        ),
+      ).toBe(false);
     },
   );
 
@@ -683,7 +663,7 @@ describe("NimChatModelProvider", () => {
       chunks: string[],
       expectedBefore: string,
       expectedToolName: string,
-      forbiddenMarker: string,
+      _forbiddenMarker: string,
     ) => {
       (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
@@ -700,7 +680,7 @@ describe("NimChatModelProvider", () => {
           };
         }
       };
-      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+      (streamChatCompletion as jest.Mock).mockImplementation(() => mockStream());
 
       const progress = { report: jest.fn() };
       const token = makeToken();
@@ -745,23 +725,17 @@ describe("NimChatModelProvider", () => {
       );
 
       expect(toolCallReports).toHaveLength(0);
-      expect(textReports).toHaveLength(2);
+      expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+      expect(textReports.length).toBeGreaterThanOrEqual(1);
       expect(textReports[0][0]).toEqual(expect.objectContaining({ value: expectedBefore }));
-      expect(textReports[1][0]).toEqual(
-        expect.objectContaining({
-          value: expect.stringContaining(expectedToolName),
-        }),
-      );
-      expect(textReports[1][0]).toEqual(
-        expect.objectContaining({
-          value: expect.stringContaining("invalid arguments"),
-        }),
-      );
-      expect(textReports[1][0]).toEqual(
-        expect.not.objectContaining({
-          value: expect.stringContaining(forbiddenMarker),
-        }),
-      );
+      expect(
+        textReports.some((call) =>
+          String((call[0] as { value?: string }).value).includes("invalid arguments"),
+        ),
+      ).toBe(false);
+      expect(
+        (streamChatCompletion as jest.Mock).mock.calls[1][1].messages.at(-1).content,
+      ).toContain(expectedToolName);
     },
   );
 
@@ -1042,7 +1016,7 @@ describe("NimChatModelProvider", () => {
       const mockStream = async function* () {
         yield { choices: [{ delta: { content: "done" } }] };
       };
-      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+      (streamChatCompletion as jest.Mock).mockImplementation(() => mockStream());
 
       const progress = { report: jest.fn() };
       const token = makeToken();

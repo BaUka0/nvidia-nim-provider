@@ -7,6 +7,7 @@ import {
   makeModel,
   makeSecrets,
   makeToken,
+  makeMessages,
   makeUserMessages,
 } from "../helpers/fakes";
 
@@ -401,7 +402,7 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({ city: "Tokyo" });
   });
 
-  it("surfaces a fallback when the tool-call retry still has no payload", async () => {
+  it("retries a missing tool payload without dumping the repair text into chat", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const emptyToolFinish = async function* () {
@@ -424,13 +425,134 @@ describe("NimChatModelProvider", () => {
       makeToken(),
     );
 
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(retryRequest.messages.at(-1)).toEqual(
+      expect.objectContaining({
+        role: "system",
+        content: expect.stringContaining("no tool function arguments"),
+      }),
+    );
     const textReports = progress.report.mock.calls
       .map((c: unknown[]) => c[0] as { value?: string })
       .filter(
         (part) =>
           typeof part.value === "string" && part.value.includes("did not include tool arguments"),
       );
-    expect(textReports.length).toBeGreaterThan(0);
+    expect(textReports).toEqual([]);
+  });
+
+  it("retries a duplicate read_file with the model instead of showing it in chat", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const duplicateRead = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "read_file:1",
+                  type: "function",
+                  function: {
+                    name: "read_file",
+                    arguments: '{"filePath":"/tmp/example.md","startLine":158,"endLine":158}',
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      };
+    };
+    const repairedRead = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "read_file:2",
+                  type: "function",
+                  function: {
+                    name: "read_file",
+                    arguments: '{"filePath":"/tmp/types.ts","startLine":1,"endLine":40}',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => duplicateRead())
+      .mockImplementationOnce(() => repairedRead());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeMessages(
+        {
+          role: 2,
+          content: [
+            new vscode.LanguageModelToolCallPart("read_file:0", "read_file", {
+              filePath: "/tmp/example.md",
+              startLine: 158,
+              endLine: 158,
+            }),
+          ],
+        },
+        {
+          role: 1,
+          content: [
+            new vscode.LanguageModelToolResultPart("read_file:0", [
+              new vscode.LanguageModelTextPart("already read"),
+            ]),
+          ],
+        },
+      ),
+      makeChatOptions({
+        modelOptions: {},
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file from disk",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "number" },
+                endLine: { type: "number" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(retryRequest.messages.at(-1).content).toContain("already completed");
+    const visibleRepair = progress.report.mock.calls.filter((c: unknown[]) =>
+      String((c[0] as { value?: string }).value ?? "").includes("was not repeated"),
+    );
+    expect(visibleRepair).toEqual([]);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    expect(toolCallReports).toHaveLength(1);
+    expect(toolCallReports[0][0].input).toEqual({
+      filePath: "/tmp/types.ts",
+      startLine: 1,
+      endLine: 40,
+    });
   });
 
   it("assembles tool call arguments split across chunks", async () => {
@@ -591,12 +713,14 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
+    expect((streamChatCompletion as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect((streamChatCompletion as jest.Mock).mock.calls[1][1].messages.at(-1).content).toContain(
+      "read_file",
+    );
     const textReports = progress.report.mock.calls.filter(
       (c: unknown[]) => (c[0] as { value?: string })?.value,
     );
-    expect(textReports).toHaveLength(1);
-    expect(textReports[0][0].value).toContain("filePath");
-    expect(textReports[0][0].value).toContain("read_file");
+    expect(textReports.every((c) => !String(c[0].value).includes("was rejected"))).toBe(true);
   });
 
   it("retries once when the model emits an invalid required-argument tool call", async () => {
@@ -920,12 +1044,10 @@ describe("NimChatModelProvider", () => {
     );
 
     expect(toolCallReports).toHaveLength(0);
-    expect(textReports).toHaveLength(1);
-    expect(textReports[0][0].value).toContain("read_file");
-    expect(textReports[0][0].value).toContain("filePath");
-    expect(textReports[0][0].value).toContain("startLine");
-    expect(textReports[0][0].value).toContain("endLine");
-    expect(textReports[0][0].value).not.toContain("list_dir with invalid arguments");
+    expect(textReports.every((c) => !String(c[0].value).includes("was rejected"))).toBe(true);
+    expect((streamChatCompletion as jest.Mock).mock.calls[1][1].messages.at(-1).content).toContain(
+      "read_file",
+    );
   });
 
   it("returns a text fallback when invalid tool calls are preceded by whitespace content", async () => {
@@ -979,9 +1101,8 @@ describe("NimChatModelProvider", () => {
     const textReports = progress.report.mock.calls.filter(
       (c: unknown[]) => (c[0] as { value?: string })?.value,
     );
-    expect(textReports).toHaveLength(2);
+    expect(textReports).toHaveLength(1);
     expect(textReports[0][0].value).toBe(" ");
-    expect(textReports[1][0].value).toContain("filePath");
-    expect(textReports[1][0].value).toContain("read_file");
+    expect((streamChatCompletion as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 });

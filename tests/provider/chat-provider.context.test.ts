@@ -433,7 +433,8 @@ describe("NimChatModelProvider", () => {
     const fallbackReports = progress.report.mock.calls.filter((c) =>
       String((c[0] as { value?: string }).value ?? "").includes("missing"),
     );
-    expect(fallbackReports.length).toBeGreaterThan(0);
+    expect(fallbackReports).toEqual([]);
+    expect((streamChatCompletion as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it("repairs list_dir with the current working directory from chat context", async () => {

@@ -501,7 +501,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           }),
         };
       };
-      let deferredInvalidToolFallbackText: string | undefined;
       let retryReason: "invalid_tool_call" | undefined;
       const retryReasonHistory: string[] = [];
       let totalAttempts = 0;
@@ -872,22 +871,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           flushPendingText();
         }
 
-        const fallbackText = sawToolCall
-          ? buildInvalidToolCallFallback(skippedToolCalls)
-          : undefined;
         const retryMessage = sawToolCall
           ? buildInvalidToolCallRetryMessage(skippedToolCalls)
           : undefined;
-        const hasOnlyDuplicateSkips =
-          skippedToolCalls.length > 0 &&
-          skippedToolCalls.every((toolCall) => toolCall.reason === "duplicate");
         const willRetryAfterInvalidToolCall =
-          sawToolCall &&
-          !emittedToolCall &&
-          attempt === 0 &&
-          !hasOnlyDuplicateSkips &&
-          Boolean(fallbackText && retryMessage) &&
-          (lastFinishReason === "tool_calls" || !reportedContent);
+          sawToolCall && !emittedToolCall && attempt === 0 && Boolean(retryMessage);
         const willRetryEmptyStream =
           !sawReasoning &&
           !sawToolCall &&
@@ -965,31 +953,21 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           debugLog("stream usage", lastUsage);
         }
 
-        if (sawToolCall && !emittedToolCall) {
-          if (willRetryAfterInvalidToolCall && retryMessage) {
-            deferredInvalidToolFallbackText = fallbackText;
-            retryReason = "invalid_tool_call";
-            retryReasonHistory.push("invalid_tool_call");
-            activeRequestBody = {
-              ...activeRequestBody!,
-              messages: [
-                ...activeRequestBody!.messages,
-                {
-                  role: "system",
-                  content: retryMessage,
-                },
-              ],
-            };
-            recalculateActiveRequestBudget();
-            continue;
-          }
-          if (fallbackText) {
-            reportPart(new vscode.LanguageModelTextPart(fallbackText));
-          }
-        }
-
-        if (reportedContent || emittedToolCall) {
-          deferredInvalidToolFallbackText = undefined;
+        if (sawToolCall && !emittedToolCall && willRetryAfterInvalidToolCall && retryMessage) {
+          retryReason = "invalid_tool_call";
+          retryReasonHistory.push("invalid_tool_call");
+          activeRequestBody = {
+            ...activeRequestBody!,
+            messages: [
+              ...activeRequestBody!.messages,
+              {
+                role: "system",
+                content: retryMessage,
+              },
+            ],
+          };
+          recalculateActiveRequestBudget();
+          continue;
         }
 
         debugLog("stream finished", {
@@ -1020,12 +998,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         break;
       }
 
-      if (deferredInvalidToolFallbackText) {
-        progress.report(new vscode.LanguageModelTextPart(deferredInvalidToolFallbackText));
-        hasReportedVisibleContent = true;
-      }
-
-      if (!hasReportedVisibleContent && !sawToolCallOverall && !deferredInvalidToolFallbackText) {
+      if (!hasReportedVisibleContent && !sawToolCallOverall) {
         throw createStructuredError(
           "empty_stream",
           [

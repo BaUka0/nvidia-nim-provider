@@ -118,7 +118,10 @@ export function isDuplicateSuppressionEnabled(toolName: string): boolean {
     normalized.includes("delete") ||
     normalized.includes("patch") ||
     normalized.includes("replace") ||
-    normalized.includes("apply")
+    normalized.includes("apply") ||
+    normalized.includes("grep") ||
+    normalized.includes("search") ||
+    normalized.includes("find")
   ) {
     return false;
   }
@@ -1024,6 +1027,35 @@ export function extractChatRequestContext(
     : undefined;
 }
 
+const AUXILIARY_BOOLEAN_FIELDS = new Set(["isregexp", "isregex", "casesensitive", "recursive"]);
+
+function fillMissingAuxiliaryBooleans(
+  repaired: Record<string, unknown>,
+  schema: ToolSchema | undefined,
+): void {
+  if (!schema?.required) {
+    return;
+  }
+
+  for (const key of schema.required) {
+    const current = repaired[key];
+    if (current !== undefined && current !== null) {
+      continue;
+    }
+
+    const property = schema.properties?.[key];
+    if (property?.type !== "boolean") {
+      continue;
+    }
+    if (!AUXILIARY_BOOLEAN_FIELDS.has(key.toLowerCase())) {
+      continue;
+    }
+
+    const enumValues = property.enum?.filter((item): item is boolean => typeof item === "boolean");
+    repaired[key] = enumValues && enumValues.length > 0 ? enumValues[0] : false;
+  }
+}
+
 export function repairToolArguments(
   toolName: string,
   args: unknown,
@@ -1151,6 +1183,8 @@ export function repairToolArguments(
       repaired.mode = schema?.enumValues?.mode?.[0] ?? "sync";
     }
   }
+
+  fillMissingAuxiliaryBooleans(repaired, schema);
 
   const context = requestContext;
   if (!context) {
