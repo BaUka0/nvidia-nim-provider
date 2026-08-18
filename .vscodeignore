@@ -16,7 +16,6 @@ docs/**
 scripts/**
 src/**
 tests/**
-images/icon.svg
 eslint.config.mjs
 jest.config.js
 tsconfig.json

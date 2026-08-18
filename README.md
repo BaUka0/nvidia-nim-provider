@@ -9,9 +9,11 @@
 
 **Direct, zero-markup access to NVIDIA NIM's premier open & proprietary reasoning models right inside GitHub Copilot Chat.**
 
-[Key Features](#-key-features) • [Supported Models](#-supported-models) • [Quick Start](#-quick-start) • [Commands](#-extension-commands)
+[Key Features](#-key-features) • [Supported Models](#-supported-models) • [Quick Start](#-quick-start) • [FAQ](#-frequently-asked-questions) • [Commands](#-extension-commands)
 
 </div>
+
+> **Free Access:** NVIDIA provides free developer API at [build.nvidia.com](https://build.nvidia.com/models). You can use DeepSeek V4, Nemotron, and Kimi directly inside Copilot without any monthly provider subscriptions.
 
 ---
 
@@ -105,6 +107,17 @@ Access these commands anytime from the VS Code Command Palette (`Ctrl + Shift + 
 
 ---
 
+## ❓ Frequently Asked Questions
+
+**Q: Do I need a paid NVIDIA subscription?**  
+A: No. NVIDIA provides free API on [build.nvidia.com](https://build.nvidia.com/models) for developers.
+
+**Q: Does it work with Copilot Agent Mode and Tools?**  
+A: Yes! Supported chat models are tool-capable and support autonomous file editing, terminal execution, and MCP tools with automatic JSON repair.
+
+---
+
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
+
