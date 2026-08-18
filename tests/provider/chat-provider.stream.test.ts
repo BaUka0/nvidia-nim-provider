@@ -1918,8 +1918,150 @@ describe("NimChatModelProvider", () => {
       expect(progress.report).toHaveBeenCalledWith(
         expect.objectContaining({ value: "Fallback response" }),
       );
+      expect(progress.report).toHaveBeenCalledWith(
+        expect.objectContaining({
+          value: expect.stringContaining("⚡ **NVIDIA NIM Fallback:**"),
+        }),
+      );
     },
   );
+
+  it("falls back to a custom configured fallback model when set", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const customGlobalState = makeMemento((key) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "moonshotai/kimi-k2.6",
+              displayName: "Kimi k2.6",
+              contextWindow: 262144,
+              maxOutputTokens: 262144,
+              supportsTools: true,
+              supportsVision: true,
+            },
+            {
+              id: "deepseek-ai/deepseek-v4-flash-0731",
+              displayName: "DeepSeek V4 Flash 0731",
+              contextWindow: 128000,
+              maxOutputTokens: 8192,
+              supportsTools: true,
+              supportsVision: false,
+            },
+          ]
+        : key === MODELS_CACHE_VERSION_STATE_KEY
+          ? MODELS_CACHE_VERSION
+          : key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY
+            ? getApiKeyFingerprint("test-key")
+            : undefined,
+    );
+    const customProvider = new NimChatModelProvider(secrets, "test-ua", customGlobalState);
+
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.model") return "deepseek-ai/deepseek-v4-flash-0731";
+        if (key === "fallback.enabled") return true;
+        if (key === "fallback.onRateLimit") return true;
+        if (key === "fallback.showNoticeInChat") return true;
+        return defaultValue;
+      }),
+    }));
+
+    const rateLimitError = new NvidiaApiError("rate_limited", "[RATE_LIMITED] Rate limited.", {
+      status: 429,
+    });
+    const capacityStream = async function* () {
+      throw rateLimitError;
+    };
+    const fallbackStream = async function* () {
+      yield { choices: [{ delta: { content: "DeepSeek fallback answer" } }] };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => capacityStream())
+      .mockImplementationOnce(() => fallbackStream());
+
+    const progress = { report: jest.fn() };
+    const token = makeToken();
+
+    await customProvider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "moonshotai/kimi-k2.6",
+        name: "Kimi k2.6",
+        maxInputTokens: 200000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      token,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(fallbackRequest.model).toBe("deepseek-ai/deepseek-v4-flash-0731");
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: expect.stringContaining("DeepSeek V4 Flash 0731"),
+      }),
+    );
+  });
+
+  it("does not fallback when fallback.enabled is set to false", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const customGlobalState = makeMemento((key) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "moonshotai/kimi-k2.6",
+              displayName: "Kimi k2.6",
+              contextWindow: 262144,
+              maxOutputTokens: 262144,
+              supportsTools: true,
+              supportsVision: true,
+            },
+          ]
+        : key === MODELS_CACHE_VERSION_STATE_KEY
+          ? MODELS_CACHE_VERSION
+          : key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY
+            ? getApiKeyFingerprint("test-key")
+            : undefined,
+    );
+    const customProvider = new NimChatModelProvider(secrets, "test-ua", customGlobalState);
+
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.enabled") return false;
+        return defaultValue;
+      }),
+    }));
+
+    const rateLimitError = new NvidiaApiError("rate_limited", "[RATE_LIMITED] Rate limited.", {
+      status: 429,
+    });
+    const capacityStream = async function* () {
+      throw rateLimitError;
+    };
+    (streamChatCompletion as jest.Mock).mockImplementation(() => capacityStream());
+
+    const progress = { report: jest.fn() };
+    const token = makeToken();
+
+    await expect(
+      customProvider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "moonshotai/kimi-k2.6",
+          name: "Kimi k2.6",
+          maxInputTokens: 200000,
+          maxOutputTokens: 65536,
+        }),
+        makeUserMessages("Hi"),
+        makeChatOptions(),
+        progress,
+        token,
+      ),
+    ).rejects.toThrow("[RATE_LIMITED]");
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+  });
 
   it.each([
     ["deepseek-ai/deepseek-v4-flash-0731", false],

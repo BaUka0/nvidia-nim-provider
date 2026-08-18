@@ -96,11 +96,13 @@ export const FALLBACK_MODEL_ID = "nvidia/nemotron-3.5-lightning-30b-a3b";
 export function getFallbackModel(
   currentModelId: string,
   availableModels: NormalizedNvidiaModel[],
+  configuredFallbackModelId?: string,
 ): NormalizedNvidiaModel | undefined {
-  if (currentModelId === FALLBACK_MODEL_ID) {
+  const targetId = configuredFallbackModelId?.trim() || FALLBACK_MODEL_ID;
+  if (currentModelId === targetId) {
     return undefined;
   }
-  return availableModels.find((m) => m.id === FALLBACK_MODEL_ID);
+  return availableModels.find((m) => m.id === targetId);
 }
 
 export function normalizeNvidiaModels(models: NvidiaModelSummary[]): NormalizedNvidiaModel[] {

@@ -8,6 +8,8 @@ export type ApiErrorKind =
   | "timeout"
   | "network_error"
   | "context_overflow"
+  | "token_limit"
+  | "empty_stream"
   | "invalid_request"
   | "unknown";
 
