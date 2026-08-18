@@ -59,7 +59,7 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 
 | Model | Context Window | Reasoning Modes | Tool Calling | Vision | Best For |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **DeepSeek V4 Flash 0731** | 128K / 1.1M | `None`, `High`, `Max` | ✅ Yes | ❌ | Deep algorithm design, code architecture, complex refactoring |
+| **DeepSeek V4 Flash 0731** | 1.1M | `None`, `High`, `Max` | ✅ Yes | ❌ | Deep algorithm design, code architecture, complex refactoring |
 | **Kimi K2.6** | 262K | `None`, `On` | ✅ Yes | ✅ Yes | Long-context repository comprehension, multimodal review |
 | **Nemotron 3.5 Lightning 30B** | 1M | `None`, `Medium`, `High`, `XHigh` | ✅ Yes | ❌ | Ultra-fast responses, agentic tool workflows, summarization |
 | **Nemotron 3 Ultra 550B** | 1M | `None`, `Medium`, `High` | ✅ Yes | ❌ | Heavy multi-step reasoning, deep technical documentation |
