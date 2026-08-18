@@ -10,6 +10,8 @@
 .venv/**
 task.md
 FIX_PLAN.md
+*PLAN.md
+EXTENSION_SETTINGS_PLAN.md
 release-notes-*.md
 __mocks__/**
 docs/**
@@ -25,6 +27,8 @@ tsconfig.json
 node_modules/**
 *.vsix
 *.mp4
+**/*.mp4
+images/*.mp4
 .gitignore
 package-lock.json
 out/**/*.map

@@ -1,6 +1,6 @@
 # Change Log
 
-## [Unreleased]
+## [0.6.0] - 2026-08-18
 
 ### Added
 
@@ -14,6 +14,10 @@
 - **Clean Build Pipeline (`scripts/clean.mjs`).** Added zero-dependency cross-platform clean script and `"precompile"` hook in `package.json` to ensure `out/` is wiped before compilation, guaranteeing lean and artifact-free VSIX builds.
 - **SEO & Marketplace Discoverability.** Expanded `package.json` keywords to target `deepseek-v4`, `nemotron`, `reasoning`, `thinking`, `agentic`, and `copilot-agent`.
 - **Configuration Unit Test Suite (`tests/config.test.ts`, `tests/api.test.ts`, `tests/summarizer.test.ts`, `tests/provider/chat-provider.stream.test.ts`, `tests/provider/request-builder.test.ts`, `tests/tools-parser.test.ts`, `tests/status-bar.test.ts`).** Comprehensive tests covering defaults, boundary clamping, legacy fallback mappings, first-token timeout cancellation, dedicated summarization models, advanced failover triggers, generation hyperparameters, tool execution flags, and UI status bar visibility.
+
+### Changed
+
+- **Marketplace listing.** `displayName` is **NVIDIA NIM Agent**. `homepage` points at the Marketplace item, `bugs` at GitHub Issues. README now leads with an Install CTA and a native-reasoning demo GIF.
 
 ### Removed
 

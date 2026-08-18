@@ -2,14 +2,14 @@
 
 <div align="center">
 
-[![VS Code](https://img.shields.io/badge/VS_Code-1.125.0+-007ACC?style=flat&logo=visual-studio-code&logoColor=white)](https://code.visualstudio.com/)
-[![Version](https://img.shields.io/badge/Version-v0.6.0-76B900?style=flat&logo=nvidia&logoColor=white)](https://build.nvidia.com/models)
+[![Install](https://img.shields.io/badge/Install-Marketplace-007ACC?style=flat&logo=visual-studio-code&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
+[![Version](https://img.shields.io/badge/Version-v0.6.0-76B900?style=flat&logo=nvidia&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
 [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-Chat_Native-181717?style=flat&logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Direct, zero-markup access to NVIDIA NIM's premier open & proprietary reasoning models right inside GitHub Copilot Chat.**
 
-[Key Features](#-key-features) • [Supported Models](#-supported-models) • [Quick Start](#-quick-start) • [FAQ](#-frequently-asked-questions) • [Commands](#-extension-commands)
+[Install](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent) • [Key Features](#-key-features) • [Supported Models](#-supported-models) • [Quick Start](#-quick-start) • [FAQ](#-frequently-asked-questions) • [Commands](#-extension-commands)
 
 <br/>
 
@@ -73,19 +73,23 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 
 ## ⚡ Quick Start
 
-### 1. Requirements
+### 1. Install
+- [Install from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent), or
+- Quick Open (`Ctrl + P` / `Cmd + P`): `ext install neuraldock.nvidia-nim-agent`
+
+### 2. Requirements
 - **VS Code 1.125.0** or later
 - **GitHub Copilot** extension installed and active
 - **NVIDIA NIM API Key** (Get free credits at [build.nvidia.com](https://build.nvidia.com/models))
 
-### 2. Configure Your API Key
+### 3. Configure Your API Key
 1. Open Copilot Chat (`Ctrl + Alt + I` / `Cmd + Alt + I`).
 2. Click the model selector dropdown $\rightarrow$ **Manage Models** $\rightarrow$ **NVIDIA NIM**.
 3. Paste your NVIDIA NIM API key (`nvapi-...`).
 
 *(Alternatively, run `NVIDIA NIM: Manage NVIDIA NIM API Key` from the Command Palette).*
 
-### 3. Start Chatting & Coding
+### 4. Start Chatting & Coding
 Select any NVIDIA NIM model in Copilot Chat or Copilot Agent Mode and start building!
 
 ---

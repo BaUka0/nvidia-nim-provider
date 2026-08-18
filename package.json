@@ -1,10 +1,14 @@
 {
   "name": "nvidia-nim-agent",
   "publisher": "neuraldock",
-  "displayName": "Nvidia NIM agent",
+  "displayName": "NVIDIA NIM Agent",
   "description": "Use NVIDIA NIM reasoning models in GitHub Copilot Chat for VS Code",
   "version": "0.6.0",
   "license": "MIT",
+  "homepage": "https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent",
+  "bugs": {
+    "url": "https://github.com/BaUka0/nvidia-nim-provider/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/BaUka0/nvidia-nim-provider"
@@ -345,7 +349,7 @@
     "probe:context:262k": "node scripts/probe-context-262k.mjs",
     "probe:context:500k": "node scripts/probe-context-500k.mjs",
     "probe:context:1048k": "node scripts/probe-context-1048k.mjs",
-    "package:vsix": "npm run compile && vsce package --no-dependencies --allow-missing-repository"
+    "package:vsix": "npm run compile && vsce package --no-dependencies"
   },
   "devDependencies": {
     "@types/jest": "^29.0.0",
