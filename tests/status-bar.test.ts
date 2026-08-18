@@ -1,19 +1,28 @@
 const mockShowInformationMessage = jest.fn();
+const mockHide = jest.fn();
+const mockShow = jest.fn();
 const mockCreateStatusBarItem = jest.fn(() => ({
   text: "",
   tooltip: "",
   command: "",
   color: undefined,
   backgroundColor: undefined,
-  show: jest.fn(),
+  show: mockShow,
+  hide: mockHide,
   dispose: jest.fn(),
 }));
 const mockExecuteCommand = jest.fn();
+const mockGetConfig = jest.fn((_key: string, defaultValue: unknown) => defaultValue);
 
 jest.mock("vscode", () => ({
   window: {
     showInformationMessage: mockShowInformationMessage,
     createStatusBarItem: mockCreateStatusBarItem,
+  },
+  workspace: {
+    getConfiguration: jest.fn(() => ({
+      get: mockGetConfig,
+    })),
   },
   StatusBarAlignment: { Left: 1, Right: 2 },
   commands: { executeCommand: mockExecuteCommand },
@@ -86,6 +95,19 @@ describe("StatusBarManager", () => {
     const item = mockCreateStatusBarItem.mock.results[0].value;
     manager.dispose();
     expect(item.dispose).toHaveBeenCalled();
+  });
+
+  it("hides the status bar item when ui.showStatusBarItem is false", async () => {
+    mockGetConfig.mockImplementation((key: string, defaultValue: unknown) => {
+      if (key === "ui.showStatusBarItem") return false;
+      return defaultValue;
+    });
+
+    const { StatusBarManager } = await import("../src/shared/status-bar");
+    const manager = new StatusBarManager();
+    const item = mockCreateStatusBarItem.mock.results[0].value;
+    manager.showOk(5);
+    expect(item.hide).toHaveBeenCalled();
   });
 
   describe("showTokenBreakdown", () => {

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { ConfigManager } from "./config";
 import { DEBUG_ENV_VAR, PROVIDER_DISPLAY_NAME } from "./constants";
 
 const OUTPUT_CHANNEL_NAME = PROVIDER_DISPLAY_NAME;
@@ -31,7 +32,7 @@ export function getOutputChannel(): vscode.OutputChannel {
 }
 
 export function debugEnabled(): boolean {
-  return process.env[DEBUG_ENV_VAR] === "1";
+  return process.env[DEBUG_ENV_VAR] === "1" || ConfigManager.getDeveloperConfig().debugLogging;
 }
 
 /** Serialize a log payload without ever throwing on circular structures. */

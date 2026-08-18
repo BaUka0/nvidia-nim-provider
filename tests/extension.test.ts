@@ -81,6 +81,13 @@ jest.mock("vscode", () => ({
     Left: 1,
     Right: 2,
   },
+  workspace: {
+    getConfiguration: jest.fn(() => ({
+      get: jest.fn((_key: string, defaultValue: unknown) => defaultValue),
+      update: jest.fn(),
+    })),
+    onDidChangeConfiguration: jest.fn(() => ({ dispose: jest.fn() })),
+  },
 }));
 
 const flushAsyncWork = async (): Promise<void> => {

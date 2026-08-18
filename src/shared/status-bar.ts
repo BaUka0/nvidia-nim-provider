@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { ConfigManager } from "./config";
 import {
   PROVIDER_DISPLAY_NAME,
   REFRESH_MODELS_COMMAND_ID,
@@ -40,13 +41,25 @@ export class StatusBarManager {
     this.item.tooltip = `Click to refresh ${PROVIDER_DISPLAY_NAME} models`;
   }
 
+  private refreshVisibility(): void {
+    if (!ConfigManager.getUiConfig().showStatusBarItem) {
+      this.item.hide();
+    } else {
+      this.item.show();
+    }
+  }
+
+  public updateVisibility(): void {
+    this.refreshVisibility();
+  }
+
   showOk(modelCount: number): void {
     this.item.text = `$(zap) ${PROVIDER_DISPLAY_NAME}: ${modelCount} models`;
     this.item.command = REFRESH_MODELS_COMMAND_ID;
     this.item.tooltip = `Click to refresh ${PROVIDER_DISPLAY_NAME} models`;
     this.item.color = undefined;
     this.item.backgroundColor = undefined;
-    this.item.show();
+    this.refreshVisibility();
   }
 
   showRefreshing(): void {
@@ -55,7 +68,7 @@ export class StatusBarManager {
     this.item.tooltip = `Refreshing ${PROVIDER_DISPLAY_NAME} models...`;
     this.item.color = undefined;
     this.item.backgroundColor = undefined;
-    this.item.show();
+    this.refreshVisibility();
   }
 
   showError(message: string): void {
@@ -64,7 +77,7 @@ export class StatusBarManager {
     this.item.tooltip = `${PROVIDER_DISPLAY_NAME} Error: ${message}`;
     this.item.color = undefined;
     this.item.backgroundColor = undefined;
-    this.item.show();
+    this.refreshVisibility();
   }
 
   showTokenBreakdown(breakdown: TokenBreakdown): void {
@@ -146,7 +159,7 @@ export class StatusBarManager {
       this.item.backgroundColor = undefined;
     }
     this.item.color = undefined;
-    this.item.show();
+    this.refreshVisibility();
   }
 
   dispose(): void {

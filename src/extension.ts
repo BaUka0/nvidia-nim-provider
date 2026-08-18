@@ -189,6 +189,14 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("nvidia-nim.ui.showStatusBarItem")) {
+        statusBar.updateVisibility();
+      }
+    }),
+  );
+
   const registration = vscode.lm.registerLanguageModelChatProvider(PROVIDER_VENDOR, provider);
   context.subscriptions.push(registration);
 
