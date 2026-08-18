@@ -698,4 +698,86 @@ describe("streamChatCompletion", () => {
       jest.useRealTimers();
     }
   });
+
+  it("cancels the reader when firstTokenTimeoutMs expires before the first chunk", async () => {
+    jest.useFakeTimers();
+
+    try {
+      const cancel = jest.fn().mockResolvedValue(undefined);
+      const reader = {
+        read: jest.fn(() => new Promise(() => undefined)),
+        cancel,
+        releaseLock: jest.fn(),
+      };
+
+      global.fetch = jest.fn().mockResolvedValue(
+        makeFetchResponse({
+          ok: true,
+          body: {
+            getReader: () => reader,
+          },
+        }),
+      );
+
+      const gen = streamChatCompletion(
+        "key",
+        { model: "kimi-k2.6", messages: [], stream: true },
+        undefined,
+        undefined,
+        { firstTokenTimeoutMs: 15000, idleTimeoutMs: 60000 },
+      );
+      const nextPromise = gen.next();
+      const rejection = expect(nextPromise).rejects.toThrow(
+        "NVIDIA NIM first token timeout: no response received for 15s",
+      );
+
+      await jest.advanceTimersByTimeAsync(15000);
+
+      await rejection;
+      expect(cancel).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("respects custom idleTimeoutMs for streaming chunks", async () => {
+    jest.useFakeTimers();
+
+    try {
+      const cancel = jest.fn().mockResolvedValue(undefined);
+      const reader = {
+        read: jest.fn(() => new Promise(() => undefined)),
+        cancel,
+        releaseLock: jest.fn(),
+      };
+
+      global.fetch = jest.fn().mockResolvedValue(
+        makeFetchResponse({
+          ok: true,
+          body: {
+            getReader: () => reader,
+          },
+        }),
+      );
+
+      const gen = streamChatCompletion(
+        "key",
+        { model: "kimi-k2.6", messages: [], stream: true },
+        undefined,
+        undefined,
+        { idleTimeoutMs: 30000 },
+      );
+      const nextPromise = gen.next();
+      const rejection = expect(nextPromise).rejects.toThrow(
+        "NVIDIA NIM streaming timeout: no data received for 30s",
+      );
+
+      await jest.advanceTimersByTimeAsync(30000);
+
+      await rejection;
+      expect(cancel).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

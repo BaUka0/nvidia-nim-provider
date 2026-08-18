@@ -1,10 +1,10 @@
+import { ConfigManager } from "../shared/config";
 import {
   BASE_RETRY_DELAY_MS,
   BASE_URL,
   MAX_RETRY_DELAY_MS,
   STREAM_IDLE_TIMEOUT_MAX_MS,
   STREAM_IDLE_TIMEOUT_MIN_MS,
-  STREAM_IDLE_TIMEOUT_MS,
 } from "../shared/constants";
 import { debugLog } from "../shared/logging";
 import {
@@ -149,16 +149,17 @@ async function classifyResponseError(
 export async function fetchWithRetry(
   url: string,
   init: RequestInit,
-  retries = 3,
+  retries?: number,
   errorContext: { operation?: string; model?: string } = {},
 ): Promise<Response> {
+  const maxRetries = retries ?? ConfigManager.getNetworkConfig().maxHttpRetries;
   let lastError: Error | undefined;
   const signal = init.signal ?? undefined;
   const classificationContext = {
     operation: errorContext.operation ?? "request",
     ...(errorContext.model ? { model: errorContext.model } : {}),
   };
-  for (let i = 0; i < retries; i++) {
+  for (let i = 0; i < maxRetries; i++) {
     throwIfAborted(signal);
     try {
       const response = await fetch(url, init);
@@ -167,7 +168,7 @@ export async function fetchWithRetry(
       }
       lastError = new Error(`HTTP ${response.status} ${response.statusText}`);
       await discardResponseBody(response);
-      if (i < retries - 1) {
+      if (i < maxRetries - 1) {
         const retryAfter = getRetryAfterMs(response);
         const delay = calculateRetryDelay(i, retryAfter);
         debugLog(
@@ -186,7 +187,7 @@ export async function fetchWithRetry(
       if (lastError instanceof NvidiaApiError) {
         throw lastError;
       }
-      if (i < retries - 1) {
+      if (i < maxRetries - 1) {
         const delay = calculateRetryDelay(i);
         debugLog(
           "fetchWithRetry",
@@ -229,6 +230,7 @@ export async function fetchModelsOrThrow(
   apiKey: string,
   signal?: AbortSignal,
   userAgent?: string,
+  retries?: number,
 ): Promise<NvidiaModelSummary[]> {
   const response = await fetchWithRetry(
     `${BASE_URL}/models`,
@@ -241,7 +243,7 @@ export async function fetchModelsOrThrow(
       },
       signal,
     },
-    3,
+    retries ?? ConfigManager.getNetworkConfig().maxHttpRetries,
     { operation: "models" },
   );
   if (!response.ok) {
@@ -264,6 +266,7 @@ export async function chatCompletion(
   requestBody: NimChatRequest,
   signal?: AbortSignal,
   userAgent?: string,
+  retries?: number,
 ): Promise<string> {
   const response = await fetchWithRetry(
     `${BASE_URL}/chat/completions`,
@@ -277,7 +280,7 @@ export async function chatCompletion(
       body: JSON.stringify({ ...requestBody, stream: false }),
       signal,
     },
-    3,
+    retries ?? ConfigManager.getNetworkConfig().maxHttpRetries,
     { operation: "completion", model: requestBody.model },
   );
 
@@ -298,13 +301,22 @@ export async function chatCompletion(
   }
 }
 
+export interface StreamChatCompletionOptions {
+  maxOutputTokens?: number;
+  maxFetchAttempts?: number;
+  idleTimeoutMs?: number;
+  firstTokenTimeoutMs?: number;
+}
+
 export async function* streamChatCompletion(
   apiKey: string,
   requestBody: NimChatRequest,
   signal?: AbortSignal,
   userAgent?: string,
-  options?: { maxOutputTokens?: number; maxFetchAttempts?: number },
+  options?: StreamChatCompletionOptions,
 ): AsyncGenerator<NimStreamResponse, void, unknown> {
+  const fetchAttempts =
+    options?.maxFetchAttempts ?? ConfigManager.getNetworkConfig().maxHttpRetries;
   const response = await fetchWithRetry(
     `${BASE_URL}/chat/completions`,
     {
@@ -317,7 +329,7 @@ export async function* streamChatCompletion(
       body: JSON.stringify(requestBody),
       signal,
     },
-    Math.max(1, options?.maxFetchAttempts ?? 3),
+    Math.max(1, fetchAttempts),
     { operation: "stream", model: requestBody.model },
   );
 
@@ -338,13 +350,18 @@ export async function* streamChatCompletion(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
 
+  const configuredIdleTimeoutMs =
+    options?.idleTimeoutMs ?? ConfigManager.getNetworkConfig().streamIdleTimeout * 1000;
+
   const idleTimeoutMs = options?.maxOutputTokens
     ? Math.min(
         STREAM_IDLE_TIMEOUT_MAX_MS,
         Math.max(STREAM_IDLE_TIMEOUT_MIN_MS, Math.round(options.maxOutputTokens / 10) * 1000),
       )
-    : STREAM_IDLE_TIMEOUT_MS;
+    : configuredIdleTimeoutMs;
 
+  const firstTokenTimeoutMs = options?.firstTokenTimeoutMs;
+  let isFirstChunk = true;
   let buffer = "";
   let lastChunkTime = Date.now();
 
@@ -352,6 +369,11 @@ export async function* streamChatCompletion(
     if (signal?.aborted) {
       return Promise.reject(createAbortError());
     }
+
+    const currentTimeoutMs =
+      isFirstChunk && typeof firstTokenTimeoutMs === "number" && firstTokenTimeoutMs > 0
+        ? Math.min(idleTimeoutMs, firstTokenTimeoutMs)
+        : idleTimeoutMs;
 
     return new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve, reject) => {
       let settled = false;
@@ -381,11 +403,20 @@ export async function* streamChatCompletion(
 
       const timeoutId = setTimeout(() => {
         const idleSec = Math.round((Date.now() - lastChunkTime) / 1000);
-        const err = new Error(`Stream idle timeout: no data for ${idleSec}s`);
+        const isFirstTokenTimeout =
+          isFirstChunk &&
+          typeof firstTokenTimeoutMs === "number" &&
+          firstTokenTimeoutMs > 0 &&
+          currentTimeoutMs === firstTokenTimeoutMs;
+        const err = new Error(
+          isFirstTokenTimeout
+            ? `NVIDIA NIM first token timeout: no response received for ${idleSec}s`
+            : `Stream idle timeout: no data for ${idleSec}s`,
+        );
         err.name = "TimeoutError";
         void reader.cancel(err).catch(() => undefined);
         rejectOnce(err);
-      }, idleTimeoutMs);
+      }, currentTimeoutMs);
 
       signal?.addEventListener("abort", onAbort, { once: true });
       // Close the same check/subscribe race as waitForRetry(): an abort that
@@ -412,6 +443,7 @@ export async function* streamChatCompletion(
       const { done, value } = await readWithTimeout();
       if (done) break;
 
+      isFirstChunk = false;
       lastChunkTime = Date.now();
 
       buffer += decoder.decode(value, { stream: true });
@@ -451,8 +483,13 @@ export async function* streamChatCompletion(
   } catch (error) {
     if (error instanceof Error && error.name === "TimeoutError") {
       const idleSec = Math.round((Date.now() - lastChunkTime) / 1000);
+      const isFirstToken = error.message.includes("first token timeout");
       throw classifyApiError(
-        new Error(`NVIDIA NIM streaming timeout: no data received for ${idleSec}s`),
+        new Error(
+          isFirstToken
+            ? `NVIDIA NIM first token timeout: no response received for ${idleSec}s`
+            : `NVIDIA NIM streaming timeout: no data received for ${idleSec}s`,
+        ),
         {
           operation: "stream",
           model: requestBody.model,
