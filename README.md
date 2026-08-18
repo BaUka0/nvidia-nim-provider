@@ -11,6 +11,10 @@
 
 [Key Features](#-key-features) • [Supported Models](#-supported-models) • [Quick Start](#-quick-start) • [FAQ](#-frequently-asked-questions) • [Commands](#-extension-commands)
 
+<br/>
+
+<img src="images/demo.gif" alt="NVIDIA NIM Agent in VS Code Copilot: Nemotron 3.5 Lightning writes a TypeScript BST balancer" width="800" />
+
 </div>
 
 > **Free Access:** NVIDIA provides free developer API at [build.nvidia.com](https://build.nvidia.com/models). You can use DeepSeek V4, Nemotron, and Kimi directly inside Copilot without any monthly provider subscriptions.

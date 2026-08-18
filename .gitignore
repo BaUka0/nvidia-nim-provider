@@ -26,3 +26,5 @@ coverage/
 # Misc
 .DS_Store
 *.log
+*.mp4
+

@@ -24,6 +24,7 @@ tsconfig.json
 .mimocode/**
 node_modules/**
 *.vsix
+*.mp4
 .gitignore
 package-lock.json
 out/**/*.map
