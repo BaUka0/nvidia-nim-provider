@@ -1,3 +1,4 @@
+import * as vscode from "vscode";
 import {
   buildInvalidToolCallFallback,
   buildInvalidToolCallRetryMessage,
@@ -6,6 +7,7 @@ import {
   getIncompleteTextToolCallName,
   getToolSchemaMap,
   hasRequiredToolArguments,
+  isDuplicateSuppressionEnabled,
   parseTextEmbeddedToolCalls,
   parseToolArguments,
   repairToolArguments,
@@ -989,5 +991,32 @@ describe("tool argument parsing and validation", () => {
     expect(repaired).toEqual({ environment: "staging" });
     expect(repaired.rollbackOnFailure).toBeUndefined();
     expect(hasRequiredToolArguments(repaired, deploySchema)).toBe(false);
+  });
+
+  it("skips argument repair when autoRepairArguments is disabled", () => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "tools.autoRepairArguments") return false;
+        return defaultValue;
+      }),
+    });
+
+    const schema = getToolSchemaMap(options).get("read_file");
+    const raw = { path: "/tmp/a.ts", startLine: "1" };
+    const repaired = repairToolArguments("read_file", raw, undefined, schema);
+
+    expect(repaired).toEqual({ path: "/tmp/a.ts", startLine: "1" });
+    expect(repaired.filePath).toBeUndefined();
+  });
+
+  it("disables duplicate suppression when suppressDuplicateReads is false", () => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "tools.suppressDuplicateReads") return false;
+        return defaultValue;
+      }),
+    });
+
+    expect(isDuplicateSuppressionEnabled("read_file")).toBe(false);
   });
 });

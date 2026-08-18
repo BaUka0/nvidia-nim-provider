@@ -107,4 +107,34 @@ describe("NimRequestBuilder context accounting", () => {
     ).rejects.toMatchObject({ name: "AbortError" });
     expect((chatCompletion as jest.Mock).mock.calls[0][2]).toBe(controller.signal);
   });
+
+  it("applies configured generation parameters when options are omitted", async () => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "generation.temperature") return 0.35;
+        if (key === "generation.topP") return 0.85;
+        if (key === "generation.maxOutputTokens") return 500;
+        if (key === "reasoning.mode") return "on";
+        return defaultValue;
+      }),
+    });
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: createModel(),
+      messages: makeChatMessages({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Hello")],
+      }),
+      options: makeChatOptions(),
+      contextWindow: 128000,
+      supportsTools: false,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+    });
+
+    expect(prepared.requestBody.temperature).toBe(0.35);
+    expect(prepared.requestBody.top_p).toBe(0.85);
+    expect(prepared.requestBody.max_tokens).toBe(500);
+  });
 });

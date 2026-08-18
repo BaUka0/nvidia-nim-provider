@@ -119,12 +119,12 @@ export const commands = {
 };
 
 export const workspace = {
-  getConfiguration: (_section?: string) => ({
-    get: (_key: string, defaultValue?: unknown) => defaultValue,
-    update: async (_key: string, _value: unknown, _target?: unknown) => {},
-    has: (_key: string) => false,
-    inspect: (_key: string) => undefined,
-  }),
+  getConfiguration: jest.fn((_section?: string) => ({
+    get: jest.fn((_key: string, defaultValue?: unknown) => defaultValue),
+    update: jest.fn(async (_key: string, _value: unknown, _target?: unknown) => {}),
+    has: jest.fn((_key: string) => false),
+    inspect: jest.fn((_key: string) => undefined),
+  })),
 };
 
 export const version = "1.104.0";

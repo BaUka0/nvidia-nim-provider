@@ -260,6 +260,11 @@
           "default": true,
           "description": "Send a system correction prompt when the model produces invalid or unfixable tool arguments."
         },
+        "nvidia-nim.tools.suppressDuplicateReads": {
+          "type": "boolean",
+          "default": true,
+          "description": "Suppress duplicate consecutive identical read-only tool calls."
+        },
         "nvidia-nim.context.autoCompactOnOverflow": {
           "type": "boolean",
           "default": true,

@@ -33,6 +33,7 @@ export interface GenerationConfig {
 export interface ToolsConfig {
   readonly autoRepairArguments: boolean;
   readonly autoRetryInvalidCalls: boolean;
+  readonly suppressDuplicateReads: boolean;
 }
 
 export interface ContextConfig {
@@ -93,6 +94,7 @@ export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
 export const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
   autoRepairArguments: true,
   autoRetryInvalidCalls: true,
+  suppressDuplicateReads: true,
 };
 
 export const DEFAULT_CONTEXT_CONFIG: ContextConfig = {
@@ -258,10 +260,15 @@ export class ConfigManager {
       "tools.autoRetryInvalidCalls",
       DEFAULT_TOOLS_CONFIG.autoRetryInvalidCalls,
     );
+    const suppressDuplicateReads = config.get<boolean>(
+      "tools.suppressDuplicateReads",
+      DEFAULT_TOOLS_CONFIG.suppressDuplicateReads,
+    );
 
     return {
       autoRepairArguments,
       autoRetryInvalidCalls,
+      suppressDuplicateReads,
     };
   }
 

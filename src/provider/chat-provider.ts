@@ -885,7 +885,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           ? buildInvalidToolCallRetryMessage(skippedToolCalls)
           : undefined;
         const willRetryAfterInvalidToolCall =
-          sawToolCall && !emittedToolCall && attempt === 0 && Boolean(retryMessage);
+          ConfigManager.getToolsConfig().autoRetryInvalidCalls &&
+          sawToolCall &&
+          !emittedToolCall &&
+          attempt === 0 &&
+          Boolean(retryMessage);
         const willRetryEmptyStream =
           !sawReasoning &&
           !sawToolCall &&

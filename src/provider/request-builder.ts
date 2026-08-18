@@ -120,11 +120,18 @@ export class NimRequestBuilder {
       );
     }
 
-    const maxTokensVal = (responseOptions.modelOptions as Record<string, unknown>)?.max_tokens;
-    const requestedMaxTokensLimit =
+    const generationConfig = ConfigManager.getGenerationConfig();
+    const reasoningConfig = ConfigManager.getReasoningConfig();
+
+    const maxTokensVal = model.maxOutputTokens;
+    const modelMaxLimit =
       typeof maxTokensVal === "number" && maxTokensVal > 0
         ? maxTokensVal
         : DEFAULT_MAX_OUTPUT_TOKENS;
+    const requestedMaxTokensLimit =
+      typeof generationConfig.maxOutputTokens === "number" && generationConfig.maxOutputTokens > 0
+        ? Math.min(modelMaxLimit, generationConfig.maxOutputTokens)
+        : modelMaxLimit;
 
     const maxToolResultChars = this.calculateMaxToolResultChars(contextWindow);
     const toolConfig = supportsTools ? convertTools(responseOptions) : {};
@@ -139,8 +146,13 @@ export class NimRequestBuilder {
       toolsEnabled && requestProfile.toolTemperature !== undefined
         ? requestProfile.toolTemperature
         : requestProfile.defaultTemperature;
+    const configTemperature = generationConfig.temperature;
     const temperatureVal =
-      typeof userTemperature === "number" ? userTemperature : profileTemperature;
+      typeof userTemperature === "number"
+        ? userTemperature
+        : typeof configTemperature === "number"
+          ? configTemperature
+          : profileTemperature;
 
     let apiMessages = convertMessages(messages, {
       maxToolResultChars,
@@ -273,9 +285,7 @@ export class NimRequestBuilder {
     const modes = adapter.supportedReasoningModes;
     let reasoningMode = configuredReasoningMode;
     if (reasoningMode === undefined && modes && modes.length > 0) {
-      reasoningMode = vscode.workspace
-        .getConfiguration("nvidia-nim")
-        .get<string>("reasoningMode", "none");
+      reasoningMode = reasoningConfig.mode;
     }
     reasoningMode ??= "none";
 
@@ -296,6 +306,8 @@ export class NimRequestBuilder {
     const modelOpts = responseOptions.modelOptions as Record<string, unknown>;
     if (typeof modelOpts?.top_p === "number") {
       requestBody.top_p = Math.min(1, Math.max(0, modelOpts.top_p));
+    } else if (typeof generationConfig.topP === "number") {
+      requestBody.top_p = Math.min(1, Math.max(0, generationConfig.topP));
     }
     if (typeof modelOpts?.frequency_penalty === "number") {
       requestBody.frequency_penalty = Math.min(2, Math.max(-2, modelOpts.frequency_penalty));

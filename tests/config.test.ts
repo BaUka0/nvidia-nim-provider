@@ -192,14 +192,17 @@ describe("ConfigManager", () => {
       expect(config).toEqual(DEFAULT_TOOLS_CONFIG);
       expect(config.autoRepairArguments).toBe(true);
       expect(config.autoRetryInvalidCalls).toBe(true);
+      expect(config.suppressDuplicateReads).toBe(true);
     });
 
     it("reads custom flags", () => {
       mockStore["tools.autoRepairArguments"] = false;
       mockStore["tools.autoRetryInvalidCalls"] = false;
+      mockStore["tools.suppressDuplicateReads"] = false;
       const config = ConfigManager.getToolsConfig();
       expect(config.autoRepairArguments).toBe(false);
       expect(config.autoRetryInvalidCalls).toBe(false);
+      expect(config.suppressDuplicateReads).toBe(false);
     });
   });
 

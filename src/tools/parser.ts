@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { LanguageModelChatMessage, ProvideLanguageModelChatResponseOptions } from "vscode";
 import { jsonrepair } from "jsonrepair";
+import { ConfigManager } from "../shared/config";
 import {
   extractStandaloneXmlParameters as scanStandaloneXmlParameters,
   findXmlConstructStart,
@@ -107,6 +108,9 @@ export function buildToolCallCanonicalKey(name: string, args: unknown): string {
 }
 
 export function isDuplicateSuppressionEnabled(toolName: string): boolean {
+  if (!ConfigManager.getToolsConfig().suppressDuplicateReads) {
+    return false;
+  }
   const normalized = toolName.toLowerCase();
   if (
     normalized.includes("terminal") ||
@@ -1073,6 +1077,10 @@ export function repairToolArguments(
     parsedArgs = { ...(args as Record<string, unknown>) };
   } else {
     parsedArgs = {};
+  }
+
+  if (!ConfigManager.getToolsConfig().autoRepairArguments) {
+    return parsedArgs;
   }
 
   const required = new Set(schema?.required ?? []);
