@@ -1,4 +1,5 @@
 import packageJson from "../../package.json";
+import { ConfigManager } from "./config";
 
 export const PROVIDER_VENDOR = "nvidia-nim";
 export const PROVIDER_DISPLAY_NAME = "NVIDIA NIM";
@@ -22,12 +23,17 @@ export const EXTENSION_VERSION: string = packageJson.version;
 
 /**
  * Calculate a dynamic safety margin that scales with context window size.
- * Small windows get a fixed 4096-token margin; large windows (≥256K) get 1%
- * of the window to account for estimation variance and hidden prompt content.
+ * Small windows get a fixed 4096-token margin; large windows (≥256K) get
+ * safetyMarginPercent (default 1%) of the window to account for estimation
+ * variance and hidden prompt content.
  */
-export function calculateSafetyMargin(contextWindow: number): number {
+export function calculateSafetyMargin(contextWindow: number, customPercent?: number): number {
+  const percent =
+    customPercent !== undefined
+      ? customPercent
+      : ConfigManager.getContextConfig().safetyMarginPercent;
   if (contextWindow >= 256_000) {
-    return Math.max(4096, Math.ceil(contextWindow * 0.01));
+    return Math.max(4096, Math.ceil(contextWindow * (percent / 100)));
   }
   return 4096;
 }

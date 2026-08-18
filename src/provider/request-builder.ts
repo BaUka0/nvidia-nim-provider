@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { ConfigManager } from "../shared/config";
 import { calculateSafetyMargin, DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 import {
   convertMessages,
@@ -179,7 +180,13 @@ export class NimRequestBuilder {
       if (oldMessages.length === 0) {
         return { messages: currentMessages, tokenCount: payloadInputTokenCount };
       }
-      const summaryMessage = await summarizeOldMessages(oldMessages, apiKey, userAgent, signal);
+      const summaryMessage = await summarizeOldMessages(
+        oldMessages,
+        apiKey,
+        userAgent,
+        signal,
+        ConfigManager.getContextConfig().summarizationModel,
+      );
       const recentSystemMessages = recentMessages.filter((m) => m.role === "system");
       const recentConversationMessages = recentMessages.filter((m) => m.role !== "system");
       const compacted = [...recentSystemMessages, summaryMessage, ...recentConversationMessages];

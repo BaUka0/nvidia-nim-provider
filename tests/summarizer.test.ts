@@ -209,4 +209,20 @@ describe("summarizeOldMessages", () => {
     ).rejects.toMatchObject({ name: "AbortError" });
     expect(completionMock.mock.calls.at(-1)?.[2]).toBe(controller.signal);
   });
+
+  it("uses the provided summarizationModel parameter", async () => {
+    const completionMock = chatCompletion as jest.Mock;
+    completionMock.mockResolvedValueOnce("Summary with custom model");
+
+    await summarizeOldMessages(
+      [{ role: "user", content: "some text" }],
+      "test-key",
+      "test-agent",
+      undefined,
+      "stepfun-ai/step-3.7-flash",
+    );
+
+    const request = completionMock.mock.calls.at(-1)?.[1];
+    expect(request.model).toBe("stepfun-ai/step-3.7-flash");
+  });
 });

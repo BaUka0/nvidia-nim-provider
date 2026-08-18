@@ -27,6 +27,7 @@ import {
 } from "../tools/parser";
 import { collectChoiceToolCalls } from "../tools/stream-tool-calls";
 import { streamChatCompletion } from "../api/client";
+import { ConfigManager } from "../shared/config";
 import {
   calculateSafetyMargin,
   DEBUG_ENV_VAR,
@@ -1053,7 +1054,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         err instanceof NvidiaApiError &&
         err.kind === "context_overflow" &&
         apiKey &&
-        activeRequestBody
+        activeRequestBody &&
+        ConfigManager.getContextConfig().autoCompactOnOverflow
       ) {
         hasRetriedContextOverflow = true;
         const overflowInfo =
@@ -1110,6 +1112,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               apiKey,
               this.userAgent,
               abortController.signal,
+              ConfigManager.getContextConfig().summarizationModel,
             );
             const compactedMessages = [summaryMessage, ...recentMessages];
             const compactedTokenCount = estimateNimMessagesTokens(compactedMessages);

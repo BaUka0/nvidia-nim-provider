@@ -7,7 +7,8 @@
 - **Enterprise Configuration Schema.** Declared full configuration trees in `package.json` across `fallback.*`, `network.*`, `reasoning.*`, `generation.*`, `tools.*`, `context.*`, `ui.*`, and `developer.*`.
 - **Centralized Typed ConfigManager (`src/shared/config.ts`).** Type-safe config accessors with default constants, numeric boundary clamping (e.g. `streamIdleTimeout` 15..600s, `maxHttpRetries` 0..10, `safetyMarginPercent` 0..10%), and seamless backward compatibility with legacy `reasoningMode` and `showReasoning`.
 - **Configurable Network & Stream Timeouts (`src/api/client.ts`).** Integrated `ConfigManager.getNetworkConfig()` across `fetchWithRetry`, `fetchModelsOrThrow`, `chatCompletion`, and `streamChatCompletion`. Added granular `firstTokenTimeoutMs` support for early TTFT timeout detection alongside customizable `streamIdleTimeout`.
-- **Configuration Unit Test Suite (`tests/config.test.ts`, `tests/api.test.ts`).** Comprehensive tests covering defaults, boundary clamping, legacy fallback mappings, and first-token timeout cancellation.
+- **Dedicated Summarization Model & Context Settings (`src/models/summarizer.ts`, `src/shared/constants.ts`).** Decoupled conversation history summarization from fallback model using `nvidia-nim.context.summarizationModel`. Added dynamic `safetyMarginPercent` scaling and `autoCompactOnOverflow` guard.
+- **Configuration Unit Test Suite (`tests/config.test.ts`, `tests/api.test.ts`, `tests/summarizer.test.ts`).** Comprehensive tests covering defaults, boundary clamping, legacy fallback mappings, first-token timeout cancellation, and dedicated summarization models.
 
 ## [0.5.5] - 2026-08-18
 

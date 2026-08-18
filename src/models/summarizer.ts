@@ -3,6 +3,7 @@ import { debugLog } from "../shared/logging";
 import { NimChatMessage } from "../types";
 import { FALLBACK_MODEL_ID } from "./catalog";
 import { estimateNimMessagesTokens, truncateMessagesForContext } from "../messages/converter";
+import { ConfigManager } from "../shared/config";
 
 const SUMMARIZATION_PROMPT = `Summarize the following conversation concisely, preserving:
 - Key decisions and their rationale
@@ -75,6 +76,7 @@ function messagesToText(messages: NimChatMessage[]): string {
 
 /**
  * Summarize old conversation messages via a lightweight API call.
+ * Uses dedicated summarization model from config or custom argument.
  * Falls back to simple truncation if the API call fails.
  */
 export async function summarizeOldMessages(
@@ -82,17 +84,22 @@ export async function summarizeOldMessages(
   apiKey: string,
   userAgent: string,
   signal?: AbortSignal,
+  summarizationModel?: string,
 ): Promise<NimChatMessage> {
+  const targetModel =
+    summarizationModel?.trim() ||
+    ConfigManager.getContextConfig().summarizationModel ||
+    FALLBACK_MODEL_ID;
   const conversationText = messagesToText(oldMessages);
   try {
     debugLog(
       "summarizer",
-      `Summarizing ${oldMessages.length} messages (${conversationText.length} chars) via ${FALLBACK_MODEL_ID}.`,
+      `Summarizing ${oldMessages.length} messages (${conversationText.length} chars) via ${targetModel}.`,
     );
     const summary = await chatCompletion(
       apiKey,
       {
-        model: FALLBACK_MODEL_ID,
+        model: targetModel,
         messages: [
           { role: "system", content: SUMMARIZATION_PROMPT },
           { role: "user", content: conversationText },
@@ -117,7 +124,7 @@ export async function summarizeOldMessages(
     }
     debugLog(
       "summarizer",
-      `API summarization failed, using simple truncation: ${error instanceof Error ? error.message : String(error)}`,
+      `API summarization failed on ${targetModel}, using simple truncation: ${error instanceof Error ? error.message : String(error)}`,
     );
     const truncated = truncateMessagesForContext(oldMessages, 8192);
     const truncatedText = messagesToText(truncated);
