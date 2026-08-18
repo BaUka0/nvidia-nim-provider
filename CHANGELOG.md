@@ -1,5 +1,13 @@
 # Change Log
 
+## [0.5.6] - 2026-08-18
+
+### Added
+
+- **Enterprise Configuration Schema.** Declared full configuration trees in `package.json` across `fallback.*`, `network.*`, `reasoning.*`, `generation.*`, `tools.*`, `context.*`, `ui.*`, and `developer.*`.
+- **Centralized Typed ConfigManager (`src/shared/config.ts`).** Type-safe config accessors with default constants, numeric boundary clamping (e.g. `streamIdleTimeout` 15..600s, `maxHttpRetries` 0..10, `safetyMarginPercent` 0..10%), and seamless backward compatibility with legacy `reasoningMode` and `showReasoning`.
+- **Configuration Unit Test Suite (`tests/config.test.ts`).** Comprehensive tests covering defaults, boundary clamping, and legacy fallback mappings.
+
 ## [0.5.5] - 2026-08-18
 
 ### Added

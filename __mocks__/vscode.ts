@@ -118,4 +118,14 @@ export const commands = {
   executeCommand: async (_command: string, ..._args: unknown[]) => {},
 };
 
+export const workspace = {
+  getConfiguration: (_section?: string) => ({
+    get: (_key: string, defaultValue?: unknown) => defaultValue,
+    update: async (_key: string, _value: unknown, _target?: unknown) => {},
+    has: (_key: string) => false,
+    inspect: (_key: string) => undefined,
+  }),
+};
+
 export const version = "1.104.0";
+

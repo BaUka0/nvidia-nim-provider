@@ -121,6 +121,188 @@
     "configuration": {
       "title": "NVIDIA NIM",
       "properties": {
+        "nvidia-nim.fallback.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic failover to a fallback model when the primary model fails."
+        },
+        "nvidia-nim.fallback.model": {
+          "type": "string",
+          "enum": [
+            "nvidia/nemotron-3.5-lightning-30b-a3b",
+            "deepseek-ai/deepseek-v4-flash-0731",
+            "moonshotai/kimi-k2.6",
+            "z-ai/glm-5.2",
+            "minimaxai/minimax-m3",
+            "stepfun-ai/step-3.7-flash",
+            "nvidia/nemotron-3-ultra-550b-a55b",
+            "thinkingmachines/inkling",
+            "meta/muse-glimmer-30b"
+          ],
+          "default": "nvidia/nemotron-3.5-lightning-30b-a3b",
+          "description": "Model to switch to when the primary model encounters a fatal error or rate limit."
+        },
+        "nvidia-nim.fallback.onRateLimit": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trigger fallback on rate limits or server overload (HTTP 429 / 529)."
+        },
+        "nvidia-nim.fallback.onModelUnavailable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trigger fallback if the model is temporarily disabled or unavailable on the server (HTTP 404)."
+        },
+        "nvidia-nim.fallback.onEmptyStream": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trigger fallback if the model returns an empty stream after retry attempts."
+        },
+        "nvidia-nim.fallback.onTimeout": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trigger fallback if the stream idle timeout is exceeded."
+        },
+        "nvidia-nim.fallback.firstTokenTimeoutSeconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "default": null,
+          "minimum": 5,
+          "maximum": 120,
+          "description": "Maximum seconds to wait for the first response token (TTFT) before triggering fallback. If null, standard stream timeout applies."
+        },
+        "nvidia-nim.fallback.showNoticeInChat": {
+          "type": "boolean",
+          "default": true,
+          "description": "Display a markdown notice callout in chat explaining that a fallback model was used."
+        },
+        "nvidia-nim.fallback.notifyUser": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a VS Code notification message when fallback occurs."
+        },
+        "nvidia-nim.network.streamIdleTimeout": {
+          "type": "integer",
+          "default": 120,
+          "minimum": 15,
+          "maximum": 600,
+          "description": "Maximum idle time in seconds between streamed chunks before timing out."
+        },
+        "nvidia-nim.network.maxHttpRetries": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Maximum HTTP retry attempts on transient network errors and 429/502/503/504 status codes."
+        },
+        "nvidia-nim.network.maxEmptyStreamRetries": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 5,
+          "description": "Maximum retry attempts before failing or triggering fallback when a model returns no content."
+        },
+        "nvidia-nim.reasoning.mode": {
+          "type": "string",
+          "enum": [
+            "none",
+            "on",
+            "medium",
+            "high",
+            "max"
+          ],
+          "default": "none",
+          "description": "Configure the default reasoning effort mode sent to supported models."
+        },
+        "nvidia-nim.reasoning.showInChat": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show model reasoning content (thinking process) in responses."
+        },
+        "nvidia-nim.generation.temperature": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Override temperature for generation (null uses model adapter default)."
+        },
+        "nvidia-nim.generation.topP": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Override Top-P sampling parameter (null uses model default)."
+        },
+        "nvidia-nim.generation.maxOutputTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "default": null,
+          "minimum": 128,
+          "maximum": 131072,
+          "description": "Override maximum output tokens limit per response (null uses model maximum)."
+        },
+        "nvidia-nim.tools.autoRepairArguments": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically repair stringified JSON, missing quotes, and malformed tool call arguments."
+        },
+        "nvidia-nim.tools.autoRetryInvalidCalls": {
+          "type": "boolean",
+          "default": true,
+          "description": "Send a system correction prompt when the model produces invalid or unfixable tool arguments."
+        },
+        "nvidia-nim.context.autoCompactOnOverflow": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically compact older conversation turns with summarization on context overflow (HTTP 400)."
+        },
+        "nvidia-nim.context.summarizationModel": {
+          "type": "string",
+          "enum": [
+            "nvidia/nemotron-3.5-lightning-30b-a3b",
+            "deepseek-ai/deepseek-v4-flash-0731",
+            "moonshotai/kimi-k2.6",
+            "z-ai/glm-5.2",
+            "minimaxai/minimax-m3",
+            "stepfun-ai/step-3.7-flash",
+            "nvidia/nemotron-3-ultra-550b-a55b",
+            "thinkingmachines/inkling",
+            "meta/muse-glimmer-30b"
+          ],
+          "default": "nvidia/nemotron-3.5-lightning-30b-a3b",
+          "description": "Dedicated lightweight model used for compacting and summarizing conversation history."
+        },
+        "nvidia-nim.context.safetyMarginPercent": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Percentage of context window reserved as a safety buffer for tokenizer estimation variance."
+        },
+        "nvidia-nim.ui.showStatusBarItem": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the NVIDIA NIM status bar item and token breakdown in VS Code."
+        },
+        "nvidia-nim.developer.debugLogging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable verbose debug logging of requests, SSE chunks, and internal operations."
+        },
+        "nvidia-nim.developer.logTimingBreakdowns": {
+          "type": "boolean",
+          "default": true,
+          "description": "Log detailed generation timing and speed metrics (tokens/sec, TTFT, durations)."
+        },
         "nvidia-nim.reasoningMode": {
           "type": "string",
           "enum": [
@@ -131,12 +313,12 @@
             "max"
           ],
           "default": "none",
-          "description": "Configure the default reasoning effort mode sent to supported models. 'none' disables reasoning. Models can override this via their Copilot Chat picker dropdown."
+          "description": "Legacy setting: Use nvidia-nim.reasoning.mode instead."
         },
         "nvidia-nim.showReasoning": {
           "type": "boolean",
           "default": false,
-          "description": "Show model reasoning content (thinking process) in responses. Some models like DeepSeek R1 emit reasoning that may be useful for debugging."
+          "description": "Legacy setting: Use nvidia-nim.reasoning.showInChat instead."
         }
       }
     }
