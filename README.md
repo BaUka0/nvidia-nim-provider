@@ -1,154 +1,110 @@
-# NVIDIA NIM Agent
+# NVIDIA NIM Agent for VS Code
 
-VS Code extension that gives you access **exclusively** to the best, most powerful reasoning and agentic models available in NVIDIA NIM (DeepSeek, Kimi, GLM, Nemotron, MiniMax, Stepfun, Inkling, Muse Glimmer) directly inside the Copilot Chat interface.
+<div align="center">
 
-## Requirements
+[![VS Code](https://img.shields.io/badge/VS_Code-1.125.0+-007ACC?style=flat&logo=visual-studio-code&logoColor=white)](https://code.visualstudio.com/)
+[![Version](https://img.shields.io/badge/Version-v0.6.0-76B900?style=flat&logo=nvidia&logoColor=white)](https://build.nvidia.com/models)
+[![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-Chat_Native-181717?style=flat&logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-- VS Code 1.125.0 or later
-- GitHub Copilot extension installed and active
-- An NVIDIA NIM API key from [build.nvidia.com/models](https://build.nvidia.com/models)
+**Direct, zero-markup access to NVIDIA NIM's premier open & proprietary reasoning models right inside GitHub Copilot Chat.**
 
-## Installation
+[Key Features](#-key-features) • [Supported Models](#-supported-models) • [Quick Start](#-quick-start) • [Commands](#-extension-commands)
 
-### From Source
+</div>
 
-1. Clone this repository.
-2. Run `npm install && npm run compile`.
-3. Press `F5` in VS Code to launch the Extension Development Host.
+---
 
-### From VSIX
+## 🚀 Why NVIDIA NIM Agent?
 
-1. Run `npm install && npm run package:vsix`.
-2. Install the generated `.vsix` file via the Extensions view (`Install from VSIX...`).
+Modern software engineering demands high-precision reasoning, long context understanding, and reliable autonomous tool execution. **NVIDIA NIM Agent** connects VS Code directly to NVIDIA's high-throughput NIM Cloud infrastructure, unlocking flagship models with minimal latency, zero intermediary proxy overhead, and production-grade resilience.
 
-## Setup
+---
 
-1. Open Copilot Chat and choose the model picker.
-2. Select **Manage Models**, then add/configure **NVIDIA NIM**.
-3. Paste the API key obtained from [build.nvidia.com/models](https://build.nvidia.com/models).
-4. Select one of the NVIDIA NIM models returned by your account.
+## ✨ Key Features
 
-You can also run `NVIDIA NIM: Manage NVIDIA NIM API Key` from the Command Palette. The extension
-will migrate that key into VS Code's language model provider group so the model picker can resolve
-NVIDIA NIM models. The VS Code model settings flow is recommended for new setups.
+### 🧠 Native Deep Reasoning
+- **Collapsible Thinking Blocks:** Fully supports VS Code's native `LanguageModelThinkingPart` API. Reasoning output from models like **DeepSeek V4**, **Kimi K2.6**, and **Nemotron 3.5** renders as clean, collapsible thinking sections rather than cluttering your chat stream.
+- **Granular Effort Control:** Select reasoning modes (`None`, `On`, `Medium`, `High`, `Max`) directly from the Copilot model picker dropdown.
 
-## Supported Models
+### 🛡️ Zero-Downtime Smart Failover
+- **Transient Turn-Level Failover:** If an active model experiences rate limits (`HTTP 429/529`), temporary unavailability (`404`), an empty stream, or a slow first-token timeout (TTFT), the extension instantly routes the current turn to a lightning backup model (e.g. `nvidia/nemotron-3.5-lightning-30b-a3b`).
+- **Automatic Recovery:** Automatically restores your preferred primary model on the subsequent turn.
+- **Transparent Notifications:** Clear in-chat callout badges (`> ⚡ **NVIDIA NIM Fallback:** ...`) and status notifications keep you informed without interrupting workflow.
 
-The extension fetches the model list from `https://integrate.api.nvidia.com/v1/models` and
-filters it down to a curated set of elite agentic models. Model-specific adapters tune temperature,
-tool-calling system prompts, and reasoning configuration where required:
+### 🛠️ Self-Healing Agentic Tool Execution
+- **Tag-Stack XML Scanner:** Single-pass streaming scanner compatible with Hermes, Nemotron, Anthropic, Qwen, and DeepSeek syntax.
+- **Self-Healing Repair:** Automatically rectifies unescaped strings, trailing JSON commas, and parameter aliases (`filePath` ⇄ `path` ⇄ `file`).
+- **Loop Prevention:** Safely suppresses identical consecutive read-only operations while permitting intentional terminal command retries.
 
-| Model                      | Reasoning Modes                              | Tool Calling | Vision |
-| -------------------------- | -------------------------------------------- | ------------ | ------ |
-| DeepSeek V4 Flash 0731     | None, High, Max                              | Yes          | No     |
-| Nemotron 3 Ultra 550B      | None, Medium, High                           | Yes          | No     |
-| Nemotron 3.5 Lightning 30B | None, Medium, High, XHigh                    | Yes          | No     |
-| Kimi K2.6                  | None, On                                     | Yes          | Yes    |
-| MiniMax M3                 | None, On, Adaptive                           | Yes          | Yes    |
-| GLM 5.2                    | None, On                                     | Yes          | No     |
-| Step 3.7 Flash             | Always on                                    | Yes          | Yes    |
-| Inkling                    | None, Minimal, Low, Medium, High, XHigh, Max | Yes          | Yes    |
-| Muse Glimmer               | None, Low, Medium, High, XHigh               | Yes          | Yes    |
+### 🗜️ Dedicated Context Auto-Compaction
+- **Decoupled Summarization:** Leverages a dedicated, ultra-fast model (`context.summarizationModel`) to condense lengthy dialogue history without altering your primary model configuration.
+- **Dynamic Safety Margins:** Automatically allocates safety buffers for large context windows ($\ge 256\text{K}$) to prevent sudden payload overflow errors.
 
-When NVIDIA's `/models` response omits tool-calling capability metadata, chat models are treated as
-tool-capable so they remain selectable in Copilot Chat Agent mode.
+### 📊 Real-Time Token & Latency Telemetry
+- **Rich Status Bar Breakdown:** Real-time token utilization widget displaying exact breakdowns across system prompts, tool schemas, user history, thinking tokens, and completions.
+- **Developer Metrics:** Optional millisecond-level TTFT and generation tokens-per-second logs for benchmarking model performance.
 
-## Reasoning
+---
 
-The extension supports native reasoning token rendering via VS Code's proposed
-`LanguageModelThinkingPart` API. When a model emits reasoning — either through the
-`reasoning_content` stream field or inline `think... /think` tags (used by Kimi) — it is
-captured and rendered as collapsible thinking blocks in the chat interface instead of being
-dumped as raw text.
+## 🌟 Supported Models
 
-Configure reasoning effort per model via the **Copilot Chat model picker dropdown**. Each model
-exposes its supported reasoning modes (see the table above). The selected mode is sent to the
-NVIDIA NIM API using the appropriate parameters (`reasoning_effort`, `enable_thinking`, or
-`chat_template_kwargs` depending on the model).
+The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.nvidia.com/v1`) and provides model-specific prompt adapters:
 
-### Settings
+| Model | Context Window | Reasoning Modes | Tool Calling | Vision | Best For |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **DeepSeek V4 Flash 0731** | 128K / 1M | `None`, `High`, `Max` | ✅ Yes | ❌ | Deep algorithm design, code architecture, complex refactoring |
+| **Kimi K2.6** | 262K | `None`, `On` | ✅ Yes | ✅ Yes | Long-context repository comprehension, multimodal review |
+| **Nemotron 3.5 Lightning 30B** | 128K | `None`, `Medium`, `High`, `XHigh` | ✅ Yes | ❌ | Ultra-fast responses, agentic tool workflows, summarization |
+| **Nemotron 3 Ultra 550B** | 128K | `None`, `Medium`, `High` | ✅ Yes | ❌ | Heavy multi-step reasoning, deep technical documentation |
+| **MiniMax M3** | 128K | `None`, `On`, `Adaptive` | ✅ Yes | ✅ Yes | Multimodal code generation, full-stack tasks |
+| **GLM 5.2** | 128K | `None`, `On` | ✅ Yes | ❌ | Precise instruction following, rigorous logic |
+| **Step 3.7 Flash** | 128K | `Always On` | ✅ Yes | ✅ Yes | Rapid thinking loops, interactive pair programming |
+| **Inkling** | 500K | `None` to `Max` (7 levels) | ✅ Yes | ✅ Yes | Ultra-deep analytical inspection |
+| **Muse Glimmer** | 128K | `None` to `XHigh` | ✅ Yes | ✅ Yes | Visual UX/UI analysis and front-end generation |
 
-- `nvidia-nim.reasoningMode` — Default reasoning effort when a model doesn't explicitly pass a
-  mode via the dropdown. Defaults to `none`.
-- `nvidia-nim.showReasoning` — Show reasoning content as plain text in responses (fallback for
-  VS Code versions without `LanguageModelThinkingPart` support, or for debugging). Defaults to
-  `false`.
+---
 
-## Commands
+## ⚡ Quick Start
 
-| Command                                        | Description                              |
-| ---------------------------------------------- | ---------------------------------------- |
-| `NVIDIA NIM: Manage NVIDIA NIM API Key`        | Configure or update the API key.         |
-| `NVIDIA NIM: Refresh Models`                   | Re-fetch the model list from NVIDIA NIM. |
-| `NVIDIA NIM: Toggle Reasoning Content Display` | Toggle `showReasoning` at runtime.       |
-| `NVIDIA NIM: Toggle Debug Logging`             | Enable/disable verbose debug output.     |
-| `NVIDIA NIM: Open Debug Log`                   | Open the debug log output channel.       |
+### 1. Requirements
+- **VS Code 1.125.0** or later
+- **GitHub Copilot** extension installed and active
+- **NVIDIA NIM API Key** (Get free credits at [build.nvidia.com](https://build.nvidia.com/models))
 
-## Usage
+### 2. Configure Your API Key
+1. Open Copilot Chat (`Ctrl + Alt + I` / `Cmd + Alt + I`).
+2. Click the model selector dropdown $\rightarrow$ **Manage Models** $\rightarrow$ **NVIDIA NIM**.
+3. Paste your NVIDIA NIM API key (`nvapi-...`).
 
-1. Open Copilot Chat (`Cmd/Ctrl + Alt + I`).
-2. Select **NVIDIA NIM** from the provider selector.
-3. Choose one of the curated NVIDIA NIM models.
-4. (Optional) Use the model dropdown to set the reasoning effort.
-5. Start chatting — reasoning appears as collapsible thinking blocks, tool calls are emitted
-   natively, and text-embedded tool-call markers are parsed automatically.
+*(Alternatively, run `NVIDIA NIM: Manage NVIDIA NIM API Key` from the Command Palette).*
 
-## Development
+### 3. Start Chatting & Coding
+Select any NVIDIA NIM model in Copilot Chat or Copilot Agent Mode and start building!
 
-```bash
-npm install
-npm run compile
-npm run lint
-npm run test
-```
+---
 
-Press `F5` in VS Code to launch the Extension Development Host.
+## ⌨️ Extension Commands
 
-### Available Scripts
+Access these commands anytime from the VS Code Command Palette (`Ctrl + Shift + P` / `Cmd + Shift + P`):
 
-- `npm run compile` – TypeScript compilation
-- `npm run watch` – Compile with file watching
-- `npm run test` – Run tests
-- `npm run lint` – ESLint check
-- `npm run lint:fix` – ESLint auto-fix
-- `npm run format` – Prettier formatting
-- `npm run package:vsix` – Build VSIX package
+| Command | Identifier | Description |
+| :--- | :--- | :--- |
+| **Manage API Key** | `nvidia-nim.manage` | Store or update your NVIDIA NIM API key. |
+| **Refresh Models** | `nvidia-nim.refreshModels` | Force re-sync available models from your NVIDIA account. |
+| **Toggle Debug Logging** | `nvidia-nim.toggleDebugLogging` | Enable/disable verbose diagnostic logs. |
+| **Open Debug Log** | `nvidia-nim.openDebugLog` | Reveal the dedicated NVIDIA NIM Output Channel. |
 
-## NVIDIA API Diagnostics
+---
 
-The public model-list endpoint can be checked without an API key:
+## 🔒 Privacy & Security
 
-```bash
-npm run probe:models
-```
+- **Direct Communication:** Requests flow strictly between your VS Code client and the official NVIDIA NIM API (`https://integrate.api.nvidia.com/v1`). There are zero third-party telemetry servers or proxy gateways.
+- **Secure Secret Storage:** API keys are encrypted and stored inside VS Code's native OS-level credential vault (`SecretStorage`).
+- **No Data Retention by Extension:** The extension retains no chat logs, file contents, or personal credentials.
 
-Context probes require `NIM_API_KEY` (also accepts `NVIDIA_API_KEY`, `NVIDIA_NIM_API_KEY`, or
-`NGC_API_KEY`) and a model ID passed as the final argument or through
-`NVIDIA_NIM_MODEL`. Each probe performs two small calibration requests and one large request with
-`max_tokens: 1`. Large probes consume billable input tokens.
+---
 
-```bash
-npm run probe:context:262k -- moonshotai/kimi-k2.6
-npm run probe:context:500k -- thinkingmachines/inkling
-npm run probe:context:1048k -- deepseek-ai/deepseek-v4-flash-0731
-```
+## 📄 License
 
-Set `NVIDIA_NIM_BASE_URL` to test a compatible endpoint other than
-`https://integrate.api.nvidia.com/v1`. A context rejection exits with status `2` and prints the
-maximum and actual token counts parsed from the NVIDIA error response.
-Transient `429` and `5xx` responses are retried with bounded exponential backoff. Set
-`NVIDIA_NIM_PROBE_RETRIES` to change the default of four retries.
-
-## Marketplace Packaging
-
-```bash
-npm run package:vsix
-```
-
-The command above produces a `.vsix` that can be uploaded in the VS Code Marketplace publisher portal.
-
-## Privacy
-
-- Your API key is stored securely through VS Code's language model provider configuration and, for
-  legacy command-palette setup, VS Code SecretStorage.
-- Chat completions and model discovery requests are sent to `https://integrate.api.nvidia.com/v1`.
+This project is licensed under the [MIT License](LICENSE).

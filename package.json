@@ -2,8 +2,8 @@
   "name": "nvidia-nim-agent",
   "publisher": "neuraldock",
   "displayName": "Nvidia NIM agent",
-  "description": "Use NVIDIA NIM elite agentic models in GitHub Copilot Chat for VS Code",
-  "version": "0.5.5",
+  "description": "Use NVIDIA NIM reasoning models in GitHub Copilot Chat for VS Code",
+  "version": "0.6.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -17,6 +17,13 @@
   "keywords": [
     "copilot",
     "copilot-chat",
+    "copilot-agent",
+    "agentic",
+    "deepseek",
+    "deepseek-v4",
+    "nemotron",
+    "reasoning",
+    "thinking",
     "nvidia",
     "nim",
     "chat",
@@ -110,11 +117,6 @@
       {
         "command": "nvidia-nim.openDebugLog",
         "title": "Open Debug Log",
-        "category": "NVIDIA NIM"
-      },
-      {
-        "command": "nvidia-nim.toggleShowReasoning",
-        "title": "Toggle Reasoning Content Display",
         "category": "NVIDIA NIM"
       }
     ],
@@ -330,6 +332,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
+    "precompile": "node scripts/clean.mjs",
     "compile": "tsc -p ./",
     "postcompile": "node scripts/copy-runtime-dependencies.mjs",
     "watch": "tsc -w -p ./",

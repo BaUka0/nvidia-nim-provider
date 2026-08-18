@@ -1,6 +1,6 @@
 # Change Log
 
-## [0.5.6] - 2026-08-18
+## [Unreleased]
 
 ### Added
 
@@ -11,7 +11,13 @@
 - **Advanced Failover Engine & In-Chat Notice (`src/provider/chat-provider.ts`, `src/models/catalog.ts`).** Transient single-turn failover with configurable triggers (`onRateLimit`, `onModelUnavailable`, `onEmptyStream`, `onTimeout`, `firstTokenTimeoutSeconds`), custom fallback model selection (`fallback.model`), in-chat markdown callout banners (`showNoticeInChat`), and recursion depth guards ($\le 1$).
 - **Generation & Tools Control (`src/provider/request-builder.ts`, `src/tools/parser.ts`).** Global sampling temperature (`generation.temperature`), nucleus sampling (`generation.topP`), maximum output cap (`generation.maxOutputTokens`), reasoning mode default (`reasoning.mode`), auto-repair toggle (`tools.autoRepairArguments`), auto-retry invalid calls toggle (`tools.autoRetryInvalidCalls`), and duplicate read suppression toggle (`tools.suppressDuplicateReads`).
 - **UI & Developer Diagnostics (`src/shared/status-bar.ts`, `src/shared/logging.ts`, `src/extension.ts`).** Reactive status bar visibility toggle (`ui.showStatusBarItem`), developer debug logging integration (`developer.debugLogging`), and timing breakdown telemetry (`developer.logTimingBreakdowns`).
+- **Clean Build Pipeline (`scripts/clean.mjs`).** Added zero-dependency cross-platform clean script and `"precompile"` hook in `package.json` to ensure `out/` is wiped before compilation, guaranteeing lean and artifact-free VSIX builds.
+- **SEO & Marketplace Discoverability.** Expanded `package.json` keywords to target `deepseek-v4`, `nemotron`, `reasoning`, `thinking`, `agentic`, and `copilot-agent`.
 - **Configuration Unit Test Suite (`tests/config.test.ts`, `tests/api.test.ts`, `tests/summarizer.test.ts`, `tests/provider/chat-provider.stream.test.ts`, `tests/provider/request-builder.test.ts`, `tests/tools-parser.test.ts`, `tests/status-bar.test.ts`).** Comprehensive tests covering defaults, boundary clamping, legacy fallback mappings, first-token timeout cancellation, dedicated summarization models, advanced failover triggers, generation hyperparameters, tool execution flags, and UI status bar visibility.
+
+### Removed
+
+- **Legacy `toggleShowReasoning` Command.** Removed deprecated `nvidia-nim.toggleShowReasoning` command, constant, and documentation; model reasoning is now rendered natively via VS Code's `LanguageModelThinkingPart` and controlled directly via the Copilot Chat model picker dropdown.
 
 ## [0.5.5] - 2026-08-18
 
