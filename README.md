@@ -59,15 +59,15 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 
 | Model | Context Window | Reasoning Modes | Tool Calling | Vision | Best For |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **DeepSeek V4 Flash 0731** | 128K / 1M | `None`, `High`, `Max` | ✅ Yes | ❌ | Deep algorithm design, code architecture, complex refactoring |
+| **DeepSeek V4 Flash 0731** | 128K / 1.1M | `None`, `High`, `Max` | ✅ Yes | ❌ | Deep algorithm design, code architecture, complex refactoring |
 | **Kimi K2.6** | 262K | `None`, `On` | ✅ Yes | ✅ Yes | Long-context repository comprehension, multimodal review |
-| **Nemotron 3.5 Lightning 30B** | 128K | `None`, `Medium`, `High`, `XHigh` | ✅ Yes | ❌ | Ultra-fast responses, agentic tool workflows, summarization |
-| **Nemotron 3 Ultra 550B** | 128K | `None`, `Medium`, `High` | ✅ Yes | ❌ | Heavy multi-step reasoning, deep technical documentation |
-| **MiniMax M3** | 128K | `None`, `On`, `Adaptive` | ✅ Yes | ✅ Yes | Multimodal code generation, full-stack tasks |
-| **GLM 5.2** | 128K | `None`, `On` | ✅ Yes | ❌ | Precise instruction following, rigorous logic |
-| **Step 3.7 Flash** | 128K | `Always On` | ✅ Yes | ✅ Yes | Rapid thinking loops, interactive pair programming |
-| **Inkling** | 500K | `None` to `Max` (7 levels) | ✅ Yes | ✅ Yes | Ultra-deep analytical inspection |
-| **Muse Glimmer** | 128K | `None` to `XHigh` | ✅ Yes | ✅ Yes | Visual UX/UI analysis and front-end generation |
+| **Nemotron 3.5 Lightning 30B** | 1M | `None`, `Medium`, `High`, `XHigh` | ✅ Yes | ❌ | Ultra-fast responses, agentic tool workflows, summarization |
+| **Nemotron 3 Ultra 550B** | 1M | `None`, `Medium`, `High` | ✅ Yes | ❌ | Heavy multi-step reasoning, deep technical documentation |
+| **MiniMax M3** | 1M | `None`, `On`, `Adaptive` | ✅ Yes | ✅ Yes | Multimodal code generation, full-stack tasks |
+| **GLM 5.2** | 1M | `None`, `On` | ✅ Yes | ❌ | Precise instruction following, rigorous logic |
+| **Step 3.7 Flash** | 262K | `Always On` | ✅ Yes | ✅ Yes | Rapid thinking loops, interactive pair programming |
+| **Inkling** | 1M | `None` to `Max` (7 levels) | ✅ Yes | ✅ Yes | Ultra-deep analytical inspection |
+| **Muse Glimmer** | 131K | `None` to `XHigh` | ✅ Yes | ✅ Yes | Visual UX/UI analysis and front-end generation |
 
 ---
 
