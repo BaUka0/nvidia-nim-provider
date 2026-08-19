@@ -1262,10 +1262,15 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
       if (isFallbackTrigger) {
         const modelApiKey = (await this.apiKeyResolver.resolveForModel(model))?.value;
+        const hasImages = NimRequestBuilder.hasImageInput(messages);
         const fallbackModel = getFallbackModel(
           model.id,
           await this.discoveryService.getAvailableModels(modelApiKey),
-          fallbackConfig.model,
+          {
+            configuredFallbackModelId: fallbackConfig.model,
+            configuredVisionFallbackModelId: fallbackConfig.visionModel,
+            requiresVision: hasImages,
+          },
         );
         if (fallbackModel) {
           const fallbackInfo: LanguageModelChatInformation = {

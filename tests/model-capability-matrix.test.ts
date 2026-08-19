@@ -109,7 +109,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   {
     modelId: "moonshotai/kimi-k2.6",
     catalog: {
-      displayName: "Kimi k2.6",
+      displayName: "Kimi k2.6 (Deprecated)",
       contextWindow: 262144,
       maxOutputTokens: 65536,
       supportsTools: true,

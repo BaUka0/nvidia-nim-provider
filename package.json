@@ -3,7 +3,7 @@
   "publisher": "neuraldock",
   "displayName": "NVIDIA NIM Agent",
   "description": "Use NVIDIA NIM reasoning models in GitHub Copilot Chat for VS Code",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "license": "MIT",
   "homepage": "https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent",
   "bugs": {
@@ -147,6 +147,18 @@
           ],
           "default": "nvidia/nemotron-3.5-lightning-30b-a3b",
           "description": "Model to switch to when the primary model encounters a fatal error or rate limit."
+        },
+        "nvidia-nim.fallback.visionModel": {
+          "type": "string",
+          "enum": [
+            "minimaxai/minimax-m3",
+            "stepfun-ai/step-3.7-flash",
+            "thinkingmachines/inkling",
+            "moonshotai/kimi-k2.6",
+            "meta/muse-glimmer-30b"
+          ],
+          "default": "minimaxai/minimax-m3",
+          "description": "Model to switch to when a request containing image inputs encounters a fatal error or rate limit and fallback.model is text-only."
         },
         "nvidia-nim.fallback.onRateLimit": {
           "type": "boolean",

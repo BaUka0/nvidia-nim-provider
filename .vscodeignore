@@ -12,6 +12,8 @@ task.md
 FIX_PLAN.md
 *PLAN.md
 EXTENSION_SETTINGS_PLAN.md
+AGENTS.md
+agents.md
 release-notes-*.md
 __mocks__/**
 docs/**

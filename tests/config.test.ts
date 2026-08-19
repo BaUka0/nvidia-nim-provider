@@ -35,6 +35,7 @@ describe("ConfigManager", () => {
       expect(config).toEqual(DEFAULT_FALLBACK_CONFIG);
       expect(config.enabled).toBe(true);
       expect(config.model).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
+      expect(config.visionModel).toBe("minimaxai/minimax-m3");
       expect(config.onRateLimit).toBe(true);
       expect(config.onModelUnavailable).toBe(true);
       expect(config.onEmptyStream).toBe(true);
@@ -47,6 +48,7 @@ describe("ConfigManager", () => {
     it("reads custom fallback settings", () => {
       mockStore["fallback.enabled"] = false;
       mockStore["fallback.model"] = "deepseek-ai/deepseek-v4-flash-0731";
+      mockStore["fallback.visionModel"] = "stepfun-ai/step-3.7-flash";
       mockStore["fallback.onRateLimit"] = false;
       mockStore["fallback.onModelUnavailable"] = false;
       mockStore["fallback.onEmptyStream"] = false;
@@ -58,6 +60,7 @@ describe("ConfigManager", () => {
       const config = ConfigManager.getFallbackConfig();
       expect(config.enabled).toBe(false);
       expect(config.model).toBe("deepseek-ai/deepseek-v4-flash-0731");
+      expect(config.visionModel).toBe("stepfun-ai/step-3.7-flash");
       expect(config.onRateLimit).toBe(false);
       expect(config.onModelUnavailable).toBe(false);
       expect(config.onEmptyStream).toBe(false);

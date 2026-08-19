@@ -1,5 +1,6 @@
 import {
   FALLBACK_MODEL_ID,
+  FALLBACK_VISION_MODEL_ID,
   getFallbackModel,
   isNormalizedNvidiaModel,
   normalizeNvidiaModels,
@@ -25,6 +26,25 @@ describe("normalizeNvidiaModels", () => {
         maxOutputTokens: 131072,
         supportsTools: true,
         supportsVision: false,
+      },
+    ]);
+  });
+
+  it("normalizes moonshotai/kimi-k2.6 with Deprecated label", () => {
+    const raw: NvidiaModelSummary[] = [
+      {
+        id: "moonshotai/kimi-k2.6",
+      },
+    ];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([
+      {
+        id: "moonshotai/kimi-k2.6",
+        displayName: "Kimi k2.6 (Deprecated)",
+        contextWindow: 262144,
+        maxOutputTokens: 65536,
+        supportsTools: true,
+        supportsVision: true,
       },
     ]);
   });
@@ -163,7 +183,7 @@ describe("normalizeNvidiaModels", () => {
     expect(
       isNormalizedNvidiaModel({
         id: "moonshotai/kimi-k2.6",
-        displayName: "Kimi k2.6",
+        displayName: "Kimi k2.6 (Deprecated)",
         contextWindow: 256000,
         maxOutputTokens: 65536,
         supportsTools: true,
@@ -173,7 +193,7 @@ describe("normalizeNvidiaModels", () => {
     expect(
       isNormalizedNvidiaModel({
         id: "moonshotai/kimi-k2.6",
-        displayName: "Kimi k2.6",
+        displayName: "Kimi k2.6 (Deprecated)",
         contextWindow: 256000,
         maxOutputTokens: "65536", // invalid type
         supportsTools: true,
@@ -194,31 +214,95 @@ describe("getFallbackModel", () => {
   };
   const kimi = {
     id: "moonshotai/kimi-k2.6",
-    displayName: "Kimi k2.6",
+    displayName: "Kimi k2.6 (Deprecated)",
     contextWindow: 262144,
     maxOutputTokens: 65536,
     supportsTools: true,
     supportsVision: true,
   };
+  const minimax = {
+    id: FALLBACK_VISION_MODEL_ID,
+    displayName: "MiniMax M3",
+    contextWindow: 1000000,
+    maxOutputTokens: 100000,
+    supportsTools: true,
+    supportsVision: true,
+  };
+  const stepfun = {
+    id: "stepfun-ai/step-3.7-flash",
+    displayName: "Step 3.7 Flash",
+    contextWindow: 262144,
+    maxOutputTokens: 262144,
+    supportsTools: true,
+    supportsVision: true,
+  };
+  const flash = {
+    id: "deepseek-ai/deepseek-v4-flash-0731",
+    displayName: "DeepSeek V4 Flash",
+    contextWindow: 1048576,
+    maxOutputTokens: 131072,
+    supportsTools: true,
+    supportsVision: false,
+  };
 
-  it("selects Nemotron 3.5 Lightning as the rate-limit and summarizer fallback", () => {
+  it("selects Nemotron 3.5 Lightning as the default text fallback", () => {
     expect(FALLBACK_MODEL_ID).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
-    expect(getFallbackModel(kimi.id, [kimi, lightning])).toEqual(lightning);
+    expect(getFallbackModel(kimi.id, [kimi, lightning, minimax])).toEqual(lightning);
   });
 
   it("does not fall back when the current model is already Lightning", () => {
-    expect(getFallbackModel(lightning.id, [kimi, lightning])).toBeUndefined();
+    expect(getFallbackModel(lightning.id, [kimi, lightning, minimax])).toBeUndefined();
   });
 
-  it("does not fall back to DeepSeek V4 Flash", () => {
-    const flash = {
-      id: "deepseek-ai/deepseek-v4-flash-0731",
-      displayName: "DeepSeek V4 Flash",
-      contextWindow: 1048576,
-      maxOutputTokens: 131072,
-      supportsTools: true,
-      supportsVision: false,
-    };
-    expect(getFallbackModel(kimi.id, [kimi, flash])).toBeUndefined();
+  it("supports string fallback argument for backward compatibility", () => {
+    expect(
+      getFallbackModel(kimi.id, [kimi, flash, lightning], "deepseek-ai/deepseek-v4-flash-0731"),
+    ).toEqual(flash);
+  });
+
+  describe("Vision-aware fallback (requiresVision: true)", () => {
+    it("selects MiniMax M3 by default when requiresVision is true", () => {
+      expect(FALLBACK_VISION_MODEL_ID).toBe("minimaxai/minimax-m3");
+      expect(
+        getFallbackModel(kimi.id, [kimi, lightning, minimax, stepfun], {
+          requiresVision: true,
+        }),
+      ).toEqual(minimax);
+    });
+
+    it("uses configured fallback.model if it already supports vision", () => {
+      expect(
+        getFallbackModel(kimi.id, [kimi, lightning, minimax, stepfun], {
+          configuredFallbackModelId: "stepfun-ai/step-3.7-flash",
+          requiresVision: true,
+        }),
+      ).toEqual(stepfun);
+    });
+
+    it("uses configured visionModel when fallback.model is text-only", () => {
+      expect(
+        getFallbackModel(kimi.id, [kimi, lightning, minimax, stepfun], {
+          configuredFallbackModelId: "nvidia/nemotron-3.5-lightning-30b-a3b",
+          configuredVisionFallbackModelId: "stepfun-ai/step-3.7-flash",
+          requiresVision: true,
+        }),
+      ).toEqual(stepfun);
+    });
+
+    it("selects alternative vision model when the failing model is the vision fallback model", () => {
+      expect(
+        getFallbackModel(minimax.id, [minimax, lightning, stepfun], {
+          requiresVision: true,
+        }),
+      ).toEqual(stepfun);
+    });
+
+    it("returns undefined if no vision models are available in the catalog", () => {
+      expect(
+        getFallbackModel(kimi.id, [kimi, lightning, flash], {
+          requiresVision: true,
+        }),
+      ).toBeUndefined();
+    });
   });
 });

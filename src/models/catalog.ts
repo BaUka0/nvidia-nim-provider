@@ -41,7 +41,7 @@ export const ELITE_MODELS_WHITELIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsVision: true,
   },
   "moonshotai/kimi-k2.6": {
-    displayName: "Kimi k2.6",
+    displayName: "Kimi k2.6 (Deprecated)",
     contextWindow: 262144,
     maxOutputTokens: 65536,
     supportsTools: true,
@@ -92,12 +92,51 @@ export const ELITE_MODELS_WHITELIST: Record<string, NvidiaModelCatalogEntry> = {
 };
 
 export const FALLBACK_MODEL_ID = "nvidia/nemotron-3.5-lightning-30b-a3b";
+export const FALLBACK_VISION_MODEL_ID = "minimaxai/minimax-m3";
+
+export interface FallbackModelSelectionOptions {
+  configuredFallbackModelId?: string;
+  configuredVisionFallbackModelId?: string;
+  requiresVision?: boolean;
+}
 
 export function getFallbackModel(
   currentModelId: string,
   availableModels: NormalizedNvidiaModel[],
-  configuredFallbackModelId?: string,
+  options?: FallbackModelSelectionOptions | string,
 ): NormalizedNvidiaModel | undefined {
+  const normalizedOptions: FallbackModelSelectionOptions =
+    typeof options === "string" ? { configuredFallbackModelId: options } : (options ?? {});
+
+  const {
+    configuredFallbackModelId,
+    configuredVisionFallbackModelId,
+    requiresVision = false,
+  } = normalizedOptions;
+
+  if (requiresVision) {
+    // 1. If configured primary fallback.model explicitly points to a vision model (and isn't the current model), prefer it
+    const primaryConfiguredId = configuredFallbackModelId?.trim();
+    if (primaryConfiguredId && primaryConfiguredId !== currentModelId) {
+      const primaryCandidate = availableModels.find((m) => m.id === primaryConfiguredId);
+      if (primaryCandidate?.supportsVision) {
+        return primaryCandidate;
+      }
+    }
+
+    // 2. Otherwise use the designated vision fallback model
+    const targetVisionId = configuredVisionFallbackModelId?.trim() || FALLBACK_VISION_MODEL_ID;
+    if (currentModelId !== targetVisionId) {
+      const visionCandidate = availableModels.find((m) => m.id === targetVisionId);
+      if (visionCandidate?.supportsVision) {
+        return visionCandidate;
+      }
+    }
+
+    // 3. Collision / unavailable fallback: pick any other available vision model
+    return availableModels.find((m) => m.supportsVision && m.id !== currentModelId);
+  }
+
   const targetId = configuredFallbackModelId?.trim() || FALLBACK_MODEL_ID;
   if (currentModelId === targetId) {
     return undefined;

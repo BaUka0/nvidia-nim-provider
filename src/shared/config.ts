@@ -1,9 +1,10 @@
 import * as vscode from "vscode";
-import { FALLBACK_MODEL_ID } from "../models/catalog";
+import { FALLBACK_MODEL_ID, FALLBACK_VISION_MODEL_ID } from "../models/catalog";
 
 export interface FallbackConfig {
   readonly enabled: boolean;
   readonly model: string;
+  readonly visionModel: string;
   readonly onRateLimit: boolean;
   readonly onModelUnavailable: boolean;
   readonly onEmptyStream: boolean;
@@ -65,6 +66,7 @@ export interface NimConfig {
 export const DEFAULT_FALLBACK_CONFIG: FallbackConfig = {
   enabled: true,
   model: FALLBACK_MODEL_ID,
+  visionModel: FALLBACK_VISION_MODEL_ID,
   onRateLimit: true,
   onModelUnavailable: true,
   onEmptyStream: true,
@@ -121,6 +123,10 @@ export class ConfigManager {
     const config = this.getConfiguration();
     const enabled = config.get<boolean>("fallback.enabled", DEFAULT_FALLBACK_CONFIG.enabled);
     const model = config.get<string>("fallback.model", DEFAULT_FALLBACK_CONFIG.model);
+    const visionModel = config.get<string>(
+      "fallback.visionModel",
+      DEFAULT_FALLBACK_CONFIG.visionModel,
+    );
     const onRateLimit = config.get<boolean>(
       "fallback.onRateLimit",
       DEFAULT_FALLBACK_CONFIG.onRateLimit,
@@ -157,6 +163,7 @@ export class ConfigManager {
     return {
       enabled,
       model: model.trim() || DEFAULT_FALLBACK_CONFIG.model,
+      visionModel: visionModel.trim() || DEFAULT_FALLBACK_CONFIG.visionModel,
       onRateLimit,
       onModelUnavailable,
       onEmptyStream,

@@ -2005,6 +2005,98 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("routes vision requests to a vision fallback model when primary model fails", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const customGlobalState = makeMemento((key) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "moonshotai/kimi-k2.6",
+              displayName: "Kimi k2.6 (Deprecated)",
+              contextWindow: 262144,
+              maxOutputTokens: 65536,
+              supportsTools: true,
+              supportsVision: true,
+            },
+            {
+              id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+              displayName: "Nemotron 3.5 Lightning 30B",
+              contextWindow: 1000000,
+              maxOutputTokens: 32768,
+              supportsTools: true,
+              supportsVision: false,
+            },
+            {
+              id: "minimaxai/minimax-m3",
+              displayName: "MiniMax M3",
+              contextWindow: 1000000,
+              maxOutputTokens: 100000,
+              supportsTools: true,
+              supportsVision: true,
+            },
+          ]
+        : key === MODELS_CACHE_VERSION_STATE_KEY
+          ? MODELS_CACHE_VERSION
+          : key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY
+            ? getApiKeyFingerprint("test-key")
+            : undefined,
+    );
+    const customProvider = new NimChatModelProvider(secrets, "test-ua", customGlobalState);
+
+    const modelUnavailableError = new NvidiaApiError(
+      "model_unavailable",
+      "[MODEL_UNAVAILABLE] Function not found.",
+      { status: 404 },
+    );
+    const failingStream = async function* () {
+      throw modelUnavailableError;
+    };
+    const fallbackStream = async function* () {
+      yield { choices: [{ delta: { content: "MiniMax vision fallback response" } }] };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => failingStream())
+      .mockImplementationOnce(() => fallbackStream());
+
+    const progress = { report: jest.fn() };
+    const token = makeToken();
+
+    const messagesWithImage = [
+      {
+        role: 1,
+        content: [
+          new vscode.LanguageModelTextPart("Look at this image"),
+          { mimeType: "image/png", data: new Uint8Array([1, 2, 3]) },
+        ],
+      },
+    ] as unknown as vscode.LanguageModelChatMessage[];
+
+    await customProvider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "moonshotai/kimi-k2.6",
+        name: "Kimi k2.6 (Deprecated)",
+        maxInputTokens: 200000,
+        maxOutputTokens: 65536,
+      }),
+      messagesWithImage,
+      makeChatOptions(),
+      progress,
+      token,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(fallbackRequest.model).toBe("minimaxai/minimax-m3");
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "MiniMax vision fallback response" }),
+    );
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: expect.stringContaining("MiniMax M3"),
+      }),
+    );
+  });
+
   it("does not fallback when fallback.enabled is set to false", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     const customGlobalState = makeMemento((key) =>

@@ -1,5 +1,18 @@
 # Change Log
 
+## [0.6.1] - 2026-08-19
+
+### Added
+
+- **Vision-Aware Smart Fallback (`src/models/catalog.ts`, `src/provider/chat-provider.ts`).** Integrated capability-based fallback routing (`FallbackModelSelectionOptions`). When a failover event occurs on a request containing image inputs (`NimRequestBuilder.hasImageInput`), the system dynamically routes to a vision-capable fallback model instead of a text-only model.
+- **Dedicated Vision Fallback Setting (`nvidia-nim.fallback.visionModel`).** Added configurable setting under `contributes.configuration.properties` (default: `minimaxai/minimax-m3`). If the primary `fallback.model` is text-only (e.g. `Nemotron 3.5 Lightning 30B`), image-containing requests automatically resolve to `fallback.visionModel`.
+- **Fallback Collision Recovery.** If the primary failing model is itself the designated fallback model, `getFallbackModel` automatically elects the next available vision-capable model from `ELITE_MODELS_WHITELIST` (`stepfun-ai/step-3.7-flash`, `thinkingmachines/inkling`, etc.).
+- **Fallback Configuration Unit & Stream Tests (`tests/config.test.ts`, `tests/model-catalog.test.ts`, `tests/provider/chat-provider.stream.test.ts`).** Added comprehensive test coverage for default and custom `fallback.visionModel` settings, multimodal fallback resolution, collision prevention, and end-to-end multimodal fallback streaming.
+
+### Changed
+
+- **Kimi k2.6 Deprecation Notice (`src/models/catalog.ts`, `tests/model-capability-matrix.test.ts`).** Updated `moonshotai/kimi-k2.6` display name to `Kimi k2.6 (Deprecated)` to signal server-side 404 unavailability on NVIDIA NIM while maintaining transparent failover to `minimaxai/minimax-m3`.
+
 ## [0.6.0] - 2026-08-18
 
 ### Added
