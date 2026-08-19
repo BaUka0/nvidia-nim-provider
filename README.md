@@ -4,12 +4,13 @@
 
 [![Install](https://img.shields.io/badge/Install-Marketplace-007ACC?style=flat&logo=visual-studio-code&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
 [![Version](https://img.shields.io/badge/Version-v0.6.1-76B900?style=flat&logo=nvidia&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
+[![Documentation](https://img.shields.io/badge/Docs-Configuration_Guide-green?style=flat&logo=markdown&logoColor=white)](docs/README.md)
 [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-Chat_Native-181717?style=flat&logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Direct, zero-markup access to NVIDIA NIM's premier open & proprietary reasoning models right inside GitHub Copilot Chat.**
 
-[Install](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent) • [Key Features](#-key-features) • [Supported Models](#-supported-models) • [Quick Start](#-quick-start) • [FAQ](#-frequently-asked-questions) • [Commands](#-extension-commands)
+[Install](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent) • [Documentation](docs/README.md) • [Supported Models](#-supported-models) • [Quick Start](#-quick-start) • [FAQ](#-frequently-asked-questions) • [Commands](#-extension-commands)
 
 <br/>
 
@@ -29,27 +30,11 @@ Modern software engineering demands high-precision reasoning, long context under
 
 ## ✨ Key Features
 
-### 🧠 Native Deep Reasoning
-- **Collapsible Thinking Blocks:** Fully supports VS Code's native `LanguageModelThinkingPart` API. Reasoning output from models like **DeepSeek V4**, **Kimi K2.6**, and **Nemotron 3.5** renders as clean, collapsible thinking sections rather than cluttering your chat stream.
-- **Granular Effort Control:** Select reasoning modes (`None`, `On`, `Medium`, `High`, `Max`) directly from the Copilot model picker dropdown.
-
-### 🛡️ Zero-Downtime Smart Failover
-- **Transient Turn-Level Failover:** If an active model experiences rate limits (`HTTP 429/529`), temporary unavailability (`404`), an empty stream, or a slow first-token timeout (TTFT), the extension instantly routes the current turn to a lightning backup model (e.g. `nvidia/nemotron-3.5-lightning-30b-a3b`).
-- **Automatic Recovery:** Automatically restores your preferred primary model on the subsequent turn.
-- **Transparent Notifications:** Clear in-chat callout badges (`> ⚡ **NVIDIA NIM Fallback:** ...`) and status notifications keep you informed without interrupting workflow.
-
-### 🛠️ Self-Healing Agentic Tool Execution
-- **Tag-Stack XML Scanner:** Single-pass streaming scanner compatible with Hermes, Nemotron, Anthropic, Qwen, and DeepSeek syntax.
-- **Self-Healing Repair:** Automatically rectifies unescaped strings, trailing JSON commas, and parameter aliases (`filePath` ⇄ `path` ⇄ `file`).
-- **Loop Prevention:** Safely suppresses identical consecutive read-only operations while permitting intentional terminal command retries.
-
-### 🗜️ Dedicated Context Auto-Compaction
-- **Decoupled Summarization:** Leverages a dedicated, ultra-fast model (`context.summarizationModel`) to condense lengthy dialogue history without altering your primary model configuration.
-- **Dynamic Safety Margins:** Automatically allocates safety buffers for large context windows ($\ge 256\text{K}$) to prevent sudden payload overflow errors.
-
-### 📊 Real-Time Token & Latency Telemetry
-- **Rich Status Bar Breakdown:** Real-time token utilization widget displaying exact breakdowns across system prompts, tool schemas, user history, thinking tokens, and completions.
-- **Developer Metrics:** Optional millisecond-level TTFT and generation tokens-per-second logs for benchmarking model performance.
+- **🧠 Native Deep Reasoning:** Collapsible thinking blocks via VS Code `LanguageModelThinkingPart` and Copilot effort control (`None` to `Max`).
+- **🛡️ Smart Multimodal Failover:** Automatic single-turn failover on 429/404 errors, routing text requests to Nemotron Lightning and image requests to MiniMax M3.
+- **🛠️ Self-Healing Tool Execution:** Streaming tag-stack XML scanner with auto-repair via `jsonrepair` and duplicate read loop prevention.
+- **🗜️ Context Auto-Compaction:** Decoupled conversation history compaction with dedicated fast summarization models.
+- **📊 Rich Telemetry:** Status bar token utilization widget and millisecond TTFT diagnostics.
 
 ---
 
@@ -60,7 +45,7 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | Model | Context Window | Reasoning Modes | Tool Calling | Vision | Best For |
 | :--- | :---: | :---: | :---: | :---: | :--- |
 | **DeepSeek V4 Flash 0731** | 1M | `None`, `High`, `Max` | ✅ Yes | ❌ | Deep algorithm design, code architecture, complex refactoring |
-| **Kimi K2.6** *(Deprecated)* | 262K | `None`, `On` | ✅ Yes | ✅ Yes | Long-context repository comprehension, multimodal review *(auto-fails over to MiniMax M3)* |
+| **Kimi K2.6** *(Deprecated)* | 262K | `None`, `On` | ✅ Yes | ✅ Yes | Long-context repository comprehension *(auto-fails over to MiniMax M3)* |
 | **Nemotron 3.5 Lightning 30B** | 1M | `None`, `Medium`, `High`, `XHigh` | ✅ Yes | ❌ | Ultra-fast responses, agentic tool workflows, summarization |
 | **Nemotron 3 Ultra 550B** | 1M | `None`, `Medium`, `High` | ✅ Yes | ❌ | Heavy multi-step reasoning, deep technical documentation |
 | **MiniMax M3** | 1M | `None`, `On`, `Adaptive` | ✅ Yes | ✅ Yes | Multimodal code generation, full-stack tasks |
@@ -68,6 +53,14 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | **Step 3.7 Flash** | 262K | `Always On` | ✅ Yes | ✅ Yes | Rapid thinking loops, interactive pair programming |
 | **Inkling** | 1M | `None` to `Max` (7 levels) | ✅ Yes | ✅ Yes | Ultra-deep analytical inspection |
 | **Muse Glimmer** | 131K | `None` to `XHigh` | ✅ Yes | ✅ Yes | Visual UX/UI analysis and front-end generation |
+
+---
+
+## ⚙️ Documentation & Settings
+
+For the complete reference of all `settings.json` options, failover policies, network parameters, and agentic tools, see our dedicated guide:
+
+👉 [**📖 Full Documentation & Configuration Guide (docs/README.md)**](docs/README.md)
 
 ---
 
@@ -100,9 +93,9 @@ Access these commands anytime from the VS Code Command Palette (`Ctrl + Shift + 
 
 | Command | Identifier | Description |
 | :--- | :--- | :--- |
-| **Manage API Key** | `nvidia-nim.manage` | Store or update your NVIDIA NIM API key. |
-| **Refresh Models** | `nvidia-nim.refreshModels` | Force re-sync available models from your NVIDIA account. |
-| **Toggle Debug Logging** | `nvidia-nim.toggleDebugLogging` | Enable/disable verbose diagnostic logs. |
+| **Manage API Key** | `nvidia-nim.manage` | Store or update your NVIDIA NIM API key in secure OS SecretStorage. |
+| **Refresh Models** | `nvidia-nim.refreshModels` | Force re-sync available models and invalidate local cache. |
+| **Toggle Debug Logging** | `nvidia-nim.toggleDebugLogging` | Quickly toggle verbose diagnostic logs on/off. |
 | **Open Debug Log** | `nvidia-nim.openDebugLog` | Reveal the dedicated NVIDIA NIM Output Channel. |
 
 ---
@@ -128,4 +121,3 @@ A: Yes! Supported chat models are tool-capable and support autonomous file editi
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
-
