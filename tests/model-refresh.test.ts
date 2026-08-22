@@ -1,6 +1,6 @@
 import { fetchModels } from "../src/api/client";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../src/api/key-resolver";
-import { ELITE_MODELS_WHITELIST } from "../src/models/catalog";
+import { MODEL_LIST } from "../src/models/catalog";
 import { NvidiaModelDiscoveryService } from "../src/models/discovery";
 import { refreshModelsFromApi, resetRefreshQueue } from "../src/models/refresh";
 import {
@@ -244,7 +244,7 @@ describe("model cache key ownership and refresh", () => {
     const initialNormalizedModels = [
       {
         id: "deepseek-ai/deepseek-v4-flash-0731",
-        ...ELITE_MODELS_WHITELIST["deepseek-ai/deepseek-v4-flash-0731"],
+        ...MODEL_LIST["deepseek-ai/deepseek-v4-flash-0731"],
       },
     ];
     const discoveryRawModels = [{ id: "nvidia/nemotron-3.5-lightning-30b-a3b" }];

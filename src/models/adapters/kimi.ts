@@ -20,18 +20,13 @@ export class KimiAdapter extends BaseModelAdapter {
     return patchedMessages ?? messages;
   }
 
-  readonly supportedReasoningModes = ["none", "on"];
-  readonly reasoningParameterFormat = "chat_template_kwargs" as const;
+  readonly supportedReasoningModes = ["none", "low", "high", "max"];
+  readonly reasoningParameterFormat = "reasoning_effort" as const;
   // Native tool_calls are preferred, while OpenAI-style text control tokens
   // remain accepted as a compatibility/recovery fallback.
   readonly toolCallProtocol = "native-and-text" as const;
 
   applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
-    request.chat_template_kwargs = request.chat_template_kwargs || {};
-    if (mode === "none") {
-      request.chat_template_kwargs.thinking = false;
-    } else {
-      request.chat_template_kwargs.thinking = true;
-    }
+    request.reasoning_effort = this.supportedReasoningModes.includes(mode) ? mode : "none";
   }
 }

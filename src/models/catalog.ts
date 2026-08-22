@@ -53,7 +53,7 @@ const DEPRECATED_DISPLAY_NAME_MARKER = "(Deprecated)";
  * general-purpose find/replace tools, and text-only models advertise none.
  */
 export function getEditToolsHint(modelId: string): readonly string[] | undefined {
-  const entry = ELITE_MODELS_WHITELIST[modelId];
+  const entry = MODEL_LIST[modelId];
   if (!entry) {
     return undefined;
   }
@@ -70,7 +70,7 @@ export function getEditToolsHint(modelId: string): readonly string[] | undefined
  * or undefined when the model is not marked deprecated.
  */
 export function getModelWarningText(modelId: string): string | undefined {
-  const entry = ELITE_MODELS_WHITELIST[modelId];
+  const entry = MODEL_LIST[modelId];
   if (!entry || !entry.displayName.includes(DEPRECATED_DISPLAY_NAME_MARKER)) {
     return undefined;
   }
@@ -80,7 +80,7 @@ export function getModelWarningText(modelId: string): string | undefined {
 const DEFAULT_CONTEXT_WINDOW = 131072;
 const DEFAULT_MAX_OUTPUT_TOKENS = 65536;
 
-export const ELITE_MODELS_WHITELIST: Record<string, NvidiaModelCatalogEntry> = {
+export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
   "deepseek-ai/deepseek-v4-flash-0731": {
     displayName: "DeepSeek V4 Flash 0731",
     contextWindow: 1048576,
@@ -95,9 +95,9 @@ export const ELITE_MODELS_WHITELIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: true,
   },
-  "moonshotai/kimi-k2.6": {
-    displayName: "Kimi k2.6 (Deprecated)",
-    contextWindow: 262144,
+  "moonshotai/kimi-k3": {
+    displayName: "Kimi K3",
+    contextWindow: 1048576,
     maxOutputTokens: 65536,
     supportsTools: true,
     supportsVision: true,
@@ -113,13 +113,6 @@ export const ELITE_MODELS_WHITELIST: Record<string, NvidiaModelCatalogEntry> = {
     displayName: "Nemotron 3.5 Lightning 30B",
     contextWindow: 1000000,
     maxOutputTokens: 32768,
-    supportsTools: true,
-    supportsVision: false,
-  },
-  "z-ai/glm-5.2": {
-    displayName: "GLM 5.2",
-    contextWindow: 1000000,
-    maxOutputTokens: 131072,
     supportsTools: true,
     supportsVision: false,
   },
@@ -145,6 +138,9 @@ export const ELITE_MODELS_WHITELIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsVision: true,
   },
 };
+
+/** @deprecated Alias for MODEL_LIST */
+export const ELITE_MODELS_WHITELIST = MODEL_LIST;
 
 export const FALLBACK_MODEL_ID = "nvidia/nemotron-3.5-lightning-30b-a3b";
 export const FALLBACK_VISION_MODEL_ID = "minimaxai/minimax-m3";
@@ -228,7 +224,7 @@ export function normalizeNvidiaModels(models: NvidiaModelSummary[]): NormalizedN
   const normalizedModels: NormalizedNvidiaModel[] = [];
 
   for (const model of models) {
-    if (seenIds.has(model.id) || !(model.id in ELITE_MODELS_WHITELIST)) {
+    if (seenIds.has(model.id) || !(model.id in MODEL_LIST)) {
       continue;
     }
     seenIds.add(model.id);
@@ -261,7 +257,7 @@ export function isNormalizedNvidiaModel(value: unknown): value is NormalizedNvid
 }
 
 function normalizeNvidiaModel(model: NvidiaModelSummary): NormalizedNvidiaModel {
-  const override = ELITE_MODELS_WHITELIST[model.id];
+  const override = MODEL_LIST[model.id];
 
   return {
     id: model.id,

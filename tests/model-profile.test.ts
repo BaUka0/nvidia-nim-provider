@@ -3,7 +3,7 @@ import { NimChatRequest } from "../src/types";
 
 describe("getModelAdapter", () => {
   it.each([
-    ["kimi-k2.6", 0.2, 0.1, "Do not reveal chain-of-thought"],
+    ["kimi-k3", 0.2, 0.1, "Do not reveal chain-of-thought"],
     ["zai-org/glm-4.5", 0.1, 0.05, "strict JSON arguments"],
     ["z-ai/glm-5.2", 0.1, 0.05, "strict JSON arguments"],
     ["nemotron-70b", 0.2, 0.1, "Do not wrap tool arguments in markdown fences"],
@@ -89,25 +89,20 @@ describe("applyReasoningMode", () => {
     expect(adapter.supportedReasoningModes).toEqual(["none", "on", "adaptive"]);
   });
 
-  it("sets chat_template_kwargs.thinking to false for Kimi none", () => {
-    const adapter = getModelAdapter("moonshotai/kimi-k2.6");
+  it("exposes Kimi reasoning effort modes and sends the selected mode", () => {
+    const adapter = getModelAdapter("moonshotai/kimi-k3");
     const request: NimChatRequest = {
-      model: "moonshotai/kimi-k2.6",
+      model: "moonshotai/kimi-k3",
       messages: [],
     };
-    adapter.applyReasoningMode!(request, "none");
-    expect(request.chat_template_kwargs).toEqual({ thinking: false });
-    expect(request.enable_thinking).toBeUndefined();
-  });
 
-  it("sets chat_template_kwargs.thinking to true for Kimi on", () => {
-    const adapter = getModelAdapter("moonshotai/kimi-k2.6");
-    const request: NimChatRequest = {
-      model: "moonshotai/kimi-k2.6",
-      messages: [],
-    };
-    adapter.applyReasoningMode!(request, "on");
-    expect(request.chat_template_kwargs).toEqual({ thinking: true });
+    expect(adapter.supportedReasoningModes).toEqual(["none", "low", "high", "max"]);
+
+    adapter.applyReasoningMode!(request, "high");
+    expect(request.reasoning_effort).toBe("high");
+
+    adapter.applyReasoningMode!(request, "none");
+    expect(request.reasoning_effort).toBe("none");
   });
 
   it("sets chat_template_kwargs.enable_thinking to false for GLM none", () => {

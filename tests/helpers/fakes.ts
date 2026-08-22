@@ -88,8 +88,8 @@ export function makeCachedModelsMemento(
 
 export function makeModel(overrides: ModelInit = {}): vscode.LanguageModelChatInformation {
   return {
-    id: "kimi-k2.6",
-    name: overrides.name ?? overrides.id ?? "Kimi k2.6",
+    id: "kimi-k3",
+    name: overrides.name ?? overrides.id ?? "Kimi K3",
     version: "1",
     maxInputTokens: 100000,
     maxOutputTokens: 65536,

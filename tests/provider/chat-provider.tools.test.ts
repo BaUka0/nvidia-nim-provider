@@ -271,8 +271,8 @@ describe("NimChatModelProvider", () => {
       key === "nvidia-nim.models"
         ? [
             {
-              id: "moonshotai/kimi-k2.6",
-              displayName: "Kimi K2.6",
+              id: "moonshotai/kimi-k3",
+              displayName: "Kimi K3",
               contextWindow: 262144,
               maxOutputTokens: 262144,
               supportsTools: true,
@@ -291,7 +291,7 @@ describe("NimChatModelProvider", () => {
     const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "moonshotai/kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeModel({ id: "moonshotai/kimi-k3", maxInputTokens: 100000, maxOutputTokens: 65536 }),
       makeUserMessages("Hi"),
       makeChatOptions({
         modelOptions: {},

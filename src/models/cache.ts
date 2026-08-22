@@ -7,7 +7,7 @@ import {
 } from "../shared/constants";
 import { debugLog, outputLog } from "../shared/logging";
 import type { NvidiaModelSummary } from "../types";
-import { ELITE_MODELS_WHITELIST, type NormalizedNvidiaModel } from "./catalog";
+import { MODEL_LIST, type NormalizedNvidiaModel } from "./catalog";
 
 export interface ModelCacheState {
   get<T>(key: string): T | undefined;
@@ -69,7 +69,7 @@ export async function writeModelCacheAtomically(
 
 export function reportMissingCuratedModels(rawModels: readonly NvidiaModelSummary[]): void {
   const apiModelIds = new Set(rawModels.map((model) => model.id));
-  const missingCuratedModels = Object.keys(ELITE_MODELS_WHITELIST).filter(
+  const missingCuratedModels = Object.keys(MODEL_LIST).filter(
     (modelId) => !apiModelIds.has(modelId),
   );
   if (missingCuratedModels.length > 0) {

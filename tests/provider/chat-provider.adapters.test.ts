@@ -991,8 +991,7 @@ describe("NimChatModelProvider", () => {
   });
 
   it.each([
-    ["moonshotai/kimi-k2.6", 0.1, "Do not reveal chain-of-thought"],
-    ["z-ai/glm-5.2", 0.05, "strict JSON arguments"],
+    ["moonshotai/kimi-k3", 0.1, "Do not reveal chain-of-thought"],
     ["nvidia/nemotron-3-ultra-550b-a55b", 0.1, "Do not wrap tool arguments in markdown fences"],
   ])(
     "applies the provider request profile for %s when tools are enabled",

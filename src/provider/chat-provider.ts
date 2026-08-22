@@ -398,8 +398,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     const models = await this.discoveryService.getAvailableModels(apiKey, {
       refreshStaleCache: true,
     });
+    const includeProposed = this.runtimeFlags?.chatProviderProposalAvailable === true;
     const chatInformation = this.discoveryService.mapToChatInformation(models, {
-      includeEditTools: this.runtimeFlags?.chatProviderProposalAvailable === true,
+      includeProposedChatProviderProperties: includeProposed,
+      includeEditTools: includeProposed && ConfigManager.getUiConfig().editToolsHint,
     });
     for (const model of chatInformation) {
       this.apiKeyResolver.registerModelKey(model, apiKey, resolutionGroupKey);

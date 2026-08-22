@@ -87,14 +87,14 @@ describe("ConfigManager", () => {
 
     it("sanitizes fallback.priorityList entries", () => {
       mockStore["fallback.priorityList"] = [
-        "  z-ai/glm-5.2  ",
+        "  moonshotai/kimi-k3  ",
         "",
         42,
         null,
         "minimaxai/minimax-m3",
       ];
       const config = ConfigManager.getFallbackConfig();
-      expect(config.priorityList).toEqual(["z-ai/glm-5.2", "minimaxai/minimax-m3"]);
+      expect(config.priorityList).toEqual(["moonshotai/kimi-k3", "minimaxai/minimax-m3"]);
 
       mockStore["fallback.priorityList"] = "not-an-array";
       expect(ConfigManager.getFallbackConfig().priorityList).toEqual([]);

@@ -9,7 +9,7 @@ import {
   DEFAULT_MAX_OUTPUT_TOKENS,
 } from "../shared/constants";
 import {
-  ELITE_MODELS_WHITELIST,
+  MODEL_LIST,
   getEditToolsHint,
   getModelWarningText,
   isNormalizedNvidiaModel,
@@ -67,8 +67,7 @@ export interface NvidiaLanguageModelChatInformation extends vscode.LanguageModel
 
 function isCachedCuratedModel(value: unknown): value is NormalizedNvidiaModel {
   return (
-    isNormalizedNvidiaModel(value) &&
-    Object.prototype.hasOwnProperty.call(ELITE_MODELS_WHITELIST, value.id)
+    isNormalizedNvidiaModel(value) && Object.prototype.hasOwnProperty.call(MODEL_LIST, value.id)
   );
 }
 
@@ -188,7 +187,10 @@ export class NvidiaModelDiscoveryService {
 
   public mapToChatInformation(
     models: readonly NormalizedNvidiaModel[],
-    options: { includeEditTools?: boolean } = {},
+    options: {
+      includeProposedChatProviderProperties?: boolean;
+      includeEditTools?: boolean;
+    } = {},
   ): NvidiaLanguageModelChatInformation[] {
     const info: NvidiaLanguageModelChatInformation[] = [];
 
@@ -241,14 +243,20 @@ export class NvidiaModelDiscoveryService {
         maxOutputTokens: model.maxOutputTokens ?? 65536,
         contextWindow: model.contextWindow,
         isUserSelectable: true,
-        isBYOK: true,
-        statusIcon: new vscode.ThemeIcon("cloud"),
         capabilities: {
           toolCalling: model.supportsTools ? 128 : false,
           imageInput: model.supportsVision ?? false,
-          editTools: options.includeEditTools ? getEditToolsHint(model.id) : undefined,
+          ...(options.includeProposedChatProviderProperties && options.includeEditTools
+            ? { editTools: getEditToolsHint(model.id) }
+            : {}),
         },
-        ...(warningText ? { warningText: { deprecated: warningText } } : {}),
+        ...(options.includeProposedChatProviderProperties
+          ? {
+              isBYOK: true,
+              statusIcon: new vscode.ThemeIcon("cloud"),
+              ...(warningText ? { warningText: { deprecated: warningText } } : {}),
+            }
+          : {}),
         ...(configurationSchema ? { configurationSchema } : {}),
       });
     }

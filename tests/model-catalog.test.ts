@@ -1,5 +1,5 @@
 import {
-  ELITE_MODELS_WHITELIST,
+  MODEL_LIST,
   FALLBACK_MODEL_ID,
   FALLBACK_VISION_MODEL_ID,
   getEditToolsHint,
@@ -33,40 +33,21 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
-  it("normalizes moonshotai/kimi-k2.6 with Deprecated label", () => {
+  it("normalizes moonshotai/kimi-k3 with its 1M context limits", () => {
     const raw: NvidiaModelSummary[] = [
       {
-        id: "moonshotai/kimi-k2.6",
+        id: "moonshotai/kimi-k3",
       },
     ];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       {
-        id: "moonshotai/kimi-k2.6",
-        displayName: "Kimi k2.6 (Deprecated)",
-        contextWindow: 262144,
+        id: "moonshotai/kimi-k3",
+        displayName: "Kimi K3",
+        contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
         supportsVision: true,
-      },
-    ]);
-  });
-
-  it("normalizes z-ai/glm-5.2 correctly with its specific overrides", () => {
-    const raw: NvidiaModelSummary[] = [
-      {
-        id: "z-ai/glm-5.2",
-      },
-    ];
-
-    expect(normalizeNvidiaModels(raw)).toEqual([
-      {
-        id: "z-ai/glm-5.2",
-        displayName: "GLM 5.2",
-        contextWindow: 1000000,
-        maxOutputTokens: 131072,
-        supportsTools: true,
-        supportsVision: false,
       },
     ]);
   });
@@ -172,12 +153,12 @@ describe("normalizeNvidiaModels", () => {
   });
 
   it("deduplicates exact duplicate model ids from the NVIDIA catalog", () => {
-    const raw: NvidiaModelSummary[] = [{ id: "z-ai/glm-5.2" }, { id: "z-ai/glm-5.2" }];
+    const raw: NvidiaModelSummary[] = [{ id: "moonshotai/kimi-k3" }, { id: "moonshotai/kimi-k3" }];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
-        id: "z-ai/glm-5.2",
-        displayName: "GLM 5.2",
+        id: "moonshotai/kimi-k3",
+        displayName: "Kimi K3",
       }),
     ]);
   });
@@ -185,9 +166,9 @@ describe("normalizeNvidiaModels", () => {
   it("detects whether cached values match the normalized NVIDIA model shape", () => {
     expect(
       isNormalizedNvidiaModel({
-        id: "moonshotai/kimi-k2.6",
-        displayName: "Kimi k2.6 (Deprecated)",
-        contextWindow: 256000,
+        id: "moonshotai/kimi-k3",
+        displayName: "Kimi K3",
+        contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
         supportsVision: true,
@@ -195,9 +176,9 @@ describe("normalizeNvidiaModels", () => {
     ).toBe(true);
     expect(
       isNormalizedNvidiaModel({
-        id: "moonshotai/kimi-k2.6",
-        displayName: "Kimi k2.6 (Deprecated)",
-        contextWindow: 256000,
+        id: "moonshotai/kimi-k3",
+        displayName: "Kimi K3",
+        contextWindow: 1048576,
         maxOutputTokens: "65536", // invalid type
         supportsTools: true,
         supportsVision: true,
@@ -216,9 +197,9 @@ describe("getFallbackModel", () => {
     supportsVision: false,
   };
   const kimi = {
-    id: "moonshotai/kimi-k2.6",
-    displayName: "Kimi k2.6 (Deprecated)",
-    contextWindow: 262144,
+    id: "moonshotai/kimi-k3",
+    displayName: "Kimi K3",
+    contextWindow: 1048576,
     maxOutputTokens: 65536,
     supportsTools: true,
     supportsVision: true,
@@ -348,13 +329,13 @@ describe("getFallbackModel", () => {
 });
 
 describe("getEditToolsHint", () => {
-  const originalWhitelist = { ...ELITE_MODELS_WHITELIST };
+  const originalWhitelist = { ...MODEL_LIST };
 
   afterEach(() => {
-    for (const key of Object.keys(ELITE_MODELS_WHITELIST)) {
-      delete ELITE_MODELS_WHITELIST[key];
+    for (const key of Object.keys(MODEL_LIST)) {
+      delete MODEL_LIST[key];
     }
-    Object.assign(ELITE_MODELS_WHITELIST, originalWhitelist);
+    Object.assign(MODEL_LIST, originalWhitelist);
   });
 
   it("returns undefined for unknown model ids", () => {
@@ -369,7 +350,7 @@ describe("getEditToolsHint", () => {
   });
 
   it("filters unknown tool names from explicit catalog overrides", () => {
-    ELITE_MODELS_WHITELIST["test/override-model"] = {
+    MODEL_LIST["test/override-model"] = {
       displayName: "Override Model",
       contextWindow: 131072,
       maxOutputTokens: 32768,
@@ -382,7 +363,7 @@ describe("getEditToolsHint", () => {
   });
 
   it("returns undefined when an override filters down to nothing", () => {
-    ELITE_MODELS_WHITELIST["test/empty-override-model"] = {
+    MODEL_LIST["test/empty-override-model"] = {
       displayName: "Empty Override Model",
       contextWindow: 131072,
       maxOutputTokens: 32768,
@@ -402,8 +383,16 @@ describe("getModelWarningText", () => {
   });
 
   it("returns a markdown warning banner for deprecated models", () => {
-    const warning = getModelWarningText("moonshotai/kimi-k2.6");
-    expect(warning).toContain("**Kimi k2.6 (Deprecated)**");
+    MODEL_LIST["test/deprecated-model"] = {
+      displayName: "Test Model (Deprecated)",
+      contextWindow: 131072,
+      maxOutputTokens: 32768,
+      supportsTools: true,
+      supportsVision: false,
+    };
+    const warning = getModelWarningText("test/deprecated-model");
+    expect(warning).toContain("**Test Model (Deprecated)**");
     expect(warning).toContain("deprecated");
+    delete MODEL_LIST["test/deprecated-model"];
   });
 });

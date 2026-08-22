@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { fetchModels, streamChatCompletion } from "../../src/api/client";
 import { getApiKeyFingerprint } from "../../src/api/key-resolver";
+import { MODEL_LIST } from "../../src/models/catalog";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
 import { MODELS_CACHE_VERSION } from "../../src/shared/constants";
 import {
@@ -884,10 +885,10 @@ describe("NimChatModelProvider", () => {
 
   it("clears runtime model-info metadata after a successful model refresh event", () => {
     const cacheHarness = asRuntimeInfoCache(provider);
-    cacheHarness.setRuntimeInfoCache("moonshotai/kimi-k2.6", {
+    cacheHarness.setRuntimeInfoCache("moonshotai/kimi-k3", {
       supportsTools: true,
       supportsVision: true,
-      contextWindow: 256000,
+      contextWindow: 1048576,
       runtimeMetadataSource: "cache",
     });
 
@@ -898,10 +899,10 @@ describe("NimChatModelProvider", () => {
 
   it("clears runtime model-info metadata at the start of a new resolution cycle", async () => {
     const cacheHarness = asRuntimeInfoCache(provider);
-    cacheHarness.setRuntimeInfoCache("moonshotai/kimi-k2.6", {
+    cacheHarness.setRuntimeInfoCache("moonshotai/kimi-k3", {
       supportsTools: true,
       supportsVision: true,
-      contextWindow: 256000,
+      contextWindow: 1048576,
       runtimeMetadataSource: "selected-model",
     });
 
@@ -963,12 +964,19 @@ describe("NimChatModelProvider", () => {
   });
 
   it("advertises BYOK, status icon, edit tools, and deprecation warnings in model information", async () => {
+    MODEL_LIST["test/deprecated-model"] = {
+      displayName: "Test Model (Deprecated)",
+      contextWindow: 262144,
+      maxOutputTokens: 65536,
+      supportsTools: true,
+      supportsVision: true,
+    };
     (globalState.get as jest.Mock).mockImplementation((key: string) => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "moonshotai/kimi-k2.6",
-            displayName: "Kimi k2.6 (Deprecated)",
+            id: "test/deprecated-model",
+            displayName: "Test Model (Deprecated)",
             contextWindow: 262144,
             maxOutputTokens: 65536,
             supportsTools: true,
@@ -994,7 +1002,7 @@ describe("NimChatModelProvider", () => {
     });
     (secrets.get as jest.Mock).mockResolvedValue(undefined);
 
-    const infos = await provider.provideLanguageModelChatInformation(
+    const unflaggedInfos = await provider.provideLanguageModelChatInformation(
       makePrepareOptions({
         silent: true,
         configuration: { apiKey: "configured-key" },
@@ -1002,16 +1010,39 @@ describe("NimChatModelProvider", () => {
       makeToken(),
     );
 
-    const kimi = infos.find((m) => m.id === "moonshotai/kimi-k2.6");
+    const unflaggedDep = unflaggedInfos.find((m) => m.id === "test/deprecated-model");
+    expect(unflaggedDep?.isBYOK).toBeUndefined();
+    expect(unflaggedDep?.statusIcon).toBeUndefined();
+    expect(unflaggedDep?.warningText).toBeUndefined();
+
+    const flaggedProvider = new NimChatModelProvider(
+      secrets,
+      "test-ua",
+      globalState,
+      undefined,
+      undefined,
+      { chatProviderProposalAvailable: true },
+    );
+    const infos = await flaggedProvider.provideLanguageModelChatInformation(
+      makePrepareOptions({
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      }),
+      makeToken(),
+    );
+
+    const depModel = infos.find((m) => m.id === "test/deprecated-model");
     const flash = infos.find((m) => m.id === "deepseek-ai/deepseek-v4-flash-0731");
 
-    expect(kimi?.isBYOK).toBe(true);
-    expect(kimi?.statusIcon?.id).toBe("cloud");
-    expect(kimi?.warningText?.deprecated).toContain("(Deprecated)");
+    expect(depModel?.isBYOK).toBe(true);
+    expect(depModel?.statusIcon?.id).toBe("cloud");
+    expect(depModel?.warningText?.deprecated).toContain("(Deprecated)");
 
     expect(flash?.isBYOK).toBe(true);
     expect(flash?.statusIcon?.id).toBe("cloud");
     expect(flash?.warningText).toBeUndefined();
+
+    delete MODEL_LIST["test/deprecated-model"];
   });
 
   it("omits edit tool hints by default and advertises them only with the proposal flag and setting enabled", async () => {

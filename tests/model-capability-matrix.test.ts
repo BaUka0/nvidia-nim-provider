@@ -1,8 +1,4 @@
-import {
-  ELITE_MODELS_WHITELIST,
-  NvidiaModelCatalogEntry,
-  normalizeNvidiaModels,
-} from "../src/models/catalog";
+import { MODEL_LIST, NvidiaModelCatalogEntry, normalizeNvidiaModels } from "../src/models/catalog";
 import {
   getModelAdapter,
   getModelCapabilityContract,
@@ -107,26 +103,22 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "mm:think",
   },
   {
-    modelId: "moonshotai/kimi-k2.6",
+    modelId: "moonshotai/kimi-k3",
     catalog: {
-      displayName: "Kimi k2.6 (Deprecated)",
-      contextWindow: 262144,
+      displayName: "Kimi K3",
+      contextWindow: 1048576,
       maxOutputTokens: 65536,
       supportsTools: true,
       supportsVision: true,
     },
-    reasoningModes: ["none", "on"],
+    reasoningModes: ["none", "low", "high", "max"],
     reasoningCases: [
-      {
-        mode: "none",
-        expectedFields: { chat_template_kwargs: { thinking: false } },
-      },
-      {
-        mode: "on",
-        expectedFields: { chat_template_kwargs: { thinking: true } },
-      },
+      { mode: "none", expectedFields: { reasoning_effort: "none" } },
+      { mode: "low", expectedFields: { reasoning_effort: "low" } },
+      { mode: "high", expectedFields: { reasoning_effort: "high" } },
+      { mode: "max", expectedFields: { reasoning_effort: "max" } },
     ],
-    reasoningParameterFormat: "chat_template_kwargs",
+    reasoningParameterFormat: "reasoning_effort",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "isolated",
     responseSanitization: "none",
@@ -190,36 +182,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
         mode: "xhigh",
         expectedFields: {
           chat_template_kwargs: { enable_thinking: true, reasoning_budget: 31130 },
-        },
-      },
-    ],
-    reasoningParameterFormat: "chat_template_kwargs",
-    toolCallProtocol: "native-and-text",
-    reasoningRouting: "isolated",
-    responseSanitization: "none",
-    contentOnlyMode: "none",
-    contentOnlyRouting: "text",
-    thinkTag: "think",
-  },
-  {
-    modelId: "z-ai/glm-5.2",
-    catalog: {
-      displayName: "GLM 5.2",
-      contextWindow: 1000000,
-      maxOutputTokens: 131072,
-      supportsTools: true,
-      supportsVision: false,
-    },
-    reasoningModes: ["none", "on"],
-    reasoningCases: [
-      {
-        mode: "none",
-        expectedFields: { chat_template_kwargs: { enable_thinking: false } },
-      },
-      {
-        mode: "on",
-        expectedFields: {
-          chat_template_kwargs: { enable_thinking: true, clear_thinking: false },
         },
       },
     ],
@@ -343,12 +305,12 @@ function createRouter(
 describe("curated model capability matrix", () => {
   it("covers every curated whitelist model exactly once", () => {
     expect(CAPABILITY_MATRIX.map(({ modelId }) => modelId).sort()).toEqual(
-      Object.keys(ELITE_MODELS_WHITELIST).sort(),
+      Object.keys(MODEL_LIST).sort(),
     );
   });
 
   it.each(CAPABILITY_MATRIX)("$modelId pins the exact catalog and adapter contract", (entry) => {
-    expect(ELITE_MODELS_WHITELIST[entry.modelId]).toEqual(entry.catalog);
+    expect(MODEL_LIST[entry.modelId]).toEqual(entry.catalog);
     expect(getModelCapabilityContract(entry.modelId)).toEqual({
       reasoningModes: entry.reasoningModes,
       reasoningParameterFormat: entry.reasoningParameterFormat,
@@ -537,14 +499,14 @@ describe("curated model capability matrix", () => {
   it.each(CAPABILITY_MATRIX.filter((entry) => entry.catalog.supportsVision))(
     "$modelId explicitly supports vision input",
     (entry) => {
-      expect(ELITE_MODELS_WHITELIST[entry.modelId].supportsVision).toBe(true);
+      expect(MODEL_LIST[entry.modelId].supportsVision).toBe(true);
     },
   );
 
   it.each(CAPABILITY_MATRIX.filter((entry) => !entry.catalog.supportsVision))(
     "$modelId explicitly rejects vision input",
     (entry) => {
-      expect(ELITE_MODELS_WHITELIST[entry.modelId].supportsVision).toBe(false);
+      expect(MODEL_LIST[entry.modelId].supportsVision).toBe(false);
     },
   );
 

@@ -8,7 +8,7 @@ import {
   MODELS_STATE_KEY,
   PROVIDER_DISPLAY_NAME,
 } from "../shared/constants";
-import { ELITE_MODELS_WHITELIST, isNormalizedNvidiaModel } from "../models/catalog";
+import { MODEL_LIST, isNormalizedNvidiaModel } from "../models/catalog";
 import { NvidiaApiKeyResolver } from "../api/key-resolver";
 
 /** Maximum accepted image payload (binary bytes) sent to the vision model. */
@@ -65,8 +65,8 @@ export class NimVisionClient {
       ? cachedModels.find(
           (model) =>
             isNormalizedNvidiaModel(model) &&
-            Object.prototype.hasOwnProperty.call(ELITE_MODELS_WHITELIST, model.id) &&
-            ELITE_MODELS_WHITELIST[model.id].supportsVision &&
+            Object.prototype.hasOwnProperty.call(MODEL_LIST, model.id) &&
+            MODEL_LIST[model.id].supportsVision &&
             model.supportsVision,
         )
       : undefined;

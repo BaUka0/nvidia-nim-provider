@@ -1166,8 +1166,8 @@ describe("NimChatModelProvider", () => {
       key === "nvidia-nim.models"
         ? [
             {
-              id: "moonshotai/kimi-k2.6",
-              displayName: "Kimi K2.6",
+              id: "moonshotai/kimi-k3",
+              displayName: "Kimi K3",
               contextWindow: 70000,
               maxOutputTokens: 200000,
               supportsTools: true,
@@ -1187,7 +1187,7 @@ describe("NimChatModelProvider", () => {
     const prompt = "a".repeat(900);
 
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "moonshotai/kimi-k2.6", maxInputTokens: 5000, maxOutputTokens: 200000 }),
+      makeModel({ id: "moonshotai/kimi-k3", maxInputTokens: 5000, maxOutputTokens: 200000 }),
       makeMessages({ role: 1, content: [{ value: prompt }] }),
       makeChatOptions({
         modelOptions: { max_tokens: 120000 },
@@ -2020,9 +2020,9 @@ describe("NimChatModelProvider", () => {
       key === "nvidia-nim.models"
         ? [
             {
-              id: "moonshotai/kimi-k2.6",
-              displayName: "Kimi k2.6 (Deprecated)",
-              contextWindow: 262144,
+              id: "moonshotai/kimi-k3",
+              displayName: "Kimi K3",
+              contextWindow: 1048576,
               maxOutputTokens: 65536,
               supportsTools: true,
               supportsVision: true,
@@ -2082,8 +2082,8 @@ describe("NimChatModelProvider", () => {
 
     await customProvider.provideLanguageModelChatResponse(
       makeModel({
-        id: "moonshotai/kimi-k2.6",
-        name: "Kimi k2.6 (Deprecated)",
+        id: "moonshotai/kimi-k3",
+        name: "Kimi K3",
         maxInputTokens: 200000,
         maxOutputTokens: 65536,
       }),
@@ -2112,8 +2112,8 @@ describe("NimChatModelProvider", () => {
       key === "nvidia-nim.models"
         ? [
             {
-              id: "moonshotai/kimi-k2.6",
-              displayName: "Kimi k2.6",
+              id: "moonshotai/kimi-k3",
+              displayName: "Kimi K3",
               contextWindow: 262144,
               maxOutputTokens: 262144,
               supportsTools: true,
@@ -2149,8 +2149,8 @@ describe("NimChatModelProvider", () => {
     await expect(
       customProvider.provideLanguageModelChatResponse(
         makeModel({
-          id: "moonshotai/kimi-k2.6",
-          name: "Kimi k2.6",
+          id: "moonshotai/kimi-k3",
+          name: "Kimi K3",
           maxInputTokens: 200000,
           maxOutputTokens: 65536,
         }),
@@ -2167,10 +2167,9 @@ describe("NimChatModelProvider", () => {
   it.each([
     ["deepseek-ai/deepseek-v4-flash-0731", false],
     ["minimaxai/minimax-m3", true],
-    ["moonshotai/kimi-k2.6", true],
+    ["moonshotai/kimi-k3", true],
     ["nvidia/nemotron-3-ultra-550b-a55b", false],
     ["nvidia/nemotron-3.5-lightning-30b-a3b", false],
-    ["z-ai/glm-5.2", false],
     ["stepfun-ai/step-3.7-flash", true],
     ["thinkingmachines/inkling", true],
     ["meta/muse-glimmer-30b", true],
@@ -2348,8 +2347,8 @@ describe("NimChatModelProvider", () => {
       key === "nvidia-nim.models"
         ? [
             {
-              id: "moonshotai/kimi-k2.6",
-              displayName: "Kimi K2.6",
+              id: "moonshotai/kimi-k3",
+              displayName: "Kimi K3",
               contextWindow: 5000,
               maxOutputTokens: 1000,
               supportsTools: true,
@@ -2371,7 +2370,7 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       makeModel({
-        id: "moonshotai/kimi-k2.6",
+        id: "moonshotai/kimi-k3",
         maxInputTokens: 5000,
         maxOutputTokens: 1000,
         capabilities: { toolCalling: 128, imageInput: true },
@@ -2924,25 +2923,27 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((key: string, defaultValue: unknown) =>
-        key === "fallback.priorityList" ? ["z-ai/glm-5.2", "minimaxai/minimax-m3"] : defaultValue,
+        key === "fallback.priorityList"
+          ? ["nvidia/nemotron-3-ultra-550b-a55b", "minimaxai/minimax-m3"]
+          : defaultValue,
       ),
     }));
     (globalState.get as jest.Mock).mockImplementation((key: string) => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "moonshotai/kimi-k2.6",
-            displayName: "Kimi k2.6",
-            contextWindow: 262144,
+            id: "moonshotai/kimi-k3",
+            displayName: "Kimi K3",
+            contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,
             supportsVision: true,
           },
           {
-            id: "z-ai/glm-5.2",
-            displayName: "GLM 5.2",
+            id: "nvidia/nemotron-3-ultra-550b-a55b",
+            displayName: "Nemotron 3 Ultra 550B",
             contextWindow: 1000000,
-            maxOutputTokens: 131072,
+            maxOutputTokens: 65536,
             supportsTools: true,
             supportsVision: false,
           },
@@ -2988,8 +2989,8 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       makeModel({
-        id: "moonshotai/kimi-k2.6",
-        name: "Kimi k2.6",
+        id: "moonshotai/kimi-k3",
+        name: "Kimi K3",
         maxInputTokens: 200000,
         maxOutputTokens: 65536,
       }),
@@ -3003,15 +3004,15 @@ describe("NimChatModelProvider", () => {
       (call) => call[1].model,
     );
     expect(requestedModels).toEqual([
-      "moonshotai/kimi-k2.6",
-      "z-ai/glm-5.2",
+      "moonshotai/kimi-k3",
+      "nvidia/nemotron-3-ultra-550b-a55b",
       "minimaxai/minimax-m3",
     ]);
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      "Rate limited on Kimi k2.6. Falling back to GLM 5.2.",
+      "Rate limited on Kimi K3. Falling back to Nemotron 3 Ultra 550B.",
     );
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      "Rate limited on GLM 5.2. Falling back to MiniMax M3.",
+      "Rate limited on Nemotron 3 Ultra 550B. Falling back to MiniMax M3.",
     );
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Priority chain response" }),
@@ -3022,25 +3023,25 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((key: string, defaultValue: unknown) =>
-        key === "fallback.priorityList" ? ["z-ai/glm-5.2"] : defaultValue,
+        key === "fallback.priorityList" ? ["nvidia/nemotron-3-ultra-550b-a55b"] : defaultValue,
       ),
     }));
     (globalState.get as jest.Mock).mockImplementation((key: string) => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "moonshotai/kimi-k2.6",
-            displayName: "Kimi k2.6",
-            contextWindow: 262144,
+            id: "moonshotai/kimi-k3",
+            displayName: "Kimi K3",
+            contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,
             supportsVision: true,
           },
           {
-            id: "z-ai/glm-5.2",
-            displayName: "GLM 5.2",
-            contextWindow: 1000000,
-            maxOutputTokens: 131072,
+            id: "nvidia/nemotron-3-ultra-550b-a55b",
+            displayName: "Nemotron 3 Ultra 550B",
+            contextWindow: 1048576,
+            maxOutputTokens: 65536,
             supportsTools: true,
             supportsVision: false,
           },
@@ -3074,8 +3075,8 @@ describe("NimChatModelProvider", () => {
     await expect(
       provider.provideLanguageModelChatResponse(
         makeModel({
-          id: "moonshotai/kimi-k2.6",
-          name: "Kimi k2.6",
+          id: "moonshotai/kimi-k3",
+          name: "Kimi K3",
           maxInputTokens: 200000,
           maxOutputTokens: 65536,
         }),
@@ -3085,7 +3086,7 @@ describe("NimChatModelProvider", () => {
         makeToken(),
       ),
     ).rejects.toThrow(
-      /All NVIDIA NIM failover candidates failed[\s\S]*Tried chain: moonshotai\/kimi-k2\.6 -> z-ai\/glm-5\.2/,
+      /All NVIDIA NIM failover candidates failed[\s\S]*Tried chain: moonshotai\/kimi-k3 -> nvidia\/nemotron-3-ultra-550b-a55b/,
     );
   });
 });
