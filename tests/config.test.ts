@@ -80,6 +80,25 @@ describe("ConfigManager", () => {
       mockStore["fallback.firstTokenTimeoutSeconds"] = 45; // Valid
       expect(ConfigManager.getFallbackConfig().firstTokenTimeoutSeconds).toBe(45);
     });
+
+    it("defaults fallback.priorityList to an empty list", () => {
+      expect(ConfigManager.getFallbackConfig().priorityList).toEqual([]);
+    });
+
+    it("sanitizes fallback.priorityList entries", () => {
+      mockStore["fallback.priorityList"] = [
+        "  z-ai/glm-5.2  ",
+        "",
+        42,
+        null,
+        "minimaxai/minimax-m3",
+      ];
+      const config = ConfigManager.getFallbackConfig();
+      expect(config.priorityList).toEqual(["z-ai/glm-5.2", "minimaxai/minimax-m3"]);
+
+      mockStore["fallback.priorityList"] = "not-an-array";
+      expect(ConfigManager.getFallbackConfig().priorityList).toEqual([]);
+    });
   });
 
   describe("getNetworkConfig", () => {
@@ -169,6 +188,7 @@ describe("ConfigManager", () => {
       expect(config.temperature).toBeNull();
       expect(config.topP).toBeNull();
       expect(config.maxOutputTokens).toBeNull();
+      expect(config.maxRepeatedLines).toBe(4);
     });
 
     it("clamps temperature and topP", () => {
@@ -186,6 +206,17 @@ describe("ConfigManager", () => {
 
       mockStore["generation.maxOutputTokens"] = 4096;
       expect(ConfigManager.getGenerationConfig().maxOutputTokens).toBe(4096);
+    });
+
+    it("clamps generation.maxRepeatedLines into the 0..50 range", () => {
+      mockStore["generation.maxRepeatedLines"] = -5;
+      expect(ConfigManager.getGenerationConfig().maxRepeatedLines).toBe(0);
+
+      mockStore["generation.maxRepeatedLines"] = 500;
+      expect(ConfigManager.getGenerationConfig().maxRepeatedLines).toBe(50);
+
+      mockStore["generation.maxRepeatedLines"] = 7;
+      expect(ConfigManager.getGenerationConfig().maxRepeatedLines).toBe(7);
     });
   });
 
@@ -235,6 +266,7 @@ describe("ConfigManager", () => {
       const config = ConfigManager.getUiConfig();
       expect(config).toEqual(DEFAULT_UI_CONFIG);
       expect(config.showStatusBarItem).toBe(true);
+      expect(config.editToolsHint).toBe(false);
     });
 
     it("returns Developer defaults", () => {
@@ -242,6 +274,12 @@ describe("ConfigManager", () => {
       expect(config).toEqual(DEFAULT_DEVELOPER_CONFIG);
       expect(config.debugLogging).toBe(false);
       expect(config.logTimingBreakdowns).toBe(true);
+    });
+
+    it("respects a custom ui.editToolsHint override", () => {
+      mockStore["nvidia-nim.ui.editToolsHint"] = true;
+      const config = ConfigManager.getUiConfig();
+      expect(config.editToolsHint).toBe(true);
     });
   });
 

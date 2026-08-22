@@ -37,7 +37,8 @@
     "models"
   ],
   "enabledApiProposals": [
-    "languageModelThinkingPart"
+    "languageModelThinkingPart",
+    "chatProvider"
   ],
   "engines": {
     "vscode": "^1.125.0"
@@ -160,6 +161,25 @@
           "default": "minimaxai/minimax-m3",
           "description": "Model to switch to when a request containing image inputs encounters a fatal error or rate limit and fallback.model is text-only."
         },
+        "nvidia-nim.fallback.priorityList": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "nvidia/nemotron-3.5-lightning-30b-a3b",
+              "deepseek-ai/deepseek-v4-flash-0731",
+              "moonshotai/kimi-k2.6",
+              "z-ai/glm-5.2",
+              "minimaxai/minimax-m3",
+              "stepfun-ai/step-3.7-flash",
+              "nvidia/nemotron-3-ultra-550b-a55b",
+              "thinkingmachines/inkling",
+              "meta/muse-glimmer-30b"
+            ]
+          },
+          "default": [],
+          "description": "Ordered list of fallback models tried in sequence before giving up. Takes precedence over fallback.model / fallback.visionModel; unknown or unavailable entries are skipped, and the currently failing model is never retried."
+        },
         "nvidia-nim.fallback.onRateLimit": {
           "type": "boolean",
           "default": true,
@@ -268,6 +288,13 @@
           "maximum": 131072,
           "description": "Override maximum output tokens limit per response (null uses model maximum)."
         },
+        "nvidia-nim.generation.maxRepeatedLines": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 0,
+          "maximum": 50,
+          "description": "Stop the response early when the same normalized line is repeated this many times (guards against degenerate 'Let me...' model loops). 0 disables the guard."
+        },
         "nvidia-nim.tools.autoRepairArguments": {
           "type": "boolean",
           "default": true,
@@ -315,6 +342,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show the NVIDIA NIM status bar item and token breakdown in VS Code."
+        },
+        "nvidia-nim.ui.editToolsHint": {
+          "type": "boolean",
+          "default": false,
+          "description": "Advertise agent-mode edit tool hints (capabilities.editTools) for curated models. Only takes effect where VS Code enables the proposed chatProvider API: extension development mode or Insiders builds. Has no effect on stable installs."
         },
         "nvidia-nim.developer.debugLogging": {
           "type": "boolean",

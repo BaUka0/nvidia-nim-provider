@@ -49,6 +49,15 @@ jest.mock("vscode", () => ({
       public content: unknown[],
     ) {}
   },
+  LanguageModelDataPart: class {
+    constructor(
+      public data: Uint8Array,
+      public mimeType?: string,
+    ) {}
+    static json(value: unknown, mime?: string) {
+      return new this(new TextEncoder().encode(JSON.stringify(value)), mime ?? "application/json");
+    }
+  },
   LanguageModelThinkingPart: class {
     constructor(public value: string) {}
   },
@@ -2713,5 +2722,370 @@ describe("NimChatModelProvider", () => {
 
     const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     expect(thinkingReports.length).toBeGreaterThanOrEqual(1);
+  });
+
+  const getUsageParts = (progress: { report: jest.Mock }) =>
+    progress.report.mock.calls
+      .map((c) => c[0])
+      .filter((p) => p instanceof vscode.LanguageModelDataPart && p.mimeType === "usage");
+
+  it("reports stream usage as a usage data part for the context window widget", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "Hello" } }] };
+      yield {
+        choices: [{ delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 120, completion_tokens: 80, total_tokens: 200 },
+      };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    const usageParts = getUsageParts(progress);
+    expect(usageParts).toHaveLength(1);
+    expect(JSON.parse(new TextDecoder().decode(usageParts[0].data))).toEqual({
+      prompt_tokens: 120,
+      completion_tokens: 80,
+      total_tokens: 200,
+    });
+  });
+
+  it("emits the last observed usage exactly once when multiple usage chunks arrive", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield {
+        choices: [{ delta: { content: "partial" } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      };
+      yield {
+        choices: [{ delta: { content: " done" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 12, completion_tokens: 9, total_tokens: 21 },
+      };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    const usageParts = getUsageParts(progress);
+    expect(usageParts).toHaveLength(1);
+    expect(JSON.parse(new TextDecoder().decode(usageParts[0].data))).toEqual({
+      prompt_tokens: 12,
+      completion_tokens: 9,
+      total_tokens: 21,
+    });
+  });
+
+  it("does not emit a usage data part when the stream carries no usage", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "No usage here" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(getUsageParts(progress)).toHaveLength(0);
+  });
+
+  it("emits usage once from the final attempt after an empty-stream retry", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    let attempt = 0;
+    (streamChatCompletion as jest.Mock).mockImplementation(() => {
+      attempt += 1;
+      if (attempt === 1) {
+        return (async function* () {})();
+      }
+      return (async function* () {
+        yield {
+          choices: [{ delta: { content: "Recovered answer" } }],
+          usage: { prompt_tokens: 30, completion_tokens: 4, total_tokens: 34 },
+        };
+      })();
+    });
+
+    const progress = { report: jest.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+
+    const usageParts = getUsageParts(progress);
+    expect(usageParts).toHaveLength(1);
+    expect(JSON.parse(new TextDecoder().decode(usageParts[0].data))).toEqual({
+      prompt_tokens: 30,
+      completion_tokens: 4,
+      total_tokens: 34,
+    });
+  });
+
+  it("stops degenerate repeat loops and emits a single notice", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const line = "Let me fix the formatting issue:";
+    const mockStream = async function* () {
+      for (let i = 0; i < 8; i += 1) {
+        yield { choices: [{ delta: { content: `${line}\n\n` } }] };
+      }
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    const textReports = progress.report.mock.calls
+      .map((c) => c[0])
+      .filter((r) => r instanceof vscode.LanguageModelTextPart);
+
+    expect(textReports).toHaveLength(5);
+    const repeatedText = textReports
+      .slice(0, 4)
+      .map((r) => r.value)
+      .join("");
+    expect(repeatedText.split(line).length - 1).toBe(4);
+    expect(textReports[4].value).toContain("[NVIDIA NIM] Stopped early");
+  });
+
+  it("keeps repetition guard disabled when maxRepeatedLines is 0", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) =>
+        key === "generation.maxRepeatedLines" ? 0 : defaultValue,
+      ),
+    }));
+
+    const line = "Let me fix the formatting issue:";
+    const mockStream = async function* () {
+      for (let i = 0; i < 6; i += 1) {
+        yield { choices: [{ delta: { content: `${line}\n\n` } }] };
+      }
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    const textReports = progress.report.mock.calls
+      .map((c) => c[0])
+      .filter((r) => r instanceof vscode.LanguageModelTextPart);
+    expect(textReports).toHaveLength(6);
+    expect(textReports.some((r) => r.value.includes("[NVIDIA NIM] Stopped early"))).toBe(false);
+  });
+
+  it("walks nvidia-nim.fallback.priorityList across multiple failover hops", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) =>
+        key === "fallback.priorityList" ? ["z-ai/glm-5.2", "minimaxai/minimax-m3"] : defaultValue,
+      ),
+    }));
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "moonshotai/kimi-k2.6",
+            displayName: "Kimi k2.6",
+            contextWindow: 262144,
+            maxOutputTokens: 65536,
+            supportsTools: true,
+            supportsVision: true,
+          },
+          {
+            id: "z-ai/glm-5.2",
+            displayName: "GLM 5.2",
+            contextWindow: 1000000,
+            maxOutputTokens: 131072,
+            supportsTools: true,
+            supportsVision: false,
+          },
+          {
+            id: "minimaxai/minimax-m3",
+            displayName: "MiniMax M3",
+            contextWindow: 1000000,
+            maxOutputTokens: 100000,
+            supportsTools: true,
+            supportsVision: true,
+          },
+        ];
+      }
+      if (key === MODELS_CACHE_VERSION_STATE_KEY) return MODELS_CACHE_VERSION;
+      if (key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY) {
+        return getApiKeyFingerprint("test-key");
+      }
+      return undefined;
+    });
+
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() =>
+        (async function* () {
+          throw new NvidiaApiError("rate_limited", "[RATE_LIMITED] slow down.", {
+            status: 429,
+          });
+        })(),
+      )
+      .mockImplementationOnce(() =>
+        (async function* () {
+          throw new NvidiaApiError("rate_limited", "[RATE_LIMITED] still limited.", {
+            status: 429,
+          });
+        })(),
+      )
+      .mockImplementationOnce(() =>
+        (async function* () {
+          yield { choices: [{ delta: { content: "Priority chain response" } }] };
+        })(),
+      );
+
+    const progress = { report: jest.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "moonshotai/kimi-k2.6",
+        name: "Kimi k2.6",
+        maxInputTokens: 200000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    const requestedModels = (streamChatCompletion as jest.Mock).mock.calls.map(
+      (call) => call[1].model,
+    );
+    expect(requestedModels).toEqual([
+      "moonshotai/kimi-k2.6",
+      "z-ai/glm-5.2",
+      "minimaxai/minimax-m3",
+    ]);
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "Rate limited on Kimi k2.6. Falling back to GLM 5.2.",
+    );
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "Rate limited on GLM 5.2. Falling back to MiniMax M3.",
+    );
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Priority chain response" }),
+    );
+  });
+
+  it("throws a structured chain error when every fallback candidate fails", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) =>
+        key === "fallback.priorityList" ? ["z-ai/glm-5.2"] : defaultValue,
+      ),
+    }));
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "moonshotai/kimi-k2.6",
+            displayName: "Kimi k2.6",
+            contextWindow: 262144,
+            maxOutputTokens: 65536,
+            supportsTools: true,
+            supportsVision: true,
+          },
+          {
+            id: "z-ai/glm-5.2",
+            displayName: "GLM 5.2",
+            contextWindow: 1000000,
+            maxOutputTokens: 131072,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === MODELS_CACHE_VERSION_STATE_KEY) return MODELS_CACHE_VERSION;
+      if (key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY) {
+        return getApiKeyFingerprint("test-key");
+      }
+      return undefined;
+    });
+
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() =>
+        (async function* () {
+          throw new NvidiaApiError("rate_limited", "[RATE_LIMITED] primary down.", {
+            status: 429,
+          });
+        })(),
+      )
+      .mockImplementationOnce(() =>
+        (async function* () {
+          throw new NvidiaApiError("rate_limited", "[RATE_LIMITED] fallback down too.", {
+            status: 429,
+          });
+        })(),
+      );
+
+    const progress = { report: jest.fn() };
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "moonshotai/kimi-k2.6",
+          name: "Kimi k2.6",
+          maxInputTokens: 200000,
+          maxOutputTokens: 65536,
+        }),
+        makeUserMessages("Hi"),
+        makeChatOptions(),
+        progress,
+        makeToken(),
+      ),
+    ).rejects.toThrow(
+      /All NVIDIA NIM failover candidates failed[\s\S]*Tried chain: moonshotai\/kimi-k2\.6 -> z-ai\/glm-5\.2/,
+    );
   });
 });

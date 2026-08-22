@@ -10,6 +10,8 @@ import {
 } from "../shared/constants";
 import {
   ELITE_MODELS_WHITELIST,
+  getEditToolsHint,
+  getModelWarningText,
   isNormalizedNvidiaModel,
   normalizeNvidiaModels,
   NormalizedNvidiaModel,
@@ -53,6 +55,14 @@ export interface NvidiaLanguageModelChatInformation extends vscode.LanguageModel
   readonly maxOutputTokens: number;
   isUserSelectable: boolean;
   configurationSchema?: NvidiaConfigurationSchema;
+  /** Proposed chatProvider surface: agent-mode edit tool hint. */
+  readonly capabilities: vscode.LanguageModelChatCapabilities & { editTools?: readonly string[] };
+  /** Proposed chatProvider surface: markdown warning banner in the picker hover. */
+  warningText?: Record<string, string>;
+  /** Proposed chatProvider surface: picker icon. */
+  statusIcon?: { readonly id: string };
+  /** Proposed chatProvider surface: marks user-supplied-key (BYOK) models. */
+  isBYOK?: boolean;
 }
 
 function isCachedCuratedModel(value: unknown): value is NormalizedNvidiaModel {
@@ -178,6 +188,7 @@ export class NvidiaModelDiscoveryService {
 
   public mapToChatInformation(
     models: readonly NormalizedNvidiaModel[],
+    options: { includeEditTools?: boolean } = {},
   ): NvidiaLanguageModelChatInformation[] {
     const info: NvidiaLanguageModelChatInformation[] = [];
 
@@ -187,6 +198,7 @@ export class NvidiaModelDiscoveryService {
       }
       const adapter = getModelAdapter(model.id);
       let configurationSchema: NvidiaConfigurationSchema | undefined;
+      const warningText = getModelWarningText(model.id);
 
       if (adapter.applyReasoningMode) {
         const enumValues = adapter.supportedReasoningModes ?? [
@@ -229,10 +241,14 @@ export class NvidiaModelDiscoveryService {
         maxOutputTokens: model.maxOutputTokens ?? 65536,
         contextWindow: model.contextWindow,
         isUserSelectable: true,
+        isBYOK: true,
+        statusIcon: new vscode.ThemeIcon("cloud"),
         capabilities: {
           toolCalling: model.supportsTools ? 128 : false,
           imageInput: model.supportsVision ?? false,
+          editTools: options.includeEditTools ? getEditToolsHint(model.id) : undefined,
         },
+        ...(warningText ? { warningText: { deprecated: warningText } } : {}),
         ...(configurationSchema ? { configurationSchema } : {}),
       });
     }

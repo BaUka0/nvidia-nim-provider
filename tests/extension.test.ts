@@ -63,6 +63,10 @@ jest.mock("vscode", () => ({
     fire = jest.fn();
   },
   version: "1.104.0",
+  ExtensionMode: { Production: 1, Development: 2, Test: 3 },
+  env: {
+    appName: "Visual Studio Code",
+  },
   window: {
     createOutputChannel: mockCreateOutputChannel,
     showInformationMessage: mockShowInformationMessage,

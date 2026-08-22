@@ -1,7 +1,10 @@
 import {
+  ELITE_MODELS_WHITELIST,
   FALLBACK_MODEL_ID,
   FALLBACK_VISION_MODEL_ID,
+  getEditToolsHint,
   getFallbackModel,
+  getModelWarningText,
   isNormalizedNvidiaModel,
   normalizeNvidiaModels,
 } from "../src/models/catalog";
@@ -260,6 +263,43 @@ describe("getFallbackModel", () => {
     ).toEqual(flash);
   });
 
+  describe("priority list fallback (requiresVision: false)", () => {
+    it("walks the priority list in order before the configured single model", () => {
+      expect(
+        getFallbackModel(kimi.id, [kimi, flash, lightning, minimax], {
+          configuredFallbackModelId: FALLBACK_MODEL_ID,
+          priorityList: ["deepseek-ai/deepseek-v4-flash-0731", "stepfun-ai/step-3.7-flash"],
+        }),
+      ).toEqual(flash);
+    });
+
+    it("skips the currently failing model and already-tried ids", () => {
+      expect(
+        getFallbackModel(kimi.id, [kimi, flash, minimax], {
+          configuredFallbackModelId: FALLBACK_MODEL_ID,
+          triedModelIds: ["deepseek-ai/deepseek-v4-flash-0731"],
+        }),
+      ).toBeUndefined();
+    });
+
+    it("skips unknown entries and keeps walking the chain", () => {
+      expect(
+        getFallbackModel(kimi.id, [kimi, lightning], {
+          priorityList: ["vendor/does-not-exist"],
+          triedModelIds: [],
+        }),
+      ).toEqual(lightning);
+    });
+
+    it("returns undefined when the whole chain is exhausted", () => {
+      expect(
+        getFallbackModel(kimi.id, [kimi], {
+          priorityList: [FALLBACK_MODEL_ID, "minimaxai/minimax-m3"],
+        }),
+      ).toBeUndefined();
+    });
+  });
+
   describe("Vision-aware fallback (requiresVision: true)", () => {
     it("selects MiniMax M3 by default when requiresVision is true", () => {
       expect(FALLBACK_VISION_MODEL_ID).toBe("minimaxai/minimax-m3");
@@ -304,5 +344,66 @@ describe("getFallbackModel", () => {
         }),
       ).toBeUndefined();
     });
+  });
+});
+
+describe("getEditToolsHint", () => {
+  const originalWhitelist = { ...ELITE_MODELS_WHITELIST };
+
+  afterEach(() => {
+    for (const key of Object.keys(ELITE_MODELS_WHITELIST)) {
+      delete ELITE_MODELS_WHITELIST[key];
+    }
+    Object.assign(ELITE_MODELS_WHITELIST, originalWhitelist);
+  });
+
+  it("returns undefined for unknown model ids", () => {
+    expect(getEditToolsHint("vendor/not-in-catalog")).toBeUndefined();
+  });
+
+  it("advertises the default find/replace tools for tool-calling models", () => {
+    expect(getEditToolsHint("deepseek-ai/deepseek-v4-flash-0731")).toEqual([
+      "find-replace",
+      "multi-find-replace",
+    ]);
+  });
+
+  it("filters unknown tool names from explicit catalog overrides", () => {
+    ELITE_MODELS_WHITELIST["test/override-model"] = {
+      displayName: "Override Model",
+      contextWindow: 131072,
+      maxOutputTokens: 32768,
+      supportsTools: true,
+      supportsVision: false,
+      editTools: ["apply-patch", "not-a-real-tool"],
+    };
+
+    expect(getEditToolsHint("test/override-model")).toEqual(["apply-patch"]);
+  });
+
+  it("returns undefined when an override filters down to nothing", () => {
+    ELITE_MODELS_WHITELIST["test/empty-override-model"] = {
+      displayName: "Empty Override Model",
+      contextWindow: 131072,
+      maxOutputTokens: 32768,
+      supportsTools: true,
+      supportsVision: false,
+      editTools: ["not-a-real-tool"],
+    };
+
+    expect(getEditToolsHint("test/empty-override-model")).toBeUndefined();
+  });
+});
+
+describe("getModelWarningText", () => {
+  it("returns undefined for non-deprecated models", () => {
+    expect(getModelWarningText("deepseek-ai/deepseek-v4-flash-0731")).toBeUndefined();
+    expect(getModelWarningText("vendor/not-in-catalog")).toBeUndefined();
+  });
+
+  it("returns a markdown warning banner for deprecated models", () => {
+    const warning = getModelWarningText("moonshotai/kimi-k2.6");
+    expect(warning).toContain("**Kimi k2.6 (Deprecated)**");
+    expect(warning).toContain("deprecated");
   });
 });

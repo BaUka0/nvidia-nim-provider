@@ -5,6 +5,7 @@ export interface FallbackConfig {
   readonly enabled: boolean;
   readonly model: string;
   readonly visionModel: string;
+  readonly priorityList: string[];
   readonly onRateLimit: boolean;
   readonly onModelUnavailable: boolean;
   readonly onEmptyStream: boolean;
@@ -29,6 +30,7 @@ export interface GenerationConfig {
   readonly temperature: number | null;
   readonly topP: number | null;
   readonly maxOutputTokens: number | null;
+  readonly maxRepeatedLines: number;
 }
 
 export interface ToolsConfig {
@@ -45,6 +47,7 @@ export interface ContextConfig {
 
 export interface UiConfig {
   readonly showStatusBarItem: boolean;
+  readonly editToolsHint: boolean;
 }
 
 export interface DeveloperConfig {
@@ -67,6 +70,7 @@ export const DEFAULT_FALLBACK_CONFIG: FallbackConfig = {
   enabled: true,
   model: FALLBACK_MODEL_ID,
   visionModel: FALLBACK_VISION_MODEL_ID,
+  priorityList: [],
   onRateLimit: true,
   onModelUnavailable: true,
   onEmptyStream: true,
@@ -91,6 +95,7 @@ export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
   temperature: null,
   topP: null,
   maxOutputTokens: null,
+  maxRepeatedLines: 4,
 };
 
 export const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
@@ -107,6 +112,7 @@ export const DEFAULT_CONTEXT_CONFIG: ContextConfig = {
 
 export const DEFAULT_UI_CONFIG: UiConfig = {
   showStatusBarItem: true,
+  editToolsHint: false,
 };
 
 export const DEFAULT_DEVELOPER_CONFIG: DeveloperConfig = {
@@ -159,11 +165,19 @@ export class ConfigManager {
       "fallback.notifyUser",
       DEFAULT_FALLBACK_CONFIG.notifyUser,
     );
+    const rawPriorityList = config.get<unknown>("fallback.priorityList", []);
+    const priorityList = Array.isArray(rawPriorityList)
+      ? rawPriorityList
+          .filter((id): id is string => typeof id === "string")
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0)
+      : [];
 
     return {
       enabled,
       model: model.trim() || DEFAULT_FALLBACK_CONFIG.model,
       visionModel: visionModel.trim() || DEFAULT_FALLBACK_CONFIG.visionModel,
+      priorityList,
       onRateLimit,
       onModelUnavailable,
       onEmptyStream,
@@ -250,10 +264,20 @@ export class ConfigManager {
         ? Math.min(131072, Math.round(rawMaxTokens))
         : null;
 
+    const rawMaxRepeatedLines = config.get<number>(
+      "generation.maxRepeatedLines",
+      DEFAULT_GENERATION_CONFIG.maxRepeatedLines,
+    );
+    const maxRepeatedLines =
+      typeof rawMaxRepeatedLines === "number" && Number.isFinite(rawMaxRepeatedLines)
+        ? Math.max(0, Math.min(50, Math.round(rawMaxRepeatedLines)))
+        : DEFAULT_GENERATION_CONFIG.maxRepeatedLines;
+
     return {
       temperature,
       topP,
       maxOutputTokens,
+      maxRepeatedLines,
     };
   }
 
@@ -311,8 +335,10 @@ export class ConfigManager {
       "ui.showStatusBarItem",
       DEFAULT_UI_CONFIG.showStatusBarItem,
     );
+    const editToolsHint = config.get<boolean>("ui.editToolsHint", DEFAULT_UI_CONFIG.editToolsHint);
     return {
       showStatusBarItem,
+      editToolsHint: Boolean(editToolsHint),
     };
   }
 

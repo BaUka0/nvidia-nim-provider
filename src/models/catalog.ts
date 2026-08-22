@@ -20,6 +20,61 @@ export interface NvidiaModelCatalogEntry {
   maxOutputTokens: number;
   supportsTools: boolean;
   supportsVision: boolean;
+  /**
+   * Optional override for the VS Code agent-mode edit tool hint
+   * (proposed LanguageModelChatCapabilities.editTools).
+   */
+  editTools?: readonly string[];
+}
+
+/**
+ * Edit tool names currently recognized by VS Code's agent mode. Unknown
+ * entries are filtered out before surfacing the hint to the editor.
+ */
+export const KNOWN_EDIT_TOOLS = [
+  "find-replace",
+  "multi-find-replace",
+  "apply-patch",
+  "code-rewrite",
+] as const;
+
+export type KnownEditTool = (typeof KNOWN_EDIT_TOOLS)[number];
+
+const DEFAULT_TOOL_CALLING_EDIT_TOOLS: readonly KnownEditTool[] = [
+  "find-replace",
+  "multi-find-replace",
+];
+
+const DEPRECATED_DISPLAY_NAME_MARKER = "(Deprecated)";
+
+/**
+ * Resolves the agent-mode edit tool hint for a curated model. Explicit
+ * catalog overrides win; otherwise every tool-calling model advertises the
+ * general-purpose find/replace tools, and text-only models advertise none.
+ */
+export function getEditToolsHint(modelId: string): readonly string[] | undefined {
+  const entry = ELITE_MODELS_WHITELIST[modelId];
+  if (!entry) {
+    return undefined;
+  }
+  if (entry.editTools) {
+    const known = new Set<string>(KNOWN_EDIT_TOOLS);
+    const filtered = entry.editTools.filter((tool) => known.has(tool));
+    return filtered.length > 0 ? filtered : undefined;
+  }
+  return entry.supportsTools ? DEFAULT_TOOL_CALLING_EDIT_TOOLS : undefined;
+}
+
+/**
+ * Builds the model picker hover warning banner for deprecated curated models,
+ * or undefined when the model is not marked deprecated.
+ */
+export function getModelWarningText(modelId: string): string | undefined {
+  const entry = ELITE_MODELS_WHITELIST[modelId];
+  if (!entry || !entry.displayName.includes(DEPRECATED_DISPLAY_NAME_MARKER)) {
+    return undefined;
+  }
+  return `**${entry.displayName}** is deprecated and may be retired by NVIDIA at any time. Requests automatically fail over to a supported model when possible.`;
 }
 
 const DEFAULT_CONTEXT_WINDOW = 131072;
@@ -98,8 +153,19 @@ export interface FallbackModelSelectionOptions {
   configuredFallbackModelId?: string;
   configuredVisionFallbackModelId?: string;
   requiresVision?: boolean;
+  /** Ordered fallback candidates tried before the configured single models. */
+  priorityList?: string[];
+  /** Models already attempted in this request's failover chain. */
+  triedModelIds?: string[];
 }
 
+/**
+ * Resolves the next failover candidate. Candidate order:
+ * priorityList entries, then the configured text fallback, then the
+ * configured vision fallback; unknown, already-tried, and the currently
+ * failing model are skipped. Vision requests additionally require
+ * supportsVision, with a last-resort sweep over any remaining vision model.
+ */
 export function getFallbackModel(
   currentModelId: string,
   availableModels: NormalizedNvidiaModel[],
@@ -112,36 +178,49 @@ export function getFallbackModel(
     configuredFallbackModelId,
     configuredVisionFallbackModelId,
     requiresVision = false,
+    priorityList,
+    triedModelIds,
   } = normalizedOptions;
 
+  const excluded = new Set<string>([currentModelId, ...(triedModelIds ?? [])]);
+  const orderedCandidateIds: string[] = [];
+  const pushCandidate = (candidateId: string | undefined): void => {
+    const trimmed = typeof candidateId === "string" ? candidateId.trim() : "";
+    if (trimmed.length === 0 || orderedCandidateIds.includes(trimmed)) {
+      return;
+    }
+    orderedCandidateIds.push(trimmed);
+  };
+  for (const candidateId of priorityList ?? []) {
+    pushCandidate(candidateId);
+  }
+  // Legacy contract: text requests default to FALLBACK_MODEL_ID and never
+  // consider the vision slot; vision requests keep their dedicated chain.
+  if (!requiresVision) {
+    pushCandidate(configuredFallbackModelId ?? FALLBACK_MODEL_ID);
+  } else {
+    pushCandidate(configuredFallbackModelId);
+    pushCandidate(configuredVisionFallbackModelId ?? FALLBACK_VISION_MODEL_ID);
+  }
+
+  for (const candidateId of orderedCandidateIds) {
+    if (excluded.has(candidateId)) {
+      continue;
+    }
+    const candidate = availableModels.find((m) => m.id === candidateId);
+    if (!candidate) {
+      continue;
+    }
+    if (requiresVision && !candidate.supportsVision) {
+      continue;
+    }
+    return candidate;
+  }
+
   if (requiresVision) {
-    // 1. If configured primary fallback.model explicitly points to a vision model (and isn't the current model), prefer it
-    const primaryConfiguredId = configuredFallbackModelId?.trim();
-    if (primaryConfiguredId && primaryConfiguredId !== currentModelId) {
-      const primaryCandidate = availableModels.find((m) => m.id === primaryConfiguredId);
-      if (primaryCandidate?.supportsVision) {
-        return primaryCandidate;
-      }
-    }
-
-    // 2. Otherwise use the designated vision fallback model
-    const targetVisionId = configuredVisionFallbackModelId?.trim() || FALLBACK_VISION_MODEL_ID;
-    if (currentModelId !== targetVisionId) {
-      const visionCandidate = availableModels.find((m) => m.id === targetVisionId);
-      if (visionCandidate?.supportsVision) {
-        return visionCandidate;
-      }
-    }
-
-    // 3. Collision / unavailable fallback: pick any other available vision model
-    return availableModels.find((m) => m.supportsVision && m.id !== currentModelId);
+    return availableModels.find((m) => m.supportsVision && !excluded.has(m.id));
   }
-
-  const targetId = configuredFallbackModelId?.trim() || FALLBACK_MODEL_ID;
-  if (currentModelId === targetId) {
-    return undefined;
-  }
-  return availableModels.find((m) => m.id === targetId);
+  return undefined;
 }
 
 export function normalizeNvidiaModels(models: NvidiaModelSummary[]): NormalizedNvidiaModel[] {

@@ -36,7 +36,7 @@ import {
   PROVIDER_VENDOR,
   SECRET_STORAGE_KEY,
 } from "../shared/constants";
-import { getFallbackModel } from "../models/catalog";
+import { getEditToolsHint, getFallbackModel } from "../models/catalog";
 import { getModelAdapter, ModelAdapter } from "../models/adapters";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
@@ -58,6 +58,7 @@ import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver"
 import { createStructuredError, NvidiaApiError, parseContextOverflowDetail } from "../api/errors";
 import { NimRequestBuilder } from "./request-builder";
 import { ToolCallStreamAggregator } from "./tool-call-aggregator";
+import { RepetitionGuard } from "./repetition-guard";
 import { splitMessagesForSummarization, summarizeOldMessages } from "../models/summarizer";
 import { ContextLimitStore } from "./context-limit-store";
 
@@ -75,6 +76,14 @@ interface NvidiaProviderConfiguration {
   apiKey?: string;
   reasoningMode?: string;
 }
+
+interface FallbackChainOptions {
+  fallbackDepth?: number;
+  triedFallbackModelIds?: string[];
+}
+
+const REPETITION_STOP_NOTICE =
+  "\n\n_[NVIDIA NIM] Stopped early: the model kept repeating the same output (degenerate loop detected). Try a different model, or raise/disable `nvidia-nim.generation.maxRepeatedLines`._";
 
 type SelectedModelRuntimeCapabilities = LanguageModelChatInformation & {
   capabilities?: {
@@ -117,6 +126,43 @@ function buildMissingApiKeyFallback(): string {
   return `${PROVIDER_DISPLAY_NAME} API key is not configured. Run "${PROVIDER_DISPLAY_NAME}: Manage ${PROVIDER_DISPLAY_NAME} API Key" from the Command Palette, or retry this request and enter the key when prompted.`;
 }
 
+type NimStreamUsage = { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+
+/**
+ * Wraps real stream usage into a Copilot-compatible data part.
+ * Copilot Chat's extension-contributed endpoint wrapper scans streamed
+ * LanguageModelDataPart chunks for the OpenAI usage shape
+ * ({prompt_tokens, completion_tokens, total_tokens}) and feeds them into the
+ * chat context-window widget; without this part the widget renders 0% forever.
+ */
+function createUsageDataPart(
+  usage: NimStreamUsage | undefined,
+): vscode.LanguageModelDataPart | undefined {
+  const promptTokens = usage?.prompt_tokens;
+  const completionTokens = usage?.completion_tokens;
+  const totalTokens = usage?.total_tokens;
+  if (
+    typeof promptTokens !== "number" &&
+    typeof completionTokens !== "number" &&
+    typeof totalTokens !== "number"
+  ) {
+    return undefined;
+  }
+  if (typeof vscode.LanguageModelDataPart?.json !== "function") {
+    return undefined;
+  }
+  const payload = {
+    ...(typeof promptTokens === "number" ? { prompt_tokens: promptTokens } : {}),
+    ...(typeof completionTokens === "number" ? { completion_tokens: completionTokens } : {}),
+    ...(typeof totalTokens === "number" ? { total_tokens: totalTokens } : {}),
+  };
+  try {
+    return vscode.LanguageModelDataPart.json(payload, "usage");
+  } catch {
+    return undefined;
+  }
+}
+
 export class NimChatModelProvider implements LanguageModelChatProvider {
   private readonly discoveryService: NvidiaModelDiscoveryService;
   private readonly apiKeyResolver: NvidiaApiKeyResolver;
@@ -145,6 +191,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     private readonly globalState?: vscode.Memento,
     private readonly statusBar?: StatusBarManager,
     apiKeyResolver?: NvidiaApiKeyResolver,
+    private readonly runtimeFlags?: { chatProviderProposalAvailable?: boolean },
   ) {
     this.apiKeyResolver = apiKeyResolver ?? new NvidiaApiKeyResolver(secrets);
     this.discoveryService = new NvidiaModelDiscoveryService(
@@ -153,6 +200,23 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       globalState,
       this.apiKeyResolver,
     );
+  }
+
+  /**
+   * Resolves the agent-mode edit tool hint for a model. The hint is emitted
+   * only when the host actually enables the proposed chatProvider API
+   * (development mode / Insiders) and the user opted in via
+   * nvidia-nim.ui.editToolsHint; VS Code otherwise aborts the whole model
+   * listing with "CANNOT use API proposal: chatProvider".
+   */
+  private resolveEditToolsHint(modelId: string): readonly string[] | undefined {
+    if (!this.runtimeFlags?.chatProviderProposalAvailable) {
+      return undefined;
+    }
+    if (!ConfigManager.getUiConfig().editToolsHint) {
+      return undefined;
+    }
+    return getEditToolsHint(modelId);
   }
 
   fireModelInfoChanged(options: { invalidateModelCache?: boolean } = {}): void {
@@ -334,7 +398,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     const models = await this.discoveryService.getAvailableModels(apiKey, {
       refreshStaleCache: true,
     });
-    const chatInformation = this.discoveryService.mapToChatInformation(models);
+    const chatInformation = this.discoveryService.mapToChatInformation(models, {
+      includeEditTools: this.runtimeFlags?.chatProviderProposalAvailable === true,
+    });
     for (const model of chatInformation) {
       this.apiKeyResolver.registerModelKey(model, apiKey, resolutionGroupKey);
     }
@@ -507,9 +573,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       let totalAttempts = 0;
       let requestPreparationDurationMs: number | undefined;
       let toolParsingStateInitDurationMs: number | undefined;
-      let finalUsage:
-        | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
-        | undefined;
+      let finalUsage: NimStreamUsage | undefined;
       let networkRetryCount = 0;
       const networkConfig = ConfigManager.getNetworkConfig();
       const fallbackConfig = ConfigManager.getFallbackConfig();
@@ -542,9 +606,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         let streamChunkCount = 0;
         let firstResponseAtMs: number | undefined;
         let firstToolCallAtMs: number | undefined;
-        let lastUsage:
-          | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
-          | undefined;
+        let lastUsage: NimStreamUsage | undefined;
+        const repetitionGuard = new RepetitionGuard({
+          maxRepeatedLines: ConfigManager.getGenerationConfig().maxRepeatedLines,
+        });
+        let repetitionNoticeSent = false;
 
         const markFirstResponse = (): void => {
           if (firstResponseAtMs === undefined) {
@@ -552,6 +618,17 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           }
         };
         const reportPart = (part: LanguageModelResponsePart): void => {
+          if (
+            part instanceof vscode.LanguageModelTextPart &&
+            repetitionNoticeSent &&
+            repetitionGuard.tripped
+          ) {
+            return;
+          }
+          let crossedThreshold = false;
+          if (part instanceof vscode.LanguageModelTextPart && !repetitionGuard.tripped) {
+            crossedThreshold = repetitionGuard.add(part.value);
+          }
           progress.report(part);
           reportedContent = true;
           hasReportedContent = true;
@@ -561,6 +638,18 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           ) {
             reportedVisibleContent = true;
             hasReportedVisibleContent = true;
+          }
+          if (crossedThreshold && !repetitionNoticeSent) {
+            repetitionNoticeSent = true;
+            progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
+            debugLog("repetitionGuard", {
+              model: model.id,
+              trippedLine: repetitionGuard.trippedLine,
+            });
+            outputLog(
+              "repetitionGuard",
+              `Stopped degenerate repeat loop on ${model.id}: "${repetitionGuard.trippedLine}"`,
+            );
           }
         };
         const flushPendingText = (): void => {
@@ -790,6 +879,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               sawToolCall = true;
               sawToolCallOverall = true;
               getToolAggregator().handleToolCalls(streamedToolCalls);
+            }
+
+            if (repetitionGuard.tripped) {
+              debugLog("repetitionGuard", "stopping stream consumption");
+              break;
             }
           }
 
@@ -1031,6 +1125,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         );
       }
 
+      const usagePart = createUsageDataPart(finalUsage);
+      if (usagePart) {
+        progress.report(usagePart);
+      }
+
       if (this.statusBar) {
         const shortName = model.name ?? model.id.split("/").at(-1) ?? model.id;
         const sentTools = activeRequestBody!.tools ?? tools;
@@ -1155,6 +1254,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               // Stream the retry directly — do not recurse into the full
               // provideLanguageModelChatResponse to avoid infinite loops.
               const retrySkippedToolCalls: SkippedToolCall[] = [];
+              let retryUsage: NimStreamUsage | undefined;
               const retryToolAggregator = new ToolCallStreamAggregator({
                 options,
                 messages,
@@ -1179,6 +1279,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               )) {
                 if (token.isCancellationRequested) {
                   throw new vscode.CancellationError();
+                }
+                if (chunk.usage) {
+                  retryUsage = chunk.usage;
                 }
                 const choice = chunk.choices?.[0];
                 if (choice?.delta?.reasoning_content) {
@@ -1215,6 +1318,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                   );
                 }
               }
+              const retryUsagePart = createUsageDataPart(retryUsage);
+              if (retryUsagePart) {
+                progress.report(retryUsagePart);
+              }
               return;
             }
           }
@@ -1247,18 +1354,30 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       }
 
       const fallbackConfig = ConfigManager.getFallbackConfig();
-      const isFallbackAttempt = Boolean(
-        (options as { isFallbackAttempt?: boolean }).isFallbackAttempt,
-      );
-      const isFallbackTrigger =
-        fallbackConfig.enabled &&
-        !isFallbackAttempt &&
-        !hasReportedContent &&
+      const chainOptions = options as ProvideLanguageModelChatResponseOptions &
+        FallbackChainOptions;
+      const priorDepth =
+        typeof chainOptions.fallbackDepth === "number" &&
+        Number.isFinite(chainOptions.fallbackDepth)
+          ? Math.max(0, Math.floor(chainOptions.fallbackDepth))
+          : 0;
+      const triedFallbackModelIds = Array.isArray(chainOptions.triedFallbackModelIds)
+        ? chainOptions.triedFallbackModelIds.filter(
+            (id): id is string => typeof id === "string" && id.length > 0,
+          )
+        : [];
+      const maxChainLength = Math.max(1, fallbackConfig.priorityList.length + 1);
+      const isFallbackKind =
         err instanceof NvidiaApiError &&
         ((err.kind === "rate_limited" && fallbackConfig.onRateLimit) ||
           (err.kind === "model_unavailable" && fallbackConfig.onModelUnavailable) ||
           (err.kind === "empty_stream" && fallbackConfig.onEmptyStream) ||
           (err.kind === "timeout" && fallbackConfig.onTimeout));
+      const isFallbackTrigger =
+        fallbackConfig.enabled &&
+        priorDepth < maxChainLength &&
+        !hasReportedContent &&
+        isFallbackKind;
 
       if (isFallbackTrigger) {
         const modelApiKey = (await this.apiKeyResolver.resolveForModel(model))?.value;
@@ -1270,9 +1389,30 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             configuredFallbackModelId: fallbackConfig.model,
             configuredVisionFallbackModelId: fallbackConfig.visionModel,
             requiresVision: hasImages,
+            priorityList: fallbackConfig.priorityList,
+            triedModelIds: triedFallbackModelIds,
           },
         );
-        if (fallbackModel) {
+        if (!fallbackModel) {
+          if (priorDepth > 0) {
+            throw createStructuredError(
+              err instanceof NvidiaApiError ? err.kind : "rate_limited",
+              [
+                `All NVIDIA NIM failover candidates failed after ${priorDepth} step(s).`,
+                `Tried chain: ${[...triedFallbackModelIds, model.id].join(" -> ")}`,
+                `Last error (${err instanceof NvidiaApiError ? err.kind : "unknown"}): ${err instanceof Error ? err.message : String(err)}`,
+                "Adjust nvidia-nim.fallback.priorityList or pick another model in the picker.",
+              ].join("\n"),
+            );
+          }
+        } else {
+          const fallbackCapabilities: vscode.LanguageModelChatCapabilities & {
+            editTools?: readonly string[];
+          } = {
+            toolCalling: fallbackModel.supportsTools ? 128 : false,
+            imageInput: fallbackModel.supportsVision,
+            editTools: this.resolveEditToolsHint(fallbackModel.id),
+          };
           const fallbackInfo: LanguageModelChatInformation = {
             ...model,
             id: fallbackModel.id,
@@ -1284,10 +1424,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                 calculateSafetyMargin(fallbackModel.contextWindow),
             ),
             maxOutputTokens: fallbackModel.maxOutputTokens,
-            capabilities: {
-              toolCalling: fallbackModel.supportsTools ? 128 : false,
-              imageInput: fallbackModel.supportsVision,
-            },
+            capabilities: fallbackCapabilities,
           };
           const currentName = model.name ?? model.id;
           const capacityLabel =
@@ -1324,8 +1461,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             messages,
             {
               ...options,
-              isFallbackAttempt: true,
-            } as ProvideLanguageModelChatResponseOptions,
+              fallbackDepth: priorDepth + 1,
+              triedFallbackModelIds: [...triedFallbackModelIds, model.id],
+            } as ProvideLanguageModelChatResponseOptions & FallbackChainOptions,
             progress,
             token,
           );

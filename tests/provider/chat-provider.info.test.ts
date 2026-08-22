@@ -41,6 +41,9 @@ jest.mock("vscode", () => ({
       public content: unknown[],
     ) {}
   },
+  ThemeIcon: class {
+    constructor(public id: string) {}
+  },
   window: {
     createOutputChannel: jest.fn(() => ({
       appendLine: jest.fn(),
@@ -957,5 +960,119 @@ describe("NimChatModelProvider", () => {
     );
 
     expect(cacheHarness.runtimeInfoCache.size).toBe(0);
+  });
+
+  it("advertises BYOK, status icon, edit tools, and deprecation warnings in model information", async () => {
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "moonshotai/kimi-k2.6",
+            displayName: "Kimi k2.6 (Deprecated)",
+            contextWindow: 262144,
+            maxOutputTokens: 65536,
+            supportsTools: true,
+            supportsVision: true,
+          },
+          {
+            id: "deepseek-ai/deepseek-v4-flash-0731",
+            displayName: "DeepSeek V4 Flash 0731",
+            contextWindow: 1048576,
+            maxOutputTokens: 131072,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === "nvidia-nim.modelsCacheVersion") {
+        return MODELS_CACHE_VERSION;
+      }
+      if (key === "nvidia-nim.modelsCacheKeyFingerprint") {
+        return getApiKeyFingerprint("configured-key");
+      }
+      return undefined;
+    });
+    (secrets.get as jest.Mock).mockResolvedValue(undefined);
+
+    const infos = await provider.provideLanguageModelChatInformation(
+      makePrepareOptions({
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      }),
+      makeToken(),
+    );
+
+    const kimi = infos.find((m) => m.id === "moonshotai/kimi-k2.6");
+    const flash = infos.find((m) => m.id === "deepseek-ai/deepseek-v4-flash-0731");
+
+    expect(kimi?.isBYOK).toBe(true);
+    expect(kimi?.statusIcon?.id).toBe("cloud");
+    expect(kimi?.warningText?.deprecated).toContain("(Deprecated)");
+
+    expect(flash?.isBYOK).toBe(true);
+    expect(flash?.statusIcon?.id).toBe("cloud");
+    expect(flash?.warningText).toBeUndefined();
+  });
+
+  it("omits edit tool hints by default and advertises them only with the proposal flag and setting enabled", async () => {
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "deepseek-ai/deepseek-v4-flash-0731",
+            displayName: "DeepSeek V4 Flash 0731",
+            contextWindow: 1048576,
+            maxOutputTokens: 131072,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === "nvidia-nim.modelsCacheVersion") {
+        return MODELS_CACHE_VERSION;
+      }
+      if (key === "nvidia-nim.modelsCacheKeyFingerprint") {
+        return getApiKeyFingerprint("configured-key");
+      }
+      return undefined;
+    });
+    (secrets.get as jest.Mock).mockResolvedValue(undefined);
+    const makeOptions = () =>
+      makePrepareOptions({
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      });
+
+    const defaultInfos = await provider.provideLanguageModelChatInformation(
+      makeOptions(),
+      makeToken(),
+    );
+    expect(defaultInfos[0]?.capabilities.editTools).toBeUndefined();
+
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) =>
+        key === "ui.editToolsHint" ? true : defaultValue,
+      ),
+    }));
+
+    const settingOnlyInfos = await provider.provideLanguageModelChatInformation(
+      makeOptions(),
+      makeToken(),
+    );
+    expect(settingOnlyInfos[0]?.capabilities.editTools).toBeUndefined();
+
+    const flaggedProvider = new NimChatModelProvider(
+      secrets,
+      "test-ua",
+      globalState,
+      undefined,
+      undefined,
+      { chatProviderProposalAvailable: true },
+    );
+    const flaggedInfos = await flaggedProvider.provideLanguageModelChatInformation(
+      makeOptions(),
+      makeToken(),
+    );
+    expect(flaggedInfos[0]?.capabilities.editTools).toEqual(["find-replace", "multi-find-replace"]);
   });
 });
