@@ -3,7 +3,7 @@
   "publisher": "neuraldock",
   "displayName": "NVIDIA NIM Agent",
   "description": "Use NVIDIA NIM reasoning models in GitHub Copilot Chat for VS Code",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "license": "MIT",
   "homepage": "https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent",
   "bugs": {
@@ -37,8 +37,7 @@
     "models"
   ],
   "enabledApiProposals": [
-    "languageModelThinkingPart",
-    "chatProvider"
+    "languageModelThinkingPart"
   ],
   "engines": {
     "vscode": "^1.125.0"
@@ -339,11 +338,6 @@
           "type": "boolean",
           "default": true,
           "description": "Show the NVIDIA NIM status bar item and token breakdown in VS Code."
-        },
-        "nvidia-nim.ui.editToolsHint": {
-          "type": "boolean",
-          "default": false,
-          "description": "Advertise agent-mode edit tool hints (capabilities.editTools) for curated models. Only takes effect where VS Code enables the proposed chatProvider API: extension development mode or Insiders builds. Has no effect on stable installs."
         },
         "nvidia-nim.developer.debugLogging": {
           "type": "boolean",

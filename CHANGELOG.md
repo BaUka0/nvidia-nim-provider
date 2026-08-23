@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-23
+
 ### Added
 
 - **`moonshotai/kimi-k3` Integration (`src/models/catalog.ts`, `src/models/adapters/kimi.ts`, `tests/model-capability-matrix.test.ts`).** Added full support for the new flagship multimodal model `moonshotai/kimi-k3` featuring a 1,048,576-token context window, native tool calling, vision support, and multi-level streaming reasoning controls via top-level `reasoning_effort` (`"none"`, `"low"`, `"high"`, `"max"`).
@@ -11,16 +13,13 @@
 ### Removed
 
 - **Decommissioned Model Cleanup (`src/models/catalog.ts`, `package.json`, `scripts/nim-models-probe.mjs`).** Removed `moonshotai/kimi-k2.6` (returning HTTP 404, superseded by `kimi-k3`) and `z-ai/glm-5.2` (removed from NVIDIA NIM catalog).
+- **Proposed chatProvider UX Surface (`package.json`, `src/models/catalog.ts`, `src/models/discovery.ts`, `src/provider/chat-provider.ts`, `src/extension.ts`).** Dropped the entire proposed `chatProvider` API surface: the `chatProvider` entry in `enabledApiProposals`, the `nvidia-nim.ui.editToolsHint` setting, `KNOWN_EDIT_TOOLS`/`getEditToolsHint`, `getModelWarningText`, and the `isBYOK`/`statusIcon`/`warningText`/`capabilities.editTools` model metadata fields (plus their runtime gating in `mapToChatInformation` and the provider constructor). The extension now exposes only the stable model-information contract; the usage `LanguageModelDataPart` reporting for the Copilot context-window widget is unaffected.
 
 ### Changed
 
 - **Catalog Whitelist Renaming (`src/models/catalog.ts`, `src/models/cache.ts`, `src/models/discovery.ts`, `src/tools/vision.ts`).** Renamed `ELITE_MODELS_WHITELIST` to `MODEL_LIST` across the codebase while retaining an alias for backwards compatibility.
 - **Config Surface (`src/shared/config.ts`, `package.json`).** `FallbackConfig.priorityList: string[]` (sanitized: trimmed, empties/non-strings dropped, non-arrays coerced to `[]`) and `GenerationConfig.maxRepeatedLines: number` (clamped 0..50).
 - **Native Context-Window Usage Reporting (`src/provider/chat-provider.ts`).** `provideLanguageModelChatResponse` now emits a terminal `LanguageModelDataPart` (MIME `usage`) carrying the OpenAI usage shape (`prompt_tokens`, `completion_tokens`, `total_tokens`) parsed from the NIM SSE stream. Copilot Chat's extension-contributed endpoint wrapper (`ExtensionContributedChatEndpoint.usageFromDataPart`) consumes this part and feeds the chat context-window widget, which previously rendered a permanent `0 / 1M tokens (0%)` for extension-contributed models. Emission is guarded (`vscode.LanguageModelDataPart.json` feature detection), skipped when the stream carries no usage numbers, and emitted exactly once per outer request — including after empty-stream retries and on the context-overflow compaction retry path; smart-fallback re-invocations report their own usage from the inner call.
-- **Proposed chatProvider UX Surface Guard (`src/models/catalog.ts`, `src/models/discovery.ts`, `src/provider/chat-provider.ts`).** `mapToChatInformation` now strictly gates proposed `LanguageModelChatInformation` fields (`isBYOK`, `statusIcon`, `warningText.deprecated`, and `capabilities.editTools`) behind the runtime proposal availability check (`chatProviderProposalAvailable`). On stable VS Code builds without `--enable-proposed-api`, these fields are omitted from returned model metadata to completely prevent host-level `CANNOT use API proposal: chatProvider` errors, while lighting up seamlessly in Development Mode or Insiders builds.
-- **Opt-In Agent Edit Tool Hints (`nvidia-nim.ui.editToolsHint`, `src/models/catalog.ts`).** Added `KNOWN_EDIT_TOOLS` registry (`find-replace`, `multi-find-replace`, `apply-patch`, `code-rewrite`) and `getEditToolsHint(modelId)`: explicit `editTools` overrides in `NvidiaModelCatalogEntry` win (unknown names filtered), tool-calling models default to `["find-replace", "multi-find-replace"]`, text-only models advertise none.
-- **Typed Chat Information Contract (`src/models/discovery.ts`).** `NvidiaLanguageModelChatInformation` extended with optional `editTools` (via narrowed `capabilities` intersection), `warningText`, `statusIcon`, and `isBYOK` declarations mirroring the upstream proposed API shape.
-- **Proposals Declaration (`package.json`).** `enabledApiProposals` declares `chatProvider` alongside `languageModelThinkingPart` so development-mode runs can exercise the gated surface; installed stable builds ignore the declaration and continue operating cleanly without proposed fields.
 
 ## [0.6.1] - 2026-08-19
 

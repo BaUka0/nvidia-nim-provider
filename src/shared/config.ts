@@ -47,7 +47,6 @@ export interface ContextConfig {
 
 export interface UiConfig {
   readonly showStatusBarItem: boolean;
-  readonly editToolsHint: boolean;
 }
 
 export interface DeveloperConfig {
@@ -112,7 +111,6 @@ export const DEFAULT_CONTEXT_CONFIG: ContextConfig = {
 
 export const DEFAULT_UI_CONFIG: UiConfig = {
   showStatusBarItem: true,
-  editToolsHint: false,
 };
 
 export const DEFAULT_DEVELOPER_CONFIG: DeveloperConfig = {
@@ -335,10 +333,8 @@ export class ConfigManager {
       "ui.showStatusBarItem",
       DEFAULT_UI_CONFIG.showStatusBarItem,
     );
-    const editToolsHint = config.get<boolean>("ui.editToolsHint", DEFAULT_UI_CONFIG.editToolsHint);
     return {
       showStatusBarItem,
-      editToolsHint: Boolean(editToolsHint),
     };
   }
 

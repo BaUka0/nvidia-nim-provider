@@ -266,7 +266,6 @@ describe("ConfigManager", () => {
       const config = ConfigManager.getUiConfig();
       expect(config).toEqual(DEFAULT_UI_CONFIG);
       expect(config.showStatusBarItem).toBe(true);
-      expect(config.editToolsHint).toBe(false);
     });
 
     it("returns Developer defaults", () => {
@@ -274,12 +273,6 @@ describe("ConfigManager", () => {
       expect(config).toEqual(DEFAULT_DEVELOPER_CONFIG);
       expect(config.debugLogging).toBe(false);
       expect(config.logTimingBreakdowns).toBe(true);
-    });
-
-    it("respects a custom ui.editToolsHint override", () => {
-      mockStore["nvidia-nim.ui.editToolsHint"] = true;
-      const config = ConfigManager.getUiConfig();
-      expect(config.editToolsHint).toBe(true);
     });
   });
 

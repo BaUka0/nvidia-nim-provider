@@ -20,61 +20,6 @@ export interface NvidiaModelCatalogEntry {
   maxOutputTokens: number;
   supportsTools: boolean;
   supportsVision: boolean;
-  /**
-   * Optional override for the VS Code agent-mode edit tool hint
-   * (proposed LanguageModelChatCapabilities.editTools).
-   */
-  editTools?: readonly string[];
-}
-
-/**
- * Edit tool names currently recognized by VS Code's agent mode. Unknown
- * entries are filtered out before surfacing the hint to the editor.
- */
-export const KNOWN_EDIT_TOOLS = [
-  "find-replace",
-  "multi-find-replace",
-  "apply-patch",
-  "code-rewrite",
-] as const;
-
-export type KnownEditTool = (typeof KNOWN_EDIT_TOOLS)[number];
-
-const DEFAULT_TOOL_CALLING_EDIT_TOOLS: readonly KnownEditTool[] = [
-  "find-replace",
-  "multi-find-replace",
-];
-
-const DEPRECATED_DISPLAY_NAME_MARKER = "(Deprecated)";
-
-/**
- * Resolves the agent-mode edit tool hint for a curated model. Explicit
- * catalog overrides win; otherwise every tool-calling model advertises the
- * general-purpose find/replace tools, and text-only models advertise none.
- */
-export function getEditToolsHint(modelId: string): readonly string[] | undefined {
-  const entry = MODEL_LIST[modelId];
-  if (!entry) {
-    return undefined;
-  }
-  if (entry.editTools) {
-    const known = new Set<string>(KNOWN_EDIT_TOOLS);
-    const filtered = entry.editTools.filter((tool) => known.has(tool));
-    return filtered.length > 0 ? filtered : undefined;
-  }
-  return entry.supportsTools ? DEFAULT_TOOL_CALLING_EDIT_TOOLS : undefined;
-}
-
-/**
- * Builds the model picker hover warning banner for deprecated curated models,
- * or undefined when the model is not marked deprecated.
- */
-export function getModelWarningText(modelId: string): string | undefined {
-  const entry = MODEL_LIST[modelId];
-  if (!entry || !entry.displayName.includes(DEPRECATED_DISPLAY_NAME_MARKER)) {
-    return undefined;
-  }
-  return `**${entry.displayName}** is deprecated and may be retired by NVIDIA at any time. Requests automatically fail over to a supported model when possible.`;
 }
 
 const DEFAULT_CONTEXT_WINDOW = 131072;

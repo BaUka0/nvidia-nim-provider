@@ -1,10 +1,7 @@
 import {
-  MODEL_LIST,
   FALLBACK_MODEL_ID,
   FALLBACK_VISION_MODEL_ID,
-  getEditToolsHint,
   getFallbackModel,
-  getModelWarningText,
   isNormalizedNvidiaModel,
   normalizeNvidiaModels,
 } from "../src/models/catalog";
@@ -325,74 +322,5 @@ describe("getFallbackModel", () => {
         }),
       ).toBeUndefined();
     });
-  });
-});
-
-describe("getEditToolsHint", () => {
-  const originalWhitelist = { ...MODEL_LIST };
-
-  afterEach(() => {
-    for (const key of Object.keys(MODEL_LIST)) {
-      delete MODEL_LIST[key];
-    }
-    Object.assign(MODEL_LIST, originalWhitelist);
-  });
-
-  it("returns undefined for unknown model ids", () => {
-    expect(getEditToolsHint("vendor/not-in-catalog")).toBeUndefined();
-  });
-
-  it("advertises the default find/replace tools for tool-calling models", () => {
-    expect(getEditToolsHint("deepseek-ai/deepseek-v4-flash-0731")).toEqual([
-      "find-replace",
-      "multi-find-replace",
-    ]);
-  });
-
-  it("filters unknown tool names from explicit catalog overrides", () => {
-    MODEL_LIST["test/override-model"] = {
-      displayName: "Override Model",
-      contextWindow: 131072,
-      maxOutputTokens: 32768,
-      supportsTools: true,
-      supportsVision: false,
-      editTools: ["apply-patch", "not-a-real-tool"],
-    };
-
-    expect(getEditToolsHint("test/override-model")).toEqual(["apply-patch"]);
-  });
-
-  it("returns undefined when an override filters down to nothing", () => {
-    MODEL_LIST["test/empty-override-model"] = {
-      displayName: "Empty Override Model",
-      contextWindow: 131072,
-      maxOutputTokens: 32768,
-      supportsTools: true,
-      supportsVision: false,
-      editTools: ["not-a-real-tool"],
-    };
-
-    expect(getEditToolsHint("test/empty-override-model")).toBeUndefined();
-  });
-});
-
-describe("getModelWarningText", () => {
-  it("returns undefined for non-deprecated models", () => {
-    expect(getModelWarningText("deepseek-ai/deepseek-v4-flash-0731")).toBeUndefined();
-    expect(getModelWarningText("vendor/not-in-catalog")).toBeUndefined();
-  });
-
-  it("returns a markdown warning banner for deprecated models", () => {
-    MODEL_LIST["test/deprecated-model"] = {
-      displayName: "Test Model (Deprecated)",
-      contextWindow: 131072,
-      maxOutputTokens: 32768,
-      supportsTools: true,
-      supportsVision: false,
-    };
-    const warning = getModelWarningText("test/deprecated-model");
-    expect(warning).toContain("**Test Model (Deprecated)**");
-    expect(warning).toContain("deprecated");
-    delete MODEL_LIST["test/deprecated-model"];
   });
 });

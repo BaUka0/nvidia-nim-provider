@@ -160,20 +160,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Create and register provider
   const keyResolver = new NvidiaApiKeyResolver(context.secrets);
-  // VS Code enables proposed APIs only in extension development mode or on
-  // Insiders builds; stock stable installs ignore enabledApiProposals. The
-  // chatProvider-gated editTools hint must never reach hosts without it.
-  const chatProviderProposalAvailable =
-    context.extensionMode === vscode.ExtensionMode.Development ||
-    /insiders/i.test(vscode.env.appName ?? "") ||
-    /insider/i.test(vscode.version ?? "");
   const provider = new NimChatModelProvider(
     context.secrets,
     ua,
     context.globalState,
     statusBar,
     keyResolver,
-    { chatProviderProposalAvailable },
   );
   _provider = provider;
 
@@ -189,9 +181,6 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("nvidia-nim.ui.showStatusBarItem")) {
         statusBar.updateVisibility();
-      }
-      if (e.affectsConfiguration("nvidia-nim.ui.editToolsHint")) {
-        _provider?.fireModelInfoChanged({ invalidateModelCache: false });
       }
     }),
   );

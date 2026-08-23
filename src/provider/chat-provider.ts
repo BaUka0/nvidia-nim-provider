@@ -36,7 +36,7 @@ import {
   PROVIDER_VENDOR,
   SECRET_STORAGE_KEY,
 } from "../shared/constants";
-import { getEditToolsHint, getFallbackModel } from "../models/catalog";
+import { getFallbackModel } from "../models/catalog";
 import { getModelAdapter, ModelAdapter } from "../models/adapters";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
@@ -191,7 +191,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     private readonly globalState?: vscode.Memento,
     private readonly statusBar?: StatusBarManager,
     apiKeyResolver?: NvidiaApiKeyResolver,
-    private readonly runtimeFlags?: { chatProviderProposalAvailable?: boolean },
   ) {
     this.apiKeyResolver = apiKeyResolver ?? new NvidiaApiKeyResolver(secrets);
     this.discoveryService = new NvidiaModelDiscoveryService(
@@ -200,23 +199,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       globalState,
       this.apiKeyResolver,
     );
-  }
-
-  /**
-   * Resolves the agent-mode edit tool hint for a model. The hint is emitted
-   * only when the host actually enables the proposed chatProvider API
-   * (development mode / Insiders) and the user opted in via
-   * nvidia-nim.ui.editToolsHint; VS Code otherwise aborts the whole model
-   * listing with "CANNOT use API proposal: chatProvider".
-   */
-  private resolveEditToolsHint(modelId: string): readonly string[] | undefined {
-    if (!this.runtimeFlags?.chatProviderProposalAvailable) {
-      return undefined;
-    }
-    if (!ConfigManager.getUiConfig().editToolsHint) {
-      return undefined;
-    }
-    return getEditToolsHint(modelId);
   }
 
   fireModelInfoChanged(options: { invalidateModelCache?: boolean } = {}): void {
@@ -398,11 +380,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     const models = await this.discoveryService.getAvailableModels(apiKey, {
       refreshStaleCache: true,
     });
-    const includeProposed = this.runtimeFlags?.chatProviderProposalAvailable === true;
-    const chatInformation = this.discoveryService.mapToChatInformation(models, {
-      includeProposedChatProviderProperties: includeProposed,
-      includeEditTools: includeProposed && ConfigManager.getUiConfig().editToolsHint,
-    });
+    const chatInformation = this.discoveryService.mapToChatInformation(models);
     for (const model of chatInformation) {
       this.apiKeyResolver.registerModelKey(model, apiKey, resolutionGroupKey);
     }
@@ -1408,12 +1386,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             );
           }
         } else {
-          const fallbackCapabilities: vscode.LanguageModelChatCapabilities & {
-            editTools?: readonly string[];
-          } = {
+          const fallbackCapabilities: vscode.LanguageModelChatCapabilities = {
             toolCalling: fallbackModel.supportsTools ? 128 : false,
             imageInput: fallbackModel.supportsVision,
-            editTools: this.resolveEditToolsHint(fallbackModel.id),
           };
           const fallbackInfo: LanguageModelChatInformation = {
             ...model,
