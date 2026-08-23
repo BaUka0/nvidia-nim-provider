@@ -176,6 +176,9 @@ flowchart TD
 - If your request is **text-only**, failover routes to your configured `fallback.model` (`Nemotron 3.5 Lightning 30B`).
 - If your request **contains images/screenshots**, text-only models would reject it with an error. The extension automatically detects image parts and routes the failover to `fallback.visionModel` (`MiniMax M3`).
 
+### Fallback Priority List
+Set `nvidia-nim.fallback.priorityList` to an ordered list of model IDs (editable in VS Code Settings) to try *before* the single text/vision fallbacks. On each failover step the next healthy candidate is picked; unknown, unavailable, and already-tried models are skipped. Example: `["moonshotai/kimi-k3", "minimaxai/minimax-m3"]` tries Kimi K3 first, then MiniMax M3, and only then the regular fallbacks. If every candidate fails, the error message lists the full tried chain (`Tried chain: kimi-k3 -> minimax-m3`) with the last underlying error.
+
 ### Collision Protection
 If you are already chatting with the backup model (e.g. `MiniMax M3`) and *it* encounters a rate limit, the collision protection engine detects the conflict and automatically routes to the next best available model in the whitelist (such as `Step 3.7 Flash` or `Inkling`).
 
@@ -234,7 +237,7 @@ Because tokenizers (like Byte-Pair Encoding) can produce slight estimation diffe
 
 Here is the complete, exhaustive documentation for every configuration key available in the extension.
 
-### All 27 Settings Explained in Detail
+### All 29 Settings Explained in Detail
 
 #### Category 1: Failover & Recovery (`nvidia-nim.fallback.*`)
 
@@ -243,6 +246,7 @@ Here is the complete, exhaustive documentation for every configuration key avail
 | `nvidia-nim.fallback.enabled` | `boolean` | `true` | **Master Failover Toggle.** If `true`, errors trigger single-turn backup routing. If `false`, errors are surfaced immediately to the user. |
 | `nvidia-nim.fallback.model` | `string` | `"nvidia/nemotron-3.5-lightning-30b-a3b"` | **Primary Text Backup Model.** ID of the model used for text requests when the active model fails. |
 | `nvidia-nim.fallback.visionModel` | `string` | `"minimaxai/minimax-m3"` | **Vision Backup Model.** ID of the vision-capable model used when an image request fails. |
+| `nvidia-nim.fallback.priorityList` | `string[]` | `[]` | **Ordered Failover Chain.** Models tried one by one (top to bottom) on rate limit / outage / empty response / timeout, before the configured text and vision fallbacks. Unavailable and already-tried models are skipped; if the whole chain fails, the error reports the full tried chain. |
 | `nvidia-nim.fallback.onRateLimit` | `boolean` | `true` | **Failover on 429/529.** Trigger failover if NVIDIA returns rate limit or server overloaded status. |
 | `nvidia-nim.fallback.onModelUnavailable` | `boolean` | `true` | **Failover on 404.** Trigger failover if a model endpoint is temporarily down or decommissioned. |
 | `nvidia-nim.fallback.onEmptyStream` | `boolean` | `true` | **Failover on Empty Output.** Trigger failover if a model emits zero text chunks. |
@@ -279,6 +283,7 @@ Here is the complete, exhaustive documentation for every configuration key avail
 | `nvidia-nim.generation.temperature` | `number \| null` | `null` | `0.0` .. `2.0` | Controls randomness. Lower values (e.g. `0.2`) are more deterministic; higher values (e.g. `0.8`) are more creative. Set `null` for model default. |
 | `nvidia-nim.generation.topP` | `number \| null` | `null` | `0.0` .. `1.0` | Nucleus sampling probability cutoff. Set `null` to use model default. |
 | `nvidia-nim.generation.maxOutputTokens` | `number \| null` | `null` | $\ge 128$ | Hard limit on generated tokens. Set `null` to allow maximum capacity. |
+| `nvidia-nim.generation.maxRepeatedLines` | `number` | `4` | `0` .. `50` | **Repetition Loop Guard.** Cuts the stream and finishes the turn with a short notice once the same line repeats this many times (punctuation/case variations count as the same line). `0` disables the guard. |
 
 ---
 

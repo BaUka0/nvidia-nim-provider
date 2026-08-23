@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Install](https://img.shields.io/badge/Install-Marketplace-007ACC?style=flat&logo=visual-studio-code&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
-[![Version](https://img.shields.io/badge/Version-v0.6.1-76B900?style=flat&logo=nvidia&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
+[![Version](https://img.shields.io/badge/Version-v0.7.0-76B900?style=flat&logo=nvidia&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
 [![Documentation](https://img.shields.io/badge/Docs-Configuration_Guide-green?style=flat&logo=markdown&logoColor=white)](docs/README.md)
 [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-Chat_Native-181717?style=flat&logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -31,10 +31,11 @@ Modern software engineering demands high-precision reasoning, long context under
 ## ✨ Key Features
 
 - **🧠 Native Deep Reasoning:** Collapsible thinking blocks via VS Code `LanguageModelThinkingPart` and Copilot effort control (`None` to `Max`).
-- **🛡️ Smart Multimodal Failover:** Automatic single-turn failover on 429/404 errors, routing text requests to Nemotron Lightning and image requests to MiniMax M3.
+- **🛡️ Chained Multimodal Failover:** Automatic failover on 429/404/empty/timeout errors with a configurable model priority list (`fallback.priorityList`), routing text requests to Nemotron Lightning and image requests to MiniMax M3.
+- **🔁 Repetition Loop Guard:** Detects degenerate "Let me fix..." output loops mid-stream and ends the turn cleanly instead of spinning forever.
 - **🛠️ Self-Healing Tool Execution:** Streaming tag-stack XML scanner with auto-repair via `jsonrepair` and duplicate read loop prevention.
 - **🗜️ Context Auto-Compaction:** Decoupled conversation history compaction with dedicated fast summarization models.
-- **📊 Rich Telemetry:** Status bar token utilization widget and millisecond TTFT diagnostics.
+- **📊 Rich Telemetry:** Status bar token utilization widget, real prompt/completion token counts in Copilot Chat's context-window widget, and millisecond TTFT diagnostics.
 
 ---
 
@@ -45,11 +46,10 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | Model | Context Window | Reasoning Modes | Tool Calling | Vision | Best For |
 | :--- | :---: | :---: | :---: | :---: | :--- |
 | **DeepSeek V4 Flash 0731** | 1M | `None`, `High`, `Max` | ✅ Yes | ❌ | Deep algorithm design, code architecture, complex refactoring |
-| **Kimi K2.6** *(Deprecated)* | 262K | `None`, `On` | ✅ Yes | ✅ Yes | Long-context repository comprehension *(auto-fails over to MiniMax M3)* |
+| **Kimi K3** | 1M | `None`, `Low`, `High`, `Max` | ✅ Yes | ✅ Yes | Long-context multimodal comprehension, repository-scale work |
 | **Nemotron 3.5 Lightning 30B** | 1M | `None`, `Medium`, `High`, `XHigh` | ✅ Yes | ❌ | Ultra-fast responses, agentic tool workflows, summarization |
 | **Nemotron 3 Ultra 550B** | 1M | `None`, `Medium`, `High` | ✅ Yes | ❌ | Heavy multi-step reasoning, deep technical documentation |
 | **MiniMax M3** | 1M | `None`, `On`, `Adaptive` | ✅ Yes | ✅ Yes | Multimodal code generation, full-stack tasks |
-| **GLM 5.2** | 1M | `None`, `On` | ✅ Yes | ❌ | Precise instruction following, rigorous logic |
 | **Step 3.7 Flash** | 262K | `Always On` | ✅ Yes | ✅ Yes | Rapid thinking loops, interactive pair programming |
 | **Inkling** | 1M | `None` to `Max` (7 levels) | ✅ Yes | ✅ Yes | Ultra-deep analytical inspection |
 | **Muse Glimmer** | 131K | `None` to `XHigh` | ✅ Yes | ✅ Yes | Visual UX/UI analysis and front-end generation |
