@@ -54,6 +54,7 @@ export interface GenerationConfig {
   readonly presencePenalty: number | null;
   readonly repetitionPenalty: number | null;
   readonly maxRepeatedLines: number;
+  readonly autoContinueOnLoop: boolean;
 }
 
 export interface ToolsConfig {
@@ -121,6 +122,7 @@ export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
   presencePenalty: null,
   repetitionPenalty: null,
   maxRepeatedLines: 4,
+  autoContinueOnLoop: true,
 };
 
 export const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
@@ -322,6 +324,11 @@ export class ConfigManager {
         ? Math.max(0, Math.min(50, Math.round(rawMaxRepeatedLines)))
         : DEFAULT_GENERATION_CONFIG.maxRepeatedLines;
 
+    const autoContinueOnLoop = config.get<boolean>(
+      "generation.autoContinueOnLoop",
+      DEFAULT_GENERATION_CONFIG.autoContinueOnLoop,
+    );
+
     return {
       temperature,
       topP,
@@ -330,6 +337,7 @@ export class ConfigManager {
       presencePenalty,
       repetitionPenalty,
       maxRepeatedLines,
+      autoContinueOnLoop: autoContinueOnLoop ?? DEFAULT_GENERATION_CONFIG.autoContinueOnLoop,
     };
   }
 

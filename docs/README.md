@@ -32,7 +32,7 @@ Welcome to the definitive guide for **NVIDIA NIM Agent for VS Code**. This docum
    - [Decoupled Background Summarization](#decoupled-background-summarization)
    - [Safety Margin Buffer](#safety-margin-buffer)
 7. [⚙️ Complete Configuration Reference (`settings.json`)](#️-complete-configuration-reference-settingsjson)
-   - [All 32 Settings Explained in Detail](#all-32-settings-explained-in-detail)
+   - [All 33 Settings Explained in Detail](#all-33-settings-explained-in-detail)
    - [Ready-to-Copy `settings.json` Presets](#ready-to-copy-settingsjson-presets)
 8. [⌨️ Extension Commands Reference](#-extension-commands-reference)
 9. [🖼️ Built-in Tools: Image Analysis](#️-built-in-tools-image-analysis)
@@ -236,7 +236,7 @@ Because tokenizers (like Byte-Pair Encoding) can produce slight estimation diffe
 
 Here is the complete, exhaustive documentation for every configuration key available in the extension.
 
-### All 32 Settings Explained in Detail (34 with 2 legacy aliases)
+### All 33 Settings Explained in Detail (35 with 2 legacy aliases)
 
 #### Category 1: Failover & Recovery (`nvidia-nim.fallback.*`)
 
@@ -286,6 +286,7 @@ Here is the complete, exhaustive documentation for every configuration key avail
 | `nvidia-nim.generation.presencePenalty` | `number \| null` | `null` | `-2` .. `2` | **Presence penalty.** Positive values discourage repeating the same topics. `null` disables. Auto `0.1` paired with low-temp `0.2`, and `0.08` paired with Nemotron `0.15`. |
 | `nvidia-nim.generation.repetitionPenalty` | `number \| null` | `null` | `0.5` .. `2` | **Repetition penalty (NVIDIA-specific).** `>1` penalizes already generated tokens. `null` disables. Passed through to NIM when supported. |
 | `nvidia-nim.generation.maxRepeatedLines` | `number` | `4` | `0` .. `50` | **Repetition Loop Guard v2.** Cuts the stream and finishes the turn with a short notice once the same normalized line repeats this many times. Normalization is case/punctuation-insensitive and Unicode-aware (NFKC + `\p{L}\p{N}`). Lines inside markdown code fences (`` ``` `` / `~~~`) are ignored to avoid false positives on repetitive code. History breaker also injects `[NIM_LOOP_BREAKER]` when the same preamble or identical tool call repeats 3× across turns. `0` disables. |
+| `nvidia-nim.generation.autoContinueOnLoop` | `boolean` | `true` | — | **Auto-continue on hang.** When the guard trips or the turn ends with `:` and no tool/action (`hey you got stuck` case from #7), automatically nudge the model with `hey you got stuck, continue working` and keep the turn going instead of ending with `Stopped early`. Set `false` to keep the old notice behavior. |
 
 ---
 

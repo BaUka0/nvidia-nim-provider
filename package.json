@@ -322,6 +322,11 @@
           "maximum": 50,
           "description": "Stop the response early when the same normalized line is repeated this many times (guards against degenerate 'Let me...' loops). 0 disables the guard. Code fences are ignored to avoid false positives on repetitive code."
         },
+        "nvidia-nim.generation.autoContinueOnLoop": {
+          "type": "boolean",
+          "default": true,
+          "description": "When the repetition guard trips or the model hangs on a trailing ':', automatically nudge it with 'hey you got stuck, continue working' and keep the turn going instead of ending with a notice. Disable to keep the old 'Stopped early' behavior."
+        },
         "nvidia-nim.tools.autoRepairArguments": {
           "type": "boolean",
           "default": true,

@@ -663,6 +663,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       const MAX_EMPTY_STREAM_RETRIES = networkConfig.maxEmptyStreamRetries;
       let everSawReasoning = false;
       let lastFinishReasonOverall: string | null | undefined = undefined;
+      let hasRetriedRepetitionLoop = false;
 
       for (let attempt = 0; attempt < Math.max(1, MAX_EMPTY_STREAM_RETRIES + 1); attempt += 1) {
         totalAttempts += 1;
@@ -693,6 +694,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           maxRepeatedLines: ConfigManager.getGenerationConfig().maxRepeatedLines,
         });
         let repetitionNoticeSent = false;
+        let lastVisibleText = "";
 
         const markFirstResponse = (): void => {
           if (firstResponseAtMs === undefined) {
@@ -711,6 +713,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           if (part instanceof vscode.LanguageModelTextPart && !repetitionGuard.tripped) {
             crossedThreshold = repetitionGuard.add(part.value);
           }
+          if (part instanceof vscode.LanguageModelTextPart) {
+            lastVisibleText = part.value;
+          }
           progress.report(part);
           reportedContent = true;
           hasReportedContent = true;
@@ -722,16 +727,28 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             hasReportedVisibleContent = true;
           }
           if (crossedThreshold && !repetitionNoticeSent) {
-            repetitionNoticeSent = true;
-            progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
-            debugLog("repetitionGuard", {
-              model: model.id,
-              trippedLine: repetitionGuard.trippedLine,
-            });
-            outputLog(
-              "repetitionGuard",
-              `Stopped degenerate repeat loop on ${model.id}: "${repetitionGuard.trippedLine}"`,
-            );
+            const autoContinue = ConfigManager.getGenerationConfig().autoContinueOnLoop;
+            // When auto-continue is enabled and we haven't yet retried for a loop,
+            // suppress the terminal notice — the outer retry will nudge the model
+            // with "[NIM_LOOP_BREAKER] hey you got stuck, continue working".
+            if (autoContinue && !hasRetriedRepetitionLoop) {
+              debugLog("repetitionGuard", {
+                model: model.id,
+                trippedLine: repetitionGuard.trippedLine,
+                action: "autoContinueSuppressedNotice",
+              });
+            } else {
+              repetitionNoticeSent = true;
+              progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
+              debugLog("repetitionGuard", {
+                model: model.id,
+                trippedLine: repetitionGuard.trippedLine,
+              });
+              outputLog(
+                "repetitionGuard",
+                `Stopped degenerate repeat loop on ${model.id}: "${repetitionGuard.trippedLine}"`,
+              );
+            }
           }
         };
         const flushPendingText = (): void => {
@@ -972,12 +989,21 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           // Flush any partial line buffered by the guard so a loop ending the
           // stream without a trailing newline is still detected.
           if (!repetitionGuard.tripped && repetitionGuard.flush()) {
-            repetitionNoticeSent = true;
-            progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
-            outputLog(
-              "repetitionGuard",
-              `Stopped degenerate repeat loop on ${model.id}: "${repetitionGuard.trippedLine}"`,
-            );
+            const autoContinue = ConfigManager.getGenerationConfig().autoContinueOnLoop;
+            if (autoContinue && !hasRetriedRepetitionLoop) {
+              debugLog("repetitionGuard", {
+                model: model.id,
+                trippedLine: repetitionGuard.trippedLine,
+                action: "flushTrippedAutoContinue",
+              });
+            } else {
+              repetitionNoticeSent = true;
+              progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
+              outputLog(
+                "repetitionGuard",
+                `Stopped degenerate repeat loop on ${model.id}: "${repetitionGuard.trippedLine}"`,
+              );
+            }
           }
 
           if (toolAggregator) {
@@ -1084,13 +1110,39 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           !emittedToolCall &&
           emptyStreamRetryCount < MAX_EMPTY_STREAM_RETRIES &&
           attempt < 2;
+        const isRepetitionLoop = repetitionGuard.tripped;
+        const isHangingColon =
+          !sawToolCall &&
+          !emittedToolCall &&
+          reportedVisibleContent &&
+          toolsEnabled &&
+          lastVisibleText.trim().endsWith(":") &&
+          (lastFinishReason === "stop" ||
+            lastFinishReason === null ||
+            lastFinishReason === undefined);
+        const willRetryRepetitionLoop =
+          isRepetitionLoop &&
+          ConfigManager.getGenerationConfig().autoContinueOnLoop &&
+          !hasRetriedRepetitionLoop &&
+          attempt === 0;
+        const willRetryHangingColon =
+          !isRepetitionLoop &&
+          isHangingColon &&
+          ConfigManager.getGenerationConfig().autoContinueOnLoop &&
+          !hasRetriedRepetitionLoop &&
+          attempt === 0;
+        const willRetryOnLoop = willRetryRepetitionLoop || willRetryHangingColon;
         const currentRetryReason =
           retryReason ??
           (willRetryAfterInvalidToolCall
             ? "invalid_tool_call"
-            : willRetryEmptyStream
-              ? "empty_stream"
-              : undefined);
+            : willRetryOnLoop
+              ? willRetryRepetitionLoop
+                ? "repetition_loop"
+                : "hanging_colon"
+              : willRetryEmptyStream
+                ? "empty_stream"
+                : undefined);
         const skippedToolCallNames = Array.from(new Set(skippedToolCalls.map((call) => call.name)));
 
         if (firstResponseAtMs !== undefined) {
@@ -1146,12 +1198,55 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             lastFinishReason,
             streamChunkCount,
             willRetryEmptyStream,
+            willRetryOnLoop,
+            isRepetitionLoop,
+            isHangingColon,
+            hasRetriedRepetitionLoop,
             emptyStreamRetryCount,
           });
         }
 
         if (lastUsage) {
           debugLog("stream usage", lastUsage);
+        }
+
+        if (willRetryOnLoop) {
+          hasRetriedRepetitionLoop = true;
+          retryReasonHistory.push(willRetryRepetitionLoop ? "repetition_loop" : "hanging_colon");
+          const loopNudge = willRetryRepetitionLoop
+            ? `${LOOP_BREAKER_MARKER} hey you got stuck repeating the same output — continue working without repeating the preamble. Directly call the required tool or provide the final answer.`
+            : `${LOOP_BREAKER_MARKER} hey you got stuck — your previous turn ended with ":" with no tool call but a next action was expected. Continue working and take the next action.`;
+          debugLog("repetitionGuard", {
+            action: "autoContinue",
+            trippedLine: repetitionGuard.trippedLine,
+            isHangingColon,
+            lastVisibleText: lastVisibleText.slice(0, 120),
+          });
+          outputLog(
+            "repetitionGuard",
+            `Auto-continue after ${willRetryRepetitionLoop ? "repetition loop" : "hanging ':'"} on ${model.id}: "${(repetitionGuard.trippedLine ?? lastVisibleText).slice(0, 80)}"`,
+          );
+          activeRequestBody = {
+            ...activeRequestBody!,
+            messages: [
+              ...activeRequestBody!.messages,
+              { role: "user", content: loopNudge } as import("../types").NimChatMessage,
+            ],
+          };
+          try {
+            recalculateActiveRequestBudget();
+          } catch {
+            debugLog("repetitionGuard", "auto-continue nudge dropped: context budget exceeded");
+            if (!repetitionNoticeSent) {
+              progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
+              outputLog(
+                "repetitionGuard",
+                `Stopped loop but auto-continue nudge exceeded budget on ${model.id}`,
+              );
+            }
+            break;
+          }
+          continue;
         }
 
         if (sawToolCall && !emittedToolCall && willRetryAfterInvalidToolCall && retryMessage) {
@@ -1184,6 +1279,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           streamChunkCount,
           willRetryAfterInvalidToolCall,
           willRetryEmptyStream,
+          willRetryOnLoop,
+          isRepetitionLoop,
+          isHangingColon,
           emptyStreamRetryCount,
         });
 
