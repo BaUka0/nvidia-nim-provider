@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-24
+
 ### Added
 
 - **Repetition Guard v2 with Code-Fence Awareness & History Loop Breaker (`src/provider/repetition-guard.ts`, `src/provider/chat-provider.ts`, `src/shared/config.ts`, `package.json`).** Re-introduced `RepetitionGuard` with markdown fence tracking (lines inside ` ``` ` ignored) to bound degenerate `Let me fix...` / `Let me run the test...` streaming loops without false-positive truncation on repetitive code generation. Default `nvidia-nim.generation.maxRepeatedLines=4` (0 disables). Integrated inter-turn loop detection: `detectHistoryLoop` scans last 5 assistant messages for 3+ identical preambles and `detectToolCallHistoryLoop` for 3+ identical tool calls; when detected, a breaker `system` message is injected (`Stop repeating the preamble, directly invoke the tool`), breaking agent-level loops that span multiple `provideLanguageModelChatResponse` invocations.
