@@ -19,6 +19,8 @@ export interface NvidiaModelRequestProfile {
   defaultTemperature: number;
   toolTemperature?: number;
   defaultTopP?: number;
+  defaultFrequencyPenalty?: number;
+  defaultPresencePenalty?: number;
   extraSystemMessages: string[];
 }
 
@@ -72,11 +74,16 @@ export abstract class BaseModelAdapter implements ModelAdapter {
     };
   }
 
+  readonly defaultFrequencyPenalty?: number;
+  readonly defaultPresencePenalty?: number;
+
   getProfile(options: { toolsEnabled?: boolean }): NvidiaModelRequestProfile {
     return {
       defaultTemperature: this.defaultTemperature,
       toolTemperature: this.toolTemperature,
       defaultTopP: this.defaultTopP,
+      defaultFrequencyPenalty: this.defaultFrequencyPenalty,
+      defaultPresencePenalty: this.defaultPresencePenalty,
       extraSystemMessages:
         options.toolsEnabled && this.toolSystemMessage ? [this.toolSystemMessage] : [],
     };

@@ -316,11 +316,16 @@ export class NimRequestBuilder {
       typeof modelOpts?.top_p === "number" ||
       typeof generationConfig.topP === "number" ||
       typeof profileTopP === "number";
+    const profileFrequencyPenalty = requestProfile.defaultFrequencyPenalty;
+    const profilePresencePenalty = requestProfile.defaultPresencePenalty;
     let frequencyPenaltyAutoApplied = false;
     if (typeof modelOpts?.frequency_penalty === "number") {
       requestBody.frequency_penalty = Math.min(2, Math.max(-2, modelOpts.frequency_penalty));
     } else if (typeof generationConfig.frequencyPenalty === "number") {
       requestBody.frequency_penalty = Math.min(2, Math.max(-2, generationConfig.frequencyPenalty));
+    } else if (typeof profileFrequencyPenalty === "number") {
+      requestBody.frequency_penalty = Math.min(2, Math.max(-2, profileFrequencyPenalty));
+      frequencyPenaltyAutoApplied = true;
     } else if (!hasExplicitTopP && temperatureVal <= 0.2) {
       // Low-temperature models (DeepSeek 0, GLM 0.1) are most prone to greedy
       // repetition loops. When the user has not configured nucleus sampling or a
@@ -332,6 +337,8 @@ export class NimRequestBuilder {
       requestBody.presence_penalty = Math.min(2, Math.max(-2, modelOpts.presence_penalty));
     } else if (typeof generationConfig.presencePenalty === "number") {
       requestBody.presence_penalty = Math.min(2, Math.max(-2, generationConfig.presencePenalty));
+    } else if (typeof profilePresencePenalty === "number") {
+      requestBody.presence_penalty = Math.min(2, Math.max(-2, profilePresencePenalty));
     } else if (frequencyPenaltyAutoApplied) {
       // Pair the auto frequency penalty with a small presence penalty, but only
       // when neither penalty was explicitly configured (avoids leaking presence

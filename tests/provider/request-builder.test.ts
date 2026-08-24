@@ -268,4 +268,35 @@ describe("NimRequestBuilder context accounting", () => {
 
     expect(prepared.requestBody.frequency_penalty).toBe(-1.5);
   });
+
+  it("applies Nemotron adapter frequency/presence defaults despite high temp and top_p", async () => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn((_key: string, defaultValue: unknown) => defaultValue),
+    });
+
+    const nemotronModel = makeModel({
+      id: "nvidia/nemotron-3-ultra-550b-a55b",
+      name: "Nemotron 3 Ultra 550B",
+      maxInputTokens: 100000,
+      maxOutputTokens: 65536,
+    });
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: nemotronModel,
+      messages: makeChatMessages({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Hello")],
+      }),
+      options: makeChatOptions(),
+      contextWindow: 128000,
+      supportsTools: true,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+    });
+
+    expect(prepared.requestBody.frequency_penalty).toBe(0.15);
+    expect(prepared.requestBody.presence_penalty).toBe(0.08);
+    expect(prepared.requestBody.top_p).toBe(0.95);
+  });
 });
