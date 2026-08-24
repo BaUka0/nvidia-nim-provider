@@ -30,6 +30,10 @@ export interface GenerationConfig {
   readonly temperature: number | null;
   readonly topP: number | null;
   readonly maxOutputTokens: number | null;
+  readonly frequencyPenalty: number | null;
+  readonly presencePenalty: number | null;
+  readonly repetitionPenalty: number | null;
+  readonly maxRepeatedLines: number;
 }
 
 export interface ToolsConfig {
@@ -93,6 +97,10 @@ export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
   temperature: null,
   topP: null,
   maxOutputTokens: null,
+  frequencyPenalty: null,
+  presencePenalty: null,
+  repetitionPenalty: null,
+  maxRepeatedLines: 4,
 };
 
 export const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
@@ -260,10 +268,41 @@ export class ConfigManager {
         ? Math.min(131072, Math.round(rawMaxTokens))
         : null;
 
+    const rawFrequencyPenalty = config.get<number | null>("generation.frequencyPenalty", null);
+    const frequencyPenalty =
+      typeof rawFrequencyPenalty === "number" && Number.isFinite(rawFrequencyPenalty)
+        ? Math.max(-2, Math.min(2, rawFrequencyPenalty))
+        : null;
+
+    const rawPresencePenalty = config.get<number | null>("generation.presencePenalty", null);
+    const presencePenalty =
+      typeof rawPresencePenalty === "number" && Number.isFinite(rawPresencePenalty)
+        ? Math.max(-2, Math.min(2, rawPresencePenalty))
+        : null;
+
+    const rawRepetitionPenalty = config.get<number | null>("generation.repetitionPenalty", null);
+    const repetitionPenalty =
+      typeof rawRepetitionPenalty === "number" && Number.isFinite(rawRepetitionPenalty)
+        ? Math.max(0.5, Math.min(2, rawRepetitionPenalty))
+        : null;
+
+    const rawMaxRepeatedLines = config.get<number>(
+      "generation.maxRepeatedLines",
+      DEFAULT_GENERATION_CONFIG.maxRepeatedLines,
+    );
+    const maxRepeatedLines =
+      typeof rawMaxRepeatedLines === "number" && Number.isFinite(rawMaxRepeatedLines)
+        ? Math.max(0, Math.min(50, Math.round(rawMaxRepeatedLines)))
+        : DEFAULT_GENERATION_CONFIG.maxRepeatedLines;
+
     return {
       temperature,
       topP,
       maxOutputTokens,
+      frequencyPenalty,
+      presencePenalty,
+      repetitionPenalty,
+      maxRepeatedLines,
     };
   }
 

@@ -314,9 +314,28 @@ export class NimRequestBuilder {
     }
     if (typeof modelOpts?.frequency_penalty === "number") {
       requestBody.frequency_penalty = Math.min(2, Math.max(-2, modelOpts.frequency_penalty));
+    } else if (typeof generationConfig.frequencyPenalty === "number") {
+      requestBody.frequency_penalty = Math.min(2, Math.max(-2, generationConfig.frequencyPenalty));
+    } else if (profileTopP === undefined && temperatureVal <= 0.2) {
+      // Low-temperature models (DeepSeek 0, GLM 0.1) are most prone to greedy loops.
+      // Apply a mild frequency penalty by default to discourage verbatim repetition
+      // without requiring user configuration.
+      requestBody.frequency_penalty = 0.2;
     }
     if (typeof modelOpts?.presence_penalty === "number") {
       requestBody.presence_penalty = Math.min(2, Math.max(-2, modelOpts.presence_penalty));
+    } else if (typeof generationConfig.presencePenalty === "number") {
+      requestBody.presence_penalty = Math.min(2, Math.max(-2, generationConfig.presencePenalty));
+    } else if (temperatureVal <= 0.2 && requestBody.frequency_penalty !== undefined) {
+      requestBody.presence_penalty = 0.1;
+    }
+    if (typeof modelOpts?.repetition_penalty === "number") {
+      requestBody.repetition_penalty = Math.min(2, Math.max(0.5, modelOpts.repetition_penalty));
+    } else if (typeof generationConfig.repetitionPenalty === "number") {
+      requestBody.repetition_penalty = Math.min(
+        2,
+        Math.max(0.5, generationConfig.repetitionPenalty),
+      );
     }
     const stopVal = modelOpts?.stop;
     if (typeof stopVal === "string" || (Array.isArray(stopVal) && stopVal.length > 0)) {

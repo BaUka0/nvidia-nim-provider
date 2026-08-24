@@ -285,6 +285,43 @@
           "maximum": 131072,
           "description": "Override maximum output tokens limit per response (null uses model maximum)."
         },
+        "nvidia-nim.generation.frequencyPenalty": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "minimum": -2,
+          "maximum": 2,
+          "description": "Frequency penalty reduces repetition of tokens that already appeared (higher = less verbatim repetition). Null disables custom penalty."
+        },
+        "nvidia-nim.generation.presencePenalty": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "minimum": -2,
+          "maximum": 2,
+          "description": "Presence penalty discourages the model from repeating the same topics. Null disables custom penalty."
+        },
+        "nvidia-nim.generation.repetitionPenalty": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "minimum": 0.5,
+          "maximum": 2,
+          "description": "Repetition penalty (NVIDIA NIM specific) penalizes already generated tokens; >1 discourages repetition, <1 encourages it."
+        },
+        "nvidia-nim.generation.maxRepeatedLines": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 0,
+          "maximum": 50,
+          "description": "Stop the response early when the same normalized line is repeated this many times (guards against degenerate 'Let me...' loops). 0 disables the guard. Code fences are ignored to avoid false positives on repetitive code."
+        },
         "nvidia-nim.tools.autoRepairArguments": {
           "type": "boolean",
           "default": true,

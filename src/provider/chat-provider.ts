@@ -58,11 +58,15 @@ import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver"
 import { createStructuredError, NvidiaApiError, parseContextOverflowDetail } from "../api/errors";
 import { NimRequestBuilder } from "./request-builder";
 import { ToolCallStreamAggregator } from "./tool-call-aggregator";
+import { RepetitionGuard } from "./repetition-guard";
 import { splitMessagesForSummarization, summarizeOldMessages } from "../models/summarizer";
 import { ContextLimitStore } from "./context-limit-store";
 
 const DEFAULT_MAX_TOKENS = 65536;
 const MAX_RUNTIME_INFO_CACHE_SIZE = 64;
+
+const REPETITION_STOP_NOTICE =
+  "\n\n_[NVIDIA NIM] Stopped early: the model kept repeating the same output (degenerate loop detected). Try a different model, or raise/disable `nvidia-nim.generation.maxRepeatedLines`._";
 /**
  * Total connection-attempt budget shared by every stream attempt of a single
  * response (initial tries, empty-stream/network retries, overflow retry).
@@ -544,6 +548,49 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           }),
         };
       };
+
+      // Detect inter-turn preamble and tool-call loops before streaming.
+      const historyLoopPreamble = RepetitionGuard.detectHistoryLoop(
+        messages as unknown as readonly { role: unknown; content: unknown }[],
+      );
+      const historyLoopTool = RepetitionGuard.detectToolCallHistoryLoop(
+        messages as unknown as readonly { role: unknown; content: unknown }[],
+      );
+      const breakerMessage = historyLoopPreamble
+        ? `System notice: You have repeated the same preamble "${historyLoopPreamble.slice(0, 80)}" multiple times without calling a tool or making progress. Stop repeating the preamble. Directly invoke the required tool with correct arguments, or provide the final answer without a preamble. Do not start your response with "Let me fix" or "Let me run" again.`
+        : historyLoopTool
+          ? `System notice: You have called the same tool "${historyLoopTool.slice(0, 120)}" multiple times consecutively with identical arguments without progress. Vary the arguments (e.g. different file range or query) or stop and summarize the result instead of looping.`
+          : undefined;
+      if (breakerMessage) {
+        const hasBreaker = activeRequestBody.messages.some(
+          (m) =>
+            m.role === "system" &&
+            typeof m.content === "string" &&
+            m.content.includes(breakerMessage.slice(0, 30)),
+        );
+        if (!hasBreaker) {
+          debugLog("repetitionGuard", {
+            historyLoopPreamble,
+            historyLoopTool,
+            action: "injectBreaker",
+          });
+          outputLog(
+            "repetitionGuard",
+            `Detected inter-turn loop on ${model.id}, injecting breaker: ${historyLoopPreamble ?? historyLoopTool}`,
+          );
+          activeRequestBody = {
+            ...activeRequestBody,
+            messages: [...activeRequestBody.messages, { role: "system", content: breakerMessage }],
+          };
+          try {
+            recalculateActiveRequestBudget();
+          } catch {
+            // If breaker pushes us over budget, drop it and continue without it.
+            activeRequestBody = prepared.requestBody;
+          }
+        }
+      }
+
       let retryReason: "invalid_tool_call" | undefined;
       const retryReasonHistory: string[] = [];
       let totalAttempts = 0;
@@ -584,12 +631,28 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         let firstToolCallAtMs: number | undefined;
         let lastUsage: NimStreamUsage | undefined;
 
+        const repetitionGuard = new RepetitionGuard({
+          maxRepeatedLines: ConfigManager.getGenerationConfig().maxRepeatedLines,
+        });
+        let repetitionNoticeSent = false;
+
         const markFirstResponse = (): void => {
           if (firstResponseAtMs === undefined) {
             firstResponseAtMs = Date.now();
           }
         };
         const reportPart = (part: LanguageModelResponsePart): void => {
+          if (
+            part instanceof vscode.LanguageModelTextPart &&
+            repetitionNoticeSent &&
+            repetitionGuard.tripped
+          ) {
+            return;
+          }
+          let crossedThreshold = false;
+          if (part instanceof vscode.LanguageModelTextPart && !repetitionGuard.tripped) {
+            crossedThreshold = repetitionGuard.add(part.value);
+          }
           progress.report(part);
           reportedContent = true;
           hasReportedContent = true;
@@ -599,6 +662,18 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           ) {
             reportedVisibleContent = true;
             hasReportedVisibleContent = true;
+          }
+          if (crossedThreshold && !repetitionNoticeSent) {
+            repetitionNoticeSent = true;
+            progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
+            debugLog("repetitionGuard", {
+              model: model.id,
+              trippedLine: repetitionGuard.trippedLine,
+            });
+            outputLog(
+              "repetitionGuard",
+              `Stopped degenerate repeat loop on ${model.id}: "${repetitionGuard.trippedLine}"`,
+            );
           }
         };
         const flushPendingText = (): void => {
@@ -828,6 +903,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               sawToolCall = true;
               sawToolCallOverall = true;
               getToolAggregator().handleToolCalls(streamedToolCalls);
+            }
+
+            if (repetitionGuard.tripped) {
+              debugLog("repetitionGuard", "stopping stream consumption");
+              break;
             }
           }
 

@@ -2,15 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Repetition Guard v2 with Code-Fence Awareness & History Loop Breaker (`src/provider/repetition-guard.ts`, `src/provider/chat-provider.ts`, `src/shared/config.ts`, `package.json`).** Re-introduced `RepetitionGuard` with markdown fence tracking (lines inside ` ``` ` ignored) to bound degenerate `Let me fix...` / `Let me run the test...` streaming loops without false-positive truncation on repetitive code generation. Default `nvidia-nim.generation.maxRepeatedLines=4` (0 disables). Integrated inter-turn loop detection: `detectHistoryLoop` scans last 5 assistant messages for 3+ identical preambles and `detectToolCallHistoryLoop` for 3+ identical tool calls; when detected, a breaker `system` message is injected (`Stop repeating the preamble, directly invoke the tool`), breaking agent-level loops that span multiple `provideLanguageModelChatResponse` invocations.
+- **Sampling Penalty Controls (`src/types.ts`, `src/shared/config.ts`, `src/provider/request-builder.ts`, `package.json`).** Added `nvidia-nim.generation.frequencyPenalty` (-2..2), `presencePenalty` (-2..2) and `repetitionPenalty` (0.5..2) settings, wired through `ConfigManager.getGenerationConfig()` and `NimChatRequest`. `NimRequestBuilder` forwards penalties when explicitly configured; for low-temperature models (`temperature<=0.2`, e.g. DeepSeek `0` / GLM `0.1`) a mild default `frequency_penalty=0.2` + `presence_penalty=0.1` is applied automatically to discourage greedy verbatim loops without requiring user configuration. `repetition_penalty` is passed through to NVIDIA NIM when supported.
+
 ### Changed
 
 - **Nemotron Hyperparameter & Prompt Calibration (`src/models/adapters/nemotron.ts`, `src/models/adapters/nemotron-lightning.ts`, `src/models/adapters/base.ts`, `src/provider/request-builder.ts`).** Configured `defaultTemperature = 1`, `toolTemperature = 1`, and `defaultTopP = 0.95` for Nemotron models to eliminate deterministic autoregressive repetition traps at near-greedy low temperatures. Updated `toolSystemMessage` across Nemotron adapters to direct immediate and unambiguous tool invocation, preventing turns from ending on text preambles (`Let me run the test:`). Addresses #7.
 - **Scoped reasoning_content & Thinking History Support (`src/messages/converter.ts`, `src/models/adapters/kimi.ts`, `tests/model-profile.test.ts`, `tests/utils.test.ts`).** `convertMessages()` now extracts `LanguageModelThinkingPart` from assistant history into `reasoning_content`. `KimiAdapter.applyMessagesWorkaround()` was refined to strictly patch assistant messages containing `tool_calls` when `reasoning_content` is missing, eliminating dummy whitespace injection on plain text assistant turns.
 - **`read_file` Argument Auto-Repair & Auxiliary Field Sanitization (`src/tools/parser.ts`, `src/messages/converter.ts`, `tests/tools-parser.test.ts`).** `repairToolArguments` now automatically provides default `startLine = 1` and `endLine = 500` (along with `mode = "full"`) when models invoke file-reading tools with an explicit `filePath` but omit line ranges. Added `startLine` and `endLine` to `AUXILIARY_REQUIRED_FIELDS` in `toModelFacingSchema` so client schemas do not force models into arbitrary line estimation, eliminating `Tool call read_file was rejected: missing startLine, endLine` retry loops during agent execution.
-
-### Removed
-
-- **Repetition Guard Crutch (`src/provider/repetition-guard.ts`, `src/provider/chat-provider.ts`, `src/shared/config.ts`, `package.json`).** Removed `RepetitionGuard` and setting `nvidia-nim.generation.maxRepeatedLines` in favor of root-cause sampling and prompt fixes, eliminating false-positive stream truncation during repetitive code generation.
+- **Sampling Defaults for Loop-Prone Models (`src/provider/request-builder.ts`).** When no explicit `frequency_penalty`/`presence_penalty` is configured, low-temperature profiles now receive conservative defaults, reducing degenerate repetition risk for DeepSeek/GLM without affecting high-temperature models.
 
 ## [0.7.0] - 2026-08-23
 

@@ -39,6 +39,7 @@ export interface NimChatRequest {
   stop?: string | string[];
   frequency_penalty?: number;
   presence_penalty?: number;
+  repetition_penalty?: number;
   tools?: NimTool[];
   tool_choice?: "auto" | "none" | "required" | { type: string; function: { name: string } };
   reasoning_effort?: string;
