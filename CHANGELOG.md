@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **NVIDIA NIM Immutable Sampling Penalty Rejection (`src/models/adapters/nemotron.ts`, `src/models/adapters/nemotron-lightning.ts`, `src/provider/request-builder.ts`, `tests/provider/request-builder.test.ts`).** Removed automatic injection of `presence_penalty` and `frequency_penalty` (including adapter-level defaults for Nemotron and low-temperature heuristics). NVIDIA NIM models reject non-zero or unconfigurable `presence_penalty` with HTTP 400 (`Validation: presence_penalty is immutable for this model and must be 0`). Penalties are now strictly passed only when explicitly configured by the user via `nvidia-nim.generation.*` or `modelOptions`.
+
 ## [0.8.0] - 2026-08-24
 
 ### Added

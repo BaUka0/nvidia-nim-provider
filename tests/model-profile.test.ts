@@ -22,8 +22,8 @@ describe("getModelAdapter", () => {
       expect(profile.toolTemperature).toBe(expectedToolTemperature);
       if (modelId.includes("nemotron")) {
         expect(profile.defaultTopP).toBe(0.95);
-        expect(profile.defaultFrequencyPenalty).toBe(0.15);
-        expect(profile.defaultPresencePenalty).toBe(0.08);
+        expect(profile.defaultFrequencyPenalty).toBeUndefined();
+        expect(profile.defaultPresencePenalty).toBeUndefined();
         expect(profile.extraSystemMessages[0]).toContain(
           'NEVER start your response with "Let me fix"',
         );

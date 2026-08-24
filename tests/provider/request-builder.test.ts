@@ -167,8 +167,7 @@ describe("NimRequestBuilder context accounting", () => {
     expect(prepared.requestBody.repetition_penalty).toBe(1.1);
   });
 
-  it("applies low-temp default penalties when no explicit topP or penalty is set", async () => {
-    // DeepSeek has defaultTemperature 0 and no defaultTopP, so it triggers the guard.
+  it("does not apply default penalties when not explicitly configured", async () => {
     (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
       get: jest.fn((_key: string, defaultValue: unknown) => defaultValue),
     });
@@ -187,11 +186,12 @@ describe("NimRequestBuilder context accounting", () => {
       userAgent: "test-agent",
     });
 
-    expect(prepared.requestBody.frequency_penalty).toBe(0.2);
-    expect(prepared.requestBody.presence_penalty).toBe(0.1);
+    expect(prepared.requestBody.frequency_penalty).toBeUndefined();
+    expect(prepared.requestBody.presence_penalty).toBeUndefined();
+    expect(prepared.requestBody.repetition_penalty).toBeUndefined();
   });
 
-  it("does not apply low-temp defaults when topP is explicitly configured", async () => {
+  it("does not apply penalties when topP is explicitly configured without penalties", async () => {
     (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
       get: jest.fn((key: string, defaultValue: unknown) => {
         if (key === "generation.topP") return 0.9;
@@ -269,7 +269,7 @@ describe("NimRequestBuilder context accounting", () => {
     expect(prepared.requestBody.frequency_penalty).toBe(-1.5);
   });
 
-  it("applies Nemotron adapter frequency/presence defaults despite high temp and top_p", async () => {
+  it("sets Nemotron top_p default without injecting penalty fields", async () => {
     (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
       get: jest.fn((_key: string, defaultValue: unknown) => defaultValue),
     });
@@ -295,8 +295,8 @@ describe("NimRequestBuilder context accounting", () => {
       userAgent: "test-agent",
     });
 
-    expect(prepared.requestBody.frequency_penalty).toBe(0.15);
-    expect(prepared.requestBody.presence_penalty).toBe(0.08);
+    expect(prepared.requestBody.frequency_penalty).toBeUndefined();
+    expect(prepared.requestBody.presence_penalty).toBeUndefined();
     expect(prepared.requestBody.top_p).toBe(0.95);
   });
 });

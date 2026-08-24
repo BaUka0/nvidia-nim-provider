@@ -312,26 +312,14 @@ export class NimRequestBuilder {
     } else if (typeof profileTopP === "number") {
       requestBody.top_p = Math.min(1, Math.max(0, profileTopP));
     }
-    const hasExplicitTopP =
-      typeof modelOpts?.top_p === "number" ||
-      typeof generationConfig.topP === "number" ||
-      typeof profileTopP === "number";
     const profileFrequencyPenalty = requestProfile.defaultFrequencyPenalty;
     const profilePresencePenalty = requestProfile.defaultPresencePenalty;
-    let frequencyPenaltyAutoApplied = false;
     if (typeof modelOpts?.frequency_penalty === "number") {
       requestBody.frequency_penalty = Math.min(2, Math.max(-2, modelOpts.frequency_penalty));
     } else if (typeof generationConfig.frequencyPenalty === "number") {
       requestBody.frequency_penalty = Math.min(2, Math.max(-2, generationConfig.frequencyPenalty));
     } else if (typeof profileFrequencyPenalty === "number") {
       requestBody.frequency_penalty = Math.min(2, Math.max(-2, profileFrequencyPenalty));
-      frequencyPenaltyAutoApplied = true;
-    } else if (!hasExplicitTopP && temperatureVal <= 0.2) {
-      // Low-temperature models (DeepSeek 0, GLM 0.1) are most prone to greedy
-      // repetition loops. When the user has not configured nucleus sampling or a
-      // penalty, apply a mild frequency penalty to discourage verbatim repetition.
-      requestBody.frequency_penalty = 0.2;
-      frequencyPenaltyAutoApplied = true;
     }
     if (typeof modelOpts?.presence_penalty === "number") {
       requestBody.presence_penalty = Math.min(2, Math.max(-2, modelOpts.presence_penalty));
@@ -339,11 +327,6 @@ export class NimRequestBuilder {
       requestBody.presence_penalty = Math.min(2, Math.max(-2, generationConfig.presencePenalty));
     } else if (typeof profilePresencePenalty === "number") {
       requestBody.presence_penalty = Math.min(2, Math.max(-2, profilePresencePenalty));
-    } else if (frequencyPenaltyAutoApplied) {
-      // Pair the auto frequency penalty with a small presence penalty, but only
-      // when neither penalty was explicitly configured (avoids leaking presence
-      // when the user deliberately set frequency_penalty, including to 0).
-      requestBody.presence_penalty = 0.1;
     }
     if (typeof modelOpts?.repetition_penalty === "number") {
       requestBody.repetition_penalty = Math.min(2, Math.max(0.5, modelOpts.repetition_penalty));
