@@ -58,7 +58,6 @@ import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver"
 import { createStructuredError, NvidiaApiError, parseContextOverflowDetail } from "../api/errors";
 import { NimRequestBuilder } from "./request-builder";
 import { ToolCallStreamAggregator } from "./tool-call-aggregator";
-import { RepetitionGuard } from "./repetition-guard";
 import { splitMessagesForSummarization, summarizeOldMessages } from "../models/summarizer";
 import { ContextLimitStore } from "./context-limit-store";
 
@@ -81,9 +80,6 @@ interface FallbackChainOptions {
   fallbackDepth?: number;
   triedFallbackModelIds?: string[];
 }
-
-const REPETITION_STOP_NOTICE =
-  "\n\n_[NVIDIA NIM] Stopped early: the model kept repeating the same output (degenerate loop detected). Try a different model, or raise/disable `nvidia-nim.generation.maxRepeatedLines`._";
 
 type SelectedModelRuntimeCapabilities = LanguageModelChatInformation & {
   capabilities?: {
@@ -587,10 +583,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         let firstResponseAtMs: number | undefined;
         let firstToolCallAtMs: number | undefined;
         let lastUsage: NimStreamUsage | undefined;
-        const repetitionGuard = new RepetitionGuard({
-          maxRepeatedLines: ConfigManager.getGenerationConfig().maxRepeatedLines,
-        });
-        let repetitionNoticeSent = false;
 
         const markFirstResponse = (): void => {
           if (firstResponseAtMs === undefined) {
@@ -598,17 +590,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           }
         };
         const reportPart = (part: LanguageModelResponsePart): void => {
-          if (
-            part instanceof vscode.LanguageModelTextPart &&
-            repetitionNoticeSent &&
-            repetitionGuard.tripped
-          ) {
-            return;
-          }
-          let crossedThreshold = false;
-          if (part instanceof vscode.LanguageModelTextPart && !repetitionGuard.tripped) {
-            crossedThreshold = repetitionGuard.add(part.value);
-          }
           progress.report(part);
           reportedContent = true;
           hasReportedContent = true;
@@ -618,18 +599,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           ) {
             reportedVisibleContent = true;
             hasReportedVisibleContent = true;
-          }
-          if (crossedThreshold && !repetitionNoticeSent) {
-            repetitionNoticeSent = true;
-            progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
-            debugLog("repetitionGuard", {
-              model: model.id,
-              trippedLine: repetitionGuard.trippedLine,
-            });
-            outputLog(
-              "repetitionGuard",
-              `Stopped degenerate repeat loop on ${model.id}: "${repetitionGuard.trippedLine}"`,
-            );
           }
         };
         const flushPendingText = (): void => {
@@ -859,11 +828,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               sawToolCall = true;
               sawToolCallOverall = true;
               getToolAggregator().handleToolCalls(streamedToolCalls);
-            }
-
-            if (repetitionGuard.tripped) {
-              debugLog("repetitionGuard", "stopping stream consumption");
-              break;
             }
           }
 

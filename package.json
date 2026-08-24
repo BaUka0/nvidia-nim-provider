@@ -285,13 +285,6 @@
           "maximum": 131072,
           "description": "Override maximum output tokens limit per response (null uses model maximum)."
         },
-        "nvidia-nim.generation.maxRepeatedLines": {
-          "type": "integer",
-          "default": 4,
-          "minimum": 0,
-          "maximum": 50,
-          "description": "Stop the response early when the same normalized line is repeated this many times (guards against degenerate 'Let me...' model loops). 0 disables the guard."
-        },
         "nvidia-nim.tools.autoRepairArguments": {
           "type": "boolean",
           "default": true,

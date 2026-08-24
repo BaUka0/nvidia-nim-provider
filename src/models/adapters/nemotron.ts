@@ -2,10 +2,11 @@ import { BaseModelAdapter } from "./base";
 
 export class NemotronAdapter extends BaseModelAdapter {
   readonly idPattern = /(^|[\/_-])nemotron([\/_-]|$)/i;
-  readonly defaultTemperature = 0.2;
-  readonly toolTemperature = 0.1;
+  readonly defaultTemperature = 1;
+  readonly toolTemperature = 1;
+  readonly defaultTopP = 0.95;
   readonly toolSystemMessage =
-    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, answer with concise user-facing text or a valid tool call. Do not wrap tool arguments in markdown fences, backticks, or explanatory prose.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, you must invoke tools directly when needed to accomplish the user's task. Do not wrap tool arguments in markdown fences, backticks, or explanatory prose.";
 
   readonly supportedReasoningModes = ["none", "medium", "high"];
   readonly reasoningParameterFormat = "reasoning_effort" as const;

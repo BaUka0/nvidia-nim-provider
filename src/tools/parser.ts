@@ -1165,6 +1165,7 @@ export function repairToolArguments(
         }
       }
       delete repaired.arguments;
+      Object.assign(repaired, normalizeArguments(repaired, schema ?? {}));
     }
   }
 
@@ -1195,19 +1196,32 @@ export function repairToolArguments(
   fillMissingAuxiliaryBooleans(repaired, schema);
 
   const context = requestContext;
-  if (!context) {
-    return normalizeArguments(repaired, schema ?? {});
-  }
+  const hasModelSuppliedFile =
+    (typeof parsedArgs.filePath === "string" && parsedArgs.filePath.trim().length > 0) ||
+    (typeof repaired.filePath === "string" &&
+      repaired.filePath.trim().length > 0 &&
+      !context?.filePath);
 
-  if (normalizedToolName === "read_file") {
-    if (needsStringField(repaired.filePath, "filePath") && context.filePath) {
+  if (normalizedToolName === "read_file" || normalizedToolName.includes("read")) {
+    if (needsStringField(repaired.filePath, "filePath") && context?.filePath) {
       repaired.filePath = context.filePath;
     }
-    if (needsNumberField(repaired.startLine, "startLine") && context.startLine !== undefined) {
-      repaired.startLine = context.startLine;
+    if (needsNumberField(repaired.startLine, "startLine")) {
+      if (context?.startLine !== undefined) {
+        repaired.startLine = context.startLine;
+      } else if (hasModelSuppliedFile) {
+        repaired.startLine = 1;
+      }
     }
-    if (needsNumberField(repaired.endLine, "endLine") && context.endLine !== undefined) {
-      repaired.endLine = context.endLine;
+    if (needsNumberField(repaired.endLine, "endLine")) {
+      if (context?.endLine !== undefined) {
+        repaired.endLine = context.endLine;
+      } else if (hasModelSuppliedFile && typeof repaired.startLine === "number") {
+        repaired.endLine = repaired.startLine + 499;
+      }
+    }
+    if (needsStringField(repaired.mode, "mode")) {
+      repaired.mode = schema?.enumValues?.mode?.[0] ?? "full";
     }
   } else if (
     normalizedToolName.includes("file") ||
@@ -1215,13 +1229,13 @@ export function repairToolArguments(
     normalizedToolName === "write_file" ||
     normalizedToolName === "edit_file"
   ) {
-    if (needsStringField(repaired.filePath, "filePath") && context.filePath) {
+    if (needsStringField(repaired.filePath, "filePath") && context?.filePath) {
       repaired.filePath = context.filePath;
     }
-    if (needsNumberField(repaired.startLine, "startLine") && context.startLine !== undefined) {
+    if (needsNumberField(repaired.startLine, "startLine") && context?.startLine !== undefined) {
       repaired.startLine = context.startLine;
     }
-    if (needsNumberField(repaired.endLine, "endLine") && context.endLine !== undefined) {
+    if (needsNumberField(repaired.endLine, "endLine") && context?.endLine !== undefined) {
       repaired.endLine = context.endLine;
     }
   }
@@ -1232,10 +1246,10 @@ export function repairToolArguments(
     normalizedToolName === "find_files" ||
     normalizedToolName.includes("dir")
   ) {
-    if (needsStringField(repaired.path, "path") && context.cwd) {
+    if (needsStringField(repaired.path, "path") && context?.cwd) {
       repaired.path = context.cwd;
     }
-    if (needsStringField(repaired.cwd, "cwd") && context.cwd) {
+    if (needsStringField(repaired.cwd, "cwd") && context?.cwd) {
       repaired.cwd = context.cwd;
     }
   }

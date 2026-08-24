@@ -67,9 +67,34 @@ function isIgnorableToolResultPart(part: vscode.LanguageModelInputPart | LegacyP
   return typeof mimeType === "string" && mimeType.includes("cache_control");
 }
 
+export function getThinkingPartValue(
+  part: vscode.LanguageModelInputPart | LegacyPart,
+): string | undefined {
+  if (typeof part !== "object" || part === null) {
+    return undefined;
+  }
+  const constructorName = (part as { constructor?: { name?: string } }).constructor?.name;
+  if (
+    constructorName === "LanguageModelThinkingPart" ||
+    (part as { type?: unknown }).type === "thinking"
+  ) {
+    const value = (part as { value?: unknown }).value;
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  if ("thinking" in part && typeof (part as { thinking?: unknown }).thinking === "string") {
+    return (part as { thinking: string }).thinking;
+  }
+  return undefined;
+}
+
 export function getTextPartValue(
   part: vscode.LanguageModelInputPart | LegacyPart,
 ): string | undefined {
+  if (getThinkingPartValue(part) !== undefined) {
+    return undefined;
+  }
   if (part instanceof vscode.LanguageModelTextPart) {
     return part.value;
   }
@@ -219,6 +244,8 @@ const AUXILIARY_REQUIRED_FIELDS = new Set([
   "summary",
   "description",
   "isRegexp",
+  "startLine",
+  "endLine",
 ]);
 
 function payloadRequiredFields(schema: Record<string, unknown> | undefined): string[] {
@@ -281,6 +308,7 @@ export function convertMessages(
           : "system";
 
     const textParts: string[] = [];
+    const thinkingParts: string[] = [];
     const imageParts: NimContentPart[] = [];
     const toolCalls: Array<{ id?: string; name?: string; args?: Record<string, unknown> }> = [];
     const toolResults: Array<{ callId: string; content: string }> = [];
@@ -298,6 +326,12 @@ export function convertMessages(
           callId: toolResultPart.callId,
           content: getToolResultTexts(part).join("\n").trim(),
         });
+        continue;
+      }
+
+      const thinkingText = getThinkingPartValue(part);
+      if (thinkingText !== undefined) {
+        thinkingParts.push(thinkingText);
         continue;
       }
 
@@ -323,6 +357,7 @@ export function convertMessages(
 
     if (toolCalls.length > 0) {
       const assistantContent = textParts.join("");
+      const reasoning_content = thinkingParts.length > 0 ? thinkingParts.join("\n") : undefined;
       result.push({
         role: "assistant",
         content: assistantContent || "",
@@ -334,11 +369,7 @@ export function convertMessages(
             arguments: JSON.stringify(tc.args ?? {}),
           },
         })),
-        // A single space of reasoning_content prevents incomplete responses on
-        // models that require the field (Kimi K2.5/2.6) without polluting the
-        // actual output. Applied globally so the converted assistant turn stays
-        // uniform across the adapter-specific messages workarounds.
-        reasoning_content: " ",
+        ...(reasoning_content !== undefined ? { reasoning_content } : {}),
       });
     }
 
@@ -358,19 +389,35 @@ export function convertMessages(
     const isAssistantWithToolCalls = role === "assistant" && toolCalls.length > 0;
 
     if (hasTextOrImage && !isAssistantWithToolCalls) {
+      const reasoning_content =
+        role === "assistant" && thinkingParts.length > 0 ? thinkingParts.join("\n") : undefined;
       if (imageParts.length > 0) {
         const contentParts: NimContentPart[] = [];
         const text = textParts.join("");
         if (text) contentParts.push({ type: "text", text });
         contentParts.push(...imageParts);
-        const newMsg: NimChatMessage = { role, content: contentParts };
+        const newMsg: NimChatMessage = {
+          role,
+          content: contentParts,
+          ...(reasoning_content !== undefined ? { reasoning_content } : {}),
+        };
         result.push(newMsg);
       } else {
-        const newMsg: NimChatMessage = { role, content: textParts.join("") || "(empty message)" };
+        const newMsg: NimChatMessage = {
+          role,
+          content: textParts.join("") || "(empty message)",
+          ...(reasoning_content !== undefined ? { reasoning_content } : {}),
+        };
         result.push(newMsg);
       }
     } else if (!isAssistantWithToolCalls && toolResults.length === 0 && !hasTextOrImage) {
-      result.push({ role, content: "(empty message)" });
+      const reasoning_content =
+        role === "assistant" && thinkingParts.length > 0 ? thinkingParts.join("\n") : undefined;
+      result.push({
+        role,
+        content: "(empty message)",
+        ...(reasoning_content !== undefined ? { reasoning_content } : {}),
+      });
     }
   }
 

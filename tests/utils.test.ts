@@ -85,6 +85,31 @@ describe("convertMessages", () => {
     });
     expect(result).toEqual<NimChatMessage[]>([{ role: "user", content: "Describe this image" }]);
   });
+
+  it("extracts thinking parts into reasoning_content for assistant messages", () => {
+    class LanguageModelThinkingPart {
+      constructor(public value: string) {}
+    }
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.Assistant,
+        content: [
+          new LanguageModelThinkingPart("Let me consider the problem"),
+          new vscode.LanguageModelTextPart("Here is the answer"),
+        ],
+      },
+    ];
+    const result = convertMessages(
+      makeChatMessages(...(messages as unknown as vscode.LanguageModelChatMessage[])),
+    );
+    expect(result).toEqual<NimChatMessage[]>([
+      {
+        role: "assistant",
+        content: "Here is the answer",
+        reasoning_content: "Let me consider the problem",
+      },
+    ]);
+  });
 });
 
 describe("estimateTokens", () => {
@@ -264,7 +289,7 @@ describe("convertMessages with tools", () => {
     const result = convertMessages(makeChatMessages(...messages));
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("assistant");
-    expect(result[0].reasoning_content).toBe(" ");
+    expect(result[0].reasoning_content).toBeUndefined();
     expect(result[0].tool_calls).toHaveLength(1);
     expect(result[0].tool_calls?.[0].function.name).toBe("get_weather");
   });

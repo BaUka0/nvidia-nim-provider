@@ -188,7 +188,6 @@ describe("ConfigManager", () => {
       expect(config.temperature).toBeNull();
       expect(config.topP).toBeNull();
       expect(config.maxOutputTokens).toBeNull();
-      expect(config.maxRepeatedLines).toBe(4);
     });
 
     it("clamps temperature and topP", () => {
@@ -206,17 +205,6 @@ describe("ConfigManager", () => {
 
       mockStore["generation.maxOutputTokens"] = 4096;
       expect(ConfigManager.getGenerationConfig().maxOutputTokens).toBe(4096);
-    });
-
-    it("clamps generation.maxRepeatedLines into the 0..50 range", () => {
-      mockStore["generation.maxRepeatedLines"] = -5;
-      expect(ConfigManager.getGenerationConfig().maxRepeatedLines).toBe(0);
-
-      mockStore["generation.maxRepeatedLines"] = 500;
-      expect(ConfigManager.getGenerationConfig().maxRepeatedLines).toBe(50);
-
-      mockStore["generation.maxRepeatedLines"] = 7;
-      expect(ConfigManager.getGenerationConfig().maxRepeatedLines).toBe(7);
     });
   });
 

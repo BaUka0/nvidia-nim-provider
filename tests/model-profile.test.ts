@@ -1,12 +1,12 @@
 import { getModelAdapter } from "../src/models/adapters";
-import { NimChatRequest } from "../src/types";
+import { NimChatMessage, NimChatRequest } from "../src/types";
 
 describe("getModelAdapter", () => {
   it.each([
     ["kimi-k3", 0.2, 0.1, "Do not reveal chain-of-thought"],
     ["zai-org/glm-4.5", 0.1, 0.05, "strict JSON arguments"],
     ["z-ai/glm-5.2", 0.1, 0.05, "strict JSON arguments"],
-    ["nemotron-70b", 0.2, 0.1, "Do not wrap tool arguments in markdown fences"],
+    ["nemotron-70b", 1, 1, "Do not wrap tool arguments in markdown fences"],
   ])(
     "returns a specialized tool-enabled profile for %s",
     (
@@ -20,6 +20,9 @@ describe("getModelAdapter", () => {
 
       expect(profile.defaultTemperature).toBe(expectedDefaultTemperature);
       expect(profile.toolTemperature).toBe(expectedToolTemperature);
+      if (modelId.includes("nemotron")) {
+        expect(profile.defaultTopP).toBe(0.95);
+      }
       expect(profile.extraSystemMessages).toEqual(
         expect.arrayContaining([expect.stringContaining(expectedMessageSnippet)]),
       );
@@ -227,6 +230,51 @@ describe("applyReasoningMode", () => {
     expect(request.chat_template_kwargs).toEqual({
       enable_thinking: true,
       reasoning_budget: 7600,
+    });
+  });
+
+  describe("KimiAdapter applyMessagesWorkaround", () => {
+    const adapter = getModelAdapter("moonshotai/kimi-k3");
+
+    it("does not mutate plain assistant text messages", () => {
+      const messages: NimChatMessage[] = [
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi there!" },
+      ];
+      const result = adapter.applyMessagesWorkaround!(messages);
+      expect(result).toBe(messages);
+      expect(result[1].reasoning_content).toBeUndefined();
+    });
+
+    it("preserves assistant messages that already have reasoning_content", () => {
+      const messages: NimChatMessage[] = [
+        { role: "user", content: "Run tool" },
+        {
+          role: "assistant",
+          content: "Calling tool",
+          reasoning_content: "Thinking about args...",
+          tool_calls: [
+            { id: "call_1", type: "function", function: { name: "test", arguments: "{}" } },
+          ],
+        },
+      ];
+      const result = adapter.applyMessagesWorkaround!(messages);
+      expect(result[1].reasoning_content).toBe("Thinking about args...");
+    });
+
+    it("injects fallback reasoning_content only for assistant messages with tool_calls", () => {
+      const messages: NimChatMessage[] = [
+        { role: "user", content: "Run tool" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { id: "call_1", type: "function", function: { name: "test", arguments: "{}" } },
+          ],
+        },
+      ];
+      const result = adapter.applyMessagesWorkaround!(messages);
+      expect(result[1].reasoning_content).toBe(" ");
     });
   });
 });

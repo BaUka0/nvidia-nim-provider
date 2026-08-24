@@ -18,6 +18,7 @@ export interface ModelAdapterCapabilityContract {
 export interface NvidiaModelRequestProfile {
   defaultTemperature: number;
   toolTemperature?: number;
+  defaultTopP?: number;
   extraSystemMessages: string[];
 }
 
@@ -44,6 +45,7 @@ export abstract class BaseModelAdapter implements ModelAdapter {
   abstract readonly idPattern: RegExp;
   abstract readonly defaultTemperature: number;
   readonly toolTemperature?: number;
+  readonly defaultTopP?: number;
   readonly toolSystemMessage?: string;
   readonly supportedReasoningModes?: string[];
   readonly isolateUntaggedReasoning?: boolean;
@@ -74,6 +76,7 @@ export abstract class BaseModelAdapter implements ModelAdapter {
     return {
       defaultTemperature: this.defaultTemperature,
       toolTemperature: this.toolTemperature,
+      defaultTopP: this.defaultTopP,
       extraSystemMessages:
         options.toolsEnabled && this.toolSystemMessage ? [this.toolSystemMessage] : [],
     };

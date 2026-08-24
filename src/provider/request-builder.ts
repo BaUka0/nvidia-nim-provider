@@ -304,10 +304,13 @@ export class NimRequestBuilder {
       Boolean(adapter.alwaysReasons);
 
     const modelOpts = responseOptions.modelOptions as Record<string, unknown>;
+    const profileTopP = requestProfile.defaultTopP;
     if (typeof modelOpts?.top_p === "number") {
       requestBody.top_p = Math.min(1, Math.max(0, modelOpts.top_p));
     } else if (typeof generationConfig.topP === "number") {
       requestBody.top_p = Math.min(1, Math.max(0, generationConfig.topP));
+    } else if (typeof profileTopP === "number") {
+      requestBody.top_p = Math.min(1, Math.max(0, profileTopP));
     }
     if (typeof modelOpts?.frequency_penalty === "number") {
       requestBody.frequency_penalty = Math.min(2, Math.max(-2, modelOpts.frequency_penalty));

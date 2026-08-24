@@ -11,7 +11,12 @@ export class KimiAdapter extends BaseModelAdapter {
   applyMessagesWorkaround(messages: NimChatMessage[]): NimChatMessage[] {
     let patchedMessages: NimChatMessage[] | undefined;
     for (const [index, msg] of messages.entries()) {
-      if (msg.role !== "assistant" || msg.reasoning_content) {
+      if (
+        msg.role !== "assistant" ||
+        !Array.isArray(msg.tool_calls) ||
+        msg.tool_calls.length === 0 ||
+        (typeof msg.reasoning_content === "string" && msg.reasoning_content.trim().length > 0)
+      ) {
         continue;
       }
       patchedMessages ??= [...messages];

@@ -30,7 +30,6 @@ export interface GenerationConfig {
   readonly temperature: number | null;
   readonly topP: number | null;
   readonly maxOutputTokens: number | null;
-  readonly maxRepeatedLines: number;
 }
 
 export interface ToolsConfig {
@@ -94,7 +93,6 @@ export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
   temperature: null,
   topP: null,
   maxOutputTokens: null,
-  maxRepeatedLines: 4,
 };
 
 export const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
@@ -262,20 +260,10 @@ export class ConfigManager {
         ? Math.min(131072, Math.round(rawMaxTokens))
         : null;
 
-    const rawMaxRepeatedLines = config.get<number>(
-      "generation.maxRepeatedLines",
-      DEFAULT_GENERATION_CONFIG.maxRepeatedLines,
-    );
-    const maxRepeatedLines =
-      typeof rawMaxRepeatedLines === "number" && Number.isFinite(rawMaxRepeatedLines)
-        ? Math.max(0, Math.min(50, Math.round(rawMaxRepeatedLines)))
-        : DEFAULT_GENERATION_CONFIG.maxRepeatedLines;
-
     return {
       temperature,
       topP,
       maxOutputTokens,
-      maxRepeatedLines,
     };
   }
 

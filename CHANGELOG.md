@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Nemotron Hyperparameter & Prompt Calibration (`src/models/adapters/nemotron.ts`, `src/models/adapters/nemotron-lightning.ts`, `src/models/adapters/base.ts`, `src/provider/request-builder.ts`).** Configured `defaultTemperature = 1`, `toolTemperature = 1`, and `defaultTopP = 0.95` for Nemotron models to eliminate deterministic autoregressive repetition traps at near-greedy low temperatures. Updated `toolSystemMessage` across Nemotron adapters to direct immediate and unambiguous tool invocation, preventing turns from ending on text preambles (`Let me run the test:`). Addresses #7.
+- **Scoped reasoning_content & Thinking History Support (`src/messages/converter.ts`, `src/models/adapters/kimi.ts`, `tests/model-profile.test.ts`, `tests/utils.test.ts`).** `convertMessages()` now extracts `LanguageModelThinkingPart` from assistant history into `reasoning_content`. `KimiAdapter.applyMessagesWorkaround()` was refined to strictly patch assistant messages containing `tool_calls` when `reasoning_content` is missing, eliminating dummy whitespace injection on plain text assistant turns.
+- **`read_file` Argument Auto-Repair & Auxiliary Field Sanitization (`src/tools/parser.ts`, `src/messages/converter.ts`, `tests/tools-parser.test.ts`).** `repairToolArguments` now automatically provides default `startLine = 1` and `endLine = 500` (along with `mode = "full"`) when models invoke file-reading tools with an explicit `filePath` but omit line ranges. Added `startLine` and `endLine` to `AUXILIARY_REQUIRED_FIELDS` in `toModelFacingSchema` so client schemas do not force models into arbitrary line estimation, eliminating `Tool call read_file was rejected: missing startLine, endLine` retry loops during agent execution.
+
+### Removed
+
+- **Repetition Guard Crutch (`src/provider/repetition-guard.ts`, `src/provider/chat-provider.ts`, `src/shared/config.ts`, `package.json`).** Removed `RepetitionGuard` and setting `nvidia-nim.generation.maxRepeatedLines` in favor of root-cause sampling and prompt fixes, eliminating false-positive stream truncation during repetitive code generation.
+
 ## [0.7.0] - 2026-08-23
 
 ### Added

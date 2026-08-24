@@ -82,6 +82,14 @@ describe("tool argument parsing and validation", () => {
     expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
   });
 
+  it("auto-fills required startLine and mode defaults when model supplies only filePath", () => {
+    const schema = getToolSchemaMap(options).get("read_file");
+    const repaired = repairToolArguments("read_file", { filePath: "/tmp/a.ts" }, undefined, schema);
+
+    expect(repaired).toEqual({ filePath: "/tmp/a.ts", startLine: 1, mode: "full" });
+    expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
+  });
+
   it("preserves a schema-declared string field named arguments", () => {
     const schema = getToolSchemaMap(
       makeChatOptions({
