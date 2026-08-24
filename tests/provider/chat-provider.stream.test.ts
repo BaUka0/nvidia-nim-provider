@@ -520,9 +520,7 @@ describe("NimChatModelProvider", () => {
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
     const progress = {
-      report: jest.fn().mockImplementation((part) => {
-        console.log("TEST REPORT PART:", part);
-      }),
+      report: jest.fn(),
     };
     const token = makeToken();
 

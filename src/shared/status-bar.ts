@@ -17,6 +17,16 @@ function formatTokenCount(tokens: number): string {
   return String(tokens);
 }
 
+/**
+ * Neutralize markdown-active characters in untrusted text (e.g. model names
+ * derived from API metadata) so it cannot inject links, markup, or break the
+ * tooltip table when rendered in a MarkdownString. Escaped characters render
+ * unchanged, so legitimate names are unaffected visually.
+ */
+function escapeMarkdown(text: string): string {
+  return text.replace(/[\\`*_[\]()|<>]/g, "\\$&");
+}
+
 export interface TokenBreakdown {
   modelName: string;
   systemPrompt: number;
@@ -112,11 +122,14 @@ export class StatusBarManager {
 
     this.item.text = `$(zap) ${breakdown.modelName}: ${formatTokenCount(inputTokens)}/${formatTokenCount(contextWindow)}`;
 
+    const safeModelName = escapeMarkdown(breakdown.modelName);
     const md = new vscode.MarkdownString();
-    md.isTrusted = true;
+    // Untrusted: the tooltip carries no command links, so trust is unnecessary
+    // and would otherwise allow injected markdown/command URIs from model names.
+    md.isTrusted = false;
     md.supportThemeIcons = true;
 
-    md.appendMarkdown(`**$(zap) ${PROVIDER_DISPLAY_NAME} — ${breakdown.modelName}**\n\n`);
+    md.appendMarkdown(`**$(zap) ${PROVIDER_DISPLAY_NAME} — ${safeModelName}**\n\n`);
     md.appendMarkdown(
       `**${inputTokens.toLocaleString()} / ${contextWindow.toLocaleString()} tokens** (${percentage.toFixed(1)}%)\n\n`,
     );

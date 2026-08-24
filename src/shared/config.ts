@@ -1,5 +1,25 @@
 import * as vscode from "vscode";
-import { FALLBACK_MODEL_ID, FALLBACK_VISION_MODEL_ID } from "../models/catalog";
+import { FALLBACK_MODEL_ID, FALLBACK_VISION_MODEL_ID, MODEL_LIST } from "../models/catalog";
+import { warnLog } from "./logging";
+
+/**
+ * Validate a configured model id against the curated catalog. Unknown ids
+ * (e.g. a manual `settings.json` edit that bypasses the picker enum) fall
+ * back to the provided default instead of failing later at request time.
+ * Note: `./logging` imports this module back, but the reference is only
+ * dereferenced at call time, so the cycle is safe.
+ */
+function sanitizeKnownModelId(raw: string, fallbackId: string): string {
+  const id = raw.trim();
+  if (!id) {
+    return fallbackId;
+  }
+  if (id in MODEL_LIST) {
+    return id;
+  }
+  warnLog("config", `Unknown model id "${id}" in settings; using "${fallbackId}" instead.`);
+  return fallbackId;
+}
 
 export interface FallbackConfig {
   readonly enabled: boolean;
@@ -175,12 +195,19 @@ export class ConfigManager {
           .filter((id): id is string => typeof id === "string")
           .map((id) => id.trim())
           .filter((id) => id.length > 0)
+          .filter((id) => {
+            if (id in MODEL_LIST) {
+              return true;
+            }
+            warnLog("config", `Unknown model id "${id}" in fallback.priorityList; skipping.`);
+            return false;
+          })
       : [];
 
     return {
       enabled,
-      model: model.trim() || DEFAULT_FALLBACK_CONFIG.model,
-      visionModel: visionModel.trim() || DEFAULT_FALLBACK_CONFIG.visionModel,
+      model: sanitizeKnownModelId(model, DEFAULT_FALLBACK_CONFIG.model),
+      visionModel: sanitizeKnownModelId(visionModel, DEFAULT_FALLBACK_CONFIG.visionModel),
       priorityList,
       onRateLimit,
       onModelUnavailable,
@@ -349,7 +376,10 @@ export class ConfigManager {
 
     return {
       autoCompactOnOverflow,
-      summarizationModel: summarizationModel.trim() || DEFAULT_CONTEXT_CONFIG.summarizationModel,
+      summarizationModel: sanitizeKnownModelId(
+        summarizationModel,
+        DEFAULT_CONTEXT_CONFIG.summarizationModel,
+      ),
       safetyMarginPercent,
     };
   }

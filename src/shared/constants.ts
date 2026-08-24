@@ -52,8 +52,13 @@ export const BASE_RETRY_DELAY_MS = 1000;
 /** Maximum time (ms) between stream chunks before timeout */
 export const STREAM_IDLE_TIMEOUT_MS = 120000;
 
-export const STREAM_IDLE_TIMEOUT_MIN_MS = 60000;
-export const STREAM_IDLE_TIMEOUT_MAX_MS = 300000;
+/**
+ * Bounds for the adaptive stream idle timeout. These match the declared
+ * `nvidia-nim.network.streamIdleTimeout` schema range (15..600 s) so a user's
+ * configured value is never silently promoted or clamped to a different band.
+ */
+export const STREAM_IDLE_TIMEOUT_MIN_MS = 15000;
+export const STREAM_IDLE_TIMEOUT_MAX_MS = 600000;
 
 export const STATUS_BAR_DEFAULT_TEXT = `$(loading~spin) NVIDIA NIM`;
 export const STATUS_BAR_ERROR_TEXT = `$(zap) NVIDIA NIM`;

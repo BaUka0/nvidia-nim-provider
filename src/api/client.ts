@@ -68,9 +68,25 @@ function createAbortError(): Error {
   return error;
 }
 
+function isTimeoutAbortReason(reason: unknown): boolean {
+  return reason instanceof Error && reason.name === "TimeoutError";
+}
+
+/**
+ * Build the error an aborted signal should surface as. A deadline-driven
+ * abort (AbortSignal.timeout) must stay a TimeoutError so classification
+ * reports a timeout instead of a user cancellation.
+ */
+function errorForAbortedSignal(signal: AbortSignal): Error {
+  if (isTimeoutAbortReason(signal.reason)) {
+    return signal.reason;
+  }
+  return createAbortError();
+}
+
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
-    throw createAbortError();
+    throw errorForAbortedSignal(signal);
   }
 }
 
@@ -80,7 +96,7 @@ function waitForRetry(delayMs: number, signal: AbortSignal | undefined): Promise
     return Promise.resolve();
   }
   if (signal?.aborted) {
-    return Promise.reject(createAbortError());
+    return Promise.reject(errorForAbortedSignal(signal));
   }
 
   return new Promise<void>((resolve, reject) => {
@@ -103,7 +119,7 @@ function waitForRetry(delayMs: number, signal: AbortSignal | undefined): Promise
       reject(error);
     }
     function onAbort(): void {
-      rejectOnce(createAbortError());
+      rejectOnce(errorForAbortedSignal(signal!));
     }
 
     const timeoutId = setTimeout(resolveOnce, delayMs);
@@ -222,6 +238,42 @@ export async function fetchModels(
 }
 
 /**
+ * Overall deadline for non-streaming requests (model list, single-shot
+ * completions, summarization). Streaming responses are governed by the
+ * first-token/idle timeouts in {@link streamChatCompletion} instead, so they
+ * deliberately bypass this cap.
+ */
+const NON_STREAM_REQUEST_TIMEOUT_MS = 120000;
+
+/**
+ * Combine the caller's cancellation signal with an overall request deadline.
+ * A hung TCP connection can otherwise block a non-streaming call forever
+ * because `fetchWithRetry` has no inherent timeout once retries succeed.
+ */
+function withRequestTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  if (!signal) {
+    return timeoutSignal;
+  }
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any([signal, timeoutSignal]);
+  }
+  // Fallback for runtimes without AbortSignal.any: wire both sources into a
+  // single controller and propagate whichever fires first.
+  const controller = new AbortController();
+  const propagate = (source: AbortSignal): void => {
+    controller.abort(source.reason);
+  };
+  if (signal.aborted) {
+    controller.abort(signal.reason);
+  } else {
+    signal.addEventListener("abort", () => propagate(signal), { once: true });
+    timeoutSignal.addEventListener("abort", () => propagate(timeoutSignal), { once: true });
+  }
+  return controller.signal;
+}
+
+/**
  * Fetch the model list while preserving structured API failures for callers
  * such as manual refresh. `fetchModels` remains the nullable compatibility
  * wrapper used by older integrations.
@@ -241,7 +293,7 @@ export async function fetchModelsOrThrow(
         "Content-Type": "application/json",
         ...(userAgent ? { "User-Agent": userAgent } : {}),
       },
-      signal,
+      signal: withRequestTimeout(signal, NON_STREAM_REQUEST_TIMEOUT_MS),
     },
     retries ?? ConfigManager.getNetworkConfig().maxHttpRetries,
     { operation: "models" },
@@ -278,7 +330,7 @@ export async function chatCompletion(
         ...(userAgent ? { "User-Agent": userAgent } : {}),
       },
       body: JSON.stringify({ ...requestBody, stream: false }),
-      signal,
+      signal: withRequestTimeout(signal, NON_STREAM_REQUEST_TIMEOUT_MS),
     },
     retries ?? ConfigManager.getNetworkConfig().maxHttpRetries,
     { operation: "completion", model: requestBody.model },
@@ -350,20 +402,42 @@ export async function* streamChatCompletion(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
 
+  // Cancel is idempotent: it may be triggered by an abort, a timeout, or the
+  // final cleanup, and only the first call should reach the underlying reader.
+  let readerCancelled = false;
+  function cancelReader(reason?: Error): void {
+    if (readerCancelled) {
+      return;
+    }
+    readerCancelled = true;
+    void reader.cancel(reason).catch(() => undefined);
+  }
+
   const configuredIdleTimeoutMs =
     options?.idleTimeoutMs ?? ConfigManager.getNetworkConfig().streamIdleTimeout * 1000;
 
+  // Adaptive idle timeout for large outputs (roughly 10 tokens/s), but the
+  // user-configured timeout is always honored as a floor so a larger configured
+  // value is never shortened, and the bounds match the declared 15..600 s range.
   const idleTimeoutMs = options?.maxOutputTokens
     ? Math.min(
         STREAM_IDLE_TIMEOUT_MAX_MS,
-        Math.max(STREAM_IDLE_TIMEOUT_MIN_MS, Math.round(options.maxOutputTokens / 10) * 1000),
+        Math.max(
+          configuredIdleTimeoutMs,
+          STREAM_IDLE_TIMEOUT_MIN_MS,
+          Math.round(options.maxOutputTokens / 10) * 1000,
+        ),
       )
-    : configuredIdleTimeoutMs;
+    : Math.min(
+        STREAM_IDLE_TIMEOUT_MAX_MS,
+        Math.max(STREAM_IDLE_TIMEOUT_MIN_MS, configuredIdleTimeoutMs),
+      );
 
   const firstTokenTimeoutMs = options?.firstTokenTimeoutMs;
   let isFirstChunk = true;
   let buffer = "";
   let lastChunkTime = Date.now();
+  let streamCompleted = false;
 
   function readWithTimeout() {
     if (signal?.aborted) {
@@ -397,7 +471,7 @@ export async function* streamChatCompletion(
       };
 
       const onAbort = (): void => {
-        void reader.cancel(createAbortError()).catch(() => undefined);
+        cancelReader(createAbortError());
         rejectOnce(createAbortError());
       };
 
@@ -414,7 +488,7 @@ export async function* streamChatCompletion(
             : `Stream idle timeout: no data for ${idleSec}s`,
         );
         err.name = "TimeoutError";
-        void reader.cancel(err).catch(() => undefined);
+        cancelReader(err);
         rejectOnce(err);
       }, currentTimeoutMs);
 
@@ -441,7 +515,10 @@ export async function* streamChatCompletion(
   try {
     while (true) {
       const { done, value } = await readWithTimeout();
-      if (done) break;
+      if (done) {
+        streamCompleted = true;
+        break;
+      }
 
       isFirstChunk = false;
       lastChunkTime = Date.now();
@@ -501,6 +578,13 @@ export async function* streamChatCompletion(
     }
     throw classifyApiError(error, { operation: "stream", model: requestBody.model });
   } finally {
+    // If the stream ended early (error, abort, or a consumer break such as the
+    // repetition guard), cancel any unconsumed bytes so the underlying
+    // connection closes instead of draining in the background. Idempotent, so a
+    // cancel already issued by the abort/timeout path is not repeated.
+    if (!streamCompleted) {
+      cancelReader();
+    }
     reader.releaseLock();
   }
 }

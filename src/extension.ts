@@ -77,6 +77,8 @@ function registerCommands(
   context.subscriptions.push(
     vscode.commands.registerCommand(MANAGE_COMMAND_ID, async () => {
       const existing = await context.secrets.get(SECRET_STORAGE_KEY);
+      // Never pre-fill the stored secret into the input box: the value would
+      // live in renderer memory and be exposed via clipboard/accessibility.
       const apiKey = await vscode.window.showInputBox({
         title: `${PROVIDER_DISPLAY_NAME} API Key`,
         prompt: existing
@@ -84,8 +86,9 @@ function registerCommands(
           : `Enter your ${PROVIDER_DISPLAY_NAME} API key`,
         ignoreFocusOut: true,
         password: true,
-        value: existing ?? "",
-        placeHolder: `Enter your ${PROVIDER_DISPLAY_NAME} API key...`,
+        placeHolder: existing
+          ? `A key is already stored. Enter a new key to replace it, or submit empty to clear it.`
+          : `Enter your ${PROVIDER_DISPLAY_NAME} API key...`,
       });
       if (apiKey === undefined) {
         return;
@@ -192,8 +195,14 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(registerNimTools(context.secrets, context.globalState, keyResolver));
   registerCommands(context, ua, statusBar, keyResolver);
 
-  // Initialize stored API key (async, fire-and-forget)
-  void initializeStoredApiKey(context, ua, statusBar, keyResolver);
+  // Initialize stored API key (async, fire-and-forget). The catch keeps the
+  // extension host free of unhandled promise rejections on startup races.
+  void initializeStoredApiKey(context, ua, statusBar, keyResolver).catch((error) => {
+    outputLog(
+      "init",
+      `Stored API key initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
 }
 
 export function deactivate() {

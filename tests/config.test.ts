@@ -188,6 +188,10 @@ describe("ConfigManager", () => {
       expect(config.temperature).toBeNull();
       expect(config.topP).toBeNull();
       expect(config.maxOutputTokens).toBeNull();
+      expect(config.frequencyPenalty).toBeNull();
+      expect(config.presencePenalty).toBeNull();
+      expect(config.repetitionPenalty).toBeNull();
+      expect(config.maxRepeatedLines).toBe(4);
     });
 
     it("clamps temperature and topP", () => {
@@ -205,6 +209,50 @@ describe("ConfigManager", () => {
 
       mockStore["generation.maxOutputTokens"] = 4096;
       expect(ConfigManager.getGenerationConfig().maxOutputTokens).toBe(4096);
+    });
+
+    it("clamps frequency, presence, and repetition penalties", () => {
+      mockStore["generation.frequencyPenalty"] = 5;
+      expect(ConfigManager.getGenerationConfig().frequencyPenalty).toBe(2);
+      mockStore["generation.frequencyPenalty"] = -5;
+      expect(ConfigManager.getGenerationConfig().frequencyPenalty).toBe(-2);
+      mockStore["generation.frequencyPenalty"] = 0.7;
+      expect(ConfigManager.getGenerationConfig().frequencyPenalty).toBe(0.7);
+
+      mockStore["generation.presencePenalty"] = 3;
+      expect(ConfigManager.getGenerationConfig().presencePenalty).toBe(2);
+      mockStore["generation.presencePenalty"] = -3;
+      expect(ConfigManager.getGenerationConfig().presencePenalty).toBe(-2);
+
+      mockStore["generation.repetitionPenalty"] = 0.1;
+      expect(ConfigManager.getGenerationConfig().repetitionPenalty).toBe(0.5);
+      mockStore["generation.repetitionPenalty"] = 5;
+      expect(ConfigManager.getGenerationConfig().repetitionPenalty).toBe(2);
+      mockStore["generation.repetitionPenalty"] = 1.05;
+      expect(ConfigManager.getGenerationConfig().repetitionPenalty).toBe(1.05);
+    });
+
+    it("rejects non-finite penalties as null", () => {
+      mockStore["generation.frequencyPenalty"] = Number.NaN;
+      expect(ConfigManager.getGenerationConfig().frequencyPenalty).toBeNull();
+      mockStore["generation.presencePenalty"] = Number.POSITIVE_INFINITY;
+      expect(ConfigManager.getGenerationConfig().presencePenalty).toBeNull();
+      mockStore["generation.repetitionPenalty"] = "1.1";
+      expect(ConfigManager.getGenerationConfig().repetitionPenalty).toBeNull();
+    });
+
+    it("clamps generation.maxRepeatedLines into the 0..50 range", () => {
+      mockStore["generation.maxRepeatedLines"] = -5;
+      expect(ConfigManager.getGenerationConfig().maxRepeatedLines).toBe(0);
+
+      mockStore["generation.maxRepeatedLines"] = 500;
+      expect(ConfigManager.getGenerationConfig().maxRepeatedLines).toBe(50);
+
+      mockStore["generation.maxRepeatedLines"] = 7;
+      expect(ConfigManager.getGenerationConfig().maxRepeatedLines).toBe(7);
+
+      mockStore["generation.maxRepeatedLines"] = Number.NaN;
+      expect(ConfigManager.getGenerationConfig().maxRepeatedLines).toBe(4);
     });
   });
 

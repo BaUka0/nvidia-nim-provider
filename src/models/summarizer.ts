@@ -2,7 +2,11 @@ import { chatCompletion } from "../api/client";
 import { debugLog } from "../shared/logging";
 import { NimChatMessage } from "../types";
 import { FALLBACK_MODEL_ID } from "./catalog";
-import { estimateNimMessagesTokens, truncateMessagesForContext } from "../messages/converter";
+import {
+  estimateNimMessagesTokens,
+  truncateMessagesForContext,
+  truncatePreservingSurrogates,
+} from "../messages/converter";
 import { ConfigManager } from "../shared/config";
 
 const SUMMARIZATION_PROMPT = `Summarize the following conversation concisely, preserving:
@@ -58,7 +62,7 @@ function messagesToText(messages: NimChatMessage[]): string {
       if (summaryContent.length > availableContentChars) {
         wasClipped = true;
       }
-      const clippedContent = summaryContent.slice(0, availableContentChars);
+      const clippedContent = truncatePreservingSurrogates(summaryContent, availableContentChars);
       lines.push(`${prefix}${clippedContent}`);
       remainingChars -= prefix.length + clippedContent.length;
     }
@@ -71,7 +75,7 @@ function messagesToText(messages: NimChatMessage[]): string {
     0,
     MAX_SUMMARIZATION_INPUT_CHARS - SUMMARIZATION_TRUNCATION_NOTICE.length,
   );
-  return `${result.slice(0, bodyLimit)}${SUMMARIZATION_TRUNCATION_NOTICE}`;
+  return `${truncatePreservingSurrogates(result, bodyLimit)}${SUMMARIZATION_TRUNCATION_NOTICE}`;
 }
 
 /**

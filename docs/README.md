@@ -32,7 +32,7 @@ Welcome to the definitive guide for **NVIDIA NIM Agent for VS Code**. This docum
    - [Decoupled Background Summarization](#decoupled-background-summarization)
    - [Safety Margin Buffer](#safety-margin-buffer)
 7. [⚙️ Complete Configuration Reference (`settings.json`)](#️-complete-configuration-reference-settingsjson)
-   - [All 27 Settings Explained in Detail](#all-27-settings-explained-in-detail)
+   - [All 32 Settings Explained in Detail](#all-32-settings-explained-in-detail)
    - [Ready-to-Copy `settings.json` Presets](#ready-to-copy-settingsjson-presets)
 8. [⌨️ Extension Commands Reference](#-extension-commands-reference)
 9. [🖼️ Built-in Tools: Image Analysis](#️-built-in-tools-image-analysis)
@@ -99,14 +99,13 @@ NVIDIA NIM hosts a diverse range of specialized models. Here is how to pick the 
 | Model Name | Picker Name | Context Limit | Max Output | Thinking / Reasoning | Vision (Images) | Recommended For |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
 | **DeepSeek V4 Flash 0731** | `DeepSeek V4 Flash 0731` | **1,048,576** tokens | 131,072 | `None`, `High`, `Max` | ❌ No | Hard algorithmic challenges, complex architectural refactors, deep math |
-| **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **1,048,576** tokens | 65,536 | `None`, `Medium`, `High`, `XHigh` | ❌ No | Lightning-fast responses, autonomous Copilot Agent file edits, summarization |
-| **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **1,048,576** tokens | 65,536 | `None`, `Medium`, `High` | ❌ No | Heavy multi-file reasoning, high-stakes system design, enterprise documentation |
-| **MiniMax M3** | `MiniMax M3` | **1,000,000** tokens | 131,072 | `None`, `On`, `Adaptive` | ✅ **Yes** | Multimodal coding, screenshot debugging, full-stack web UI design |
-| **Step 3.7 Flash** | `Step 3.7 Flash` | **262,144** tokens | 65,536 | `Always On` | ✅ **Yes** | Rapid pair programming, visual inspections, interactive live coding |
-| **Inkling** | `Inkling` | **1,000,000** tokens | 131,072 | `None` to `Max` (7 levels) | ✅ **Yes** | Deep analytical codebase exploration with highly fine-tuned thinking depths |
-| **GLM 5.2** | `GLM 5.2` | **1,048,576** tokens | 65,536 | `None`, `On` | ❌ No | Strict instruction following, formatted data generation, schema compliance |
-| **Muse Glimmer** | `Muse Glimmer` | **131,072** tokens | 16,384 | `None` to `XHigh` | ✅ **Yes** | Front-end UI generation, visual UX analysis |
-| **Kimi K2.6** *(Deprecated)* | `Kimi k2.6 (Deprecated)` | **262,144** tokens | 65,536 | `None`, `On` | ✅ **Yes** | *Endpoint returning 404 on NIM; requests auto-failover to MiniMax M3* |
+| **Kimi K3** | `Kimi K3` | **1,048,576** tokens | 65,536 | `None`, `Low`, `High`, `Max` | ✅ **Yes** | Flagship long-context reasoning, multimodal docs, agentic research |
+| **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **1,000,000** tokens | 32,768 | `None`, `Medium`, `High`, `XHigh` | ❌ No | Lightning-fast responses, autonomous Copilot Agent file edits, summarization |
+| **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **1,000,000** tokens | 65,536 | `None`, `Medium`, `High` | ❌ No | Heavy multi-file reasoning, high-stakes system design, enterprise documentation |
+| **MiniMax M3** | `MiniMax M3` | **1,000,000** tokens | 100,000 | `None`, `On`, `Adaptive` | ✅ **Yes** | Multimodal coding, screenshot debugging, full-stack web UI design |
+| **Step 3.7 Flash** | `Step 3.7 Flash` | **262,144** tokens | 262,144 | `Always On` | ✅ **Yes** | Rapid pair programming, visual inspections, interactive live coding |
+| **Inkling** | `Inkling` | **1,048,576** tokens | 65,536 | `None` to `Max` (7 levels) | ✅ **Yes** | Deep analytical codebase exploration with highly fine-tuned thinking depths |
+| **Muse Glimmer** | `Muse Glimmer` | **131,072** tokens | 32,768 | `None` to `XHigh` | ✅ **Yes** | Front-end UI generation, visual UX analysis |
 
 ---
 
@@ -237,7 +236,7 @@ Because tokenizers (like Byte-Pair Encoding) can produce slight estimation diffe
 
 Here is the complete, exhaustive documentation for every configuration key available in the extension.
 
-### All 29 Settings Explained in Detail
+### All 32 Settings Explained in Detail (34 with 2 legacy aliases)
 
 #### Category 1: Failover & Recovery (`nvidia-nim.fallback.*`)
 
@@ -283,7 +282,10 @@ Here is the complete, exhaustive documentation for every configuration key avail
 | `nvidia-nim.generation.temperature` | `number \| null` | `null` | `0.0` .. `2.0` | Controls randomness. Lower values (e.g. `0.2`) are more deterministic; higher values (e.g. `0.8`) are more creative. Set `null` for model default. |
 | `nvidia-nim.generation.topP` | `number \| null` | `null` | `0.0` .. `1.0` | Nucleus sampling probability cutoff. Set `null` to use model default. |
 | `nvidia-nim.generation.maxOutputTokens` | `number \| null` | `null` | $\ge 128$ | Hard limit on generated tokens. Set `null` to allow maximum capacity. |
-| `nvidia-nim.generation.maxRepeatedLines` | `number` | `4` | `0` .. `50` | **Repetition Loop Guard.** Cuts the stream and finishes the turn with a short notice once the same line repeats this many times (punctuation/case variations count as the same line). `0` disables the guard. |
+| `nvidia-nim.generation.frequencyPenalty` | `number \| null` | `null` | `-2` .. `2` | **Frequency penalty.** Positive values discourage verbatim token repetition (higher = less repetition). `null` disables. Auto `0.2` for low-temp models (DeepSeek/GLM) when no penalty/topP set. |
+| `nvidia-nim.generation.presencePenalty` | `number \| null` | `null` | `-2` .. `2` | **Presence penalty.** Positive values discourage repeating the same topics. `null` disables. Auto `0.1` when low-temp frequency guard is auto-applied. |
+| `nvidia-nim.generation.repetitionPenalty` | `number \| null` | `null` | `0.5` .. `2` | **Repetition penalty (NVIDIA-specific).** `>1` penalizes already generated tokens. `null` disables. Passed through to NIM when supported. |
+| `nvidia-nim.generation.maxRepeatedLines` | `number` | `4` | `0` .. `50` | **Repetition Loop Guard v2.** Cuts the stream and finishes the turn with a short notice once the same normalized line repeats this many times. Normalization is case/punctuation-insensitive and Unicode-aware (NFKC + `\p{L}\p{N}`). Lines inside markdown code fences (`` ``` `` / `~~~`) are ignored to avoid false positives on repetitive code. History breaker also injects `[NIM_LOOP_BREAKER]` when the same preamble or identical tool call repeats 3× across turns. `0` disables. |
 
 ---
 

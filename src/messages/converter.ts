@@ -21,6 +21,25 @@ function asObjectRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
+/**
+ * Truncate a string to at most `maxChars` UTF-16 code units without splitting
+ * a surrogate pair (which would produce an invalid lone surrogate). If the cut
+ * would land between a high and low surrogate, back up one unit.
+ */
+export function truncatePreservingSurrogates(text: string, maxChars: number): string {
+  if (text.length <= maxChars || maxChars <= 0) {
+    return text.slice(0, Math.max(0, maxChars));
+  }
+  let end = maxChars;
+  const code = text.charCodeAt(end - 1);
+  // If the last kept unit is a high surrogate, its low surrogate would be cut
+  // off; drop the high surrogate too.
+  if (code >= 0xd800 && code <= 0xdbff) {
+    end -= 1;
+  }
+  return text.slice(0, end);
+}
+
 function toUint8Array(
   data: Uint8Array | number[] | ArrayBuffer | string | undefined,
   options?: { allowBase64String?: boolean },
@@ -376,7 +395,7 @@ export function convertMessages(
     for (const tr of toolResults) {
       let content = tr.content || "";
       if (options?.maxToolResultChars && content.length > options.maxToolResultChars) {
-        content = content.slice(0, options.maxToolResultChars) + "…";
+        content = truncatePreservingSurrogates(content, options.maxToolResultChars) + "…";
       }
       result.push({
         role: "tool",

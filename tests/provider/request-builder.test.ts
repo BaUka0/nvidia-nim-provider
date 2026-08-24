@@ -137,4 +137,135 @@ describe("NimRequestBuilder context accounting", () => {
     expect(prepared.requestBody.top_p).toBe(0.85);
     expect(prepared.requestBody.max_tokens).toBe(500);
   });
+
+  it("forwards configured frequency, presence and repetition penalties", async () => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "generation.frequencyPenalty") return 0.7;
+        if (key === "generation.presencePenalty") return -0.5;
+        if (key === "generation.repetitionPenalty") return 1.1;
+        return defaultValue;
+      }),
+    });
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: createModel(),
+      messages: makeChatMessages({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Hello")],
+      }),
+      options: makeChatOptions(),
+      contextWindow: 128000,
+      supportsTools: false,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+    });
+
+    expect(prepared.requestBody.frequency_penalty).toBe(0.7);
+    expect(prepared.requestBody.presence_penalty).toBe(-0.5);
+    expect(prepared.requestBody.repetition_penalty).toBe(1.1);
+  });
+
+  it("applies low-temp default penalties when no explicit topP or penalty is set", async () => {
+    // DeepSeek has defaultTemperature 0 and no defaultTopP, so it triggers the guard.
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn((_key: string, defaultValue: unknown) => defaultValue),
+    });
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: createModel(),
+      messages: makeChatMessages({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Hello")],
+      }),
+      options: makeChatOptions(),
+      contextWindow: 128000,
+      supportsTools: false,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+    });
+
+    expect(prepared.requestBody.frequency_penalty).toBe(0.2);
+    expect(prepared.requestBody.presence_penalty).toBe(0.1);
+  });
+
+  it("does not apply low-temp defaults when topP is explicitly configured", async () => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "generation.topP") return 0.9;
+        return defaultValue;
+      }),
+    });
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: createModel(),
+      messages: makeChatMessages({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Hello")],
+      }),
+      options: makeChatOptions(),
+      contextWindow: 128000,
+      supportsTools: false,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+    });
+
+    expect(prepared.requestBody.frequency_penalty).toBeUndefined();
+    expect(prepared.requestBody.presence_penalty).toBeUndefined();
+  });
+
+  it("does not leak presence penalty when frequency was explicitly set", async () => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn((_key: string, defaultValue: unknown) => defaultValue),
+    });
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: createModel(),
+      messages: makeChatMessages({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Hello")],
+      }),
+      options: makeChatOptions({
+        modelOptions: { frequency_penalty: 0 },
+      }),
+      contextWindow: 128000,
+      supportsTools: false,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+    });
+
+    expect(prepared.requestBody.frequency_penalty).toBe(0);
+    expect(prepared.requestBody.presence_penalty).toBeUndefined();
+  });
+
+  it("lets modelOptions override generation penalty defaults", async () => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "generation.frequencyPenalty") return 0.7;
+        return defaultValue;
+      }),
+    });
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: createModel(),
+      messages: makeChatMessages({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Hello")],
+      }),
+      options: makeChatOptions({
+        modelOptions: { frequency_penalty: -1.5 },
+      }),
+      contextWindow: 128000,
+      supportsTools: false,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+    });
+
+    expect(prepared.requestBody.frequency_penalty).toBe(-1.5);
+  });
 });

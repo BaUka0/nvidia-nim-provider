@@ -67,6 +67,47 @@ const MAX_RUNTIME_INFO_CACHE_SIZE = 64;
 
 const REPETITION_STOP_NOTICE =
   "\n\n_[NVIDIA NIM] Stopped early: the model kept repeating the same output (degenerate loop detected). Try a different model, or raise/disable `nvidia-nim.generation.maxRepeatedLines`._";
+
+/**
+ * Stable marker embedded in inter-turn loop-breaker messages so duplicate
+ * injection can be detected exactly (a fragile substring prefix would both
+ * false-positive on natural text and miss previously injected breakers).
+ */
+const LOOP_BREAKER_MARKER = "[NIM_LOOP_BREAKER]";
+
+/** Return the textual content of a message part, if any. */
+function partTextValue(part: unknown): string | undefined {
+  if (typeof part === "string") {
+    return part;
+  }
+  if (part && typeof part === "object") {
+    const p = part as { value?: unknown; text?: unknown };
+    if (typeof p.value === "string") return p.value;
+    if (typeof p.text === "string") return p.text;
+  }
+  return undefined;
+}
+
+/** True when a loop-breaker message is already present in the request or history. */
+function hasLoopBreaker(
+  requestMessages: readonly { role: string; content: unknown }[],
+  historyMessages: readonly { content: readonly unknown[] }[],
+): boolean {
+  for (const m of requestMessages) {
+    if (typeof m.content === "string" && m.content.includes(LOOP_BREAKER_MARKER)) {
+      return true;
+    }
+  }
+  for (const m of historyMessages) {
+    for (const part of m.content) {
+      const text = partTextValue(part);
+      if (text && text.includes(LOOP_BREAKER_MARKER)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 /**
  * Total connection-attempt budget shared by every stream attempt of a single
  * response (initial tries, empty-stream/network retries, overflow retry).
@@ -549,45 +590,62 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         };
       };
 
-      // Detect inter-turn preamble and tool-call loops before streaming.
+      // Detect inter-turn preamble and tool-call loops before streaming. When
+      // the model has been repeating the same preamble (or identical tool call)
+      // across turns, inject a one-shot "breaker" instruction to force it to
+      // change behavior instead of looping again.
       const historyLoopPreamble = RepetitionGuard.detectHistoryLoop(
         messages as unknown as readonly { role: unknown; content: unknown }[],
       );
       const historyLoopTool = RepetitionGuard.detectToolCallHistoryLoop(
         messages as unknown as readonly { role: unknown; content: unknown }[],
       );
-      const breakerMessage = historyLoopPreamble
-        ? `System notice: You have repeated the same preamble "${historyLoopPreamble.slice(0, 80)}" multiple times without calling a tool or making progress. Stop repeating the preamble. Directly invoke the required tool with correct arguments, or provide the final answer without a preamble. Do not start your response with "Let me fix" or "Let me run" again.`
-        : historyLoopTool
-          ? `System notice: You have called the same tool "${historyLoopTool.slice(0, 120)}" multiple times consecutively with identical arguments without progress. Vary the arguments (e.g. different file range or query) or stop and summarize the result instead of looping.`
-          : undefined;
-      if (breakerMessage) {
-        const hasBreaker = activeRequestBody.messages.some(
-          (m) =>
-            m.role === "system" &&
-            typeof m.content === "string" &&
-            m.content.includes(breakerMessage.slice(0, 30)),
+      const breakerNotices: string[] = [];
+      if (historyLoopPreamble) {
+        breakerNotices.push(
+          `You have repeated the same preamble "${historyLoopPreamble.slice(0, 80)}" multiple times without calling a tool or making progress. Stop repeating the preamble. Directly invoke the required tool with correct arguments, or provide the final answer without a preamble. Do not start your response with "Let me fix" or "Let me run" again.`,
         );
-        if (!hasBreaker) {
-          debugLog("repetitionGuard", {
-            historyLoopPreamble,
-            historyLoopTool,
-            action: "injectBreaker",
-          });
-          outputLog(
-            "repetitionGuard",
-            `Detected inter-turn loop on ${model.id}, injecting breaker: ${historyLoopPreamble ?? historyLoopTool}`,
-          );
-          activeRequestBody = {
-            ...activeRequestBody,
-            messages: [...activeRequestBody.messages, { role: "system", content: breakerMessage }],
-          };
-          try {
-            recalculateActiveRequestBudget();
-          } catch {
-            // If breaker pushes us over budget, drop it and continue without it.
-            activeRequestBody = prepared.requestBody;
-          }
+      }
+      if (historyLoopTool) {
+        breakerNotices.push(
+          `You have called the same tool "${historyLoopTool.slice(0, 120)}" multiple times consecutively with identical arguments without progress. Vary the arguments (e.g. a different file range or query) or stop and summarize the result instead of looping.`,
+        );
+      }
+      if (
+        breakerNotices.length > 0 &&
+        !hasLoopBreaker(
+          activeRequestBody.messages,
+          messages as unknown as readonly { content: readonly unknown[] }[],
+        )
+      ) {
+        const breakerMessage = `${LOOP_BREAKER_MARKER} ${breakerNotices.join(" ")}`;
+        debugLog("repetitionGuard", {
+          historyLoopPreamble,
+          historyLoopTool,
+          action: "injectBreaker",
+        });
+        outputLog(
+          "repetitionGuard",
+          `Detected inter-turn loop on ${model.id}, injecting breaker: ${historyLoopPreamble ?? historyLoopTool}`,
+        );
+        // Injected as a user turn (not a trailing system message) because some
+        // OpenAI-compatible backends reject or down-weight trailing system turns.
+        const breakerTurn: import("../types").NimChatMessage = {
+          role: "user",
+          content: breakerMessage,
+        };
+        const bodyWithBreaker = {
+          ...activeRequestBody,
+          messages: [...activeRequestBody.messages, breakerTurn],
+        };
+        try {
+          activeRequestBody = bodyWithBreaker;
+          recalculateActiveRequestBudget();
+        } catch {
+          // Breaker pushed the payload over budget; drop it and proceed with the
+          // original request rather than failing the whole turn.
+          activeRequestBody = prepared.requestBody;
+          debugLog("repetitionGuard", "breaker dropped: context budget exceeded");
         }
       }
 
@@ -909,6 +967,17 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               debugLog("repetitionGuard", "stopping stream consumption");
               break;
             }
+          }
+
+          // Flush any partial line buffered by the guard so a loop ending the
+          // stream without a trailing newline is still detected.
+          if (!repetitionGuard.tripped && repetitionGuard.flush()) {
+            repetitionNoticeSent = true;
+            progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
+            outputLog(
+              "repetitionGuard",
+              `Stopped degenerate repeat loop on ${model.id}: "${repetitionGuard.trippedLine}"`,
+            );
           }
 
           if (toolAggregator) {
