@@ -314,27 +314,40 @@ export class NimRequestBuilder {
     }
     const profileFrequencyPenalty = requestProfile.defaultFrequencyPenalty;
     const profilePresencePenalty = requestProfile.defaultPresencePenalty;
-    if (typeof modelOpts?.frequency_penalty === "number") {
-      requestBody.frequency_penalty = Math.min(2, Math.max(-2, modelOpts.frequency_penalty));
-    } else if (typeof generationConfig.frequencyPenalty === "number") {
-      requestBody.frequency_penalty = Math.min(2, Math.max(-2, generationConfig.frequencyPenalty));
-    } else if (typeof profileFrequencyPenalty === "number") {
-      requestBody.frequency_penalty = Math.min(2, Math.max(-2, profileFrequencyPenalty));
+    const supportsFrequencyPenalty = adapter.supportsFrequencyPenalty !== false;
+    const supportsPresencePenalty = adapter.supportsPresencePenalty !== false;
+    const supportsRepetitionPenalty = adapter.supportsRepetitionPenalty !== false;
+
+    if (supportsFrequencyPenalty) {
+      if (typeof modelOpts?.frequency_penalty === "number") {
+        requestBody.frequency_penalty = Math.min(2, Math.max(-2, modelOpts.frequency_penalty));
+      } else if (typeof generationConfig.frequencyPenalty === "number") {
+        requestBody.frequency_penalty = Math.min(
+          2,
+          Math.max(-2, generationConfig.frequencyPenalty),
+        );
+      } else if (typeof profileFrequencyPenalty === "number") {
+        requestBody.frequency_penalty = Math.min(2, Math.max(-2, profileFrequencyPenalty));
+      }
     }
-    if (typeof modelOpts?.presence_penalty === "number") {
-      requestBody.presence_penalty = Math.min(2, Math.max(-2, modelOpts.presence_penalty));
-    } else if (typeof generationConfig.presencePenalty === "number") {
-      requestBody.presence_penalty = Math.min(2, Math.max(-2, generationConfig.presencePenalty));
-    } else if (typeof profilePresencePenalty === "number") {
-      requestBody.presence_penalty = Math.min(2, Math.max(-2, profilePresencePenalty));
+    if (supportsPresencePenalty) {
+      if (typeof modelOpts?.presence_penalty === "number") {
+        requestBody.presence_penalty = Math.min(2, Math.max(-2, modelOpts.presence_penalty));
+      } else if (typeof generationConfig.presencePenalty === "number") {
+        requestBody.presence_penalty = Math.min(2, Math.max(-2, generationConfig.presencePenalty));
+      } else if (typeof profilePresencePenalty === "number") {
+        requestBody.presence_penalty = Math.min(2, Math.max(-2, profilePresencePenalty));
+      }
     }
-    if (typeof modelOpts?.repetition_penalty === "number") {
-      requestBody.repetition_penalty = Math.min(2, Math.max(0.5, modelOpts.repetition_penalty));
-    } else if (typeof generationConfig.repetitionPenalty === "number") {
-      requestBody.repetition_penalty = Math.min(
-        2,
-        Math.max(0.5, generationConfig.repetitionPenalty),
-      );
+    if (supportsRepetitionPenalty) {
+      if (typeof modelOpts?.repetition_penalty === "number") {
+        requestBody.repetition_penalty = Math.min(2, Math.max(0.5, modelOpts.repetition_penalty));
+      } else if (typeof generationConfig.repetitionPenalty === "number") {
+        requestBody.repetition_penalty = Math.min(
+          2,
+          Math.max(0.5, generationConfig.repetitionPenalty),
+        );
+      }
     }
     const stopVal = modelOpts?.stop;
     if (typeof stopVal === "string" || (Array.isArray(stopVal) && stopVal.length > 0)) {

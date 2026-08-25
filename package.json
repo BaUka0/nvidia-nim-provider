@@ -141,7 +141,6 @@
             "minimaxai/minimax-m3",
             "stepfun-ai/step-3.7-flash",
             "nvidia/nemotron-3-ultra-550b-a55b",
-            "thinkingmachines/inkling",
             "meta/muse-glimmer-30b"
           ],
           "default": "nvidia/nemotron-3.5-lightning-30b-a3b",
@@ -153,7 +152,6 @@
             "minimaxai/minimax-m3",
             "moonshotai/kimi-k3",
             "stepfun-ai/step-3.7-flash",
-            "thinkingmachines/inkling",
             "meta/muse-glimmer-30b"
           ],
           "default": "minimaxai/minimax-m3",
@@ -170,7 +168,6 @@
               "minimaxai/minimax-m3",
               "stepfun-ai/step-3.7-flash",
               "nvidia/nemotron-3-ultra-550b-a55b",
-              "thinkingmachines/inkling",
               "meta/muse-glimmer-30b"
             ]
           },
@@ -356,7 +353,6 @@
             "minimaxai/minimax-m3",
             "stepfun-ai/step-3.7-flash",
             "nvidia/nemotron-3-ultra-550b-a55b",
-            "thinkingmachines/inkling",
             "meta/muse-glimmer-30b"
           ],
           "default": "nvidia/nemotron-3.5-lightning-30b-a3b",

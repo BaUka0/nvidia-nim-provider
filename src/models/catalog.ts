@@ -68,13 +68,6 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: true,
   },
-  "thinkingmachines/inkling": {
-    displayName: "Inkling",
-    contextWindow: 1048576,
-    maxOutputTokens: 65536,
-    supportsTools: true,
-    supportsVision: true,
-  },
   "meta/muse-glimmer-30b": {
     displayName: "Muse Glimmer",
     contextWindow: 131072,

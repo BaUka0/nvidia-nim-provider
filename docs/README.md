@@ -104,7 +104,6 @@ NVIDIA NIM hosts a diverse range of specialized models. Here is how to pick the 
 | **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **1,000,000** tokens | 65,536 | `None`, `Medium`, `High` | ❌ No | Heavy multi-file reasoning, high-stakes system design, enterprise documentation |
 | **MiniMax M3** | `MiniMax M3` | **1,000,000** tokens | 100,000 | `None`, `On`, `Adaptive` | ✅ **Yes** | Multimodal coding, screenshot debugging, full-stack web UI design |
 | **Step 3.7 Flash** | `Step 3.7 Flash` | **262,144** tokens | 262,144 | `Always On` | ✅ **Yes** | Rapid pair programming, visual inspections, interactive live coding |
-| **Inkling** | `Inkling` | **1,048,576** tokens | 65,536 | `None` to `Max` (7 levels) | ✅ **Yes** | Deep analytical codebase exploration with highly fine-tuned thinking depths |
 | **Muse Glimmer** | `Muse Glimmer` | **131,072** tokens | 32,768 | `None` to `XHigh` | ✅ **Yes** | Front-end UI generation, visual UX analysis |
 
 ---
@@ -125,10 +124,6 @@ NVIDIA NIM hosts a diverse range of specialized models. Here is how to pick the 
 - **Why use it:** Features a huge 1,000,000-token context window combined with native Vision capabilities.
 - **Best for:** Pasting UI screenshots to generate React/Tailwind/Vue components, inspecting architecture diagrams, reading PDF graphs, and visual bug fixing.
 - **Default Role:** Serves as the default Vision fallback model.
-
-#### 4. Inkling (The Granular Explorer 🔬)
-- **Why use it:** Offers 7 distinct levels of thinking effort (`none`, `low`, `medium_low`, `medium`, `medium_high`, `high`, `max`).
-- **Best for:** Fine-tuning exactly how long the model ponders before writing code.
 
 ---
 
@@ -179,7 +174,7 @@ flowchart TD
 Set `nvidia-nim.fallback.priorityList` to an ordered list of model IDs (editable in VS Code Settings) to try *before* the single text/vision fallbacks. On each failover step the next healthy candidate is picked; unknown, unavailable, and already-tried models are skipped. Example: `["moonshotai/kimi-k3", "minimaxai/minimax-m3"]` tries Kimi K3 first, then MiniMax M3, and only then the regular fallbacks. If every candidate fails, the error message lists the full tried chain (`Tried chain: kimi-k3 -> minimax-m3`) with the last underlying error.
 
 ### Collision Protection
-If you are already chatting with the backup model (e.g. `MiniMax M3`) and *it* encounters a rate limit, the collision protection engine detects the conflict and automatically routes to the next best available model in the whitelist (such as `Step 3.7 Flash` or `Inkling`).
+If you are already chatting with the backup model (e.g. `MiniMax M3`) and *it* encounters a rate limit, the collision protection engine detects the conflict and automatically routes to the next best available model in the whitelist (such as `Step 3.7 Flash` or `Muse Glimmer`).
 
 ### In-Chat Notice Banners
 When a failover occurs, the extension prints a clean badge at the top of the response:

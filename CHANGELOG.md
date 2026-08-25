@@ -4,7 +4,12 @@
 
 ### Fixed
 
-- **NVIDIA NIM Immutable Sampling Penalty Rejection (`src/models/adapters/nemotron.ts`, `src/models/adapters/nemotron-lightning.ts`, `src/provider/request-builder.ts`, `tests/provider/request-builder.test.ts`).** Removed automatic injection of `presence_penalty` and `frequency_penalty` (including adapter-level defaults for Nemotron and low-temperature heuristics). NVIDIA NIM models reject non-zero or unconfigurable `presence_penalty` with HTTP 400 (`Validation: presence_penalty is immutable for this model and must be 0`). Penalties are now strictly passed only when explicitly configured by the user via `nvidia-nim.generation.*` or `modelOptions`.
+- **Kimi K3 Immutable Penalty Protection (`src/models/adapters/kimi.ts`, `src/models/adapters/base.ts`, `src/provider/request-builder.ts`, `tests/provider/request-builder.test.ts`).** Added adapter-level penalty capability guards (`supportsPresencePenalty: false`, `supportsFrequencyPenalty: false`). Even if a user explicitly configures `nvidia-nim.generation.presencePenalty` or `frequencyPenalty` in VS Code settings, `NimRequestBuilder` automatically suppresses these unsupported keys for Kimi K3, preventing NVIDIA NIM `HTTP 400 Bad Request` (`presence_penalty is immutable for this model and must be 0`) while still permitting `repetition_penalty`.
+- **NVIDIA NIM Immutable Sampling Penalty Rejection (`src/models/adapters/nemotron.ts`, `src/models/adapters/nemotron-lightning.ts`, `src/provider/request-builder.ts`, `tests/provider/request-builder.test.ts`).** Removed automatic injection of `presence_penalty` and `frequency_penalty` (including adapter-level defaults for Nemotron and low-temperature heuristics).
+
+### Changed
+
+- **Catalog Cleanup & Sunsetted Model De-listing (`src/models/catalog.ts`, `package.json`, `docs/README.md`, `README.md`).** Removed `thinkingmachines/inkling` from the active curated model catalog and extension fallback settings following its deprecation/sunset (HTTP 410 Gone) on NVIDIA NIM endpoints. Preserved `InklingAdapter` and its reasoning effort infrastructure in `src/models/adapters/inkling.ts` to ensure seamless zero-downtime support for any future successor models.
 
 ## [0.8.0] - 2026-08-24
 

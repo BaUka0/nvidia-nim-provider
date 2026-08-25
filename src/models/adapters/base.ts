@@ -37,6 +37,9 @@ export interface ModelAdapter {
   readonly toolCallProtocol?: ToolCallProtocol;
   readonly isolateUntaggedReasoning?: boolean;
   readonly alwaysReasons?: boolean;
+  readonly supportsPresencePenalty?: boolean;
+  readonly supportsFrequencyPenalty?: boolean;
+  readonly supportsRepetitionPenalty?: boolean;
 
   getCapabilityContract(): ModelAdapterCapabilityContract;
 }
@@ -52,6 +55,9 @@ export abstract class BaseModelAdapter implements ModelAdapter {
   readonly supportedReasoningModes?: string[];
   readonly isolateUntaggedReasoning?: boolean;
   readonly alwaysReasons?: boolean;
+  readonly supportsPresencePenalty?: boolean;
+  readonly supportsFrequencyPenalty?: boolean;
+  readonly supportsRepetitionPenalty?: boolean;
   sanitizeResponseText?(text: string): string;
   readonly reasoningParameterFormat: ReasoningParameterFormat = "none";
   readonly toolCallProtocol: ToolCallProtocol = "native-and-text";

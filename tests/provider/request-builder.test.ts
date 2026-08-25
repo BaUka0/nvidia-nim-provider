@@ -299,4 +299,40 @@ describe("NimRequestBuilder context accounting", () => {
     expect(prepared.requestBody.presence_penalty).toBeUndefined();
     expect(prepared.requestBody.top_p).toBe(0.95);
   });
+
+  it("suppresses presence and frequency penalties for models with immutable penalties (Kimi K3)", async () => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "generation.frequencyPenalty") return 0.5;
+        if (key === "generation.presencePenalty") return 0.5;
+        if (key === "generation.repetitionPenalty") return 1.2;
+        return defaultValue;
+      }),
+    });
+
+    const kimiModel = makeModel({
+      id: "moonshotai/kimi-k3",
+      name: "Kimi K3",
+      maxInputTokens: 1000000,
+      maxOutputTokens: 65536,
+    });
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: kimiModel,
+      messages: makeChatMessages({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Hello")],
+      }),
+      options: makeChatOptions(),
+      contextWindow: 1048576,
+      supportsTools: true,
+      supportsVision: true,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+    });
+
+    expect(prepared.requestBody.frequency_penalty).toBeUndefined();
+    expect(prepared.requestBody.presence_penalty).toBeUndefined();
+    expect(prepared.requestBody.repetition_penalty).toBe(1.2);
+  });
 });

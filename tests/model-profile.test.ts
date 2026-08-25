@@ -113,6 +113,12 @@ describe("applyReasoningMode", () => {
     expect(request.reasoning_effort).toBe("none");
   });
 
+  it("marks Kimi adapter with supportsPresencePenalty = false and supportsFrequencyPenalty = false", () => {
+    const adapter = getModelAdapter("moonshotai/kimi-k3");
+    expect(adapter.supportsPresencePenalty).toBe(false);
+    expect(adapter.supportsFrequencyPenalty).toBe(false);
+  });
+
   it("sets chat_template_kwargs.enable_thinking to false for GLM none", () => {
     const adapter = getModelAdapter("z-ai/glm-5.2");
     const request: NimChatRequest = {

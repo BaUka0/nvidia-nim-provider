@@ -213,28 +213,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "think",
   },
   {
-    modelId: "thinkingmachines/inkling",
-    catalog: {
-      displayName: "Inkling",
-      contextWindow: 1048576,
-      maxOutputTokens: 65536,
-      supportsTools: true,
-      supportsVision: true,
-    },
-    reasoningModes: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
-    reasoningCases: ["none", "minimal", "low", "medium", "high", "xhigh", "max"].map((mode) => ({
-      mode,
-      expectedFields: { reasoning_effort: mode },
-    })),
-    reasoningParameterFormat: "reasoning_effort",
-    toolCallProtocol: "native-and-text",
-    reasoningRouting: "direct-content",
-    responseSanitization: "none",
-    contentOnlyMode: "medium",
-    contentOnlyRouting: "text",
-    thinkTag: "think",
-  },
-  {
     modelId: "meta/muse-glimmer-30b",
     catalog: {
       displayName: "Muse Glimmer",

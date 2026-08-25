@@ -49,25 +49,6 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
-  it("normalizes thinkingmachines/inkling with its multimodal million-token limits", () => {
-    const raw: NvidiaModelSummary[] = [
-      {
-        id: "thinkingmachines/inkling",
-      },
-    ];
-
-    expect(normalizeNvidiaModels(raw)).toEqual([
-      {
-        id: "thinkingmachines/inkling",
-        displayName: "Inkling",
-        contextWindow: 1048576,
-        maxOutputTokens: 65536,
-        supportsTools: true,
-        supportsVision: true,
-      },
-    ]);
-  });
-
   it("normalizes meta/muse-glimmer-30b with its documented limits", () => {
     const raw: NvidiaModelSummary[] = [
       {
