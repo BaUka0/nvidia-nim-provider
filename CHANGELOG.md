@@ -2,10 +2,12 @@
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-25
+
 ### Fixed
 
 - **Kimi K3 Immutable Penalty Protection (`src/models/adapters/kimi.ts`, `src/models/adapters/base.ts`, `src/provider/request-builder.ts`, `tests/provider/request-builder.test.ts`).** Added adapter-level penalty capability guards (`supportsPresencePenalty: false`, `supportsFrequencyPenalty: false`). Even if a user explicitly configures `nvidia-nim.generation.presencePenalty` or `frequencyPenalty` in VS Code settings, `NimRequestBuilder` automatically suppresses these unsupported keys for Kimi K3, preventing NVIDIA NIM `HTTP 400 Bad Request` (`presence_penalty is immutable for this model and must be 0`) while still permitting `repetition_penalty`.
-- **NVIDIA NIM Immutable Sampling Penalty Rejection (`src/models/adapters/nemotron.ts`, `src/models/adapters/nemotron-lightning.ts`, `src/provider/request-builder.ts`, `tests/provider/request-builder.test.ts`).** Removed automatic injection of `presence_penalty` and `frequency_penalty` (including adapter-level defaults for Nemotron and low-temperature heuristics).
+- **NVIDIA NIM Immutable Sampling Penalty Rejection (`src/models/adapters/nemotron.ts`, `src/models/adapters/nemotron-lightning.ts`, `src/provider/request-builder.ts`, `tests/provider/request-builder.test.ts`).** Removed hardcoded automatic default penalty injection (such as adapter-level defaults `0.15`/`0.08` and low-temp heuristics). User-configured penalty settings via `nvidia-nim.generation.frequencyPenalty`, `presencePenalty`, and `repetitionPenalty` remain fully supported and are directly forwarded to Nemotron and all other compatible models.
 
 ### Changed
 
