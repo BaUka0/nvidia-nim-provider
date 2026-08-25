@@ -68,6 +68,25 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
+  it("normalizes nvidia/nemotron-3-super-120b-a12b with its curated 1M / 64K limits", () => {
+    const raw: NvidiaModelSummary[] = [
+      {
+        id: "nvidia/nemotron-3-super-120b-a12b",
+      },
+    ];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([
+      {
+        id: "nvidia/nemotron-3-super-120b-a12b",
+        displayName: "Nemotron 3 Super 120B",
+        contextWindow: 1000000,
+        maxOutputTokens: 65536,
+        supportsTools: true,
+        supportsVision: false,
+      },
+    ]);
+  });
+
   it("normalizes nvidia/nemotron-3.5-lightning-30b-a3b with its curated 1M / 32K limits", () => {
     const raw: NvidiaModelSummary[] = [
       {

@@ -141,6 +141,7 @@
             "minimaxai/minimax-m3",
             "stepfun-ai/step-3.7-flash",
             "nvidia/nemotron-3-ultra-550b-a55b",
+            "nvidia/nemotron-3-super-120b-a12b",
             "meta/muse-glimmer-30b"
           ],
           "default": "nvidia/nemotron-3.5-lightning-30b-a3b",
@@ -168,6 +169,7 @@
               "minimaxai/minimax-m3",
               "stepfun-ai/step-3.7-flash",
               "nvidia/nemotron-3-ultra-550b-a55b",
+              "nvidia/nemotron-3-super-120b-a12b",
               "meta/muse-glimmer-30b"
             ]
           },
@@ -353,6 +355,7 @@
             "minimaxai/minimax-m3",
             "stepfun-ai/step-3.7-flash",
             "nvidia/nemotron-3-ultra-550b-a55b",
+            "nvidia/nemotron-3-super-120b-a12b",
             "meta/muse-glimmer-30b"
           ],
           "default": "nvidia/nemotron-3.5-lightning-30b-a3b",

@@ -244,6 +244,34 @@ describe("applyReasoningMode", () => {
     });
   });
 
+  it("maps Nemotron 3 Super reasoning modes to chat_template_kwargs (enable_thinking, low_effort)", () => {
+    const adapter = getModelAdapter("nvidia/nemotron-3-super-120b-a12b");
+    const request: NimChatRequest = {
+      model: "nvidia/nemotron-3-super-120b-a12b",
+      messages: [],
+    };
+
+    expect(adapter.supportedReasoningModes).toEqual(["none", "low", "high"]);
+    expect(adapter.getProfile({ toolsEnabled: true }).defaultTemperature).toBe(1);
+    expect(adapter.getProfile({ toolsEnabled: true }).defaultTopP).toBe(0.95);
+
+    adapter.applyReasoningMode!(request, "none");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: false,
+    });
+
+    adapter.applyReasoningMode!(request, "low");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      low_effort: true,
+    });
+
+    adapter.applyReasoningMode!(request, "high");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+    });
+  });
+
   describe("KimiAdapter applyMessagesWorkaround", () => {
     const adapter = getModelAdapter("moonshotai/kimi-k3");
 
