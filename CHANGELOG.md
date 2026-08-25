@@ -2,9 +2,15 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-26
+
 ### Added
 
 - **`nvidia/nemotron-3-super-120b-a12b` Integration (`src/models/catalog.ts`, `src/models/adapters/nemotron-super.ts`, `src/models/adapters/index.ts`, `src/shared/constants.ts`, `package.json`, `tests/model-capability-matrix.test.ts`, `tests/model-catalog.test.ts`, `tests/model-profile.test.ts`).** Added full support for NVIDIA's LatentMoE reasoning and agentic model `nvidia/nemotron-3-super-120b-a12b` featuring a 1,000,000-token context window, 65,536 max output tokens, native OpenAI tool calling, and dedicated reasoning control via `chat_template_kwargs` (`"none"`, `"low"`, `"high"` with `low_effort: true` support). Added `NemotronSuperAdapter`, updated extension settings enums for fallback and summarization, and bumped `MODELS_CACHE_VERSION=13` to automatically refresh cached model catalogs across VS Code instances.
+
+### Fixed
+
+- **Cross-File Line Range Scoping & `read_file` / MCP Tool Defaulting (`src/tools/parser.ts`, `src/provider/chat-provider.ts`, `tests/tools-parser.test.ts`).** Fixed a bug in `repairToolArguments` where active editor selection line ranges (`context.startLine`, `context.endLine`) were erroneously applied to `read_file` or `view_file` calls for different files or whenever line numbers were omitted by the model. File-reading tools now consistently default to starting from line `1` (and `endLine = startLine + 499`), and editor selection line numbers are strictly scoped to edit tools operating on the matching active context file (`isMatchingContextFile`). Added bidirectional property alias resolution for MCP tools (`AbsolutePath`, `StartLine`, `TargetFile`, `CodeContent`), and decoupled `hasRetriedInvalidToolCall` in `LanguageModelChatProvider` so duplicate/invalid tool calls occurring after an auto-continue retry reliably trigger corrective feedback. Resolves #8.
 
 ## [0.8.1] - 2026-08-25
 

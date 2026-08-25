@@ -1099,8 +1099,9 @@ export function repairToolArguments(
   }
 
   // 2. Resolve common property aliases when required properties are missing
-  const propertyAliases: Record<string, string[]> = {
-    filePath: [
+  const propertyAliasGroups: readonly (readonly string[])[] = [
+    [
+      "filePath",
       "path",
       "targetFile",
       "target_file",
@@ -1111,24 +1112,71 @@ export function repairToolArguments(
       "uri",
       "destination",
       "dest",
+      "AbsolutePath",
+      "FilePath",
+      "Path",
+      "TargetFile",
     ],
-    content: ["code", "text", "data", "body", "file_content", "fileContent"],
-    startLine: ["start", "fromLine", "from_line", "start_line"],
-    endLine: ["end", "toLine", "to_line", "end_line"],
-    path: ["directory", "dir", "folder", "cwd", "targetDirectory"],
-    query: ["pattern", "search_pattern", "searchPattern", "regex", "searchTerm", "search_term"],
-    command: ["cmd", "script", "commandLine", "command_line"],
-  };
+    [
+      "content",
+      "code",
+      "text",
+      "data",
+      "body",
+      "file_content",
+      "fileContent",
+      "CodeContent",
+      "ReplacementContent",
+    ],
+    [
+      "startLine",
+      "start",
+      "fromLine",
+      "from_line",
+      "start_line",
+      "StartLine",
+      "start_offset",
+      "startOffset",
+    ],
+    ["endLine", "end", "toLine", "to_line", "end_line", "EndLine", "end_offset", "endOffset"],
+    [
+      "path",
+      "directory",
+      "dir",
+      "folder",
+      "cwd",
+      "targetDirectory",
+      "SearchDirectory",
+      "DirectoryPath",
+      "Path",
+    ],
+    [
+      "query",
+      "pattern",
+      "search_pattern",
+      "searchPattern",
+      "regex",
+      "searchTerm",
+      "search_term",
+      "Query",
+      "Pattern",
+    ],
+    ["command", "cmd", "script", "commandLine", "command_line", "CommandLine"],
+  ];
 
-  for (const [canonicalKey, aliases] of Object.entries(propertyAliases)) {
-    if (
-      required.has(canonicalKey) &&
-      (parsedArgs[canonicalKey] === undefined || parsedArgs[canonicalKey] === "")
-    ) {
-      for (const alias of aliases) {
-        if (parsedArgs[alias] !== undefined && parsedArgs[alias] !== "") {
-          parsedArgs[canonicalKey] = parsedArgs[alias];
-          break;
+  for (const reqKey of required) {
+    if (parsedArgs[reqKey] === undefined || parsedArgs[reqKey] === "") {
+      for (const group of propertyAliasGroups) {
+        if (group.some((alias) => alias.toLowerCase() === reqKey.toLowerCase())) {
+          for (const alias of group) {
+            if (parsedArgs[alias] !== undefined && parsedArgs[alias] !== "") {
+              parsedArgs[reqKey] = parsedArgs[alias];
+              break;
+            }
+          }
+          if (parsedArgs[reqKey] !== undefined && parsedArgs[reqKey] !== "") {
+            break;
+          }
         }
       }
     }
@@ -1170,12 +1218,13 @@ export function repairToolArguments(
   }
 
   const normalizedToolName = toolName.toLowerCase();
-  if (
+  const isTerminalTool =
     normalizedToolName.includes("terminal") ||
     normalizedToolName.includes("command") ||
     normalizedToolName.includes("exec") ||
-    normalizedToolName === "run_in_terminal"
-  ) {
+    normalizedToolName === "run_in_terminal";
+
+  if (isTerminalTool) {
     if (needsStringField(repaired.goal, "goal")) {
       if (typeof repaired.explanation === "string" && repaired.explanation.trim()) {
         repaired.goal = repaired.explanation;
@@ -1196,61 +1245,118 @@ export function repairToolArguments(
   fillMissingAuxiliaryBooleans(repaired, schema);
 
   const context = requestContext;
-  const hasModelSuppliedFile =
-    (typeof parsedArgs.filePath === "string" && parsedArgs.filePath.trim().length > 0) ||
-    (typeof repaired.filePath === "string" &&
-      repaired.filePath.trim().length > 0 &&
-      !context?.filePath);
+  const currentFilePath =
+    typeof repaired.filePath === "string" && repaired.filePath.trim().length > 0
+      ? repaired.filePath
+      : typeof repaired.AbsolutePath === "string" && repaired.AbsolutePath.trim().length > 0
+        ? repaired.AbsolutePath
+        : typeof repaired.path === "string" && repaired.path.trim().length > 0
+          ? repaired.path
+          : undefined;
 
-  if (normalizedToolName === "read_file" || normalizedToolName.includes("read")) {
+  const isMatchingContextFile = Boolean(
+    context?.filePath &&
+    currentFilePath &&
+    (currentFilePath === context.filePath ||
+      currentFilePath.replace(/\\/g, "/") === context.filePath.replace(/\\/g, "/")),
+  );
+
+  const isReadTool =
+    normalizedToolName === "read_file" ||
+    normalizedToolName.includes("read") ||
+    normalizedToolName.includes("view") ||
+    normalizedToolName.includes("fetch") ||
+    normalizedToolName.includes("show") ||
+    normalizedToolName.includes("cat") ||
+    normalizedToolName.includes("get_file");
+
+  const isEditTool =
+    !isReadTool &&
+    (normalizedToolName === "edit_file" ||
+      normalizedToolName === "write_file" ||
+      normalizedToolName === "create_file" ||
+      normalizedToolName === "patch_file" ||
+      normalizedToolName === "replace_file_content" ||
+      normalizedToolName.includes("edit") ||
+      normalizedToolName.includes("write") ||
+      normalizedToolName.includes("create") ||
+      normalizedToolName.includes("patch") ||
+      normalizedToolName.includes("replace") ||
+      normalizedToolName.includes("insert") ||
+      normalizedToolName.includes("delete") ||
+      normalizedToolName.includes("file"));
+
+  const isDirTool =
+    normalizedToolName === "list_dir" ||
+    normalizedToolName === "grep_search" ||
+    normalizedToolName === "find_files" ||
+    normalizedToolName.includes("dir") ||
+    normalizedToolName.includes("search") ||
+    normalizedToolName.includes("find") ||
+    normalizedToolName.includes("grep");
+
+  if (isReadTool) {
     if (needsStringField(repaired.filePath, "filePath") && context?.filePath) {
       repaired.filePath = context.filePath;
     }
+    if (needsStringField(repaired.AbsolutePath, "AbsolutePath") && context?.filePath) {
+      repaired.AbsolutePath = context.filePath;
+    }
     if (needsNumberField(repaired.startLine, "startLine")) {
-      if (context?.startLine !== undefined) {
-        repaired.startLine = context.startLine;
-      } else if (hasModelSuppliedFile) {
-        repaired.startLine = 1;
-      }
+      repaired.startLine = 1;
+    }
+    if (needsNumberField(repaired.StartLine, "StartLine")) {
+      repaired.StartLine = 1;
     }
     if (needsNumberField(repaired.endLine, "endLine")) {
-      if (context?.endLine !== undefined) {
-        repaired.endLine = context.endLine;
-      } else if (hasModelSuppliedFile && typeof repaired.startLine === "number") {
-        repaired.endLine = repaired.startLine + 499;
-      }
+      const start = typeof repaired.startLine === "number" ? repaired.startLine : 1;
+      repaired.endLine = start + 499;
+    }
+    if (needsNumberField(repaired.EndLine, "EndLine")) {
+      const start = typeof repaired.StartLine === "number" ? repaired.StartLine : 1;
+      repaired.EndLine = start + 499;
     }
     if (needsStringField(repaired.mode, "mode")) {
       repaired.mode = schema?.enumValues?.mode?.[0] ?? "full";
     }
-  } else if (
-    normalizedToolName.includes("file") ||
-    normalizedToolName === "create_file" ||
-    normalizedToolName === "write_file" ||
-    normalizedToolName === "edit_file"
-  ) {
+  } else if (isEditTool) {
     if (needsStringField(repaired.filePath, "filePath") && context?.filePath) {
       repaired.filePath = context.filePath;
     }
-    if (needsNumberField(repaired.startLine, "startLine") && context?.startLine !== undefined) {
-      repaired.startLine = context.startLine;
+    if (needsStringField(repaired.AbsolutePath, "AbsolutePath") && context?.filePath) {
+      repaired.AbsolutePath = context.filePath;
     }
-    if (needsNumberField(repaired.endLine, "endLine") && context?.endLine !== undefined) {
-      repaired.endLine = context.endLine;
+    if (needsStringField(repaired.TargetFile, "TargetFile") && context?.filePath) {
+      repaired.TargetFile = context.filePath;
+    }
+    if (isMatchingContextFile || needsStringField(parsedArgs.filePath, "filePath")) {
+      if (needsNumberField(repaired.startLine, "startLine") && context?.startLine !== undefined) {
+        repaired.startLine = context.startLine;
+      }
+      if (needsNumberField(repaired.StartLine, "StartLine") && context?.startLine !== undefined) {
+        repaired.StartLine = context.startLine;
+      }
+      if (needsNumberField(repaired.endLine, "endLine") && context?.endLine !== undefined) {
+        repaired.endLine = context.endLine;
+      }
+      if (needsNumberField(repaired.EndLine, "EndLine") && context?.endLine !== undefined) {
+        repaired.EndLine = context.endLine;
+      }
     }
   }
 
-  if (
-    normalizedToolName === "list_dir" ||
-    normalizedToolName === "grep_search" ||
-    normalizedToolName === "find_files" ||
-    normalizedToolName.includes("dir")
-  ) {
+  if (isDirTool) {
     if (needsStringField(repaired.path, "path") && context?.cwd) {
       repaired.path = context.cwd;
     }
     if (needsStringField(repaired.cwd, "cwd") && context?.cwd) {
       repaired.cwd = context.cwd;
+    }
+    if (needsStringField(repaired.SearchDirectory, "SearchDirectory") && context?.cwd) {
+      repaired.SearchDirectory = context.cwd;
+    }
+    if (needsStringField(repaired.DirectoryPath, "DirectoryPath") && context?.cwd) {
+      repaired.DirectoryPath = context.cwd;
     }
   }
 

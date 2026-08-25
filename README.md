@@ -48,6 +48,7 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | **DeepSeek V4 Flash 0731** | 1M | `None`, `High`, `Max` | ✅ Yes | ❌ | Deep algorithm design, code architecture, complex refactoring |
 | **Kimi K3** | 1M | `None`, `Low`, `High`, `Max` | ✅ Yes | ✅ Yes | Long-context multimodal comprehension, repository-scale work |
 | **Nemotron 3.5 Lightning 30B** | 1M | `None`, `Medium`, `High`, `XHigh` | ✅ Yes | ❌ | Ultra-fast responses, agentic tool workflows, summarization |
+| **Nemotron 3 Super 120B** | 1M | `None`, `Low`, `High` | ✅ Yes | ❌ | Workhorse model for everyday coding, refactoring, and agentic tasks |
 | **Nemotron 3 Ultra 550B** | 1M | `None`, `Medium`, `High` | ✅ Yes | ❌ | Heavy multi-step reasoning, deep technical documentation |
 | **MiniMax M3** | 1M | `None`, `On`, `Adaptive` | ✅ Yes | ✅ Yes | Multimodal code generation, full-stack tasks |
 | **Step 3.7 Flash** | 262K | `Always On` | ✅ Yes | ✅ Yes | Rapid thinking loops, interactive pair programming |

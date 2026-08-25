@@ -101,6 +101,7 @@ NVIDIA NIM hosts a diverse range of specialized models. Here is how to pick the 
 | **DeepSeek V4 Flash 0731** | `DeepSeek V4 Flash 0731` | **1,048,576** tokens | 131,072 | `None`, `High`, `Max` | ❌ No | Hard algorithmic challenges, complex architectural refactors, deep math |
 | **Kimi K3** | `Kimi K3` | **1,048,576** tokens | 65,536 | `None`, `Low`, `High`, `Max` | ✅ **Yes** | Flagship long-context reasoning, multimodal docs, agentic research |
 | **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **1,000,000** tokens | 32,768 | `None`, `Medium`, `High`, `XHigh` | ❌ No | Lightning-fast responses, autonomous Copilot Agent file edits, summarization |
+| **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **1,000,000** tokens | 65,536 | `None`, `Low`, `High` | ❌ No | Workhorse model for everyday coding, refactoring, and agentic workflows |
 | **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **1,000,000** tokens | 65,536 | `None`, `Medium`, `High` | ❌ No | Heavy multi-file reasoning, high-stakes system design, enterprise documentation |
 | **MiniMax M3** | `MiniMax M3` | **1,000,000** tokens | 100,000 | `None`, `On`, `Adaptive` | ✅ **Yes** | Multimodal coding, screenshot debugging, full-stack web UI design |
 | **Step 3.7 Flash** | `Step 3.7 Flash` | **262,144** tokens | 262,144 | `Always On` | ✅ **Yes** | Rapid pair programming, visual inspections, interactive live coding |
@@ -110,17 +111,22 @@ NVIDIA NIM hosts a diverse range of specialized models. Here is how to pick the 
 
 ### Detailed Model Breakdown & Best Use Cases
 
-#### 1. Nemotron 3.5 Lightning 30B (The Daily Workhorse ⚡)
+#### 1. Nemotron 3.5 Lightning 30B (The Fast Agent ⚡)
 - **Why use it:** It is blazing fast and has an enormous 1-million token context window.
 - **Best for:** Everyday coding, writing unit tests, explaining functions, and powering Copilot Agent mode when editing multiple workspace files.
 - **Default Role:** Serves as the default text fallback model and summarization model.
 
-#### 2. DeepSeek V4 Flash 0731 (The Deep Thinker 🧠)
+#### 2. Nemotron 3 Super 120B (The Daily Workhorse 🛠️)
+- **Why use it:** High-efficiency MoE reasoning model with a 1-million token context and up to 65,536 output tokens.
+- **Best for:** End-to-end refactoring, test suite generation, structured tool calling, and sustained everyday development tasks.
+- **Reasoning:** Supports `None` (standard), `Low` (quick reasoning pass), and `High` (thorough verification).
+
+#### 3. DeepSeek V4 Flash 0731 (The Deep Thinker 🧠)
 - **Why use it:** Exceptional reasoning and algorithmic precision.
 - **Best for:** Complex debugging, designing database schemas, writing complex SQL queries, refactoring legacy codebases, and mathematical calculations.
 - **Reasoning:** Supports `None` (standard speed), `High` (balanced thought), and `Max` (deep verification).
 
-#### 3. MiniMax M3 (The Multimodal Powerhouse 🖼️)
+#### 4. MiniMax M3 (The Multimodal Powerhouse 🖼️)
 - **Why use it:** Features a huge 1,000,000-token context window combined with native Vision capabilities.
 - **Best for:** Pasting UI screenshots to generate React/Tailwind/Vue components, inspecting architecture diagrams, reading PDF graphs, and visual bug fixing.
 - **Default Role:** Serves as the default Vision fallback model.

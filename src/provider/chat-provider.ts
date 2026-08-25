@@ -664,6 +664,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       let everSawReasoning = false;
       let lastFinishReasonOverall: string | null | undefined = undefined;
       let hasRetriedRepetitionLoop = false;
+      let hasRetriedInvalidToolCall = false;
 
       for (let attempt = 0; attempt < Math.max(1, MAX_EMPTY_STREAM_RETRIES + 1); attempt += 1) {
         totalAttempts += 1;
@@ -1101,7 +1102,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           ConfigManager.getToolsConfig().autoRetryInvalidCalls &&
           sawToolCall &&
           !emittedToolCall &&
-          attempt === 0 &&
+          !hasRetriedInvalidToolCall &&
+          attempt < 2 &&
           Boolean(retryMessage);
         const willRetryEmptyStream =
           !sawReasoning &&
@@ -1250,6 +1252,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         }
 
         if (sawToolCall && !emittedToolCall && willRetryAfterInvalidToolCall && retryMessage) {
+          hasRetriedInvalidToolCall = true;
           retryReason = "invalid_tool_call";
           retryReasonHistory.push("invalid_tool_call");
           activeRequestBody = {

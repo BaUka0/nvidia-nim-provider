@@ -1027,4 +1027,197 @@ describe("tool argument parsing and validation", () => {
 
     expect(isDuplicateSuppressionEnabled("read_file")).toBe(false);
   });
+
+  describe("Issue #8: cross-file line range scoping and read_file defaulting", () => {
+    const readFileSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "read_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "integer" },
+                endLine: { type: "integer" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      }),
+    ).get("read_file");
+
+    const editFileSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "edit_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "integer" },
+                endLine: { type: "integer" },
+                content: { type: "string" },
+              },
+              required: ["filePath", "startLine", "endLine", "content"],
+            },
+          },
+        ],
+      }),
+    ).get("edit_file");
+
+    const requestContext = {
+      filePath: "/workspace/src/AutoroutePartHandler.cs",
+      startLine: 471,
+      endLine: 483,
+    };
+
+    it("does not pollute read_file on a secondary file with context selection line numbers", () => {
+      const repaired = repairToolArguments(
+        "read_file",
+        { filePath: "/workspace/test/AutoroutePartHandlerTests.cs" },
+        requestContext,
+        readFileSchema,
+      );
+
+      expect(repaired).toEqual({
+        filePath: "/workspace/test/AutoroutePartHandlerTests.cs",
+        startLine: 1,
+        endLine: 500,
+      });
+      expect(hasRequiredToolArguments(repaired, readFileSchema)).toBe(true);
+    });
+
+    it("defaults read_file to start from line 1 even when reading the context file without startLine", () => {
+      const repaired = repairToolArguments(
+        "read_file",
+        { filePath: "/workspace/src/AutoroutePartHandler.cs" },
+        requestContext,
+        readFileSchema,
+      );
+
+      expect(repaired).toEqual({
+        filePath: "/workspace/src/AutoroutePartHandler.cs",
+        startLine: 1,
+        endLine: 500,
+      });
+      expect(hasRequiredToolArguments(repaired, readFileSchema)).toBe(true);
+    });
+
+    it("preserves explicit startLine and defaults endLine to startLine + 499 for read_file", () => {
+      const repaired = repairToolArguments(
+        "read_file",
+        { filePath: "/workspace/src/AutoroutePartHandler.cs", startLine: 50 },
+        requestContext,
+        readFileSchema,
+      );
+
+      expect(repaired).toEqual({
+        filePath: "/workspace/src/AutoroutePartHandler.cs",
+        startLine: 50,
+        endLine: 549,
+      });
+    });
+
+    it("does not apply context selection line numbers to edit_file on a different file", () => {
+      const repaired = repairToolArguments(
+        "edit_file",
+        { filePath: "/workspace/test/OtherFile.cs", content: "new code" },
+        requestContext,
+        editFileSchema,
+      );
+
+      expect(repaired.filePath).toBe("/workspace/test/OtherFile.cs");
+      expect(repaired.startLine).toBeUndefined();
+      expect(repaired.endLine).toBeUndefined();
+      expect(hasRequiredToolArguments(repaired, editFileSchema)).toBe(false);
+    });
+
+    it("applies context selection line numbers to edit_file on the matching context file", () => {
+      const repaired = repairToolArguments(
+        "edit_file",
+        { filePath: "/workspace/src/AutoroutePartHandler.cs", content: "new code" },
+        requestContext,
+        editFileSchema,
+      );
+
+      expect(repaired).toEqual({
+        filePath: "/workspace/src/AutoroutePartHandler.cs",
+        startLine: 471,
+        endLine: 483,
+        content: "new code",
+      });
+      expect(hasRequiredToolArguments(repaired, editFileSchema)).toBe(true);
+    });
+
+    it("handles MCP-style view_file tool with AbsolutePath, StartLine, EndLine without line pollution", () => {
+      const viewFileSchema = getToolSchemaMap(
+        makeChatOptions({
+          tools: [
+            {
+              name: "view_file",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  AbsolutePath: { type: "string" },
+                  StartLine: { type: "integer" },
+                  EndLine: { type: "integer" },
+                },
+                required: ["AbsolutePath", "StartLine", "EndLine"],
+              },
+            },
+          ],
+        }),
+      ).get("view_file");
+
+      // Model calls view_file on another file supplying filePath instead of AbsolutePath and omitting lines
+      const repaired = repairToolArguments(
+        "view_file",
+        { filePath: "/workspace/test/AutoroutePartHandlerTests.cs" },
+        requestContext,
+        viewFileSchema,
+      );
+
+      expect(repaired).toEqual({
+        AbsolutePath: "/workspace/test/AutoroutePartHandlerTests.cs",
+        filePath: "/workspace/test/AutoroutePartHandlerTests.cs",
+        StartLine: 1,
+        EndLine: 500,
+      });
+      expect(hasRequiredToolArguments(repaired, viewFileSchema)).toBe(true);
+    });
+
+    it("resolves bidirectional aliases for MCP write_to_file (TargetFile, CodeContent)", () => {
+      const writeToFileSchema = getToolSchemaMap(
+        makeChatOptions({
+          tools: [
+            {
+              name: "write_to_file",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  TargetFile: { type: "string" },
+                  CodeContent: { type: "string" },
+                },
+                required: ["TargetFile", "CodeContent"],
+              },
+            },
+          ],
+        }),
+      ).get("write_to_file");
+
+      const repaired = repairToolArguments(
+        "write_to_file",
+        { filePath: "/workspace/src/file.ts", content: "export const a = 1;" },
+        requestContext,
+        writeToFileSchema,
+      );
+
+      expect(repaired.TargetFile).toBe("/workspace/src/file.ts");
+      expect(repaired.CodeContent).toBe("export const a = 1;");
+      expect(hasRequiredToolArguments(repaired, writeToFileSchema)).toBe(true);
+    });
+  });
 });

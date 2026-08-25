@@ -170,8 +170,8 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].name).toBe("read_file");
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
-      startLine: 158,
-      endLine: 158,
+      startLine: 1,
+      endLine: 500,
     });
   });
 
@@ -238,8 +238,8 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
-      startLine: 42,
-      endLine: 45,
+      startLine: 1,
+      endLine: 500,
     });
   });
 
@@ -369,7 +369,7 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({ filePath: "/tmp/example.md" });
   });
 
-  it("does not invent a 1-200 read_file range when the editor has no selection", async () => {
+  it("defaults read_file range to 1-500 when editor has no selection", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -429,12 +429,12 @@ describe("NimChatModelProvider", () => {
     );
 
     const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
-    expect(toolCallReports).toHaveLength(0);
-    const fallbackReports = progress.report.mock.calls.filter((c) =>
-      String((c[0] as { value?: string }).value ?? "").includes("missing"),
-    );
-    expect(fallbackReports).toEqual([]);
-    expect((streamChatCompletion as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(toolCallReports).toHaveLength(1);
+    expect(toolCallReports[0][0].input).toEqual({
+      filePath: "/tmp/example.md",
+      startLine: 1,
+      endLine: 500,
+    });
   });
 
   it("repairs list_dir with the current working directory from chat context", async () => {
@@ -634,8 +634,8 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].name).toBe("read_file");
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
-      startLine: 10,
-      endLine: 12,
+      startLine: 1,
+      endLine: 500,
     });
   });
 
