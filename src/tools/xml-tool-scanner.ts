@@ -1,4 +1,4 @@
-import { jsonrepair } from "jsonrepair";
+import { tryParseJsonObjectOrRepair } from "../shared/json-repair";
 
 export type XmlToolKind =
   | "tool_calls"
@@ -45,7 +45,7 @@ const TOOL_KINDS = new Set<string>([
   "tool_parameter",
 ]);
 
-const IDENT_RE = /^[a-zA-Z0-9_.-]+/;
+const IDENT_RE = /^[a-zA-Z][a-zA-Z0-9_.-]*/;
 const TAG_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_.-]*/;
 
 /**
@@ -64,17 +64,25 @@ export function isTokenInStringOrRegexLiteral(text: string, index: number): bool
   }
 
   const lineStart = text.lastIndexOf("\n", index - 1) + 1;
-  const prefix = text.slice(lineStart, index);
-  if (/(?:^|[=:(,[{]\s*)["'][^"'\n]*$/.test(prefix)) {
-    return true;
+  const scanFrom = Math.max(lineStart, index - 512);
+  let inSingle = false;
+  let inDouble = false;
+  let inTick = false;
+  for (let i = scanFrom; i < index; i += 1) {
+    const ch = text[i];
+    const escaped = i > scanFrom && text[i - 1] === "\\";
+    if (escaped) {
+      continue;
+    }
+    if (!inDouble && !inTick && ch === "'") {
+      inSingle = !inSingle;
+    } else if (!inSingle && !inTick && ch === '"') {
+      inDouble = !inDouble;
+    } else if (!inSingle && !inDouble && ch === "`") {
+      inTick = !inTick;
+    }
   }
-  if (/(?:^|[=:(,[{]\s*)`[^`\n]*$/.test(prefix)) {
-    return true;
-  }
-  if (/(?:^|[=:(,[{]\s*)\/(?:\^)?[^/\n]*$/.test(prefix)) {
-    return true;
-  }
-  return false;
+  return inSingle || inDouble || inTick;
 }
 
 export function indexOfUnquoted(text: string, token: string, from = 0, contextPrefix = ""): number {
@@ -248,22 +256,7 @@ function readBalancedJsonObject(
 }
 
 function parseJsonObject(text: string): Record<string, unknown> | undefined {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {
-    try {
-      const repaired: unknown = JSON.parse(jsonrepair(text));
-      if (typeof repaired === "object" && repaired !== null && !Array.isArray(repaired)) {
-        return repaired as Record<string, unknown>;
-      }
-    } catch {
-      return undefined;
-    }
-  }
-  return undefined;
+  return tryParseJsonObjectOrRepair(text);
 }
 
 function mergeQwenJson(
@@ -349,7 +342,7 @@ function scanParameterValue(
     return { status: "incomplete" };
   }
   const extractedParams: Record<string, unknown> = {};
-  if (key) {
+  if (key && !/^__proto__$|^prototype$|^constructor$/.test(key)) {
     extractedParams[key] = parseValue(text.slice(startIndex, close.index));
   }
   return {

@@ -1,3 +1,5 @@
+import * as vscode from "vscode";
+
 /**
  * Detects degenerate "Let me..." style loops while an answer is streaming.
  * Lines are normalized (NFKC, lowercased, punctuation collapsed) so cosmetic
@@ -166,7 +168,7 @@ export class RepetitionGuard {
 
   private static isAssistantRole(role: unknown): boolean {
     return (
-      role === 2 ||
+      role === vscode.LanguageModelChatMessageRole.Assistant ||
       role === "assistant" ||
       (typeof role === "string" && role.toLowerCase() === "assistant")
     );

@@ -565,6 +565,47 @@ describe("streamChatCompletion", () => {
     expect(results[0].choices[0].delta.content).toBe("Hello");
   });
 
+  it("throws when the SSE partial-line buffer exceeds 1 MiB", async () => {
+    const encoder = new TextEncoder();
+    const oversized = "data: " + "x".repeat(1024 * 1024 + 1);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(oversized));
+        controller.close();
+      },
+    });
+
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: stream,
+      }),
+    );
+
+    const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
+    await expect(gen.next()).rejects.toThrow(/partial-line buffer exceeded/);
+  });
+
+  it("classifies SSE error objects without choices", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode('data: {"error":{"message":"rate limited","code":429}}\n\n'),
+        );
+        controller.close();
+      },
+    });
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: stream,
+      }),
+    );
+    const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
+    await expect(gen.next()).rejects.toThrow(/rate limited/i);
+  });
+
   it("skips malformed JSON lines", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

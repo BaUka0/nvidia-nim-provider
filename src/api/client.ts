@@ -2,10 +2,14 @@ import { ConfigManager } from "../shared/config";
 import {
   BASE_RETRY_DELAY_MS,
   BASE_URL,
+  MAX_HTTP_ERROR_DETAIL_CHARS,
   MAX_RETRY_DELAY_MS,
+  MAX_SSE_LINE_BYTES,
+  MAX_SSE_PARTIAL_BUFFER_BYTES,
   STREAM_IDLE_TIMEOUT_MAX_MS,
   STREAM_IDLE_TIMEOUT_MIN_MS,
 } from "../shared/constants";
+import { httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
 import { debugLog } from "../shared/logging";
 import {
   NvidiaModelListResponse,
@@ -66,6 +70,25 @@ function createAbortError(): Error {
   const error = new Error("The operation was aborted");
   error.name = "AbortError";
   return error;
+}
+
+function parseSseDataLine(data: string, model: string): NimStreamResponse | undefined {
+  try {
+    const parsed = JSON.parse(data) as NimStreamResponse & { error?: unknown };
+    if (parsed && typeof parsed === "object" && parsed.error && !parsed.choices) {
+      const detail =
+        typeof parsed.error === "string"
+          ? parsed.error
+          : JSON.stringify(parsed.error).slice(0, MAX_HTTP_ERROR_DETAIL_CHARS);
+      throw classifyApiError(new Error(detail), { operation: "stream", model });
+    }
+    return parsed;
+  } catch (error) {
+    if (error instanceof NvidiaApiError) {
+      throw error;
+    }
+    return undefined;
+  }
 }
 
 function isTimeoutAbortReason(reason: unknown): boolean {
@@ -144,7 +167,12 @@ async function discardResponseBody(response: Response): Promise<void> {
 async function readResponseDetail(response: Response): Promise<string | undefined> {
   try {
     const detail = await response.text();
-    return detail || undefined;
+    if (!detail) {
+      return undefined;
+    }
+    return detail.length > MAX_HTTP_ERROR_DETAIL_CHARS
+      ? `${detail.slice(0, MAX_HTTP_ERROR_DETAIL_CHARS)}…`
+      : detail;
   } catch {
     return undefined;
   }
@@ -168,7 +196,9 @@ export async function fetchWithRetry(
   retries?: number,
   errorContext: { operation?: string; model?: string } = {},
 ): Promise<Response> {
-  const maxRetries = retries ?? ConfigManager.getNetworkConfig().maxHttpRetries;
+  const maxRetries = httpAttemptsFromConfig(
+    retries ?? ConfigManager.getNetworkConfig().maxHttpRetries,
+  );
   let lastError: Error | undefined;
   const signal = init.signal ?? undefined;
   const classificationContext = {
@@ -369,6 +399,12 @@ export async function* streamChatCompletion(
 ): AsyncGenerator<NimStreamResponse, void, unknown> {
   const fetchAttempts =
     options?.maxFetchAttempts ?? ConfigManager.getNetworkConfig().maxHttpRetries;
+  if (fetchAttempts <= 0) {
+    throw classifyApiError(new Error("NVIDIA NIM fetch attempt budget exhausted"), {
+      operation: "stream",
+      model: requestBody.model,
+    });
+  }
   const response = await fetchWithRetry(
     `${BASE_URL}/chat/completions`,
     {
@@ -405,12 +441,16 @@ export async function* streamChatCompletion(
   // Cancel is idempotent: it may be triggered by an abort, a timeout, or the
   // final cleanup, and only the first call should reach the underlying reader.
   let readerCancelled = false;
+  let readerCancelPromise: Promise<void> | undefined;
   function cancelReader(reason?: Error): void {
     if (readerCancelled) {
       return;
     }
     readerCancelled = true;
-    void reader.cancel(reason).catch(() => undefined);
+    readerCancelPromise = reader.cancel(reason).then(
+      () => undefined,
+      () => undefined,
+    );
   }
 
   const configuredIdleTimeoutMs =
@@ -524,19 +564,27 @@ export async function* streamChatCompletion(
       lastChunkTime = Date.now();
 
       buffer += decoder.decode(value, { stream: true });
+      if (Buffer.byteLength(buffer, "utf8") > MAX_SSE_PARTIAL_BUFFER_BYTES) {
+        throw classifyApiError(
+          new Error(`SSE partial-line buffer exceeded ${MAX_SSE_PARTIAL_BUFFER_BYTES} bytes`),
+          { operation: "stream", model: requestBody.model },
+        );
+      }
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
 
       for (const line of lines) {
+        if (Buffer.byteLength(line, "utf8") > MAX_SSE_LINE_BYTES) {
+          debugLog("sse", "dropping oversized SSE line");
+          continue;
+        }
         const trimmed = line.trim();
         if (!trimmed.startsWith("data: ")) continue;
         const data = trimmed.slice(6);
         if (data === "[DONE]") continue;
-        try {
-          const parsed = JSON.parse(data) as NimStreamResponse;
+        const parsed = parseSseDataLine(data, requestBody.model);
+        if (parsed) {
           yield parsed;
-        } catch {
-          // Ignore malformed lines
         }
       }
     }
@@ -544,17 +592,25 @@ export async function* streamChatCompletion(
     // Flush decoder internal state and process any remaining lines
     const remaining = decoder.decode();
     buffer += remaining;
+    if (Buffer.byteLength(buffer, "utf8") > MAX_SSE_PARTIAL_BUFFER_BYTES) {
+      throw classifyApiError(
+        new Error(`SSE partial-line buffer exceeded ${MAX_SSE_PARTIAL_BUFFER_BYTES} bytes`),
+        { operation: "stream", model: requestBody.model },
+      );
+    }
     const finalLines = buffer.split("\n");
     for (const line of finalLines) {
+      if (Buffer.byteLength(line, "utf8") > MAX_SSE_LINE_BYTES) {
+        debugLog("sse", "dropping oversized SSE line");
+        continue;
+      }
       const trimmed = line.trim();
       if (!trimmed.startsWith("data: ")) continue;
       const data = trimmed.slice(6);
       if (data === "[DONE]") continue;
-      try {
-        const parsed = JSON.parse(data) as NimStreamResponse;
+      const parsed = parseSseDataLine(data, requestBody.model);
+      if (parsed) {
         yield parsed;
-      } catch {
-        // Ignore malformed lines
       }
     }
   } catch (error) {
@@ -584,6 +640,9 @@ export async function* streamChatCompletion(
     // cancel already issued by the abort/timeout path is not repeated.
     if (!streamCompleted) {
       cancelReader();
+    }
+    if (readerCancelPromise) {
+      await readerCancelPromise;
     }
     reader.releaseLock();
   }

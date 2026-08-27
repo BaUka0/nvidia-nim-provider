@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Install](https://img.shields.io/badge/Install-Marketplace-007ACC?style=flat&logo=visual-studio-code&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
-[![Version](https://img.shields.io/badge/Version-v0.7.0-76B900?style=flat&logo=nvidia&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
+[![Version](https://img.shields.io/visual-studio-marketplace/v/neuraldock.nvidia-nim-agent?color=76B900&label=Version&logo=nvidia&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
 [![Documentation](https://img.shields.io/badge/Docs-Configuration_Guide-green?style=flat&logo=markdown&logoColor=white)](docs/README.md)
 [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-Chat_Native-181717?style=flat&logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -43,17 +43,17 @@ Modern software engineering demands high-precision reasoning, long context under
 
 The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.nvidia.com/v1`) and provides model-specific prompt adapters:
 
-| Model | Context Window | Reasoning Modes | Tool Calling | Vision | Best For |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **DeepSeek V4 Flash 0731** | 1M | `None`, `High`, `Max` | ✅ Yes | ❌ | Deep algorithm design, code architecture, complex refactoring |
-| **DeepSeek V4 Pro 0813** | 1M | `None`, `High`, `Max` | ✅ Yes | ❌ | High-capacity reasoning, codebase generation, deep problem solving |
-| **Kimi K3** | 1M | `None`, `Low`, `High`, `Max` | ✅ Yes | ✅ Yes | Long-context multimodal comprehension, repository-scale work |
-| **Nemotron 3.5 Lightning 30B** | 1M | `None`, `Medium`, `High`, `XHigh` | ✅ Yes | ❌ | Ultra-fast responses, agentic tool workflows, summarization |
-| **Nemotron 3 Super 120B** | 1M | `None`, `Low`, `High` | ✅ Yes | ❌ | Workhorse model for everyday coding, refactoring, and agentic tasks |
-| **Nemotron 3 Ultra 550B** | 1M | `None`, `Medium`, `High` | ✅ Yes | ❌ | Heavy multi-step reasoning, deep technical documentation |
-| **MiniMax M3** | 1M | `None`, `On`, `Adaptive` | ✅ Yes | ✅ Yes | Multimodal code generation, full-stack tasks |
-| **Step 3.7 Flash** | 262K | `Always On` | ✅ Yes | ✅ Yes | Rapid thinking loops, interactive pair programming |
-| **Muse Glimmer** | 131K | `None` to `XHigh` | ✅ Yes | ✅ Yes | Visual UX/UI analysis and front-end generation |
+| Model | Intelligence Index | Context Window | Reasoning Modes | Tool Calling | Vision | Best For |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Kimi K3** | **60** | 1M | `None`, `Low`, `High`, `Max` | ✅ Yes | ✅ Yes | Long-context multimodal comprehension, repository-scale work |
+| **DeepSeek V4 Pro 0813** | **53** | 1M | `None`, `High`, `Max` | ✅ Yes | ❌ | High-capacity reasoning, codebase generation, deep problem solving |
+| **DeepSeek V4 Flash 0731** | **52** | 1M | `None`, `High`, `Max` | ✅ Yes | ❌ | Deep algorithm design, code architecture, complex refactoring |
+| **MiniMax M3** | **45** | 1M | `None`, `On`, `Adaptive` | ✅ Yes | ✅ Yes | Multimodal code generation, full-stack tasks |
+| **Nemotron 3 Ultra 550B** | **38** | 1M | `None`, `Medium`, `High` | ✅ Yes | ❌ | Heavy multi-step reasoning, deep technical documentation |
+| **Muse Glimmer** | **35** | 131K | `None` to `XHigh` | ✅ Yes | ✅ Yes | Visual UX/UI analysis and front-end generation |
+| **Step 3.7 Flash** | **31** | 262K | `Always On` | ✅ Yes | ✅ Yes | Rapid thinking loops, interactive pair programming |
+| **Nemotron 3 Super 120B** | **26** | 1M | `None`, `Low`, `High` | ✅ Yes | ❌ | Workhorse model for everyday coding, refactoring, and agentic tasks |
+| **Nemotron 3.5 Lightning 30B** | **24** | 1M | `None`, `Medium`, `High`, `XHigh` | ✅ Yes | ❌ | Ultra-fast responses, agentic tool workflows, summarization |
 
 ---
 

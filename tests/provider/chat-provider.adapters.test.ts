@@ -822,7 +822,7 @@ describe("NimChatModelProvider", () => {
       expect(retryRequest.messages).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            role: "system",
+            role: "user",
             content: expect.stringContaining("list_dir"),
           }),
         ]),
@@ -830,7 +830,7 @@ describe("NimChatModelProvider", () => {
       expect(retryRequest.messages).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            role: "system",
+            role: "user",
             content: expect.stringContaining("invalid or incomplete arguments"),
           }),
         ]),
@@ -838,7 +838,7 @@ describe("NimChatModelProvider", () => {
       expect(retryRequest.messages).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            role: "system",
+            role: "user",
             content: expect.stringContaining("Do not emit malformed JSON or empty arguments."),
           }),
         ]),

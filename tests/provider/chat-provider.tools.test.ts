@@ -429,7 +429,7 @@ describe("NimChatModelProvider", () => {
     const retryRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
     expect(retryRequest.messages.at(-1)).toEqual(
       expect.objectContaining({
-        role: "system",
+        role: "user",
         content: expect.stringContaining("no tool function arguments"),
       }),
     );
@@ -805,7 +805,7 @@ describe("NimChatModelProvider", () => {
     expect(retryRequest.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          role: "system",
+          role: "user",
           content: expect.stringContaining("read_file"),
         }),
       ]),
@@ -813,7 +813,7 @@ describe("NimChatModelProvider", () => {
     expect(retryRequest.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          role: "system",
+          role: "user",
           content: expect.stringContaining("filePath, startLine, endLine"),
         }),
       ]),
@@ -937,7 +937,7 @@ describe("NimChatModelProvider", () => {
     const retryMessage = retryRequest.messages[retryRequest.messages.length - 1];
     expect(retryMessage).toEqual(
       expect.objectContaining({
-        role: "system",
+        role: "user",
         content: expect.stringContaining("read_file"),
       }),
     );

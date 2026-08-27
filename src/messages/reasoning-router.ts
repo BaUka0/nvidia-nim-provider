@@ -1,12 +1,5 @@
+import { ORPHANED_CLOSE_TAGS } from "../shared/think-tags";
 import { filterThinkTagsFromChunk, flushThinkTagFilter, ThinkTagFilterState } from "./think-filter";
-
-const ORPHANED_CLOSE_TAGS = [
-  "</" + "think>",
-  "</" + "mm:think>",
-  "</" + "thought>",
-  "[/" + "THINK]",
-  "</" + "reasoning>",
-];
 
 function countCodeFenceParity(text: string): 0 | 1 {
   let count = 0;

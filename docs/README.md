@@ -96,17 +96,17 @@ NVIDIA NIM hosts a diverse range of specialized models. Here is how to pick the 
 
 ### Model Comparison Matrix
 
-| Model Name | Picker Name | Context Limit | Max Output | Thinking / Reasoning | Vision (Images) | Recommended For |
-| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
-| **DeepSeek V4 Flash 0731** | `DeepSeek V4 Flash 0731` | **1,048,576** tokens | 131,072 | `None`, `High`, `Max` | ❌ No | Hard algorithmic challenges, complex architectural refactors, deep math |
-| **DeepSeek V4 Pro 0813** | `DeepSeek V4 Pro 0813` | **1,048,576** tokens | 131,072 | `None`, `High`, `Max` | ❌ No | High-capacity reasoning, large codebase generation, deep problem solving |
-| **Kimi K3** | `Kimi K3` | **1,048,576** tokens | 65,536 | `None`, `Low`, `High`, `Max` | ✅ **Yes** | Flagship long-context reasoning, multimodal docs, agentic research |
-| **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **1,000,000** tokens | 32,768 | `None`, `Medium`, `High`, `XHigh` | ❌ No | Lightning-fast responses, autonomous Copilot Agent file edits, summarization |
-| **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **1,000,000** tokens | 65,536 | `None`, `Low`, `High` | ❌ No | Workhorse model for everyday coding, refactoring, and agentic workflows |
-| **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **1,000,000** tokens | 65,536 | `None`, `Medium`, `High` | ❌ No | Heavy multi-file reasoning, high-stakes system design, enterprise documentation |
-| **MiniMax M3** | `MiniMax M3` | **1,000,000** tokens | 100,000 | `None`, `On`, `Adaptive` | ✅ **Yes** | Multimodal coding, screenshot debugging, full-stack web UI design |
-| **Step 3.7 Flash** | `Step 3.7 Flash` | **262,144** tokens | 262,144 | `Always On` | ✅ **Yes** | Rapid pair programming, visual inspections, interactive live coding |
-| **Muse Glimmer** | `Muse Glimmer` | **131,072** tokens | 32,768 | `None` to `XHigh` | ✅ **Yes** | Front-end UI generation, visual UX analysis |
+| Model Name | Picker Name | Intelligence Index | Context Limit | Max Output | Thinking / Reasoning | Vision (Images) | Recommended For |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Kimi K3** | `Kimi K3` | **60** | **1,048,576** tokens | 65,536 | `None`, `Low`, `High`, `Max` | ✅ **Yes** | Flagship long-context reasoning, multimodal docs, agentic research |
+| **DeepSeek V4 Pro 0813** | `DeepSeek V4 Pro 0813` | **53** | **1,048,576** tokens | 131,072 | `None`, `High`, `Max` | ❌ No | High-capacity reasoning, large codebase generation, deep problem solving |
+| **DeepSeek V4 Flash 0731** | `DeepSeek V4 Flash 0731` | **52** | **1,048,576** tokens | 131,072 | `None`, `High`, `Max` | ❌ No | Hard algorithmic challenges, complex architectural refactors, deep math |
+| **MiniMax M3** | `MiniMax M3` | **45** | **1,000,000** tokens | 100,000 | `None`, `On`, `Adaptive` | ✅ **Yes** | Multimodal coding, screenshot debugging, full-stack web UI design |
+| **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **38** | **1,000,000** tokens | 65,536 | `None`, `Medium`, `High` | ❌ No | Heavy multi-file reasoning, high-stakes system design, enterprise documentation |
+| **Muse Glimmer** | `Muse Glimmer` | **35** | **131,072** tokens | 32,768 | `None` to `XHigh` | ✅ **Yes** | Front-end UI generation, visual UX analysis |
+| **Step 3.7 Flash** | `Step 3.7 Flash` | **31** | **262,144** tokens | 262,144 | `Always On` | ✅ **Yes** | Rapid pair programming, visual inspections, interactive live coding |
+| **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **26** | **1,000,000** tokens | 65,536 | `None`, `Low`, `High` | ❌ No | Workhorse model for everyday coding, refactoring, and agentic workflows |
+| **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **24** | **1,000,000** tokens | 32,768 | `None`, `Medium`, `High`, `XHigh` | ❌ No | Lightning-fast responses, autonomous Copilot Agent file edits, summarization |
 
 ---
 

@@ -106,7 +106,7 @@ describe("NimChatModelProvider", () => {
     (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
   });
 
-  it("repairs empty read_file arguments from editor context", async () => {
+  it("does not invent read_file filePath from editor-context chat text", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -127,7 +127,7 @@ describe("NimChatModelProvider", () => {
         ],
       };
     };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+    (streamChatCompletion as jest.Mock).mockImplementation(() => mockStream());
 
     const progress = { report: jest.fn() };
     const token = makeToken();
@@ -166,13 +166,7 @@ describe("NimChatModelProvider", () => {
     );
 
     const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
-    expect(toolCallReports).toHaveLength(1);
-    expect(toolCallReports[0][0].name).toBe("read_file");
-    expect(toolCallReports[0][0].input).toEqual({
-      filePath: "/tmp/example.md",
-      startLine: 1,
-      endLine: 500,
-    });
+    expect(toolCallReports).toHaveLength(0);
   });
 
   it("repairs missing read_file line arguments from editor context", async () => {
@@ -239,7 +233,7 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
       startLine: 1,
-      endLine: 500,
+      endLine: 200,
     });
   });
 
@@ -307,7 +301,7 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({ filePath: "/tmp/example.md" });
   });
 
-  it("repairs read_file with the current file path even when no selection lines are provided", async () => {
+  it("does not invent read_file filePath from editor context when the model omits it", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -328,7 +322,7 @@ describe("NimChatModelProvider", () => {
         ],
       };
     };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+    (streamChatCompletion as jest.Mock).mockImplementation(() => mockStream());
 
     const progress = { report: jest.fn() };
     const token = makeToken();
@@ -365,11 +359,10 @@ describe("NimChatModelProvider", () => {
     );
 
     const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
-    expect(toolCallReports).toHaveLength(1);
-    expect(toolCallReports[0][0].input).toEqual({ filePath: "/tmp/example.md" });
+    expect(toolCallReports).toHaveLength(0);
   });
 
-  it("defaults read_file range to 1-500 when editor has no selection", async () => {
+  it("defaults read_file range to 1-200 when the model supplies filePath without lines", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -382,7 +375,10 @@ describe("NimChatModelProvider", () => {
                   index: 0,
                   id: "read_file:0",
                   type: "function",
-                  function: { name: "read_file", arguments: "{}" },
+                  function: {
+                    name: "read_file",
+                    arguments: '{"filePath":"/tmp/example.md"}',
+                  },
                 },
               ],
             },
@@ -433,11 +429,11 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
       startLine: 1,
-      endLine: 500,
+      endLine: 200,
     });
   });
 
-  it("repairs list_dir with the current working directory from chat context", async () => {
+  it("emits list_dir when the model supplies path without copying regex Cwd", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -450,7 +446,7 @@ describe("NimChatModelProvider", () => {
                   index: 0,
                   id: "list_dir:0",
                   type: "function",
-                  function: { name: "list_dir", arguments: "{}" },
+                  function: { name: "list_dir", arguments: '{"path":"/tmp/workspace"}' },
                 },
               ],
             },
@@ -585,7 +581,7 @@ describe("NimChatModelProvider", () => {
           {
             delta: {
               content:
-                "<|tool_call_begin|>read_file<|tool_call_argument_begin|>{}<|tool_call_end|>",
+                '<|tool_call_begin|>read_file<|tool_call_argument_begin|>{"filePath":"/tmp/example.md"}<|tool_call_end|>',
             },
           },
         ],
@@ -635,7 +631,7 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
       startLine: 1,
-      endLine: 500,
+      endLine: 200,
     });
   });
 

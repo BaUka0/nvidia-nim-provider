@@ -43,6 +43,53 @@ export const CONTEXT_WINDOW_SAFETY_MARGIN = 4096;
 /** Default token limit if model info is unknown */
 export const DEFAULT_MAX_OUTPUT_TOKENS = 65536;
 
+/**
+ * Total HTTP connection-attempt budget shared by every stream of a single
+ * user-visible response (retries, overflow compaction, and fallback hops).
+ */
+export const MAX_TOTAL_FETCH_ATTEMPTS = 6;
+
+/** Per-`streamChatCompletion` slice of {@link MAX_TOTAL_FETCH_ATTEMPTS}. */
+export const MAX_FETCH_ATTEMPTS_PER_STREAM = 3;
+
+/** Unfinished SSE line buffer cap (misbehaving servers must not grow this). */
+export const MAX_SSE_PARTIAL_BUFFER_BYTES = 1024 * 1024;
+
+/** Single completed SSE line cap. Oversized lines are dropped. */
+export const MAX_SSE_LINE_BYTES = 4 * 1024 * 1024;
+
+/** `jsonrepair` is not run on model output larger than this. */
+export const MAX_JSON_REPAIR_CHARS = 65_536;
+
+/**
+ * Maximum `endLine - startLine + 1` span `repairToolArguments` will invent or
+ * keep when filling missing line ranges on file tools.
+ */
+export const MAX_REPAIRED_LINE_SPAN = 200;
+
+/** Concatenated native tool-call argument buffer cap. */
+export const MAX_TOOL_ARGUMENT_CHARS = 65_536;
+
+/** Incomplete embedded XML / DSML tool text cap. */
+export const MAX_EMBEDDED_TOOL_TEXT_CHARS = 65_536;
+
+/** HTTP error bodies shown in UI / logs. */
+export const MAX_HTTP_ERROR_DETAIL_CHARS = 2048;
+
+/** Chat-message image payload cap (matches the vision tool). */
+export const MAX_CHAT_IMAGE_BYTES = 20 * 1024 * 1024;
+
+/** Recent-turn fraction kept verbatim during compaction. */
+export const COMPACTION_RECENT_FRACTION = 0.4;
+
+/** Output reservation used on overflow retry. */
+export const COMPACTION_OUTPUT_FRACTION = 0.05;
+
+export const COMPACTION_MIN_OUTPUT_TOKENS = 1024;
+
+/** Ignore implausibly small server-reported context limits. */
+export const MIN_REPORTED_CONTEXT_LIMIT = 4096;
+
 /** Maximum retry delay in milliseconds */
 export const MAX_RETRY_DELAY_MS = 30000;
 

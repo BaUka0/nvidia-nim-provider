@@ -86,6 +86,7 @@ jest.mock("vscode", () => ({
     Right: 2,
   },
   workspace: {
+    isTrusted: true,
     getConfiguration: jest.fn(() => ({
       get: jest.fn((_key: string, defaultValue: unknown) => defaultValue),
       update: jest.fn(),
@@ -145,6 +146,9 @@ describe("activate", () => {
     );
     expect(mockRegisterCommand).toHaveBeenCalledWith("nvidia-nim.manage", expect.any(Function));
     expect(process.env.NVIDIA_NIM_DEBUG).toBe("0");
+
+    const { deactivate } = await import("../src/extension");
+    deactivate();
   });
 
   it("migrates a legacy API key into the VS Code language model provider group on activation", async () => {
@@ -207,6 +211,38 @@ describe("activate", () => {
       "lm.migrateLanguageModelsProviderGroup",
       expect.anything(),
     );
+  });
+
+  it("skips automatic language model group migration in an untrusted workspace", async () => {
+    const vscode = await import("vscode");
+    (vscode.workspace as { isTrusted?: boolean }).isTrusted = false;
+    const secrets = {
+      get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+    await flushAsyncWork();
+
+    expect(mockExecuteCommand).not.toHaveBeenCalledWith(
+      "lm.migrateLanguageModelsProviderGroup",
+      expect.anything(),
+    );
+    (vscode.workspace as { isTrusted?: boolean }).isTrusted = true;
   });
 
   it("treats an already-existing VS Code model group as migrated", async () => {
@@ -714,7 +750,7 @@ describe("activate", () => {
   });
 
   it("stores only the NVIDIA NIM secret key from the manage command", async () => {
-    mockShowInputBox.mockResolvedValue("new-key");
+    mockShowInputBox.mockResolvedValue("nvapi-1234567890abcdef");
     const secrets = {
       get: jest.fn(async () => undefined),
       store: jest.fn(),
@@ -742,12 +778,12 @@ describe("activate", () => {
     await manage?.();
 
     expect(secrets.store).toHaveBeenCalledTimes(1);
-    expect(secrets.store).toHaveBeenCalledWith("nvidia-nim.apiKey", "new-key");
+    expect(secrets.store).toHaveBeenCalledWith("nvidia-nim.apiKey", "nvapi-1234567890abcdef");
     expect(secrets.delete).not.toHaveBeenCalled();
   });
 
   it("migrates a newly saved API key into the VS Code language model provider group", async () => {
-    mockShowInputBox.mockResolvedValue("new-key");
+    mockShowInputBox.mockResolvedValue("nvapi-1234567890abcdef");
     const secrets = {
       get: jest.fn(async () => undefined),
       store: jest.fn(),
@@ -777,7 +813,7 @@ describe("activate", () => {
     expect(mockExecuteCommand).toHaveBeenCalledWith("lm.migrateLanguageModelsProviderGroup", {
       vendor: "nvidia-nim",
       name: "NVIDIA NIM",
-      apiKey: "new-key",
+      apiKey: "nvapi-1234567890abcdef",
     });
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.legacyMigrationDone", true);
   });

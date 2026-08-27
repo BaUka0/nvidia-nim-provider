@@ -8,6 +8,19 @@ import {
   truncatePreservingSurrogates,
 } from "../messages/converter";
 import { ConfigManager } from "../shared/config";
+import { FetchAttemptBudget, httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
+
+export class SummarizationError extends Error {
+  readonly kind = "summarization_failed" as const;
+
+  constructor(
+    message: string,
+    readonly cause?: unknown,
+  ) {
+    super(message);
+    this.name = "SummarizationError";
+  }
+}
 
 const SUMMARIZATION_PROMPT = `Summarize the following conversation concisely, preserving:
 - Key decisions and their rationale
@@ -89,6 +102,7 @@ export async function summarizeOldMessages(
   userAgent: string,
   signal?: AbortSignal,
   summarizationModel?: string,
+  fetchAttemptBudget?: FetchAttemptBudget,
 ): Promise<NimChatMessage> {
   const targetModel =
     summarizationModel?.trim() ||
@@ -100,6 +114,15 @@ export async function summarizeOldMessages(
       "summarizer",
       `Summarizing ${oldMessages.length} messages (${conversationText.length} chars) via ${targetModel}.`,
     );
+    const configuredAttempts = httpAttemptsFromConfig(
+      ConfigManager.getNetworkConfig().maxHttpRetries,
+    );
+    const attempts = fetchAttemptBudget
+      ? fetchAttemptBudget.consume(configuredAttempts)
+      : configuredAttempts;
+    if (attempts <= 0) {
+      throw new SummarizationError("Fetch attempt budget exhausted before summarization");
+    }
     const summary = await chatCompletion(
       apiKey,
       {
@@ -113,10 +136,11 @@ export async function summarizeOldMessages(
       },
       signal,
       userAgent,
+      attempts,
     );
     const trimmedSummary = summary.trim();
     if (!trimmedSummary) {
-      throw new Error("Summarization returned an empty response");
+      throw new SummarizationError("Summarization returned an empty response");
     }
     return {
       role: "system",
@@ -199,5 +223,54 @@ export function splitMessagesForSummarization(
   return {
     oldMessages: nonSystemMessages.slice(0, splitIndex),
     recentMessages: [...systemMessages, ...nonSystemMessages.slice(splitIndex)],
+  };
+}
+
+export interface CompactConversationOptions {
+  maxRecentTokens: number;
+  apiKey: string;
+  userAgent: string;
+  signal?: AbortSignal;
+  summarizationModel?: string;
+  extraTokenCount?: number;
+  fetchAttemptBudget?: FetchAttemptBudget;
+}
+
+/**
+ * Replace older turns with a summary message while keeping recent turns and
+ * system prompts verbatim. Shared by preflight compaction and overflow retry.
+ */
+export async function compactConversationHistory(
+  messages: NimChatMessage[],
+  options: CompactConversationOptions,
+): Promise<{ messages: NimChatMessage[]; tokenCount: number; compacted: boolean }> {
+  const extraTokenCount = options.extraTokenCount ?? 0;
+  const { oldMessages, recentMessages } = splitMessagesForSummarization(
+    messages,
+    options.maxRecentTokens,
+  );
+  if (oldMessages.length === 0) {
+    return {
+      messages,
+      tokenCount: estimateNimMessagesTokens(messages) + extraTokenCount,
+      compacted: false,
+    };
+  }
+
+  const summaryMessage = await summarizeOldMessages(
+    oldMessages,
+    options.apiKey,
+    options.userAgent,
+    options.signal,
+    options.summarizationModel,
+    options.fetchAttemptBudget,
+  );
+  const recentSystemMessages = recentMessages.filter((message) => message.role === "system");
+  const recentConversationMessages = recentMessages.filter((message) => message.role !== "system");
+  const compacted = [...recentSystemMessages, summaryMessage, ...recentConversationMessages];
+  return {
+    messages: compacted,
+    tokenCount: estimateNimMessagesTokens(compacted) + extraTokenCount,
+    compacted: true,
   };
 }

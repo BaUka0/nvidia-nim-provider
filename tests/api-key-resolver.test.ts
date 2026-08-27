@@ -97,14 +97,18 @@ describe("NvidiaApiKeyResolver", () => {
     resolver.registerModelKey(modelA, "key-a", "group-a");
     resolver.registerModelKey(modelB, "key-b", "group-b");
 
-    await expect(resolver.resolveForModel({ ...modelA })).resolves.toEqual({
+    const cloneWithBindings = <T extends object>(model: T): T =>
+      Object.defineProperties({}, Object.getOwnPropertyDescriptors(model)) as T;
+
+    await expect(resolver.resolveForModel(cloneWithBindings(modelA))).resolves.toEqual({
       value: "key-a",
       source: "runtime",
     });
-    await expect(resolver.resolveForModel({ ...modelB })).resolves.toEqual({
+    await expect(resolver.resolveForModel(cloneWithBindings(modelB))).resolves.toEqual({
       value: "key-b",
       source: "runtime",
     });
+    await expect(resolver.resolveForModel({ ...modelA })).resolves.toBeUndefined();
     await expect(resolver.resolveForModel({ id: "shared-model" })).resolves.toBeUndefined();
     await expect(resolver.resolveForTool()).resolves.toBeUndefined();
     await expect(
@@ -160,7 +164,12 @@ describe("NvidiaApiKeyResolver", () => {
     resolver.clearRuntimeBindings("group-a");
 
     await expect(resolver.resolveForModel(modelA)).resolves.toBeUndefined();
-    await expect(resolver.resolveForModel({ ...modelA })).resolves.toBeUndefined();
+    // Spread clones drop the non-enumerable binding and therefore fall through
+    // to the unique remaining group for this model id.
+    await expect(resolver.resolveForModel({ ...modelA })).resolves.toEqual({
+      value: "key-b",
+      source: "runtime",
+    });
   });
 
   it("does not fall back to legacy storage while a changed group key is unresolved", async () => {

@@ -4,15 +4,13 @@ import { classifyApiError } from "../api/errors";
 import {
   BASE_URL,
   EXTENSION_VERSION,
+  MAX_CHAT_IMAGE_BYTES,
   MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY,
   MODELS_STATE_KEY,
   PROVIDER_DISPLAY_NAME,
 } from "../shared/constants";
 import { MODEL_LIST, isNormalizedNvidiaModel } from "../models/catalog";
 import { NvidiaApiKeyResolver } from "../api/key-resolver";
-
-/** Maximum accepted image payload (binary bytes) sent to the vision model. */
-const MAX_IMAGE_DATA_BYTES = 20 * 1024 * 1024;
 
 /**
  * Validate that image_data is a base64 image data URL and return its decoded
@@ -90,9 +88,9 @@ export class NimVisionClient {
         `${PROVIDER_DISPLAY_NAME} image analysis requires a base64 image data URL ('data:image/...;base64,...').`,
       );
     }
-    if (imageByteLength > MAX_IMAGE_DATA_BYTES) {
+    if (imageByteLength > MAX_CHAT_IMAGE_BYTES) {
       throw new Error(
-        `${PROVIDER_DISPLAY_NAME} image is too large (${Math.ceil(imageByteLength / (1024 * 1024))} MB). Maximum size is ${MAX_IMAGE_DATA_BYTES / (1024 * 1024)} MB.`,
+        `${PROVIDER_DISPLAY_NAME} image is too large (${Math.ceil(imageByteLength / (1024 * 1024))} MB). Maximum size is ${MAX_CHAT_IMAGE_BYTES / (1024 * 1024)} MB.`,
       );
     }
     const apiKey = await this.getApiKey();
@@ -199,7 +197,8 @@ export class NimAnalyzeImageTool implements vscode.LanguageModelTool<{
     options: vscode.LanguageModelToolInvocationOptions<{ image_data: string; prompt: string }>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    const { image_data, prompt } = options.input;
+    const { image_data, prompt: rawPrompt } = options.input;
+    const prompt = rawPrompt.length > 4000 ? rawPrompt.slice(0, 4000) : rawPrompt;
     const abortController = new AbortController();
     const cancellationSubscription =
       typeof token.onCancellationRequested === "function"
@@ -263,7 +262,7 @@ function createAbortError(): Error {
 }
 
 function createVisionCancellationError(): Error {
-  const CancellationError = (vscode as typeof vscode & { CancellationError?: new () => Error })
-    .CancellationError;
-  return CancellationError ? new CancellationError() : createAbortError();
+  return typeof vscode.CancellationError === "function"
+    ? new vscode.CancellationError()
+    : createAbortError();
 }

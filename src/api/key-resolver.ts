@@ -83,13 +83,16 @@ export class NvidiaApiKeyResolver {
     this.getOrCreateSet(this.bindingsByGroup, groupId).add(bindingId);
     this.modelBindings.set(model, { bindingId });
 
-    // The opaque token is intentionally enumerable because VS Code can clone
-    // provider model information before invoking the response callback.
+    // Non-enumerable so other extensions iterating model objects do not see
+    // the binding token. VS Code structuredClone / getOwnPropertyDescriptors
+    // copies still preserve it; `{...model}` clones fail closed (safer than
+    // attaching the wrong group's key).
     try {
       Object.defineProperty(model, MODEL_KEY_BINDING_PROPERTY, {
         value: bindingId,
         configurable: true,
-        enumerable: true,
+        enumerable: false,
+        writable: false,
       });
     } catch {
       // Frozen model objects still work through the WeakMap and unique-ID

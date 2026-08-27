@@ -69,6 +69,19 @@ describe("output-channel", () => {
     );
   });
 
+  it("redacts short Bearer tokens and non-Bearer Authorization headers", async () => {
+    process.env.NVIDIA_NIM_DEBUG = "1";
+
+    const { debugLog, getOutputChannel, redactSecrets } = await import("../src/shared/logging");
+    getOutputChannel();
+
+    expect(redactSecrets("Bearer abcd")).toBe("Bearer [REDACTED]");
+    expect(redactSecrets("Authorization: super-secret-token")).toBe("Authorization: [REDACTED]");
+
+    debugLog("auth", "Bearer abcd");
+    expect(mockAppendLine).toHaveBeenCalledWith(expect.stringContaining("Bearer [REDACTED]"));
+  });
+
   it("errorLog and warnLog still work when debug is enabled", async () => {
     process.env.NVIDIA_NIM_DEBUG = "1";
 

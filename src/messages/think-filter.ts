@@ -1,3 +1,5 @@
+import { THINK_TAG_PAIRS } from "../shared/think-tags";
+
 export interface ThinkTagFilterState {
   insideThinkBlock: boolean;
   pendingText: string;
@@ -8,19 +10,6 @@ export interface ThinkTagFilterState {
 export type ThinkFilterSegment =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string };
-
-interface ThinkTagPair {
-  open: string;
-  close: string;
-}
-
-const THINK_TAG_PAIRS: ThinkTagPair[] = [
-  { open: "<think>", close: "</think>" },
-  { open: "<mm:think>", close: "</mm:think>" },
-  { open: "<thought>", close: "</thought>" },
-  { open: "[THINK]", close: "[/THINK]" },
-  { open: "<reasoning>", close: "</reasoning>" },
-];
 
 function findTrailingCaseInsensitivePrefixStart(text: string, token: string): number {
   const normalizedText = text.toLowerCase();

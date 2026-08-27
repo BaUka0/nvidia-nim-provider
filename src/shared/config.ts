@@ -1,13 +1,17 @@
 import * as vscode from "vscode";
 import { FALLBACK_MODEL_ID, FALLBACK_VISION_MODEL_ID, MODEL_LIST } from "../models/catalog";
-import { warnLog } from "./logging";
+
+function warnUnknownConfig(message: string): void {
+  // Lazy require so this module does not import logging at load time.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { warnLog } = require("./logging") as typeof import("./logging");
+  warnLog("config", message);
+}
 
 /**
  * Validate a configured model id against the curated catalog. Unknown ids
  * (e.g. a manual `settings.json` edit that bypasses the picker enum) fall
  * back to the provided default instead of failing later at request time.
- * Note: `./logging` imports this module back, but the reference is only
- * dereferenced at call time, so the cycle is safe.
  */
 function sanitizeKnownModelId(raw: string, fallbackId: string): string {
   const id = raw.trim();
@@ -17,7 +21,7 @@ function sanitizeKnownModelId(raw: string, fallbackId: string): string {
   if (id in MODEL_LIST) {
     return id;
   }
-  warnLog("config", `Unknown model id "${id}" in settings; using "${fallbackId}" instead.`);
+  warnUnknownConfig(`Unknown model id "${id}" in settings; using "${fallbackId}" instead.`);
   return fallbackId;
 }
 
@@ -201,7 +205,7 @@ export class ConfigManager {
             if (id in MODEL_LIST) {
               return true;
             }
-            warnLog("config", `Unknown model id "${id}" in fallback.priorityList; skipping.`);
+            warnUnknownConfig(`Unknown model id "${id}" in fallback.priorityList; skipping.`);
             return false;
           })
       : [];

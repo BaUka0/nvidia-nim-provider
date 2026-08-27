@@ -1,3 +1,4 @@
+import { BoundedMap } from "../../shared/bounded-map";
 import {
   ModelAdapter,
   BaseModelAdapter,
@@ -57,8 +58,8 @@ const ADAPTERS: ModelAdapter[] = [
 ];
 
 const DEFAULT_ADAPTER = new DefaultAdapter();
-const adapterCache = new Map<string, ModelAdapter>();
 const MAX_ADAPTER_CACHE_SIZE = 64;
+const adapterCache = new BoundedMap<string, ModelAdapter>(MAX_ADAPTER_CACHE_SIZE);
 
 export function getModelAdapter(modelId: string): ModelAdapter {
   const cached = adapterCache.get(modelId);
@@ -69,13 +70,6 @@ export function getModelAdapter(modelId: string): ModelAdapter {
   const normalizedModelId = modelId.toLowerCase();
   const matched = ADAPTERS.find((adapter) => adapter.matches(normalizedModelId));
   const result = matched ?? DEFAULT_ADAPTER;
-
-  if (adapterCache.size >= MAX_ADAPTER_CACHE_SIZE) {
-    const firstKey = adapterCache.keys().next().value;
-    if (firstKey !== undefined) {
-      adapterCache.delete(firstKey);
-    }
-  }
   adapterCache.set(modelId, result);
   return result;
 }

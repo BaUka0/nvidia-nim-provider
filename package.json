@@ -440,5 +440,8 @@
   },
   "dependencies": {
     "jsonrepair": "^3.14.0"
+  },
+  "overrides": {
+    "minimist": "1.2.8"
   }
 }

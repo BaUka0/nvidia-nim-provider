@@ -16,6 +16,8 @@ import {
   SkippedToolCallReason,
 } from "../tools/parser";
 import { debugLog } from "../shared/logging";
+import { MAX_TOOL_ARGUMENT_CHARS } from "../shared/constants";
+import { NATIVE_TOOL_CALL_ID_PREFIX } from "../shared/tool-call-ids";
 import { NimToolCall } from "../types";
 
 export interface ToolCallStreamAggregatorOptions {
@@ -70,12 +72,17 @@ export class ToolCallStreamAggregator {
     return this.requestContext;
   }
 
-  public recordExtractedParameters(params: Record<string, unknown>): void {
+  public recordExtractedParameters(params: Record<string, unknown>, toolName?: string): void {
+    if (!toolName) {
+      return;
+    }
     if (!this.requestContext) {
       this.requestContext = {};
     }
+    const sameTool = this.requestContext.extractedParametersToolName === toolName;
+    this.requestContext.extractedParametersToolName = toolName;
     this.requestContext.extractedParameters = {
-      ...(this.requestContext.extractedParameters ?? {}),
+      ...(sameTool ? (this.requestContext.extractedParameters ?? {}) : {}),
       ...params,
     };
   }
@@ -87,7 +94,10 @@ export class ToolCallStreamAggregator {
   public handleToolCalls(deltas: readonly NimToolCall[]): void {
     this.sawToolCall = true;
     for (const tc of deltas) {
-      const idx = (tc as { index?: number }).index ?? 0;
+      const idx =
+        typeof (tc as { index?: number }).index === "number"
+          ? (tc as { index: number }).index
+          : this.toolCallBuffers.size;
       if (this.completedToolCallIndices.has(idx)) {
         continue;
       }
@@ -121,6 +131,13 @@ export class ToolCallStreamAggregator {
         }
       }
       if (typeof func?.arguments === "string") {
+        if (buf.args.length + func.arguments.length > MAX_TOOL_ARGUMENT_CHARS) {
+          debugLog("Skipped oversized tool argument buffer", { name: buf.name });
+          this.completedToolCallIndices.add(idx);
+          this.toolCallBuffers.delete(idx);
+          this.onSkipToolCall(buf.name ?? "unknown_tool", [], "missing_payload");
+          continue;
+        }
         buf.args += func.arguments;
       }
       this.toolCallBuffers.set(idx, buf);
@@ -151,7 +168,8 @@ export class ToolCallStreamAggregator {
             this.toolCallBuffers.delete(idx);
             continue;
           }
-          const id = buf.id && buf.id.length > 0 ? buf.id : `tool_${randomUUID()}`;
+          const id =
+            buf.id && buf.id.length > 0 ? buf.id : `${NATIVE_TOOL_CALL_ID_PREFIX}${randomUUID()}`;
           this.onEmitToolCall(id, buf.name, args);
           this.emittedToolCall = true;
           this.emittedTextToolCallKeys.add(canonicalKey);
@@ -198,7 +216,8 @@ export class ToolCallStreamAggregator {
             this.toolCallBuffers.delete(idx);
             continue;
           }
-          const id = buf.id && buf.id.length > 0 ? buf.id : `tool_${randomUUID()}`;
+          const id =
+            buf.id && buf.id.length > 0 ? buf.id : `${NATIVE_TOOL_CALL_ID_PREFIX}${randomUUID()}`;
           this.onEmitToolCall(id, buf.name, args);
           this.emittedToolCall = true;
 

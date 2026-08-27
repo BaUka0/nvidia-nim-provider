@@ -210,6 +210,26 @@ describe("summarizeOldMessages", () => {
     expect(completionMock.mock.calls.at(-1)?.[2]).toBe(controller.signal);
   });
 
+  it("falls back to truncation when the summarization API call fails", async () => {
+    const completionMock = chatCompletion as jest.Mock;
+    completionMock.mockRejectedValueOnce(new Error("503 unavailable"));
+
+    const summary = await summarizeOldMessages(
+      [
+        { role: "user", content: "Old question about parsers" },
+        { role: "assistant", content: "Old answer about parsers" },
+      ],
+      "test-key",
+      "test-agent",
+    );
+
+    expect(summary.role).toBe("system");
+    expect(summary.content).toEqual(
+      expect.stringContaining("[Previous conversation — truncated due to context limits]"),
+    );
+    expect(summary.content).toEqual(expect.stringContaining("Old question about parsers"));
+  });
+
   it("uses the provided summarizationModel parameter", async () => {
     const completionMock = chatCompletion as jest.Mock;
     completionMock.mockResolvedValueOnce("Summary with custom model");

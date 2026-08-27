@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import * as vscode from "vscode";
 import { debugLog } from "../shared/logging";
+import { MAX_CHAT_IMAGE_BYTES } from "../shared/constants";
+import { getLanguageModelChatToolModeRequired } from "../shared/proposed-apis";
+import { AUXILIARY_REQUIRED_FIELDS } from "../shared/tool-fields";
 import { JsonObject, NimChatMessage, NimContentPart, NimTool } from "../types";
 
 export interface LegacyPart {
@@ -175,13 +178,15 @@ function extractImageData(
   }
 
   if (p.data instanceof Uint8Array && p.data.length > 0) {
-    return { mimeType, data: p.data };
+    return p.data.length > MAX_CHAT_IMAGE_BYTES ? undefined : { mimeType, data: p.data };
   }
   if (p.bytes instanceof Uint8Array && p.bytes.length > 0) {
-    return { mimeType, data: p.bytes };
+    return p.bytes.length > MAX_CHAT_IMAGE_BYTES ? undefined : { mimeType, data: p.bytes };
   }
   if (p.buffer instanceof ArrayBuffer && p.buffer.byteLength > 0) {
-    return { mimeType, data: new Uint8Array(p.buffer) };
+    return p.buffer.byteLength > MAX_CHAT_IMAGE_BYTES
+      ? undefined
+      : { mimeType, data: new Uint8Array(p.buffer) };
   }
   if (Array.isArray(p.bytes) && p.bytes.length > 0) {
     return { mimeType, data: new Uint8Array(p.bytes) };
@@ -195,7 +200,7 @@ function extractImageData(
     const payload = raw.startsWith("data:") ? raw.slice(raw.indexOf(",") + 1) : raw;
     if (/^[A-Za-z0-9+/\s]+={0,2}$/.test(payload)) {
       const decoded = Buffer.from(payload.replace(/\s/g, ""), "base64");
-      if (decoded.length > 0) {
+      if (decoded.length > 0 && decoded.length <= MAX_CHAT_IMAGE_BYTES) {
         return { mimeType, data: new Uint8Array(decoded) };
       }
     }
@@ -255,17 +260,6 @@ export function getToolResultTexts(part: vscode.LanguageModelInputPart | LegacyP
   }
   return results;
 }
-
-const AUXILIARY_REQUIRED_FIELDS = new Set([
-  "goal",
-  "explanation",
-  "mode",
-  "summary",
-  "description",
-  "isRegexp",
-  "startLine",
-  "endLine",
-]);
 
 function payloadRequiredFields(schema: Record<string, unknown> | undefined): string[] {
   if (!Array.isArray(schema?.required)) {
@@ -468,11 +462,7 @@ export function convertTools(options: vscode.ProvideLanguageModelChatResponseOpt
     };
   });
 
-  if (
-    options.toolMode ===
-    (vscode as unknown as { LanguageModelChatToolMode?: { Required?: number } })
-      .LanguageModelChatToolMode?.Required
-  ) {
+  if (options.toolMode === getLanguageModelChatToolModeRequired()) {
     return { tools, tool_choice: "required" };
   }
 

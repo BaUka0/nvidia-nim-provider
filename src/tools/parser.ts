@@ -1,7 +1,10 @@
 import * as vscode from "vscode";
 import { LanguageModelChatMessage, ProvideLanguageModelChatResponseOptions } from "vscode";
-import { jsonrepair } from "jsonrepair";
 import { ConfigManager } from "../shared/config";
+import { MAX_REPAIRED_LINE_SPAN } from "../shared/constants";
+import { parseJsonOrRepair, tryParseJsonOrRepair } from "../shared/json-repair";
+import { AUXILIARY_BOOLEAN_FIELDS } from "../shared/tool-fields";
+import { isDirTool, isEditTool, isReadTool, isTerminalTool } from "./tool-kinds";
 import {
   extractStandaloneXmlParameters as scanStandaloneXmlParameters,
   findXmlConstructStart,
@@ -19,7 +22,7 @@ function safeJsonParse(text: string): Record<string, unknown> {
   }
 
   try {
-    return parseJsonObject(JSON.parse(jsonrepair(text)));
+    return parseJsonObject(parseJsonOrRepair(text));
   } catch {
     throw new Error("Failed to parse JSON");
   }
@@ -101,6 +104,8 @@ export interface ChatRequestContext {
   endLine?: number;
   cwd?: string;
   extractedParameters?: Record<string, unknown>;
+  /** When set, extracted parameters may only fill a call of this tool name. */
+  extractedParametersToolName?: string;
 }
 
 export function buildToolCallCanonicalKey(name: string, args: unknown): string {
@@ -111,22 +116,7 @@ export function isDuplicateSuppressionEnabled(toolName: string): boolean {
   if (!ConfigManager.getToolsConfig().suppressDuplicateReads) {
     return false;
   }
-  const normalized = toolName.toLowerCase();
-  if (
-    normalized.includes("terminal") ||
-    normalized.includes("command") ||
-    normalized.includes("exec") ||
-    normalized.includes("write") ||
-    normalized.includes("edit") ||
-    normalized.includes("create") ||
-    normalized.includes("delete") ||
-    normalized.includes("patch") ||
-    normalized.includes("replace") ||
-    normalized.includes("apply") ||
-    normalized.includes("grep") ||
-    normalized.includes("search") ||
-    normalized.includes("find")
-  ) {
+  if (isTerminalTool(toolName) || isEditTool(toolName) || isDirTool(toolName)) {
     return false;
   }
   return true;
@@ -313,18 +303,7 @@ function normalizeScalar(value: unknown, schema: ToolPropertySchema): unknown {
 }
 
 export function tryParseJsonValue(text: string): unknown {
-  if (!text) return text;
-  try {
-    return JSON.parse(text);
-  } catch {
-    // Attempt jsonrepair if strict parse fails
-  }
-
-  try {
-    return JSON.parse(jsonrepair(text));
-  } catch {
-    return text;
-  }
+  return tryParseJsonOrRepair(text);
 }
 
 function normalizeValue(value: unknown, schema: ToolPropertySchema): unknown {
@@ -551,9 +530,16 @@ export function unwrapJsonCodeFence(text: string): string {
   return fencedMatch ? fencedMatch[1].trim() : trimmed;
 }
 
+export const FORBIDDEN_TOOL_IDENTIFIERS = new Set(["__proto__", "prototype", "constructor"]);
+
 export function isValidToolIdentifier(name: string): boolean {
   const trimmed = name.trim();
-  return trimmed.length > 0 && trimmed.length <= 64 && /^[a-zA-Z0-9_.-]+$/.test(trimmed);
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= 64 &&
+    /^[a-zA-Z0-9_.-]+$/.test(trimmed) &&
+    !FORBIDDEN_TOOL_IDENTIFIERS.has(trimmed)
+  );
 }
 
 export function parseEmbeddedToolParameterValue(rawValue: string): unknown {
@@ -564,13 +550,9 @@ export function parseEmbeddedToolParameterValue(rawValue: string): unknown {
     /^(?:true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)$/.test(trimmed)
   ) {
     try {
-      return JSON.parse(trimmed);
+      return parseJsonOrRepair(trimmed);
     } catch {
-      try {
-        return JSON.parse(jsonrepair(trimmed));
-      } catch {
-        return trimmed;
-      }
+      return trimmed;
     }
   }
   return trimmed;
@@ -1031,8 +1013,6 @@ export function extractChatRequestContext(
     : undefined;
 }
 
-const AUXILIARY_BOOLEAN_FIELDS = new Set(["isregexp", "isregex", "casesensitive", "recursive"]);
-
 function fillMissingAuxiliaryBooleans(
   repaired: Record<string, unknown>,
   schema: ToolSchema | undefined,
@@ -1089,9 +1069,21 @@ export function repairToolArguments(
   const needsNumberField = (value: unknown, field: string): boolean =>
     required.has(field) && typeof value !== "number";
 
-  // 1. Merge extracted parameters from XML stream buffer if present
-  if (requestContext?.extractedParameters) {
+  // 1. Merge extracted parameters from XML only when they belong to this tool
+  // (or the destination schema explicitly lists the key). Unscoped bags never
+  // fill file/command/content — that was a prompt-injection path.
+  if (
+    requestContext?.extractedParameters &&
+    requestContext.extractedParametersToolName === toolName
+  ) {
+    const schemaKeys = Object.keys(schema?.properties ?? {});
     for (const [key, value] of Object.entries(requestContext.extractedParameters)) {
+      if (FORBIDDEN_TOOL_IDENTIFIERS.has(key)) {
+        continue;
+      }
+      if (schemaKeys.length > 0 && !schemaKeys.includes(key)) {
+        continue;
+      }
       if (!(key in parsedArgs) || parsedArgs[key] === undefined || parsedArgs[key] === "") {
         parsedArgs[key] = value;
       }
@@ -1102,7 +1094,6 @@ export function repairToolArguments(
   const propertyAliasGroups: readonly (readonly string[])[] = [
     [
       "filePath",
-      "path",
       "targetFile",
       "target_file",
       "file",
@@ -1114,7 +1105,6 @@ export function repairToolArguments(
       "dest",
       "AbsolutePath",
       "FilePath",
-      "Path",
       "TargetFile",
     ],
     [
@@ -1217,14 +1207,7 @@ export function repairToolArguments(
     }
   }
 
-  const normalizedToolName = toolName.toLowerCase();
-  const isTerminalTool =
-    normalizedToolName.includes("terminal") ||
-    normalizedToolName.includes("command") ||
-    normalizedToolName.includes("exec") ||
-    normalizedToolName === "run_in_terminal";
-
-  if (isTerminalTool) {
+  if (isTerminalTool(toolName)) {
     if (needsStringField(repaired.goal, "goal")) {
       if (typeof repaired.explanation === "string" && repaired.explanation.trim()) {
         repaired.goal = repaired.explanation;
@@ -1250,8 +1233,8 @@ export function repairToolArguments(
       ? repaired.filePath
       : typeof repaired.AbsolutePath === "string" && repaired.AbsolutePath.trim().length > 0
         ? repaired.AbsolutePath
-        : typeof repaired.path === "string" && repaired.path.trim().length > 0
-          ? repaired.path
+        : typeof repaired.TargetFile === "string" && repaired.TargetFile.trim().length > 0
+          ? repaired.TargetFile
           : undefined;
 
   const isMatchingContextFile = Boolean(
@@ -1261,47 +1244,23 @@ export function repairToolArguments(
       currentFilePath.replace(/\\/g, "/") === context.filePath.replace(/\\/g, "/")),
   );
 
-  const isReadTool =
-    normalizedToolName === "read_file" ||
-    normalizedToolName.includes("read") ||
-    normalizedToolName.includes("view") ||
-    normalizedToolName.includes("fetch") ||
-    normalizedToolName.includes("show") ||
-    normalizedToolName.includes("cat") ||
-    normalizedToolName.includes("get_file");
-
-  const isEditTool =
-    !isReadTool &&
-    (normalizedToolName === "edit_file" ||
-      normalizedToolName === "write_file" ||
-      normalizedToolName === "create_file" ||
-      normalizedToolName === "patch_file" ||
-      normalizedToolName === "replace_file_content" ||
-      normalizedToolName.includes("edit") ||
-      normalizedToolName.includes("write") ||
-      normalizedToolName.includes("create") ||
-      normalizedToolName.includes("patch") ||
-      normalizedToolName.includes("replace") ||
-      normalizedToolName.includes("insert") ||
-      normalizedToolName.includes("delete") ||
-      normalizedToolName.includes("file"));
-
-  const isDirTool =
-    normalizedToolName === "list_dir" ||
-    normalizedToolName === "grep_search" ||
-    normalizedToolName === "find_files" ||
-    normalizedToolName.includes("dir") ||
-    normalizedToolName.includes("search") ||
-    normalizedToolName.includes("find") ||
-    normalizedToolName.includes("grep");
-
-  if (isReadTool) {
-    if (needsStringField(repaired.filePath, "filePath") && context?.filePath) {
-      repaired.filePath = context.filePath;
+  const clampLineSpan = (
+    startKey: "startLine" | "StartLine",
+    endKey: "endLine" | "EndLine",
+  ): void => {
+    const start = repaired[startKey];
+    const end = repaired[endKey];
+    if (
+      typeof start === "number" &&
+      typeof end === "number" &&
+      end - start + 1 > MAX_REPAIRED_LINE_SPAN
+    ) {
+      repaired[endKey] = start + MAX_REPAIRED_LINE_SPAN - 1;
     }
-    if (needsStringField(repaired.AbsolutePath, "AbsolutePath") && context?.filePath) {
-      repaired.AbsolutePath = context.filePath;
-    }
+  };
+
+  if (isReadTool(toolName)) {
+    // Do not invent filePath from regex-extracted chat context (prompt-injection).
     if (needsNumberField(repaired.startLine, "startLine")) {
       repaired.startLine = 1;
     }
@@ -1310,26 +1269,21 @@ export function repairToolArguments(
     }
     if (needsNumberField(repaired.endLine, "endLine")) {
       const start = typeof repaired.startLine === "number" ? repaired.startLine : 1;
-      repaired.endLine = start + 499;
+      repaired.endLine = start + MAX_REPAIRED_LINE_SPAN - 1;
     }
     if (needsNumberField(repaired.EndLine, "EndLine")) {
       const start = typeof repaired.StartLine === "number" ? repaired.StartLine : 1;
-      repaired.EndLine = start + 499;
+      repaired.EndLine = start + MAX_REPAIRED_LINE_SPAN - 1;
     }
+    clampLineSpan("startLine", "endLine");
+    clampLineSpan("StartLine", "EndLine");
     if (needsStringField(repaired.mode, "mode")) {
       repaired.mode = schema?.enumValues?.mode?.[0] ?? "full";
     }
-  } else if (isEditTool) {
-    if (needsStringField(repaired.filePath, "filePath") && context?.filePath) {
-      repaired.filePath = context.filePath;
-    }
-    if (needsStringField(repaired.AbsolutePath, "AbsolutePath") && context?.filePath) {
-      repaired.AbsolutePath = context.filePath;
-    }
-    if (needsStringField(repaired.TargetFile, "TargetFile") && context?.filePath) {
-      repaired.TargetFile = context.filePath;
-    }
-    if (isMatchingContextFile || needsStringField(parsedArgs.filePath, "filePath")) {
+  } else if (isEditTool(toolName)) {
+    // Line ranges from editor selection apply only when the model already named
+    // the same file. Missing filePath is not filled from chat text.
+    if (isMatchingContextFile) {
       if (needsNumberField(repaired.startLine, "startLine") && context?.startLine !== undefined) {
         repaired.startLine = context.startLine;
       }
@@ -1343,22 +1297,12 @@ export function repairToolArguments(
         repaired.EndLine = context.endLine;
       }
     }
+    clampLineSpan("startLine", "endLine");
+    clampLineSpan("StartLine", "EndLine");
   }
 
-  if (isDirTool) {
-    if (needsStringField(repaired.path, "path") && context?.cwd) {
-      repaired.path = context.cwd;
-    }
-    if (needsStringField(repaired.cwd, "cwd") && context?.cwd) {
-      repaired.cwd = context.cwd;
-    }
-    if (needsStringField(repaired.SearchDirectory, "SearchDirectory") && context?.cwd) {
-      repaired.SearchDirectory = context.cwd;
-    }
-    if (needsStringField(repaired.DirectoryPath, "DirectoryPath") && context?.cwd) {
-      repaired.DirectoryPath = context.cwd;
-    }
-  }
+  // Directory tools keep model-supplied path/cwd. Regex-extracted Cwd is not
+  // copied in — that string is attacker-controlled prompt text.
 
   return normalizeArguments(repaired, schema ?? {});
 }

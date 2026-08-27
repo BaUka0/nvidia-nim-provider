@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Follow-up hardening after the Unreleased audit (`src/provider/*`, `src/api/client.ts`, `src/tools/parser.ts`, `src/models/summarizer.ts`, `src/shared/*`).** Overflow compaction now rethrows `empty_stream` / `rate_limited` / `timeout` / `network_error` instead of masking them as `context_overflow`; an exhausted `FetchAttemptBudget` no longer walks the fallback chain; summarization consumes the same budget; `maxHttpRetries: 0` means one try; empty-stream/network retries honor config instead of a hard `attempt < 2`; overflow retry restores adapter system prompts and tool token counts; text-only + image requests fail over via `model_unavailable`; thinking-only turns may fail over when no visible content was emitted; SSE `{error}` objects are classified; extracted XML parameters only fill the same tool name; native `buf.args` and incomplete XML text are capped; HTTP error bodies truncated; chat images share the 20 MiB vision cap; `emitThinkingPart` reads `reasoning.showInChat`; invalid-tool retry is a user turn; ContextLimitStore ignores implausible reported maxima; discovery keeps an in-memory catalog per API-key fingerprint.
+- **Artificial Analysis Intelligence Index Documentation (`README.md`, `docs/README.md`).** Integrated verified Artificial Analysis Intelligence Index scores across all 9 curated catalog models in both `README.md` (`Supported Models` table) and `docs/README.md` (`Model Comparison Matrix`), sorting models by verified capability scores (ranging from Kimi K3 at 60 down to Nemotron 3.5 Lightning at 24).
+- **Chat response orchestration (`src/provider/chat-provider.ts`, `stream-pump.ts`, `fallback-orchestrator.ts`, `overflow-compactor.ts`, `loop-breaker.ts`, `request-snapshot.ts`, `src/shared/fetch-attempt-budget.ts`).** Split the former 1752-line `provideLanguageModelChatResponse` god-method: stream consumption lives in `runStreamAttempt`, overflow compaction in `buildOverflowRetryRequest`, loop-breaker injection in `injectHistoryLoopBreaker`, and failover is an iterative loop over a shared `FetchAttemptBudget` (no recursive re-entry, no per-hop reset to 6 attempts, `consume()` never goes negative). Each stream attempt clones the baseline request body so network/tool/loop nudges cannot stack across failures.
+- **Shared utilities (`src/shared/bounded-map.ts`, `proposed-apis.ts`, `json-repair.ts`, `think-tags.ts`, `tool-fields.ts`, `tool-call-ids.ts`, `src/tools/tool-kinds.ts`).** LRU `BoundedMap` for adapter + runtime-info caches; proposed `LanguageModelThinkingPart` / `LanguageModelChatToolMode` casts centralized; `parseJsonOrRepair` with a 65,536-character cap; single `THINK_TAG_PAIRS` list; shared `AUXILIARY_*` field sets; documented `tool_` / `text_tool_` id prefixes; token-based tool taxonomy (so `"thread"` is not a read tool and `"file_info"` is not an edit tool).
+
+### Fixed
+
+- **Prompt-injection in `repairToolArguments` (`src/tools/parser.ts`).** Stopped aliasing generic `path` onto `filePath`, stopped filling `filePath`/`cwd` from regex-extracted chat text, and capped repaired line spans at 200. Tool identifiers `__proto__` / `prototype` / `constructor` are rejected.
+- **SSE buffer bounds (`src/api/client.ts`).** Partial-line buffer capped at 1 MiB; completed lines over 4 MiB are dropped. `cancelReader` now awaits `reader.cancel()` in `finally` so the socket is closed.
+- **Config / resource races (`src/extension.ts`, `src/shared/logging.ts`, `src/api/key-resolver.ts`).** `onDidChangeConfiguration` invalidates runtime caches for `fallback`/`network`/`context`; output channel is a module-level handle disposed on deactivate (not `globalThis`); `_apiKeyPrompt` is assigned before await; model key binding property is non-enumerable; API keys are format-checked on save; auto-migration is skipped in untrusted workspaces; init failures surface on the status bar. Logging no longer imports `ConfigManager` (cycle broken); Bearer redaction matches 4+ character tokens and non-Bearer `Authorization` headers.
+- **README version badge.** Marketplace shield is now dynamic instead of a hardcoded `v0.7.0`.
+
+### Security
+
+- Pinned transitive `minimist@1.2.8` via `package.json` `overrides`.
+
 ## [0.9.1] - 2026-08-27
 
 ### Added

@@ -655,6 +655,7 @@ describe("tool argument parsing and validation", () => {
       extractedParameters: {
         filePath: "/workspace/src/constants.ts",
       },
+      extractedParametersToolName: "create_file",
     };
 
     const repaired = repairToolArguments(
@@ -671,7 +672,7 @@ describe("tool argument parsing and validation", () => {
     expect(hasRequiredToolArguments(repaired, createFileSchema)).toBe(true);
   });
 
-  it("resolves common property aliases (path -> filePath, code -> content)", () => {
+  it("does not fuse unscoped XML parameters into a later native tool call", () => {
     const createFileSchema = getToolSchemaMap(
       makeChatOptions({
         tools: [
@@ -690,16 +691,76 @@ describe("tool argument parsing and validation", () => {
       }),
     ).get("create_file");
 
-    const rawArgs = { path: "/workspace/main.py", code: 'print("hello")' };
+    const repaired = repairToolArguments(
+      "create_file",
+      { content: "export const x = 10;" },
+      { extractedParameters: { filePath: "/etc/passwd" } },
+      createFileSchema,
+    );
+
+    expect(repaired.filePath).toBeUndefined();
+  });
+
+  it("resolves common property aliases (file_path -> filePath, code -> content)", () => {
+    const createFileSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "create_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                content: { type: "string" },
+              },
+              required: ["filePath", "content"],
+            },
+          },
+        ],
+      }),
+    ).get("create_file");
+
+    const rawArgs = { file_path: "/workspace/main.py", code: 'print("hello")' };
     const repaired = repairToolArguments("create_file", rawArgs, undefined, createFileSchema);
 
     expect(repaired).toEqual({
-      path: "/workspace/main.py",
+      file_path: "/workspace/main.py",
       code: 'print("hello")',
       filePath: "/workspace/main.py",
       content: 'print("hello")',
     });
     expect(hasRequiredToolArguments(repaired, createFileSchema)).toBe(true);
+  });
+
+  it("does not alias generic path onto filePath for filesystem tools", () => {
+    const createFileSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "create_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                content: { type: "string" },
+              },
+              required: ["filePath", "content"],
+            },
+          },
+        ],
+      }),
+    ).get("create_file");
+
+    const repaired = repairToolArguments(
+      "create_file",
+      { path: "/etc/passwd", code: "x" },
+      { filePath: "/workspace/secret.ts" },
+      createFileSchema,
+    );
+
+    expect(repaired.filePath).toBeUndefined();
+    expect(repaired.path).toBe("/etc/passwd");
+    expect(hasRequiredToolArguments(repaired, createFileSchema)).toBe(false);
   });
 
   it("rejects invalid/multi-line code text in getIncompleteTextToolCallName", () => {
@@ -1085,7 +1146,7 @@ describe("tool argument parsing and validation", () => {
       expect(repaired).toEqual({
         filePath: "/workspace/test/AutoroutePartHandlerTests.cs",
         startLine: 1,
-        endLine: 500,
+        endLine: 200,
       });
       expect(hasRequiredToolArguments(repaired, readFileSchema)).toBe(true);
     });
@@ -1101,12 +1162,12 @@ describe("tool argument parsing and validation", () => {
       expect(repaired).toEqual({
         filePath: "/workspace/src/AutoroutePartHandler.cs",
         startLine: 1,
-        endLine: 500,
+        endLine: 200,
       });
       expect(hasRequiredToolArguments(repaired, readFileSchema)).toBe(true);
     });
 
-    it("preserves explicit startLine and defaults endLine to startLine + 499 for read_file", () => {
+    it("preserves explicit startLine and defaults endLine to startLine + 199 for read_file", () => {
       const repaired = repairToolArguments(
         "read_file",
         { filePath: "/workspace/src/AutoroutePartHandler.cs", startLine: 50 },
@@ -1117,7 +1178,7 @@ describe("tool argument parsing and validation", () => {
       expect(repaired).toEqual({
         filePath: "/workspace/src/AutoroutePartHandler.cs",
         startLine: 50,
-        endLine: 549,
+        endLine: 249,
       });
     });
 
@@ -1184,7 +1245,7 @@ describe("tool argument parsing and validation", () => {
         AbsolutePath: "/workspace/test/AutoroutePartHandlerTests.cs",
         filePath: "/workspace/test/AutoroutePartHandlerTests.cs",
         StartLine: 1,
-        EndLine: 500,
+        EndLine: 200,
       });
       expect(hasRequiredToolArguments(repaired, viewFileSchema)).toBe(true);
     });

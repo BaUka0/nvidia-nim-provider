@@ -99,6 +99,11 @@ describe("ConfigManager", () => {
       mockStore["fallback.priorityList"] = "not-an-array";
       expect(ConfigManager.getFallbackConfig().priorityList).toEqual([]);
     });
+
+    it("drops unknown catalog ids from fallback.priorityList", () => {
+      mockStore["fallback.priorityList"] = ["moonshotai/kimi-k3", "vendor/not-a-real-model"];
+      expect(ConfigManager.getFallbackConfig().priorityList).toEqual(["moonshotai/kimi-k3"]);
+    });
   });
 
   describe("getNetworkConfig", () => {

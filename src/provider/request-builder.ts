@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import { ConfigManager } from "../shared/config";
-import { calculateSafetyMargin, DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
+import {
+  calculateSafetyMargin,
+  COMPACTION_RECENT_FRACTION,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+} from "../shared/constants";
+import { FetchAttemptBudget } from "../shared/fetch-attempt-budget";
 import {
   convertMessages,
   convertTools,
@@ -10,7 +15,7 @@ import {
   truncateMessagesForContext,
   LegacyPart,
 } from "../messages/converter";
-import { splitMessagesForSummarization, summarizeOldMessages } from "../models/summarizer";
+import { compactConversationHistory } from "../models/summarizer";
 import { getModelAdapter } from "../models/adapters";
 import { createStructuredError } from "../api/errors";
 import { debugLog } from "../shared/logging";
@@ -69,6 +74,45 @@ export class NimRequestBuilder {
     );
   }
 
+  /** Recalculate `max_tokens` after a retry turn is appended; throws if over budget. */
+  public static applyRequestBudget(
+    body: NimChatRequest,
+    options: {
+      tools?: NimTool[];
+      effectiveContextWindow: number;
+      modelMaxOutputTokens: number;
+      requestedMaxTokens: number;
+    },
+  ): NimChatRequest {
+    const sentTools = body.tools ?? options.tools;
+    const payloadInputTokenCount =
+      estimateNimMessagesTokens(body.messages) + (sentTools ? estimateToolsTokens(sentTools) : 0);
+    const maximumInputTokens = Math.max(
+      1,
+      options.effectiveContextWindow - calculateSafetyMargin(options.effectiveContextWindow),
+    );
+    if (payloadInputTokenCount > maximumInputTokens) {
+      throw createStructuredError(
+        "token_limit",
+        `Retry payload exceeds context: ${payloadInputTokenCount} tokens, max: ${maximumInputTokens}`,
+      );
+    }
+
+    const currentMaxTokens =
+      typeof body.max_tokens === "number" && body.max_tokens > 0
+        ? body.max_tokens
+        : options.requestedMaxTokens;
+    return {
+      ...body,
+      max_tokens: this.calculateRequestedMaxTokens({
+        requestedMaxTokens: currentMaxTokens,
+        modelMaxOutputTokens: options.modelMaxOutputTokens,
+        contextWindow: options.effectiveContextWindow,
+        inputTokenCount: payloadInputTokenCount,
+      }),
+    };
+  }
+
   public static hasImageInput(messages: readonly vscode.LanguageModelChatMessage[]): boolean {
     for (const msg of messages) {
       for (const part of msg.content) {
@@ -91,6 +135,7 @@ export class NimRequestBuilder {
     apiKey: string;
     userAgent: string;
     signal?: AbortSignal;
+    fetchAttemptBudget?: FetchAttemptBudget;
   }): Promise<PreparedRequest> {
     const {
       model,
@@ -102,16 +147,15 @@ export class NimRequestBuilder {
       apiKey,
       userAgent,
       signal,
+      fetchAttemptBudget,
     } = options;
 
     const rawInputTokenCount = estimateMessagesTokens(
       messages as readonly { content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
     );
-    const maxInputTokens = model.maxInputTokens;
-    const effectiveMaxInputTokens = Math.max(
-      1,
-      maxInputTokens - calculateSafetyMargin(contextWindow),
-    );
+    const advertisedMaxInput = model.maxInputTokens;
+    const windowBudget = contextWindow - calculateSafetyMargin(contextWindow);
+    const effectiveMaxInputTokens = Math.max(1, Math.min(advertisedMaxInput, windowBudget));
 
     if (rawInputTokenCount > effectiveMaxInputTokens) {
       debugLog(
@@ -147,9 +191,10 @@ export class NimRequestBuilder {
         ? requestProfile.toolTemperature
         : requestProfile.defaultTemperature;
     const configTemperature = generationConfig.temperature;
+    const clampTemperature = (value: number): number => Math.min(2, Math.max(0, value));
     const temperatureVal =
-      typeof userTemperature === "number"
-        ? userTemperature
+      typeof userTemperature === "number" && Number.isFinite(userTemperature)
+        ? clampTemperature(userTemperature)
         : typeof configTemperature === "number"
           ? configTemperature
           : profileTemperature;
@@ -175,7 +220,7 @@ export class NimRequestBuilder {
     let apiTokenCount = estimateNimMessagesTokens(apiMessages);
     let payloadInputTokenCount = apiTokenCount + toolDefinitionTokens;
     const messageTokenBudget = Math.max(1, effectiveMaxInputTokens - toolDefinitionTokens);
-    const recentTokenBudget = Math.floor(messageTokenBudget * 0.4);
+    const recentTokenBudget = Math.floor(messageTokenBudget * COMPACTION_RECENT_FRACTION);
 
     /**
      * Summarise older turns and replace them with a compact summary message.
@@ -185,29 +230,20 @@ export class NimRequestBuilder {
       currentMessages: NimChatMessage[],
       label: string,
     ): Promise<{ messages: NimChatMessage[]; tokenCount: number }> => {
-      const { oldMessages, recentMessages } = splitMessagesForSummarization(
-        currentMessages,
-        recentTokenBudget,
-      );
-      if (oldMessages.length === 0) {
-        return { messages: currentMessages, tokenCount: payloadInputTokenCount };
-      }
-      const summaryMessage = await summarizeOldMessages(
-        oldMessages,
+      const compacted = await compactConversationHistory(currentMessages, {
+        maxRecentTokens: recentTokenBudget,
         apiKey,
         userAgent,
         signal,
-        ConfigManager.getContextConfig().summarizationModel,
-      );
-      const recentSystemMessages = recentMessages.filter((m) => m.role === "system");
-      const recentConversationMessages = recentMessages.filter((m) => m.role !== "system");
-      const compacted = [...recentSystemMessages, summaryMessage, ...recentConversationMessages];
-      const tokenCount = estimateNimMessagesTokens(compacted) + toolDefinitionTokens;
+        summarizationModel: ConfigManager.getContextConfig().summarizationModel,
+        extraTokenCount: toolDefinitionTokens,
+        fetchAttemptBudget,
+      });
       debugLog(
         "contextCompression",
-        `${label}: ${tokenCount} tokens (was ${payloadInputTokenCount}).`,
+        `${label}: ${compacted.tokenCount} tokens (was ${payloadInputTokenCount}).`,
       );
-      return { messages: compacted, tokenCount };
+      return { messages: compacted.messages, tokenCount: compacted.tokenCount };
     };
 
     // --- Preflight compaction: proactive compression before hard limit ---
@@ -350,8 +386,16 @@ export class NimRequestBuilder {
       }
     }
     const stopVal = modelOpts?.stop;
-    if (typeof stopVal === "string" || (Array.isArray(stopVal) && stopVal.length > 0)) {
-      requestBody.stop = stopVal as string | string[];
+    if (typeof stopVal === "string" && stopVal.length > 0 && stopVal.length <= 256) {
+      requestBody.stop = stopVal;
+    } else if (Array.isArray(stopVal) && stopVal.length > 0) {
+      const stops = stopVal
+        .filter((item): item is string => typeof item === "string" && item.length > 0)
+        .slice(0, 8)
+        .map((item) => item.slice(0, 256));
+      if (stops.length > 0) {
+        requestBody.stop = stops;
+      }
     }
 
     if (toolConfig.tools) {

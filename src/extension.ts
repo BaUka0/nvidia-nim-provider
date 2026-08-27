@@ -12,16 +12,31 @@ import {
   SECRET_STORAGE_KEY,
   TOGGLE_DEBUG_LOGGING_COMMAND_ID,
 } from "./shared/constants";
-import { debugLog, getOutputChannel, outputLog } from "./shared/logging";
+import {
+  debugLog,
+  disposeOutputChannel,
+  getOutputChannel,
+  outputLog,
+  setDeveloperDebugLogging,
+} from "./shared/logging";
 import { StatusBarManager } from "./shared/status-bar";
 import { NimChatModelProvider } from "./provider/chat-provider";
 import { registerNimTools } from "./tools/vision";
 import { refreshModelsFromApi, resetRefreshQueue } from "./models/refresh";
 import { NvidiaApiKeyResolver } from "./api/key-resolver";
+import { ConfigManager } from "./shared/config";
+import { isLikelyNvidiaApiKey } from "./shared/api-key-format";
 
 let _provider: NimChatModelProvider | null = null;
 
 async function migrateLanguageModelProviderGroup(apiKey: string): Promise<boolean> {
+  if (vscode.workspace.isTrusted === false) {
+    outputLog(
+      "languageModelGroup",
+      `Skipping automatic language model group migration in an untrusted workspace.`,
+    );
+    return false;
+  }
   try {
     await vscode.commands.executeCommand("lm.migrateLanguageModelsProviderGroup", {
       vendor: PROVIDER_VENDOR,
@@ -101,8 +116,19 @@ function registerCommands(
         _provider?.fireModelInfoChanged();
         return;
       }
-      await context.secrets.store(SECRET_STORAGE_KEY, apiKey.trim());
-      if (await migrateLanguageModelProviderGroup(apiKey.trim())) {
+      const trimmed = apiKey.trim();
+      if (!isLikelyNvidiaApiKey(trimmed)) {
+        const proceed = await vscode.window.showWarningMessage(
+          `This does not look like a NVIDIA NIM API key (expected nvapi-…). Save it anyway?`,
+          { modal: true },
+          "Save",
+        );
+        if (proceed !== "Save") {
+          return;
+        }
+      }
+      await context.secrets.store(SECRET_STORAGE_KEY, trimmed);
+      if (await migrateLanguageModelProviderGroup(trimmed)) {
         await context.globalState.update(MIGRATION_DONE_KEY, true);
       }
       vscode.window.showInformationMessage(`${PROVIDER_DISPLAY_NAME} API key saved.`);
@@ -129,6 +155,7 @@ function registerCommands(
       const next = !current;
       await context.globalState.update(DEBUG_STATE_KEY, next);
       process.env[DEBUG_ENV_VAR] = next ? "1" : "0";
+      setDeveloperDebugLogging(next || ConfigManager.getDeveloperConfig().debugLogging);
       debugLog("toggleDebug", `Debug logging ${next ? "enabled" : "disabled"}.`);
       vscode.window.showInformationMessage(
         `${PROVIDER_DISPLAY_NAME} debug logging ${next ? "enabled" : "disabled"}.`,
@@ -154,11 +181,12 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(statusBar);
 
   // Initialize debug logging
-  const debugEnabled = context.globalState.get<boolean>(DEBUG_STATE_KEY, false);
-  process.env[DEBUG_ENV_VAR] = debugEnabled ? "1" : "0";
+  const debugEnabledFlag = context.globalState.get<boolean>(DEBUG_STATE_KEY, false);
+  process.env[DEBUG_ENV_VAR] = debugEnabledFlag ? "1" : "0";
+  setDeveloperDebugLogging(debugEnabledFlag || ConfigManager.getDeveloperConfig().debugLogging);
   debugLog(
     "activate",
-    `Extension activated. Debug logging ${debugEnabled ? "enabled" : "disabled"}.`,
+    `Extension activated. Debug logging ${debugEnabledFlag ? "enabled" : "disabled"}.`,
   );
 
   // Create and register provider
@@ -185,6 +213,19 @@ export function activate(context: vscode.ExtensionContext) {
       if (e.affectsConfiguration("nvidia-nim.ui.showStatusBarItem")) {
         statusBar.updateVisibility();
       }
+      if (e.affectsConfiguration("nvidia-nim.developer.debugLogging")) {
+        setDeveloperDebugLogging(
+          context.globalState.get<boolean>(DEBUG_STATE_KEY, false) ||
+            ConfigManager.getDeveloperConfig().debugLogging,
+        );
+      }
+      if (
+        e.affectsConfiguration("nvidia-nim.fallback") ||
+        e.affectsConfiguration("nvidia-nim.network") ||
+        e.affectsConfiguration("nvidia-nim.context")
+      ) {
+        _provider?.fireModelInfoChanged({ invalidateModelCache: false });
+      }
     }),
   );
 
@@ -198,14 +239,14 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize stored API key (async, fire-and-forget). The catch keeps the
   // extension host free of unhandled promise rejections on startup races.
   void initializeStoredApiKey(context, ua, statusBar, keyResolver).catch((error) => {
-    outputLog(
-      "init",
-      `Stored API key initialization failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    statusBar.showError(message);
+    outputLog("init", `Stored API key initialization failed: ${message}`);
   });
 }
 
 export function deactivate() {
   _provider = null;
   resetRefreshQueue();
+  disposeOutputChannel();
 }

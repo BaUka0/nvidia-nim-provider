@@ -7,6 +7,7 @@ import {
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
   DEFAULT_MAX_OUTPUT_TOKENS,
+  calculateSafetyMargin,
 } from "../shared/constants";
 import {
   MODEL_LIST,
@@ -70,9 +71,11 @@ export class NvidiaModelDiscoveryService {
   ) {}
 
   private cacheInvalidated = false;
+  private readonly modelsByFingerprint = new Map<string, NormalizedNvidiaModel[]>();
 
   public invalidateCache(): void {
     this.cacheInvalidated = true;
+    this.modelsByFingerprint.clear();
   }
 
   public markCacheFresh(): void {
@@ -96,18 +99,26 @@ export class NvidiaModelDiscoveryService {
     apiKey?: string,
     options: { refreshStaleCache?: boolean } = {},
   ): Promise<NormalizedNvidiaModel[]> {
+    const currentKeyFingerprint = apiKey ? getApiKeyFingerprint(apiKey) : undefined;
+    const memoryCached =
+      currentKeyFingerprint !== undefined
+        ? this.modelsByFingerprint.get(currentKeyFingerprint)
+        : undefined;
+    if (memoryCached && !this.cacheInvalidated) {
+      return memoryCached.filter(isCachedCuratedModel);
+    }
     const cachedModels = this.getNormalizedModels().filter(isCachedCuratedModel);
     const cacheVersion = this.globalState?.get<number>(MODELS_CACHE_VERSION_STATE_KEY);
     const cachedKeyFingerprint = this.globalState?.get<string>(
       MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY,
     );
-    const currentKeyFingerprint = apiKey ? getApiKeyFingerprint(apiKey) : undefined;
     // A cache created before key fingerprints were introduced has no reliable
     // ownership information. Treat it as stale whenever a runtime key is
     // available instead of silently serving models fetched with another key.
     const hasCachedKeyFingerprint =
       typeof cachedKeyFingerprint === "string" && cachedKeyFingerprint.length > 0;
     const keyChanged =
+      memoryCached === undefined &&
       currentKeyFingerprint !== undefined &&
       (!hasCachedKeyFingerprint || currentKeyFingerprint !== cachedKeyFingerprint);
     const cacheVersionStale = cacheVersion !== MODELS_CACHE_VERSION;
@@ -156,6 +167,7 @@ export class NvidiaModelDiscoveryService {
       }
       reportMissingCuratedModels(rawModels);
       const normalized = normalizeNvidiaModels(rawModels);
+      this.modelsByFingerprint.set(getApiKeyFingerprint(apiKey), normalized);
       if (this.globalState) {
         await writeModelCacheAtomically(
           this.globalState,
@@ -223,7 +235,9 @@ export class NvidiaModelDiscoveryService {
         version: "1.0.0",
         maxInputTokens: Math.max(
           1,
-          model.contextWindow - Math.min(model.maxOutputTokens ?? 65536, DEFAULT_MAX_OUTPUT_TOKENS),
+          model.contextWindow -
+            Math.min(model.maxOutputTokens ?? 65536, DEFAULT_MAX_OUTPUT_TOKENS) -
+            calculateSafetyMargin(model.contextWindow),
         ),
         maxOutputTokens: model.maxOutputTokens ?? 65536,
         contextWindow: model.contextWindow,
