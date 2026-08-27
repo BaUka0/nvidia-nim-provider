@@ -5,12 +5,16 @@
 .gemini/**
 .opencode/**
 .qoder/**
+.commandcode/
 .vscode/**
 .vscode-test/**
 .venv/**
 task.md
 FIX_PLAN.md
 *PLAN.md
+*_PLAN.md
+*REPORT.md
+*_REPORT.md
 EXTENSION_SETTINGS_PLAN.md
 AGENTS.md
 agents.md

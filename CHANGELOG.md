@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-08-27
+
+### Added
+
+- **`deepseek-ai/deepseek-v4-pro-0813` Integration (`src/models/catalog.ts`, `src/shared/constants.ts`, `package.json`, `tests/model-capability-matrix.test.ts`).** Added curated catalog support for `deepseek-ai/deepseek-v4-pro-0813` featuring a 1,048,576-token context window, 131,072 max output tokens, native tool calling, and streaming reasoning control via `DeepSeekAdapter` and `chat_template_kwargs` (`thinking: true`, `reasoning_effort: "high"` / `"max"`). Updated configuration schemas in `package.json` for fallback and summarization models, updated the capability test matrix, and bumped `MODELS_CACHE_VERSION=14`.
+
 ## [0.9.0] - 2026-08-26
 
 ### Added

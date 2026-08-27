@@ -18,12 +18,15 @@ coverage/
 # Gemini CLI
 .gemini/
 .qoder/
+.commandcode/
 
 # Local planning docs & agent guidelines (not part of the extension)
 *_PLAN.md
 *PLAN.md
 AGENTS.md
 agents.md
+*REPORT.md
+*_REPORT.md
 
 # Misc
 .DS_Store

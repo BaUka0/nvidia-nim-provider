@@ -71,6 +71,25 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "think",
   },
   {
+    modelId: "deepseek-ai/deepseek-v4-pro-0813",
+    catalog: {
+      displayName: "DeepSeek V4 Pro 0813",
+      contextWindow: 1048576,
+      maxOutputTokens: 131072,
+      supportsTools: true,
+      supportsVision: false,
+    },
+    reasoningModes: ["none", "high", "max"],
+    reasoningCases: deepSeekReasoningCases,
+    reasoningParameterFormat: "chat_template_kwargs",
+    toolCallProtocol: "native-and-text",
+    reasoningRouting: "isolated",
+    responseSanitization: "none",
+    contentOnlyMode: "none",
+    contentOnlyRouting: "text",
+    thinkTag: "think",
+  },
+  {
     modelId: "minimaxai/minimax-m3",
     catalog: {
       displayName: "MiniMax M3",

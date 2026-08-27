@@ -33,6 +33,13 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: false,
   },
+  "deepseek-ai/deepseek-v4-pro-0813": {
+    displayName: "DeepSeek V4 Pro 0813",
+    contextWindow: 1048576,
+    maxOutputTokens: 131072,
+    supportsTools: true,
+    supportsVision: false,
+  },
   "minimaxai/minimax-m3": {
     displayName: "MiniMax M3",
     contextWindow: 1000000,
