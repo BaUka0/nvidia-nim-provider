@@ -19,4 +19,26 @@ describe("isFallbackEligibleError", () => {
       isFallbackEligibleError(new NvidiaApiError("rate_limited", "429"), config, 0, true),
     ).toBe(false);
   });
+
+  it("allows failover for model_unavailable including HTTP 410 Gone", () => {
+    expect(
+      isFallbackEligibleError(
+        new NvidiaApiError("model_unavailable", "gone", { status: 410 }),
+        config,
+        0,
+        false,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not treat invalid_request as fallback-eligible", () => {
+    expect(
+      isFallbackEligibleError(
+        new NvidiaApiError("invalid_request", "bad request", { status: 400 }),
+        config,
+        0,
+        false,
+      ),
+    ).toBe(false);
+  });
 });

@@ -168,6 +168,7 @@ describe("classifyApiError", () => {
   it.each([
     [401, "AUTH_FAILED"],
     [404, "MODEL_UNAVAILABLE"],
+    [410, "MODEL_UNAVAILABLE"],
     [429, "RATE_LIMITED"],
     [529, "RATE_LIMITED"],
     [503, "SERVER_ERROR"],
@@ -178,6 +179,22 @@ describe("classifyApiError", () => {
       operation: "stream",
     }) as Error & { code?: string };
     expect(error.code).toBe(code);
+  });
+
+  it("classifies RFC 7807 Gone bodies as model_unavailable without an HTTP prefix", () => {
+    const error = classifyApiError(new Error("model retired"), {
+      detail:
+        '{"type":"about:blank","title":"Gone","status":410,"detail":"The model has reached its end of life"}',
+      model: "stepfun-ai/step-3.7-flash",
+      operation: "stream",
+    }) as Error & { kind?: string; status?: number };
+    expect(error).toMatchObject({
+      name: "NvidiaApiError",
+      kind: "model_unavailable",
+      code: "MODEL_UNAVAILABLE",
+      status: 410,
+    });
+    expect(error.message).toMatch(/end of life/i);
   });
 });
 
@@ -604,6 +621,36 @@ describe("streamChatCompletion", () => {
     );
     const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
     await expect(gen.next()).rejects.toThrow(/rate limited/i);
+  });
+
+  it("classifies SSE error objects with status 410 as model_unavailable", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"error":{"title":"Gone","status":410,"detail":"The model reached end of life"}}\n\n',
+          ),
+        );
+        controller.close();
+      },
+    });
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: stream,
+      }),
+    );
+    const gen = streamChatCompletion("key", {
+      model: "stepfun-ai/step-3.7-flash",
+      messages: [],
+      stream: true,
+    });
+    await expect(gen.next()).rejects.toMatchObject({
+      name: "NvidiaApiError",
+      kind: "model_unavailable",
+      status: 410,
+    });
   });
 
   it("skips malformed JSON lines", async () => {

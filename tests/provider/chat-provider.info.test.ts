@@ -625,6 +625,46 @@ describe("NimChatModelProvider", () => {
     expect(fetchModels).not.toHaveBeenCalled();
   });
 
+  it("labels Lightning as Unavailable in the Copilot model picker", async () => {
+    const cachedModels = [
+      {
+        id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+        displayName: "Nemotron 3.5 Lightning 30B (Unavailable)",
+        contextWindow: 1000000,
+        maxOutputTokens: 32768,
+        supportsTools: true,
+        supportsVision: false,
+      },
+    ];
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") return cachedModels;
+      if (key === "nvidia-nim.modelsCacheVersion") return MODELS_CACHE_VERSION;
+      if (key === "nvidia-nim.modelsCacheKeyFingerprint") {
+        return getApiKeyFingerprint("configured-key");
+      }
+      return undefined;
+    });
+
+    const infos = await provider.provideLanguageModelChatInformation(
+      makePrepareOptions({
+        silent: true,
+        configuration: { apiKey: "configured-key" },
+      }),
+      makeToken(),
+    );
+
+    expect(infos).toEqual([
+      expect.objectContaining({
+        id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+        name: "Nemotron 3.5 Lightning 30B (Unavailable)",
+        detail: "Unavailable",
+        isUserSelectable: true,
+      }),
+    ]);
+    expect(infos[0].tooltip).toMatch(/overloaded or not serving/i);
+    expect(fetchModels).not.toHaveBeenCalled();
+  });
+
   it("does not refetch a fresh cache on repeated provider-group resolution", async () => {
     const cachedModels = [
       {

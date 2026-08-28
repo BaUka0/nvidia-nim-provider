@@ -1855,8 +1855,9 @@ describe("NimChatModelProvider", () => {
     [429, "Rate limited", "rate_limited"],
     [529, "Overloaded", "rate_limited"],
     [404, "Model unavailable", "model_unavailable"],
+    [410, "Model unavailable", "model_unavailable"],
   ] as const)(
-    "falls back to Nemotron 3.5 Lightning on HTTP %s",
+    "falls back to Nemotron 3 Super 120B on HTTP %s",
     async (status: number, capacityLabel: string, kind: ApiErrorKind) => {
       (secrets.get as jest.Mock).mockResolvedValue("test-key");
       (globalState.get as jest.Mock).mockImplementation((key: string) =>
@@ -1871,10 +1872,10 @@ describe("NimChatModelProvider", () => {
                 supportsVision: true,
               },
               {
-                id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-                displayName: "Nemotron 3.5 Lightning 30B",
+                id: "nvidia/nemotron-3-super-120b-a12b",
+                displayName: "Nemotron 3 Super 120B",
                 contextWindow: 1000000,
-                maxOutputTokens: 32768,
+                maxOutputTokens: 65536,
                 supportsTools: true,
                 supportsVision: false,
               },
@@ -1917,9 +1918,9 @@ describe("NimChatModelProvider", () => {
 
       expect(streamChatCompletion).toHaveBeenCalledTimes(2);
       const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-      expect(fallbackRequest.model).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
+      expect(fallbackRequest.model).toBe("nvidia/nemotron-3-super-120b-a12b");
       expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-        `${capacityLabel} on Kimi k2.6. Falling back to Nemotron 3.5 Lightning 30B.`,
+        `${capacityLabel} on Kimi k2.6. Falling back to Nemotron 3 Super 120B.`,
       );
       expect(progress.report).toHaveBeenCalledWith(
         expect.objectContaining({ value: "Fallback response" }),
@@ -2025,18 +2026,18 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-              displayName: "Nemotron 3.5 Lightning 30B",
+              id: "nvidia/nemotron-3-super-120b-a12b",
+              displayName: "Nemotron 3 Super 120B",
               contextWindow: 1000000,
-              maxOutputTokens: 32768,
+              maxOutputTokens: 65536,
               supportsTools: true,
               supportsVision: false,
             },
             {
-              id: "minimaxai/minimax-m3",
-              displayName: "MiniMax M3",
-              contextWindow: 1000000,
-              maxOutputTokens: 100000,
+              id: "meta/muse-glimmer-30b",
+              displayName: "Muse Glimmer",
+              contextWindow: 131072,
+              maxOutputTokens: 32768,
               supportsTools: true,
               supportsVision: true,
             },
@@ -2058,7 +2059,7 @@ describe("NimChatModelProvider", () => {
       throw modelUnavailableError;
     };
     const fallbackStream = async function* () {
-      yield { choices: [{ delta: { content: "MiniMax vision fallback response" } }] };
+      yield { choices: [{ delta: { content: "Muse Glimmer vision fallback response" } }] };
     };
     (streamChatCompletion as jest.Mock)
       .mockImplementationOnce(() => failingStream())
@@ -2092,13 +2093,13 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(fallbackRequest.model).toBe("minimaxai/minimax-m3");
+    expect(fallbackRequest.model).toBe("meta/muse-glimmer-30b");
     expect(progress.report).toHaveBeenCalledWith(
-      expect.objectContaining({ value: "MiniMax vision fallback response" }),
+      expect.objectContaining({ value: "Muse Glimmer vision fallback response" }),
     );
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({
-        value: expect.stringContaining("MiniMax M3"),
+        value: expect.stringContaining("Muse Glimmer"),
       }),
     );
   });
@@ -2167,7 +2168,6 @@ describe("NimChatModelProvider", () => {
     ["moonshotai/kimi-k3", true],
     ["nvidia/nemotron-3-ultra-550b-a55b", false],
     ["nvidia/nemotron-3.5-lightning-30b-a3b", false],
-    ["stepfun-ai/step-3.7-flash", true],
     ["thinkingmachines/inkling", true],
     ["meta/muse-glimmer-30b", true],
   ] as const)("enforces the curated vision capability for %s", async (modelId, supportsVision) => {
@@ -2260,7 +2260,7 @@ describe("NimChatModelProvider", () => {
     );
   });
 
-  it("does not fall back on rate limit when Nemotron 3.5 Lightning is unavailable", async () => {
+  it("does not fall back on rate limit when the default text fallback is unavailable", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (globalState.get as jest.Mock).mockImplementation((key: string) =>
       key === "nvidia-nim.models"

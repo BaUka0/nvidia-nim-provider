@@ -22,7 +22,7 @@ import { classifyApiError, isRetryableApiStatus, NvidiaApiError } from "./errors
 /**
  * Determine whether an HTTP status code is safe to retry.
  * Retries on 429 (rate limit), 529 (overloaded), 502, 503, 504 (server errors).
- * Never retries on 400, 401, 403, 404, 422 (client errors).
+ * Never retries on 400, 401, 403, 404, 410, 422 (client errors).
  */
 function isRetryableHttpError(status: number): boolean {
   return isRetryableApiStatus(status);
@@ -72,6 +72,27 @@ function createAbortError(): Error {
   return error;
 }
 
+function numericHttpStatus(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 100 && value <= 599) {
+    return Math.trunc(value);
+  }
+  if (typeof value === "string" && /^\d{3}$/.test(value)) {
+    const parsed = Number(value);
+    if (parsed >= 100 && parsed <= 599) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function sseErrorStatus(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+  const record = error as { status?: unknown; code?: unknown };
+  return numericHttpStatus(record.status) ?? numericHttpStatus(record.code);
+}
+
 function parseSseDataLine(data: string, model: string): NimStreamResponse | undefined {
   try {
     const parsed = JSON.parse(data) as NimStreamResponse & { error?: unknown };
@@ -80,7 +101,13 @@ function parseSseDataLine(data: string, model: string): NimStreamResponse | unde
         typeof parsed.error === "string"
           ? parsed.error
           : JSON.stringify(parsed.error).slice(0, MAX_HTTP_ERROR_DETAIL_CHARS);
-      throw classifyApiError(new Error(detail), { operation: "stream", model });
+      const status = sseErrorStatus(parsed.error);
+      throw classifyApiError(new Error(detail), {
+        operation: "stream",
+        model,
+        detail,
+        ...(status !== undefined ? { status } : {}),
+      });
     }
     return parsed;
   } catch (error) {

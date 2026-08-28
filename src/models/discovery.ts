@@ -226,11 +226,15 @@ export class NvidiaModelDiscoveryService {
         };
       }
 
+      const pickerName = model.displayName ?? model.id;
+      const unavailable = MODEL_LIST[model.id]?.pickerStatus === "unavailable";
       info.push({
         id: model.id,
-        name: model.displayName ?? model.id,
-        detail: PROVIDER_DISPLAY_NAME,
-        tooltip: `${PROVIDER_DISPLAY_NAME} ${model.displayName ?? model.id}`,
+        name: pickerName,
+        detail: unavailable ? "Unavailable" : PROVIDER_DISPLAY_NAME,
+        tooltip: unavailable
+          ? `${pickerName}. NVIDIA NIM is currently overloaded or not serving this model. Choose another model or retry later.`
+          : `${PROVIDER_DISPLAY_NAME} ${pickerName}`,
         family: PROVIDER_VENDOR,
         version: "1.0.0",
         maxInputTokens: Math.max(

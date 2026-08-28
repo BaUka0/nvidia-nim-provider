@@ -239,10 +239,10 @@ describe("summarizeOldMessages", () => {
       "test-key",
       "test-agent",
       undefined,
-      "stepfun-ai/step-3.7-flash",
+      "meta/muse-glimmer-30b",
     );
 
     const request = completionMock.mock.calls.at(-1)?.[1];
-    expect(request.model).toBe("stepfun-ai/step-3.7-flash");
+    expect(request.model).toBe("meta/muse-glimmer-30b");
   });
 });

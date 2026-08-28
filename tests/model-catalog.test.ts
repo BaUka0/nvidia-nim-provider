@@ -97,7 +97,7 @@ describe("normalizeNvidiaModels", () => {
     expect(normalizeNvidiaModels(raw)).toEqual([
       {
         id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-        displayName: "Nemotron 3.5 Lightning 30B",
+        displayName: "Nemotron 3.5 Lightning 30B (Unavailable)",
         contextWindow: 1000000,
         maxOutputTokens: 32768,
         supportsTools: true,
@@ -126,15 +126,15 @@ describe("normalizeNvidiaModels", () => {
   it("prefers the override display name over the API name", () => {
     const raw: NvidiaModelSummary[] = [
       {
-        id: "stepfun-ai/step-3.7-flash",
-        name: "API Supplied Step 3.7",
+        id: "meta/muse-glimmer-30b",
+        name: "API Supplied Muse",
       },
     ];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
-        id: "stepfun-ai/step-3.7-flash",
-        displayName: "Step 3.7 Flash",
+        id: "meta/muse-glimmer-30b",
+        displayName: "Muse Glimmer",
       }),
     ]);
   });
@@ -185,9 +185,17 @@ describe("normalizeNvidiaModels", () => {
 });
 
 describe("getFallbackModel", () => {
-  const lightning = {
+  const super120 = {
     id: FALLBACK_MODEL_ID,
-    displayName: "Nemotron 3.5 Lightning 30B",
+    displayName: "Nemotron 3 Super 120B",
+    contextWindow: 1000000,
+    maxOutputTokens: 65536,
+    supportsTools: true,
+    supportsVision: false,
+  };
+  const lightning = {
+    id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+    displayName: "Nemotron 3.5 Lightning 30B (Unavailable)",
     contextWindow: 1000000,
     maxOutputTokens: 32768,
     supportsTools: true,
@@ -202,18 +210,18 @@ describe("getFallbackModel", () => {
     supportsVision: true,
   };
   const minimax = {
-    id: FALLBACK_VISION_MODEL_ID,
+    id: "minimaxai/minimax-m3",
     displayName: "MiniMax M3",
     contextWindow: 1000000,
     maxOutputTokens: 100000,
     supportsTools: true,
     supportsVision: true,
   };
-  const stepfun = {
-    id: "stepfun-ai/step-3.7-flash",
-    displayName: "Step 3.7 Flash",
-    contextWindow: 262144,
-    maxOutputTokens: 262144,
+  const glimmer = {
+    id: FALLBACK_VISION_MODEL_ID,
+    displayName: "Muse Glimmer",
+    contextWindow: 131072,
+    maxOutputTokens: 32768,
     supportsTools: true,
     supportsVision: true,
   };
@@ -226,13 +234,13 @@ describe("getFallbackModel", () => {
     supportsVision: false,
   };
 
-  it("selects Nemotron 3.5 Lightning as the default text fallback", () => {
-    expect(FALLBACK_MODEL_ID).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
-    expect(getFallbackModel(kimi.id, [kimi, lightning, minimax])).toEqual(lightning);
+  it("selects Nemotron 3 Super 120B as the default text fallback", () => {
+    expect(FALLBACK_MODEL_ID).toBe("nvidia/nemotron-3-super-120b-a12b");
+    expect(getFallbackModel(kimi.id, [kimi, lightning, super120, minimax])).toEqual(super120);
   });
 
-  it("does not fall back when the current model is already Lightning", () => {
-    expect(getFallbackModel(lightning.id, [kimi, lightning, minimax])).toBeUndefined();
+  it("does not fall back when the current model is already Super 120B", () => {
+    expect(getFallbackModel(super120.id, [kimi, lightning, super120, minimax])).toBeUndefined();
   });
 
   it("supports string fallback argument for backward compatibility", () => {
@@ -244,9 +252,9 @@ describe("getFallbackModel", () => {
   describe("priority list fallback (requiresVision: false)", () => {
     it("walks the priority list in order before the configured single model", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, flash, lightning, minimax], {
+        getFallbackModel(kimi.id, [kimi, flash, lightning, super120, minimax], {
           configuredFallbackModelId: FALLBACK_MODEL_ID,
-          priorityList: ["deepseek-ai/deepseek-v4-flash-0731", "stepfun-ai/step-3.7-flash"],
+          priorityList: ["deepseek-ai/deepseek-v4-flash-0731", "meta/muse-glimmer-30b"],
         }),
       ).toEqual(flash);
     });
@@ -262,11 +270,11 @@ describe("getFallbackModel", () => {
 
     it("skips unknown entries and keeps walking the chain", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, lightning], {
+        getFallbackModel(kimi.id, [kimi, super120], {
           priorityList: ["vendor/does-not-exist"],
           triedModelIds: [],
         }),
-      ).toEqual(lightning);
+      ).toEqual(super120);
     });
 
     it("returns undefined when the whole chain is exhausted", () => {
@@ -279,40 +287,40 @@ describe("getFallbackModel", () => {
   });
 
   describe("Vision-aware fallback (requiresVision: true)", () => {
-    it("selects MiniMax M3 by default when requiresVision is true", () => {
-      expect(FALLBACK_VISION_MODEL_ID).toBe("minimaxai/minimax-m3");
+    it("selects Muse Glimmer by default when requiresVision is true", () => {
+      expect(FALLBACK_VISION_MODEL_ID).toBe("meta/muse-glimmer-30b");
       expect(
-        getFallbackModel(kimi.id, [kimi, lightning, minimax, stepfun], {
+        getFallbackModel(kimi.id, [kimi, lightning, minimax, glimmer], {
           requiresVision: true,
         }),
-      ).toEqual(minimax);
+      ).toEqual(glimmer);
     });
 
     it("uses configured fallback.model if it already supports vision", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, lightning, minimax, stepfun], {
-          configuredFallbackModelId: "stepfun-ai/step-3.7-flash",
+        getFallbackModel(lightning.id, [kimi, lightning, minimax, glimmer], {
+          configuredFallbackModelId: "moonshotai/kimi-k3",
           requiresVision: true,
         }),
-      ).toEqual(stepfun);
+      ).toEqual(kimi);
     });
 
     it("uses configured visionModel when fallback.model is text-only", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, lightning, minimax, stepfun], {
+        getFallbackModel(kimi.id, [kimi, lightning, minimax, glimmer], {
           configuredFallbackModelId: "nvidia/nemotron-3.5-lightning-30b-a3b",
-          configuredVisionFallbackModelId: "stepfun-ai/step-3.7-flash",
+          configuredVisionFallbackModelId: "meta/muse-glimmer-30b",
           requiresVision: true,
         }),
-      ).toEqual(stepfun);
+      ).toEqual(glimmer);
     });
 
     it("selects alternative vision model when the failing model is the vision fallback model", () => {
       expect(
-        getFallbackModel(minimax.id, [minimax, lightning, stepfun], {
+        getFallbackModel(glimmer.id, [minimax, lightning, glimmer], {
           requiresVision: true,
         }),
-      ).toEqual(stepfun);
+      ).toEqual(minimax);
     });
 
     it("returns undefined if no vision models are available in the catalog", () => {

@@ -20,6 +20,8 @@ export interface NvidiaModelCatalogEntry {
   maxOutputTokens: number;
   supportsTools: boolean;
   supportsVision: boolean;
+  /** Surfaced in the Copilot model picker as a subtitle/tooltip. */
+  pickerStatus?: "unavailable";
 }
 
 const DEFAULT_CONTEXT_WINDOW = 131072;
@@ -69,18 +71,12 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsVision: false,
   },
   "nvidia/nemotron-3.5-lightning-30b-a3b": {
-    displayName: "Nemotron 3.5 Lightning 30B",
+    displayName: "Nemotron 3.5 Lightning 30B (Unavailable)",
     contextWindow: 1000000,
     maxOutputTokens: 32768,
     supportsTools: true,
     supportsVision: false,
-  },
-  "stepfun-ai/step-3.7-flash": {
-    displayName: "Step 3.7 Flash",
-    contextWindow: 262144,
-    maxOutputTokens: 262144,
-    supportsTools: true,
-    supportsVision: true,
+    pickerStatus: "unavailable",
   },
   "meta/muse-glimmer-30b": {
     displayName: "Muse Glimmer",
@@ -94,8 +90,8 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
 /** @deprecated Alias for MODEL_LIST */
 export const ELITE_MODELS_WHITELIST = MODEL_LIST;
 
-export const FALLBACK_MODEL_ID = "nvidia/nemotron-3.5-lightning-30b-a3b";
-export const FALLBACK_VISION_MODEL_ID = "minimaxai/minimax-m3";
+export const FALLBACK_MODEL_ID = "nvidia/nemotron-3-super-120b-a12b";
+export const FALLBACK_VISION_MODEL_ID = "meta/muse-glimmer-30b";
 
 export interface FallbackModelSelectionOptions {
   configuredFallbackModelId?: string;

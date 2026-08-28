@@ -211,6 +211,19 @@ export function createStructuredError(
   return new NvidiaApiError(kind, message, context);
 }
 
+function parseHttpStatusFromText(text: string): number | undefined {
+  const httpMatch = text.match(/\bHTTP\s+(\d{3})\b/i);
+  if (httpMatch) {
+    return Number(httpMatch[1]);
+  }
+  // RFC 7807 problem+json: {"title":"Gone","status":410,"detail":"..."}
+  const rfcMatch = text.match(/"status"\s*:\s*(\d{3})/);
+  if (rfcMatch) {
+    return Number(rfcMatch[1]);
+  }
+  return undefined;
+}
+
 function getErrorStatus(error: unknown, context: ApiErrorContext): number | undefined {
   if (context.status !== undefined) {
     return context.status;
@@ -222,9 +235,15 @@ function getErrorStatus(error: unknown, context: ApiErrorContext): number | unde
     }
   }
   if (error instanceof Error) {
-    const match = error.message.match(/\bHTTP\s+(\d{3})\b/i);
-    if (match) {
-      return Number(match[1]);
+    const fromMessage = parseHttpStatusFromText(error.message);
+    if (fromMessage !== undefined) {
+      return fromMessage;
+    }
+  }
+  if (typeof context.detail === "string" && context.detail.length > 0) {
+    const fromDetail = parseHttpStatusFromText(context.detail);
+    if (fromDetail !== undefined) {
+      return fromDetail;
     }
   }
   return undefined;
@@ -241,7 +260,7 @@ function classifyKind(error: unknown, status: number | undefined): ApiErrorKind 
   if (status === 429 || status === 529) {
     return "rate_limited";
   }
-  if (status === 404) {
+  if (status === 404 || status === 410) {
     return "model_unavailable";
   }
   if (status === 408 || status === 504) {
@@ -284,6 +303,10 @@ function buildClassifiedMessage(
     cause = "Authentication failed. Your API key may be invalid or expired.";
   } else if (kind === "rate_limited") {
     cause = context.status === 529 ? "Service temporarily overloaded." : "Rate limited.";
+  } else if (kind === "model_unavailable" && context.status === 410) {
+    cause = context.model
+      ? `NVIDIA NIM model "${context.model}" has reached end of life and is no longer available.`
+      : "The NVIDIA NIM model has reached end of life and is no longer available.";
   } else if (kind === "model_unavailable" && context.model) {
     cause = `NVIDIA NIM model "${context.model}" is not available for this API key or endpoint.`;
   } else if (kind === "server_error") {

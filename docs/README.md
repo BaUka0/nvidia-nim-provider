@@ -103,24 +103,23 @@ NVIDIA NIM hosts a diverse range of specialized models. Here is how to pick the 
 | **DeepSeek V4 Flash 0731** | `DeepSeek V4 Flash 0731` | **52** | **1,048,576** tokens | 131,072 | `None`, `High`, `Max` | ❌ No | Hard algorithmic challenges, complex architectural refactors, deep math |
 | **MiniMax M3** | `MiniMax M3` | **45** | **1,000,000** tokens | 100,000 | `None`, `On`, `Adaptive` | ✅ **Yes** | Multimodal coding, screenshot debugging, full-stack web UI design |
 | **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **38** | **1,000,000** tokens | 65,536 | `None`, `Medium`, `High` | ❌ No | Heavy multi-file reasoning, high-stakes system design, enterprise documentation |
-| **Muse Glimmer** | `Muse Glimmer` | **35** | **131,072** tokens | 32,768 | `None` to `XHigh` | ✅ **Yes** | Front-end UI generation, visual UX analysis |
-| **Step 3.7 Flash** | `Step 3.7 Flash` | **31** | **262,144** tokens | 262,144 | `Always On` | ✅ **Yes** | Rapid pair programming, visual inspections, interactive live coding |
-| **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **26** | **1,000,000** tokens | 65,536 | `None`, `Low`, `High` | ❌ No | Workhorse model for everyday coding, refactoring, and agentic workflows |
-| **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **24** | **1,000,000** tokens | 32,768 | `None`, `Medium`, `High`, `XHigh` | ❌ No | Lightning-fast responses, autonomous Copilot Agent file edits, summarization |
+| **Muse Glimmer** | `Muse Glimmer` | **35** | **131,072** tokens | 32,768 | `None` to `XHigh` | ✅ **Yes** | Front-end UI generation, visual UX analysis; default vision fallback |
+| **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **26** | **1,000,000** tokens | 65,536 | `None`, `Low`, `High` | ❌ No | Workhorse model for everyday coding; default text fallback and summarizer |
+| **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B (Unavailable)` | **24** | **1,000,000** tokens | 32,768 | `None`, `Medium`, `High`, `XHigh` | ❌ No | Still returned by NVIDIA `/v1/models`; picker marks it Unavailable because the endpoint is currently overloaded |
 
 ---
 
 ### Detailed Model Breakdown & Best Use Cases
 
-#### 1. Nemotron 3.5 Lightning 30B (The Fast Agent ⚡)
-- **Why use it:** It is blazing fast and has an enormous 1-million token context window.
-- **Best for:** Everyday coding, writing unit tests, explaining functions, and powering Copilot Agent mode when editing multiple workspace files.
-- **Default Role:** Serves as the default text fallback model and summarization model.
-
-#### 2. Nemotron 3 Super 120B (The Daily Workhorse 🛠️)
+#### 1. Nemotron 3 Super 120B (The Daily Workhorse)
 - **Why use it:** High-efficiency MoE reasoning model with a 1-million token context and up to 65,536 output tokens.
 - **Best for:** End-to-end refactoring, test suite generation, structured tool calling, and sustained everyday development tasks.
+- **Default Role:** Serves as the default text fallback model and summarization model.
 - **Reasoning:** Supports `None` (standard), `Low` (quick reasoning pass), and `High` (thorough verification).
+
+#### 2. Nemotron 3.5 Lightning 30B (Currently Unavailable)
+- **Why the picker says Unavailable:** The model is still listed on NVIDIA NIM `/v1/models`, but chat completions are often overloaded or failing. The Copilot picker shows `(Unavailable)` so you can tell it apart from a healthy model. You can still select it to retry.
+- **Best for:** Fast agentic turns when the endpoint is healthy again.
 
 #### 3. DeepSeek V4 Flash 0731 (The Deep Thinker 🧠)
 - **Why use it:** Exceptional reasoning and algorithmic precision.
@@ -130,14 +129,14 @@ NVIDIA NIM hosts a diverse range of specialized models. Here is how to pick the 
 #### 4. MiniMax M3 (The Multimodal Powerhouse 🖼️)
 - **Why use it:** Features a huge 1,000,000-token context window combined with native Vision capabilities.
 - **Best for:** Pasting UI screenshots to generate React/Tailwind/Vue components, inspecting architecture diagrams, reading PDF graphs, and visual bug fixing.
-- **Default Role:** Serves as the default Vision fallback model.
+- **Vision fallback:** Image-containing requests fail over to Muse Glimmer by default. MiniMax remains in the picker.
 
 ---
 
 ## 🧠 How Deep Reasoning (Thinking) Works
 
 ### Collapsible Thinking Blocks
-Many modern models (like DeepSeek V4, Nemotron 3.5, and Step 3.7) generate a internal stream of logical thought before producing the final code or answer.
+Many modern models (like DeepSeek V4, Nemotron Super, and Kimi K3) generate a internal stream of logical thought before producing the final code or answer.
 
 - **Clean UI:** The extension filters out `<thought>`, `<think>`, or `[THINK]` tags and renders them using VS Code's native `LanguageModelThinkingPart`.
 - In Copilot Chat, you will see a collapsible **Thinking...** bar. You can click to expand it and review the model's step-by-step thought process, or leave it collapsed to focus on the code.
@@ -153,11 +152,11 @@ You can control how deeply models think in two ways:
 ## 🛡️ Smart Failover Engine (Zero Downtime)
 
 ### How Failover Works (Turn-Level Routing)
-In Cloud AI inference, APIs can occasionally return a temporary rate limit (`HTTP 429`), server overload (`529`), a decommissioned model (`404`), an empty stream, or a network timeout. 
+In Cloud AI inference, APIs can occasionally return a temporary rate limit (`HTTP 429`), server overload (`529`), a decommissioned model (`404` / `410 Gone`), an empty stream, or a network timeout. 
 
 Instead of showing an ugly error message and ruining your workflow, **NVIDIA NIM Agent** automatically executes a **Single-Turn Failover**:
 1. When a failure occurs, the extension catches the error.
-2. It immediately re-routes the exact same prompt to a reliable backup model (default: **Nemotron 3.5 Lightning 30B**).
+2. It immediately re-routes the exact same prompt to a reliable backup model (default: **Nemotron 3 Super 120B**).
 3. The backup model generates the answer without making you retype or resend your prompt.
 4. **Automatic Restoration:** On your very next turn, the extension automatically switches back to your preferred primary model.
 
@@ -166,27 +165,27 @@ flowchart TD
     A[User sends prompt in Copilot Chat] --> B{Primary Model Call}
     B -- Success 200 OK --> C[Stream Response to User]
     B -- Failure 429 / 404 / Timeout --> D{Check Request Type}
-    D -- Contains Images? Yes --> E[Route turn to Vision Backup: MiniMax M3]
-    D -- Text Only? No --> F[Route turn to Text Backup: Nemotron Lightning]
+    D -- Contains Images? Yes --> E[Route turn to Vision Backup: Muse Glimmer]
+    D -- Text Only? No --> F[Route turn to Text Backup: Nemotron Super 120B]
     E --> G[Stream Response with Fallback Badge]
     F --> G
     G --> H[Next Turn: Restores Primary Model]
 ```
 
 ### Text vs. Vision Multimodal Failover
-- If your request is **text-only**, failover routes to your configured `fallback.model` (`Nemotron 3.5 Lightning 30B`).
-- If your request **contains images/screenshots**, text-only models would reject it with an error. The extension automatically detects image parts and routes the failover to `fallback.visionModel` (`MiniMax M3`).
+- If your request is **text-only**, failover routes to your configured `fallback.model` (`Nemotron 3 Super 120B`).
+- If your request **contains images/screenshots**, text-only models would reject it with an error. The extension automatically detects image parts and routes the failover to `fallback.visionModel` (`Muse Glimmer`).
 
 ### Fallback Priority List
 Set `nvidia-nim.fallback.priorityList` to an ordered list of model IDs (editable in VS Code Settings) to try *before* the single text/vision fallbacks. On each failover step the next healthy candidate is picked; unknown, unavailable, and already-tried models are skipped. Example: `["moonshotai/kimi-k3", "minimaxai/minimax-m3"]` tries Kimi K3 first, then MiniMax M3, and only then the regular fallbacks. If every candidate fails, the error message lists the full tried chain (`Tried chain: kimi-k3 -> minimax-m3`) with the last underlying error.
 
 ### Collision Protection
-If you are already chatting with the backup model (e.g. `MiniMax M3`) and *it* encounters a rate limit, the collision protection engine detects the conflict and automatically routes to the next best available model in the whitelist (such as `Step 3.7 Flash` or `Muse Glimmer`).
+If you are already chatting with the backup model (e.g. `Muse Glimmer`) and *it* encounters a rate limit, the collision protection engine detects the conflict and automatically routes to the next best available vision model in the whitelist (such as `Kimi K3` or `MiniMax M3`).
 
 ### In-Chat Notice Banners
 When a failover occurs, the extension prints a clean badge at the top of the response:
 ```markdown
-> ⚡ **NVIDIA NIM Fallback:** Request rate-limited on *deepseek-ai/deepseek-v4-flash-0731*. Response generated by *nvidia/nemotron-3.5-lightning-30b-a3b*.
+> ⚡ **NVIDIA NIM Fallback:** Request rate-limited on *deepseek-ai/deepseek-v4-flash-0731*. Response generated by *nvidia/nemotron-3-super-120b-a12b*.
 ```
 *(You can disable this badge anytime with `"nvidia-nim.fallback.showNoticeInChat": false`).*
 
@@ -227,7 +226,7 @@ In extended coding sessions, chat history, system instructions, and file content
 
 ### Decoupled Background Summarization
 - When conversation length approaches capacity, the extension automatically compacts older conversation turns into a dense summary.
-- **Decoupled:** Compaction runs through a dedicated, fast model (`context.summarizationModel`, default: `Nemotron 3.5 Lightning 30B`). Your active primary model configuration is never disturbed.
+- **Decoupled:** Compaction runs through a dedicated model (`context.summarizationModel`, default: `Nemotron 3 Super 120B`). Your active primary model configuration is never disturbed.
 
 ### Safety Margin Buffer
 Because tokenizers (like Byte-Pair Encoding) can produce slight estimation differences between VS Code and NVIDIA NIM servers, the extension reserves a safety margin (default: `1.0%` of context window, configurable via `context.safetyMarginPercent`) to ensure you never hit off-by-one overflow errors.
@@ -245,11 +244,11 @@ Here is the complete, exhaustive documentation for every configuration key avail
 | Setting Key | Type | Default | Description & Real-World Use Case |
 | :--- | :---: | :---: | :--- |
 | `nvidia-nim.fallback.enabled` | `boolean` | `true` | **Master Failover Toggle.** If `true`, errors trigger single-turn backup routing. If `false`, errors are surfaced immediately to the user. |
-| `nvidia-nim.fallback.model` | `string` | `"nvidia/nemotron-3.5-lightning-30b-a3b"` | **Primary Text Backup Model.** ID of the model used for text requests when the active model fails. |
-| `nvidia-nim.fallback.visionModel` | `string` | `"minimaxai/minimax-m3"` | **Vision Backup Model.** ID of the vision-capable model used when an image request fails. |
+| `nvidia-nim.fallback.model` | `string` | `"nvidia/nemotron-3-super-120b-a12b"` | **Primary Text Backup Model.** ID of the model used for text requests when the active model fails. |
+| `nvidia-nim.fallback.visionModel` | `string` | `"meta/muse-glimmer-30b"` | **Vision Backup Model.** ID of the vision-capable model used when an image request fails. |
 | `nvidia-nim.fallback.priorityList` | `string[]` | `[]` | **Ordered Failover Chain.** Models tried one by one (top to bottom) on rate limit / outage / empty response / timeout, before the configured text and vision fallbacks. Unavailable and already-tried models are skipped; if the whole chain fails, the error reports the full tried chain. |
 | `nvidia-nim.fallback.onRateLimit` | `boolean` | `true` | **Failover on 429/529.** Trigger failover if NVIDIA returns rate limit or server overloaded status. |
-| `nvidia-nim.fallback.onModelUnavailable` | `boolean` | `true` | **Failover on 404.** Trigger failover if a model endpoint is temporarily down or decommissioned. |
+| `nvidia-nim.fallback.onModelUnavailable` | `boolean` | `true` | **Failover on 404 / 410.** Trigger failover if a model endpoint is down, overloaded for this key, or decommissioned (HTTP Gone). |
 | `nvidia-nim.fallback.onEmptyStream` | `boolean` | `true` | **Failover on Empty Output.** Trigger failover if a model emits zero text chunks. |
 | `nvidia-nim.fallback.onTimeout` | `boolean` | `true` | **Failover on Timeout.** Trigger failover if a stream hangs longer than `streamIdleTimeout`. |
 | `nvidia-nim.fallback.firstTokenTimeoutSeconds` | `number \| null` | `null` | **TTFT Timeout (5–120s).** Max seconds to wait for the very first token. If exceeded, failover triggers immediately. Default `null` uses stream timeout. |
@@ -307,7 +306,7 @@ Here is the complete, exhaustive documentation for every configuration key avail
 | Setting Key | Type | Default | Range | Description |
 | :--- | :---: | :---: | :---: | :--- |
 | `nvidia-nim.context.autoCompactOnOverflow` | `boolean` | `true` | — | Automatically summarizes older dialogue turns when context is nearly full. |
-| `nvidia-nim.context.summarizationModel` | `string` | `"nvidia/nemotron-3.5-lightning-30b-a3b"` | — | Model ID used to perform background history compaction. |
+| `nvidia-nim.context.summarizationModel` | `string` | `"nvidia/nemotron-3-super-120b-a12b"` | — | Model ID used to perform background history compaction. |
 | `nvidia-nim.context.safetyMarginPercent` | `number` | `1.0` | `0.0` .. `10.0` | Context percentage reserved as safety buffer against tokenizer variance. |
 
 ---
@@ -328,8 +327,8 @@ Here is the complete, exhaustive documentation for every configuration key avail
 ```json
 {
   "nvidia-nim.fallback.enabled": true,
-  "nvidia-nim.fallback.model": "nvidia/nemotron-3.5-lightning-30b-a3b",
-  "nvidia-nim.fallback.visionModel": "minimaxai/minimax-m3",
+  "nvidia-nim.fallback.model": "nvidia/nemotron-3-super-120b-a12b",
+  "nvidia-nim.fallback.visionModel": "meta/muse-glimmer-30b",
   "nvidia-nim.network.streamIdleTimeout": 120,
   "nvidia-nim.tools.autoRepairArguments": true,
   "nvidia-nim.tools.suppressDuplicateReads": true,
@@ -392,9 +391,9 @@ If an unexpected error occurs, inspecting the debug logs takes 5 seconds:
 - **Cause:** Your API key was mistyped, expired, or has no remaining credits.
 - **Fix:** Go to [build.nvidia.com](https://build.nvidia.com), generate a fresh API key, and run `NVIDIA NIM: Manage NVIDIA NIM API Key` in VS Code to save it.
 
-#### 2. `HTTP 404 Not Found` / `Function Not Found`
-- **Cause:** The selected model endpoint has been decommissioned or updated by NVIDIA (e.g. `moonshotai/kimi-k2.6`).
-- **Fix:** If Smart Failover is enabled (`"nvidia-nim.fallback.enabled": true`), the extension handles this automatically. Otherwise, switch to `DeepSeek V4`, `Nemotron 3.5 Lightning`, or `MiniMax M3`.
+#### 2. `HTTP 404 Not Found` / `HTTP 410 Gone`
+- **Cause:** The selected model endpoint has been decommissioned (`410 Gone`) or is not available for this API key (`404`).
+- **Fix:** If Smart Failover is enabled (`"nvidia-nim.fallback.enabled": true`), the extension handles this automatically. Otherwise, switch to `Nemotron 3 Super 120B`, `DeepSeek V4`, or `Muse Glimmer`.
 
 #### 3. `HTTP 429 Too Many Requests` / `529 Overloaded`
 - **Cause:** NVIDIA NIM rate limit reached on your free tier key.
