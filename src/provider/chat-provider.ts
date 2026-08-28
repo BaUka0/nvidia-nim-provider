@@ -56,7 +56,9 @@ import { injectHistoryLoopBreaker, LOOP_BREAKER_MARKER } from "./loop-breaker";
 import { buildOverflowRetryRequest, notifyOverflowRetry } from "./overflow-compactor";
 import { appendChatMessage, cloneNimChatRequest } from "./request-snapshot";
 import {
+  CONTENT_FILTER_NOTICE,
   NimStreamUsage,
+  OUTPUT_TRUNCATED_NOTICE,
   REPETITION_STOP_NOTICE,
   runStreamAttempt,
   StreamAttemptResult,
@@ -811,22 +813,30 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           !result.emittedToolCall &&
           result.reportedVisibleContent &&
           toolsEnabled &&
-          result.lastVisibleText.trim().endsWith(":") &&
+          result.lastVisibleText.trimEnd().endsWith(":") &&
           (result.lastFinishReason === "stop" ||
             result.lastFinishReason === null ||
             result.lastFinishReason === undefined);
+        const isTruncatedLength =
+          result.lastFinishReason === "length" && !result.sawToolCall && !result.emittedToolCall;
+        const autoContinueOnLoop = ConfigManager.getGenerationConfig().autoContinueOnLoop;
         const willRetryRepetitionLoop =
-          isRepetitionLoop &&
-          ConfigManager.getGenerationConfig().autoContinueOnLoop &&
-          !hasRetriedRepetitionLoop &&
-          attempt === 0;
+          isRepetitionLoop && autoContinueOnLoop && !hasRetriedRepetitionLoop && attempt === 0;
         const willRetryHangingColon =
           !isRepetitionLoop &&
           isHangingColon &&
-          ConfigManager.getGenerationConfig().autoContinueOnLoop &&
+          autoContinueOnLoop &&
           !hasRetriedRepetitionLoop &&
           attempt === 0;
-        const willRetryOnLoop = willRetryRepetitionLoop || willRetryHangingColon;
+        const willRetryTruncation =
+          !isRepetitionLoop &&
+          !isHangingColon &&
+          isTruncatedLength &&
+          autoContinueOnLoop &&
+          !hasRetriedRepetitionLoop &&
+          attempt === 0;
+        const willRetryOnLoop =
+          willRetryRepetitionLoop || willRetryHangingColon || willRetryTruncation;
         const currentRetryReason =
           retryReason ??
           (willRetryAfterInvalidToolCall
@@ -906,12 +916,20 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
         if (willRetryOnLoop) {
           hasRetriedRepetitionLoop = true;
-          retryReasonHistory.push(willRetryRepetitionLoop ? "repetition_loop" : "hanging_colon");
+          retryReasonHistory.push(
+            willRetryRepetitionLoop
+              ? "repetition_loop"
+              : willRetryHangingColon
+                ? "hanging_colon"
+                : "output_truncated",
+          );
           retryNudge = {
             role: "user",
             content: willRetryRepetitionLoop
               ? `${LOOP_BREAKER_MARKER} hey you got stuck repeating the same output — continue working without repeating the preamble. Directly call the required tool or provide the final answer.`
-              : `${LOOP_BREAKER_MARKER} hey you got stuck — your previous turn ended with ":" with no tool call but a next action was expected. Continue working and take the next action.`,
+              : willRetryHangingColon
+                ? `${LOOP_BREAKER_MARKER} hey you got stuck — your previous turn ended with ":" with no tool call but a next action was expected. Continue working and take the next action.`
+                : `${LOOP_BREAKER_MARKER} your previous reply was cut off at the output token limit. Continue from where you left off. Call a tool if needed or finish the answer.`,
           };
           debugLog("repetitionGuard", {
             action: "autoContinue",
@@ -921,7 +939,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           });
           outputLog(
             "repetitionGuard",
-            `Auto-continue after ${willRetryRepetitionLoop ? "repetition loop" : "hanging ':'"} on ${model.id}: "${(result.trippedLine ?? result.lastVisibleText).slice(0, 80)}"`,
+            `Auto-continue after ${willRetryRepetitionLoop ? "repetition loop" : willRetryHangingColon ? "hanging ':'" : "truncated output"} on ${model.id}: "${(result.trippedLine ?? result.lastVisibleText).slice(0, 80)}"`,
           );
           continue;
         }
@@ -937,6 +955,22 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           retryReasonHistory.push("invalid_tool_call");
           retryNudge = { role: "user", content: retryMessage };
           continue;
+        }
+
+        if (result.lastFinishReason === "content_filter") {
+          if (!result.reportedVisibleContent && !result.sawToolCall && !result.emittedToolCall) {
+            throw createStructuredError(
+              "invalid_request",
+              `NVIDIA NIM filtered the response from ${model.name ?? model.id} before any answer or tool call was produced.`,
+            );
+          }
+          progress.report(new vscode.LanguageModelTextPart(CONTENT_FILTER_NOTICE));
+          break;
+        }
+
+        if (isTruncatedLength && !willRetryTruncation && result.reportedVisibleContent) {
+          progress.report(new vscode.LanguageModelTextPart(OUTPUT_TRUNCATED_NOTICE));
+          break;
         }
 
         debugLog("stream finished", {

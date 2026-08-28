@@ -4,6 +4,7 @@
 
 ### Changed
 
+- **Packaging (`.vscodeignore`).** Exclude `coverage/**` from VSIX payloads (0.9.2 shipped ~2 MiB of lcov/HTML reports).
 - **Text last-resort failover (`src/models/catalog.ts`).** If the configured text fallback is missing from the live catalog, `getFallbackModel` now sweeps remaining available models and skips `pickerStatus: "unavailable"` entries (Lightning).
 - **Fallback notices (`src/provider/fallback-orchestrator.ts`).** `network_error` is failover-eligible. Capacity labels distinguish network/server/overflow from rate limits.
 - **Thinking emission (`src/provider/stream-pump.ts`).** Thinking parts are buffered until the attempt emits visible text or a tool call, so thinking-only empty streams can fail over without splicing two models into one turn.
@@ -12,6 +13,8 @@
 
 ### Fixed
 
+- **Stream `finish_reason` (`src/provider/chat-provider.ts`, `src/provider/stream-pump.ts`).** `length` auto-continues once (or prints a truncation notice). `content_filter` throws `invalid_request` when nothing visible was emitted, otherwise appends a filter notice.
+- **Hanging colon detector (`src/provider/stream-pump.ts`).** Visible text is accumulated so a colon split across SSE parts still triggers auto-continue.
 - **SSE `{error, choices: []}` (`src/api/client.ts`).** Empty `choices` no longer hide stream error objects.
 - **Local `token_limit` compaction (`src/provider/chat-provider.ts`).** Budget misses compact once like `context_overflow` before hopping models.
 - **Oversized `number[]` chat images (`src/messages/converter.ts`).** Number-array image parts honor the 20 MiB cap and throw `invalid_request` instead of dropping the image.

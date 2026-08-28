@@ -34,6 +34,14 @@ import { ToolCallStreamAggregator } from "./tool-call-aggregator";
 export const REPETITION_STOP_NOTICE =
   "\n\n_[NVIDIA NIM] Stopped early: the model kept repeating the same output (degenerate loop detected). Try a different model, or raise/disable `nvidia-nim.generation.maxRepeatedLines`._";
 
+export const OUTPUT_TRUNCATED_NOTICE =
+  "\n\n_[NVIDIA NIM] Output stopped at the model's token limit. Raise `nvidia-nim.generation.maxOutputTokens`, continue the turn, or switch models._";
+
+export const CONTENT_FILTER_NOTICE =
+  "\n\n_[NVIDIA NIM] The model stopped because NVIDIA NIM filtered the response._";
+
+const MAX_TRACKED_VISIBLE_CHARS = 8192;
+
 export type NimStreamUsage = {
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -147,8 +155,11 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     if (part instanceof vscode.LanguageModelTextPart && !repetitionGuard.tripped) {
       crossedThreshold = repetitionGuard.add(part.value);
     }
-    if (part instanceof vscode.LanguageModelTextPart && part.value.trim()) {
-      lastVisibleText = part.value;
+    if (part instanceof vscode.LanguageModelTextPart && part.value.length > 0) {
+      lastVisibleText += part.value;
+      if (lastVisibleText.length > MAX_TRACKED_VISIBLE_CHARS) {
+        lastVisibleText = lastVisibleText.slice(-MAX_TRACKED_VISIBLE_CHARS);
+      }
     }
     input.progress.report(part);
     reportedContent = true;

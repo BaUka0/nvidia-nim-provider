@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import { fetchModels, streamChatCompletion } from "../../src/api/client";
 import { CONTEXT_WINDOW_SAFETY_MARGIN } from "../../src/shared/constants";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
+import { LOOP_BREAKER_MARKER } from "../../src/provider/loop-breaker";
+import { CONTENT_FILTER_NOTICE, OUTPUT_TRUNCATED_NOTICE } from "../../src/provider/stream-pump";
 import { ApiErrorKind, NvidiaApiError } from "../../src/api/errors";
 import { getApiKeyFingerprint } from "../../src/api/key-resolver";
 import {
@@ -1810,6 +1812,163 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).not.toHaveBeenCalled();
     expect(progress.report).not.toHaveBeenCalled();
+  });
+
+  const readFileTool = {
+    name: "read_file",
+    description: "Read a file",
+    inputSchema: { type: "object", properties: { filePath: { type: "string" } } },
+  };
+
+  it("auto-continues when hanging colon is split across text parts", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const hangingStream = async function* () {
+      yield { choices: [{ delta: { content: "Let me inspect the file:" } }] };
+      yield { choices: [{ delta: { content: " \n" }, finish_reason: "stop" }] };
+    };
+    const continueStream = async function* () {
+      yield { choices: [{ delta: { content: "Calling the tool next." } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => hangingStream())
+      .mockImplementationOnce(() => continueStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: false },
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions({ tools: [readFileTool] }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(JSON.stringify(retryBody.messages)).toContain("ended with");
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Calling the tool next." }),
+    );
+  });
+
+  it("auto-continues once when finish_reason is length", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const truncatedStream = async function* () {
+      yield { choices: [{ delta: { content: "Partial answer" }, finish_reason: "length" }] };
+    };
+    const continueStream = async function* () {
+      yield { choices: [{ delta: { content: " and the rest." } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => truncatedStream())
+      .mockImplementationOnce(() => continueStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(JSON.stringify(retryBody.messages)).toContain("output token limit");
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: " and the rest." }),
+    );
+  });
+
+  it("notifies when finish_reason is length and auto-continue is disabled", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) =>
+        key === "generation.autoContinueOnLoop" ? false : defaultValue,
+      ),
+    }));
+    const truncatedStream = async function* () {
+      yield { choices: [{ delta: { content: "Cut off" }, finish_reason: "length" }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(truncatedStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: OUTPUT_TRUNCATED_NOTICE }),
+    );
+  });
+
+  it("throws when content_filter stops a stream with no visible answer", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const filteredStream = async function* () {
+      yield { choices: [{ delta: {}, finish_reason: "content_filter" }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock).mockImplementation(() => filteredStream());
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "deepseek-ai/deepseek-v4-flash-0731",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        }),
+        makeUserMessages("Hi"),
+        makeChatOptions(),
+        { report: jest.fn() },
+        makeToken(),
+      ),
+    ).rejects.toThrow(/INVALID_REQUEST|filtered/);
+  });
+
+  it("notifies when content_filter stops a stream after visible text", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const filteredStream = async function* () {
+      yield { choices: [{ delta: { content: "Hello" }, finish_reason: "content_filter" }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(filteredStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: CONTENT_FILTER_NOTICE }),
+    );
   });
 
   it.each([

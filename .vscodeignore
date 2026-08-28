@@ -37,4 +37,5 @@ node_modules/**
 images/*.mp4
 .gitignore
 package-lock.json
+coverage/**
 out/**/*.map
