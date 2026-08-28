@@ -152,3 +152,4 @@ Press `Ctrl + Shift + P` (or `Cmd + Shift + P` on macOS) to access quick extensi
 - **`NVIDIA NIM: Refresh Available Models`**: Re-sync the available models list with NVIDIA servers.
 - **`NVIDIA NIM: Toggle Debug Logging`**: Turn verbose debug logs on or off in one click.
 - **`NVIDIA NIM: Open Debug Log`**: Open the dedicated NVIDIA NIM Output panel to view logs.
+- **`NVIDIA NIM: Save Last Turn Report`**: Write the last few chat turns (redacted sampling/tool metadata) to a JSON file in Downloads.

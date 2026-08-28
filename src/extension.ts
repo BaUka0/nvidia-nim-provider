@@ -6,6 +6,7 @@ import {
   MANAGE_COMMAND_ID,
   MIGRATION_DONE_KEY,
   OPEN_DEBUG_LOG_COMMAND_ID,
+  SAVE_TURN_REPORT_COMMAND_ID,
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
   REFRESH_MODELS_COMMAND_ID,
@@ -26,6 +27,13 @@ import { refreshModelsFromApi, resetRefreshQueue } from "./models/refresh";
 import { NvidiaApiKeyResolver } from "./api/key-resolver";
 import { ConfigManager } from "./shared/config";
 import { isLikelyNvidiaApiKey } from "./shared/api-key-format";
+import {
+  buildTurnReportFilename,
+  formatTurnReportsPayload,
+  resolveDownloadsDir,
+  writeTurnReportFile,
+} from "./shared/turn-report";
+import * as path from "node:path";
 
 let _provider: NimChatModelProvider | null = null;
 
@@ -167,6 +175,57 @@ function registerCommands(
     vscode.commands.registerCommand(OPEN_DEBUG_LOG_COMMAND_ID, () => {
       const output = getOutputChannel();
       output.show(true);
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(SAVE_TURN_REPORT_COMMAND_ID, async () => {
+      const payload = formatTurnReportsPayload();
+      if (!payload) {
+        vscode.window.showWarningMessage(
+          `${PROVIDER_DISPLAY_NAME} has no turn reports yet. Send a chat message first, then run this command again.`,
+        );
+        return;
+      }
+
+      const filename = buildTurnReportFilename();
+      const downloadsDir = resolveDownloadsDir();
+      let savedPath = path.join(downloadsDir, filename);
+      try {
+        await writeTurnReportFile(savedPath, payload);
+      } catch (error) {
+        const fallback = await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.file(savedPath),
+          filters: { JSON: ["json"] },
+          saveLabel: "Save turn report",
+        });
+        if (!fallback) {
+          const message = error instanceof Error ? error.message : String(error);
+          vscode.window.showErrorMessage(
+            `${PROVIDER_DISPLAY_NAME} could not save the turn report: ${message}`,
+          );
+          return;
+        }
+        savedPath = fallback.fsPath;
+        try {
+          await writeTurnReportFile(savedPath, payload);
+        } catch (retryError) {
+          const message = retryError instanceof Error ? retryError.message : String(retryError);
+          vscode.window.showErrorMessage(
+            `${PROVIDER_DISPLAY_NAME} could not save the turn report: ${message}`,
+          );
+          return;
+        }
+      }
+
+      const showInFolder = "Show in Folder";
+      const choice = await vscode.window.showInformationMessage(
+        `${PROVIDER_DISPLAY_NAME}: saved turn report to ${savedPath}`,
+        showInFolder,
+      );
+      if (choice === showInFolder) {
+        await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(savedPath));
+      }
     }),
   );
 }

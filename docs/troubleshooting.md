@@ -9,9 +9,9 @@ Diagnostics guide, common HTTP error codes, debugging workflows, and security de
 If something goes wrong, the debug log shows what happened:
 
 1. Open the Command Palette (`Ctrl + Shift + P` / `Cmd + Shift + P`).
-2. Run `NVIDIA NIM: Open Debug Log`.
-3. *(Optional)* Run `NVIDIA NIM: Toggle Debug Logging` to enable full chunk-by-chunk logging.
-4. Copy the log into a bug report or GitHub issue.
+2. Run `NVIDIA NIM: Save Last Turn Report`. This writes a small JSON file to your Downloads folder (no debug toggle required). Attach that file to a GitHub issue.
+3. Run `NVIDIA NIM: Open Debug Log` if you still need the Output panel.
+4. *(Optional)* Run `NVIDIA NIM: Toggle Debug Logging` to enable full chunk-by-chunk logging.
 
 ---
 

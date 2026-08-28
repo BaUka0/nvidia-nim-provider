@@ -22,6 +22,7 @@ import {
   MODELS_CACHE_VERSION,
   MODELS_CACHE_VERSION_STATE_KEY,
 } from "../../src/shared/constants";
+import { getTurnReports, resetTurnReportsForTests } from "../../src/shared/turn-report";
 
 jest.mock("../../src/api/client", () => ({
   fetchModels: jest.fn(),
@@ -42,6 +43,7 @@ describe("NimChatModelProvider", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    resetTurnReportsForTests();
     secrets = makeSecrets();
     globalState = makeMemento((key) =>
       key === "nvidia-nim.models"
@@ -104,6 +106,17 @@ describe("NimChatModelProvider", () => {
     expect(progress.report).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ value: " world" }),
+    );
+    expect(getTurnReports()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          outcome: "ok",
+          modelId: "kimi-k2.6",
+          lastVisibleTextHead: "Hello world",
+          sawToolCall: false,
+          emittedToolCall: false,
+        }),
+      ]),
     );
   });
 

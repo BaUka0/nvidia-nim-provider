@@ -1,6 +1,9 @@
 import { fetchModels } from "../src/api/client";
 import { NimChatModelProvider } from "../src/provider/chat-provider";
 import packageJson from "../package.json";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 
 const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
 const mockCreateOutputChannel = jest.fn(() => ({
@@ -12,6 +15,7 @@ const mockShowInformationMessage = jest.fn();
 const mockShowWarningMessage = jest.fn();
 const mockShowErrorMessage = jest.fn();
 const mockShowInputBox = jest.fn();
+const mockShowSaveDialog = jest.fn();
 const mockRegisterCommand = jest.fn(
   (command: string, callback: (...args: unknown[]) => unknown) => {
     registeredCommands.set(command, callback);
@@ -23,6 +27,11 @@ const mockRegisterLanguageModelChatProvider = jest.fn(() => ({ dispose: jest.fn(
 
 jest.mock("../src/api/client", () => ({
   fetchModels: jest.fn(),
+}));
+
+jest.mock("node:fs/promises", () => ({
+  mkdir: jest.fn(async () => undefined),
+  writeFile: jest.fn(async () => undefined),
 }));
 
 let providerInstance: { fireModelInfoChanged: jest.Mock } | undefined;
@@ -67,12 +76,16 @@ jest.mock("vscode", () => ({
   env: {
     appName: "Visual Studio Code",
   },
+  Uri: {
+    file: (filePath: string) => ({ fsPath: filePath, scheme: "file" }),
+  },
   window: {
     createOutputChannel: mockCreateOutputChannel,
     showInformationMessage: mockShowInformationMessage,
     showWarningMessage: mockShowWarningMessage,
     showErrorMessage: mockShowErrorMessage,
     showInputBox: mockShowInputBox,
+    showSaveDialog: mockShowSaveDialog,
   },
   commands: {
     registerCommand: mockRegisterCommand,
@@ -112,10 +125,12 @@ const createDeferred = <T>() => {
 };
 
 describe("activate", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     registeredCommands.clear();
     jest.clearAllMocks();
     delete process.env.NVIDIA_NIM_DEBUG;
+    const { resetTurnReportsForTests } = await import("../src/shared/turn-report");
+    resetTurnReportsForTests();
   });
 
   it("registers the NVIDIA NIM provider and management command on activation", async () => {
@@ -882,6 +897,133 @@ describe("activate", () => {
 
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.debug", true);
     expect(process.env.NVIDIA_NIM_DEBUG).toBe("1");
+  });
+
+  it("warns when Save Last Turn Report has nothing to write", async () => {
+    const secrets = {
+      get: jest.fn(async () => undefined),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+
+    const saveReport = registeredCommands.get("nvidia-nim.saveLastTurnReport");
+    expect(saveReport).toBeDefined();
+    await saveReport?.();
+
+    expect(mockShowWarningMessage).toHaveBeenCalledWith(
+      "NVIDIA NIM has no turn reports yet. Send a chat message first, then run this command again.",
+    );
+    expect(fs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("saves the last turn report into Downloads and can reveal it", async () => {
+    const secrets = {
+      get: jest.fn(async () => undefined),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { recordTurnReport } = await import("../src/shared/turn-report");
+    recordTurnReport({
+      outcome: "ok",
+      modelId: "nvidia/nemotron-3-super-120b-a12b",
+      lastVisibleText: "hello",
+      recordedAt: "2026-08-29T12:00:00.000Z",
+    });
+    mockShowInformationMessage.mockResolvedValue("Show in Folder");
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+
+    const saveReport = registeredCommands.get("nvidia-nim.saveLastTurnReport");
+    await saveReport?.();
+
+    expect(fs.mkdir).toHaveBeenCalledWith(path.join(os.homedir(), "Downloads"), {
+      recursive: true,
+    });
+    expect(fs.writeFile).toHaveBeenCalledWith(
+      expect.stringMatching(/nvidia-nim-turn-report-\d{8}-\d{6}\.json$/),
+      expect.stringContaining("nvidia/nemotron-3-super-120b-a12b"),
+      "utf8",
+    );
+    expect(mockShowSaveDialog).not.toHaveBeenCalled();
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      "revealFileInOS",
+      expect.objectContaining({
+        fsPath: expect.stringMatching(/nvidia-nim-turn-report-\d{8}-\d{6}\.json$/),
+      }),
+    );
+  });
+
+  it("falls back to the Save dialog when Downloads is not writable", async () => {
+    const secrets = {
+      get: jest.fn(async () => undefined),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { recordTurnReport } = await import("../src/shared/turn-report");
+    recordTurnReport({
+      outcome: "ok",
+      modelId: "nvidia/nemotron-3-super-120b-a12b",
+      lastVisibleText: "hello",
+    });
+    (fs.writeFile as jest.Mock).mockRejectedValueOnce(new Error("EACCES"));
+    mockShowSaveDialog.mockResolvedValue({
+      fsPath: path.join("/tmp", "custom-turn-report.json"),
+    });
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+
+    const saveReport = registeredCommands.get("nvidia-nim.saveLastTurnReport");
+    await saveReport?.();
+
+    expect(mockShowSaveDialog).toHaveBeenCalled();
+    expect(fs.writeFile).toHaveBeenLastCalledWith(
+      path.join("/tmp", "custom-turn-report.json"),
+      expect.stringContaining("nvidia/nemotron-3-super-120b-a12b"),
+      "utf8",
+    );
   });
 
   it("creates and registers status bar item on activation", async () => {

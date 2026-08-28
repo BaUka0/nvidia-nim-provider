@@ -27,6 +27,7 @@ import { isLikelyNvidiaApiKey } from "../shared/api-key-format";
 import { getFallbackModel } from "../models/catalog";
 import { getModelAdapter } from "../models/adapters";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
+import { recordTurnReport, TurnReportOutcome } from "../shared/turn-report";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
 import {
   estimateNimMessagesTokensByCategory,
@@ -130,6 +131,49 @@ function toHostChatError(err: unknown): Error {
     return hostError.NotFound(err.message);
   }
   return err;
+}
+
+function errorFields(error: unknown): { errorKind?: string; errorMessage?: string } {
+  if (error instanceof NvidiaApiError) {
+    return { errorKind: error.kind, errorMessage: error.message };
+  }
+  if (error instanceof Error) {
+    return { errorKind: error.name, errorMessage: error.message };
+  }
+  if (error === undefined) {
+    return {};
+  }
+  return { errorKind: "unknown", errorMessage: String(error) };
+}
+
+function recordAttemptTurn(options: {
+  outcome: TurnReportOutcome;
+  modelId: string;
+  body?: NimChatRequest;
+  result?: StreamAttemptResult;
+  durationMs?: number;
+  autoContinueFired?: boolean;
+  retryReasonHistory?: readonly string[];
+  error?: unknown;
+}): void {
+  const { errorKind, errorMessage } = errorFields(options.error);
+  recordTurnReport({
+    outcome: options.outcome,
+    modelId: options.modelId,
+    requestBody: options.body,
+    sawToolCall: options.result?.sawToolCall,
+    emittedToolCall: options.result?.emittedToolCall,
+    skippedToolCalls: options.result?.skippedToolCalls,
+    finishReason: options.result?.lastFinishReason,
+    streamChunkCount: options.result?.streamChunkCount,
+    lastVisibleText: options.result?.lastVisibleText,
+    durationMs: options.durationMs,
+    repetitionTripped: options.result?.repetitionTripped,
+    autoContinueFired: options.autoContinueFired,
+    retryReasonHistory: options.retryReasonHistory,
+    errorKind,
+    errorMessage,
+  });
 }
 
 /**
@@ -553,6 +597,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     let tools: import("../types").NimTool[] | undefined;
     let hasRetriedContextOverflow = false;
     let reasoningIsolationExpected = false;
+    let totalAttempts = 0;
 
     const markReported = (result: StreamAttemptResult): void => {
       if (result.reportedContent) {
@@ -636,7 +681,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       let retryNudge: NimChatMessage | undefined;
       let retryReason: "invalid_tool_call" | undefined;
       const retryReasonHistory: string[] = [];
-      let totalAttempts = 0;
       let requestPreparationDurationMs: number | undefined;
       let toolParsingStateInitDurationMs: number | undefined;
       let finalUsage: NimStreamUsage | undefined;
@@ -752,16 +796,30 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             },
           });
         } catch (streamErr) {
+          const cancelled =
+            token.isCancellationRequested ||
+            abortController.signal.aborted ||
+            (streamErr instanceof Error && streamErr.name === "AbortError");
           const isNetworkError =
             (streamErr instanceof NvidiaApiError && streamErr.kind === "network_error") ||
             (streamErr instanceof Error && streamErr.name === "TypeError");
-
-          if (
+          const willNetworkRetry =
+            !cancelled &&
             !abortController.signal.aborted &&
             isNetworkError &&
             !hasReportedContent &&
-            networkRetryCount < MAX_NETWORK_RETRIES
-          ) {
+            networkRetryCount < MAX_NETWORK_RETRIES;
+
+          recordAttemptTurn({
+            outcome: cancelled ? "cancelled" : willNetworkRetry ? "retry" : "error",
+            modelId: model.id,
+            body: attemptBody,
+            durationMs: Date.now() - attemptStartedAtMs,
+            retryReasonHistory,
+            error: streamErr,
+          });
+
+          if (willNetworkRetry) {
             networkRetryCount += 1;
             debugLog(
               "streamRetry",
@@ -914,6 +972,18 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           debugLog("stream usage", result.lastUsage);
         }
 
+        const willContinueAttempt =
+          willRetryOnLoop || willRetryAfterInvalidToolCall || willRetryEmptyStream;
+        recordAttemptTurn({
+          outcome: willContinueAttempt ? "retry" : "ok",
+          modelId: model.id,
+          body: attemptBody,
+          result,
+          durationMs: Date.now() - attemptStartedAtMs,
+          autoContinueFired: willRetryOnLoop,
+          retryReasonHistory,
+        });
+
         if (willRetryOnLoop) {
           hasRetriedRepetitionLoop = true;
           retryReasonHistory.push(
@@ -1006,7 +1076,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       }
 
       if (!hasReportedVisibleContent && !sawToolCallOverall) {
-        throw createStructuredError(
+        const emptyError = createStructuredError(
           "empty_stream",
           [
             `Model: ${model.name ?? model.id}`,
@@ -1022,11 +1092,28 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             .filter(Boolean)
             .join("\n"),
         );
+        recordAttemptTurn({
+          outcome: "error",
+          modelId: model.id,
+          body: activeRequestBody,
+          error: emptyError,
+        });
+        throw emptyError;
       }
 
       emitUsageAndStatus(finalUsage, activeRequestBody!);
     } catch (err) {
-      if (token.isCancellationRequested || (err instanceof Error && err.name === "AbortError")) {
+      const cancelled =
+        token.isCancellationRequested || (err instanceof Error && err.name === "AbortError");
+      if (totalAttempts === 0) {
+        recordAttemptTurn({
+          outcome: cancelled ? "cancelled" : "error",
+          modelId: model.id,
+          body: activeRequestBody,
+          error: err,
+        });
+      }
+      if (cancelled) {
         throw new vscode.CancellationError();
       }
 
@@ -1120,12 +1207,26 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
                 progress.report(new vscode.LanguageModelTextPart(retryFallbackText));
                 hasReportedVisibleContent = true;
               } else {
-                throw createStructuredError(
+                const compactEmpty = createStructuredError(
                   "empty_stream",
                   `Compacted retry on ${model.name ?? model.id} produced no visible answer or tool call.`,
                 );
+                recordAttemptTurn({
+                  outcome: "error",
+                  modelId: model.id,
+                  body: compacted.requestBody,
+                  result,
+                  error: compactEmpty,
+                });
+                throw compactEmpty;
               }
             }
+            recordAttemptTurn({
+              outcome: "ok",
+              modelId: model.id,
+              body: compacted.requestBody,
+              result,
+            });
             const usagePart = createUsageDataPart(result.lastUsage);
             if (usagePart) {
               progress.report(usagePart);

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-08-29
+
+### Added
+
+- **Last turn report (`src/shared/turn-report.ts`, `src/provider/chat-provider.ts`, `src/extension.ts`, `docs/troubleshooting.md`, `docs/configuration.md`).** Always-on in-memory ring (last 5 stream hops) with redacted sampling/tool/finish metadata and a cheap `cycleHint`. Command Palette **NVIDIA NIM: Save Last Turn Report** writes `nvidia-nim-turn-report-YYYYMMDD-HHMMSS.json` to the user Downloads folder (`revealFileInOS`); if that write fails, falls back to Save dialog. Debug logging does not need to be on first. Addresses diagnosis for #7.
+
 ### Changed
 
 - **Documentation modularization (`docs/*`).** Split the monolithic `docs/README.md` user guide into modular topic guides (`docs/getting-started.md`, `docs/models.md`, `docs/failover.md`, `docs/tools-and-agent.md`, `docs/context-management.md`, `docs/configuration.md`, `docs/troubleshooting.md`), with `docs/README.md` serving as the central documentation hub.
