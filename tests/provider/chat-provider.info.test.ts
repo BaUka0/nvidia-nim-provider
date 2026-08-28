@@ -18,58 +18,10 @@ jest.mock("../../src/api/client", () => ({
   streamChatCompletion: jest.fn(),
 }));
 
-jest.mock("vscode", () => ({
-  SecretStorage: class {},
-  LanguageModelChatMessageRole: { User: 1, Assistant: 2, System: 0 },
-  LanguageModelChatMessage: {
-    User: (content: unknown[]) => ({ role: 1, content }),
-  },
-  LanguageModelChatToolMode: { Auto: 1, Required: 2 },
-  LanguageModelTextPart: class {
-    constructor(public value: string) {}
-  },
-  LanguageModelToolCallPart: class {
-    constructor(
-      public callId: string,
-      public name: string,
-      public input: Record<string, unknown>,
-    ) {}
-  },
-  LanguageModelToolResultPart: class {
-    constructor(
-      public callId: string,
-      public content: unknown[],
-    ) {}
-  },
-  ThemeIcon: class {
-    constructor(public id: string) {}
-  },
-  window: {
-    createOutputChannel: jest.fn(() => ({
-      appendLine: jest.fn(),
-      show: jest.fn(),
-      dispose: jest.fn(),
-    })),
-    showInputBox: jest.fn(),
-    showInformationMessage: jest.fn().mockResolvedValue(undefined),
-  },
-  workspace: {
-    getConfiguration: jest.fn(() => ({
-      get: jest.fn((key: string, defaultValue: unknown) => defaultValue),
-    })),
-  },
-  LanguageModelError: {
-    NoPermissions: (msg: string) => new Error(msg),
-    NotFound: (msg: string) => new Error(msg),
-    Blocked: (msg: string) => new Error(msg),
-  },
-  CancellationError: class extends Error {},
-  EventEmitter: class {
-    event = jest.fn();
-    fire = jest.fn();
-  },
-  Memento: class {},
-}));
+jest.mock("vscode", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require("../helpers/vscode-provider-mock").createProviderVscodeMock();
+});
 
 describe("NimChatModelProvider", () => {
   let secrets: vscode.SecretStorage;

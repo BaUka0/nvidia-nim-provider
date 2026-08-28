@@ -26,68 +26,10 @@ jest.mock("../../src/api/client", () => ({
   streamChatCompletion: jest.fn(),
 }));
 
-jest.mock("vscode", () => ({
-  SecretStorage: class {},
-  LanguageModelChatMessageRole: { User: 1, Assistant: 2, System: 0 },
-  LanguageModelChatMessage: {
-    User: (content: unknown[]) => ({ role: 1, content }),
-  },
-  LanguageModelChatToolMode: { Auto: 1, Required: 2 },
-  LanguageModelTextPart: class {
-    constructor(public value: string) {}
-  },
-  LanguageModelToolCallPart: class {
-    constructor(
-      public callId: string,
-      public name: string,
-      public input: Record<string, unknown>,
-    ) {}
-  },
-  LanguageModelToolResultPart: class {
-    constructor(
-      public callId: string,
-      public content: unknown[],
-    ) {}
-  },
-  LanguageModelDataPart: class {
-    constructor(
-      public data: Uint8Array,
-      public mimeType?: string,
-    ) {}
-    static json(value: unknown, mime?: string) {
-      return new this(new TextEncoder().encode(JSON.stringify(value)), mime ?? "application/json");
-    }
-  },
-  LanguageModelThinkingPart: class {
-    constructor(public value: string) {}
-  },
-  window: {
-    createOutputChannel: jest.fn(() => ({
-      appendLine: jest.fn(),
-      show: jest.fn(),
-      dispose: jest.fn(),
-    })),
-    showInputBox: jest.fn(),
-    showInformationMessage: jest.fn().mockResolvedValue(undefined),
-    showWarningMessage: jest.fn().mockResolvedValue("Save"),
-  },
-  workspace: {
-    getConfiguration: jest.fn(() => ({
-      get: jest.fn((key: string, defaultValue: unknown) => defaultValue),
-    })),
-  },
-  LanguageModelError: {
-    NoPermissions: (msg: string) => new Error(msg),
-    NotFound: (msg: string) => new Error(msg),
-    Blocked: (msg: string) => new Error(msg),
-  },
-  CancellationError: class extends Error {},
-  EventEmitter: class {
-    event = jest.fn();
-    fire = jest.fn();
-  },
-  Memento: class {},
-}));
+jest.mock("vscode", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require("../helpers/vscode-provider-mock").createProviderVscodeMock();
+});
 
 describe("NimChatModelProvider", () => {
   let secrets: vscode.SecretStorage;
@@ -348,10 +290,7 @@ describe("NimChatModelProvider", () => {
 
     const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
 
-    expect(thinkingReports).toHaveLength(1);
-    expect(thinkingReports[0][0]).toEqual(
-      expect.objectContaining({ value: "Only reasoning, no answer" }),
-    );
+    expect(thinkingReports).toHaveLength(0);
   });
 
   const closeTag = "</" + "think>";
@@ -370,7 +309,11 @@ describe("NimChatModelProvider", () => {
     const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
       makeUserMessages("Hi"),
       makeChatOptions({
         modelConfiguration: { reasoningMode: "on" },
@@ -412,7 +355,11 @@ describe("NimChatModelProvider", () => {
     const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
       makeUserMessages("Hi"),
       makeChatOptions({
         modelConfiguration: { reasoningMode: "on" },
@@ -444,7 +391,11 @@ describe("NimChatModelProvider", () => {
     const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
       makeUserMessages("Hi"),
       makeChatOptions({
         modelConfiguration: { reasoningMode: "on" },
@@ -526,7 +477,11 @@ describe("NimChatModelProvider", () => {
     const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
       makeUserMessages("Hi"),
       makeChatOptions({
         modelConfiguration: { reasoningMode: "on" },
@@ -656,7 +611,11 @@ describe("NimChatModelProvider", () => {
 
     await expect(
       provider.provideLanguageModelChatResponse(
-        makeModel({ id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+        makeModel({
+          id: "deepseek-ai/deepseek-v4-flash-0731",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        }),
         makeUserMessages("Hi"),
         makeChatOptions({
           modelConfiguration: { reasoningMode: "on" },
@@ -677,9 +636,7 @@ describe("NimChatModelProvider", () => {
     const textReports = allReports.filter((r) => r instanceof vscode.LanguageModelTextPart);
 
     expect(textReports).toHaveLength(0);
-    expect(thinkingText).toContain("thinking without tags");
-    expect(thinkingText).toContain("proper reasoning");
-    expect(thinkingText).toContain("ambiguous continuation");
+    expect(thinkingText).toBe("");
   });
 
   it("does not route content to thinking when reasoning mode is none", async () => {
@@ -699,7 +656,11 @@ describe("NimChatModelProvider", () => {
     const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "z-ai/glm-5.2", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
       makeUserMessages("Hi"),
       makeChatOptions({
         modelConfiguration: { reasoningMode: "none" },
@@ -722,7 +683,7 @@ describe("NimChatModelProvider", () => {
     expect(streamChatCompletion).toHaveBeenCalledWith(
       "test-key",
       expect.objectContaining({
-        chat_template_kwargs: expect.objectContaining({ enable_thinking: false }),
+        chat_template_kwargs: expect.objectContaining({ thinking: false }),
       }),
       expect.any(AbortSignal),
       "test-ua",
@@ -1830,25 +1791,25 @@ describe("NimChatModelProvider", () => {
     expect(vscode.window.showInputBox).not.toHaveBeenCalled();
   });
 
-  it("returns setup guidance in chat when no API key is available", async () => {
+  it("fails the turn when no API key is available", async () => {
     (secrets.get as jest.Mock).mockResolvedValue(undefined);
     (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
 
     const progress = { report: jest.fn() };
     const token = makeToken();
 
-    await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
-      makeUserMessages("Hi"),
-      makeChatOptions(),
-      progress,
-      token,
-    );
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+        makeUserMessages("Hi"),
+        makeChatOptions(),
+        progress,
+        token,
+      ),
+    ).rejects.toThrow(/NVIDIA NIM API key/);
 
     expect(streamChatCompletion).not.toHaveBeenCalled();
-    expect(progress.report).toHaveBeenCalledWith(
-      expect.objectContaining({ value: expect.stringContaining("NVIDIA NIM API key") }),
-    );
+    expect(progress.report).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -1932,6 +1893,102 @@ describe("NimChatModelProvider", () => {
       );
     },
   );
+
+  it("falls back after network_error retries are exhausted", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (globalState.get as jest.Mock).mockImplementation((key: string) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "moonshotai/kimi-k3",
+              displayName: "Kimi K3",
+              contextWindow: 1048576,
+              maxOutputTokens: 65536,
+              supportsTools: true,
+              supportsVision: true,
+            },
+            {
+              id: "nvidia/nemotron-3-super-120b-a12b",
+              displayName: "Nemotron 3 Super 120B",
+              contextWindow: 1000000,
+              maxOutputTokens: 65536,
+              supportsTools: true,
+              supportsVision: false,
+            },
+          ]
+        : key === MODELS_CACHE_VERSION_STATE_KEY
+          ? MODELS_CACHE_VERSION
+          : key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY
+            ? getApiKeyFingerprint("test-key")
+            : undefined,
+    );
+
+    let calls = 0;
+    (streamChatCompletion as jest.Mock).mockImplementation(() => {
+      calls += 1;
+      if (calls <= 4) {
+        return (async function* () {
+          throw new NvidiaApiError("network_error", "[NETWORK_ERROR] fetch failed.");
+        })();
+      }
+      return (async function* () {
+        yield { choices: [{ delta: { content: "Recovered on Super" } }] };
+      })();
+    });
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "moonshotai/kimi-k3",
+        name: "Kimi K3",
+        maxInputTokens: 200000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(calls).toBeGreaterThan(1);
+    const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
+    expect(fallbackRequest.model).toBe("nvidia/nemotron-3-super-120b-a12b");
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Recovered on Super" }),
+    );
+  });
+
+  it("does not emit thinking parts when the stream never produces visible content", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.enabled") return false;
+        return defaultValue;
+      }),
+    }));
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "silent thoughts" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+    const progress = { report: jest.fn() };
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "deepseek-ai/deepseek-v4-flash-0731",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        }),
+        makeUserMessages("Hi"),
+        makeChatOptions({ modelConfiguration: { reasoningMode: "high" } }),
+        progress,
+        makeToken(),
+      ),
+    ).rejects.toThrow(/EMPTY_STREAM|no visible/);
+
+    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
+    expect(thinkingReports).toHaveLength(0);
+  });
 
   it("falls back to a custom configured fallback model when set", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
@@ -2722,7 +2779,7 @@ describe("NimChatModelProvider", () => {
     expect(streamChatCompletion).toHaveBeenCalledTimes(1);
 
     const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
-    expect(thinkingReports.length).toBeGreaterThanOrEqual(1);
+    expect(thinkingReports).toHaveLength(0);
   });
 
   const getUsageParts = (progress: { report: jest.Mock }) =>

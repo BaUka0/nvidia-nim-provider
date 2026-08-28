@@ -848,8 +848,8 @@ describe("activate", () => {
     await manage?.();
 
     expect(secrets.delete).toHaveBeenCalledWith("nvidia-nim.apiKey");
-    expect(mockShowInformationMessage).toHaveBeenCalledWith(
-      "NVIDIA NIM legacy API key cleared. If NVIDIA NIM still appears in Copilot Chat, remove its model group from Manage Models.",
+    expect(mockShowWarningMessage).toHaveBeenCalledWith(
+      "NVIDIA NIM stored API key cleared. Also remove the NVIDIA NIM model group in Copilot Chat > Manage Models if it still appears.",
     );
   });
 

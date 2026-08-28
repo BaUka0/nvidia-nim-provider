@@ -110,7 +110,32 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     }
   };
 
+  const pendingThinking: string[] = [];
+  const flushBufferedThinking = (): void => {
+    if (pendingThinking.length === 0) {
+      return;
+    }
+    for (const fragment of pendingThinking) {
+      const thinkingResult = emitThinkingPart(input.progress, fragment);
+      if (thinkingResult.didReport) {
+        reportedContent = true;
+        input.onContentReported?.();
+        if (thinkingResult.emittedVisible) {
+          reportedVisibleContent = true;
+          input.onVisibleContentReported?.();
+        }
+      }
+    }
+    pendingThinking.length = 0;
+  };
+
   const reportPart = (part: LanguageModelResponsePart): void => {
+    if (
+      part instanceof vscode.LanguageModelTextPart ||
+      part instanceof vscode.LanguageModelToolCallPart
+    ) {
+      flushBufferedThinking();
+    }
     if (
       part instanceof vscode.LanguageModelTextPart &&
       repetitionNoticeSent &&
@@ -297,17 +322,11 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     reasoningIsolationExpected: input.reasoningIsolationExpected,
     onThinking: (text) => {
       sawReasoning = true;
-      const thinkingResult = emitThinkingPart(input.progress, text);
-      if (thinkingResult.didReport) {
-        reportedContent = true;
-        input.onContentReported?.();
-        if (thinkingResult.emittedVisible) {
-          reportedVisibleContent = true;
-          input.onVisibleContentReported?.();
-        }
-      }
+      markFirstResponse();
+      pendingThinking.push(text);
     },
     onText: (text) => {
+      flushBufferedThinking();
       processAnswerText(text);
       flushPendingText();
     },
@@ -452,6 +471,9 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     debugLog("Skipped truncated text tool call", { name: incompleteTextToolName });
   }
 
+  if (pendingText || emittedToolCall || reportedVisibleContent) {
+    flushBufferedThinking();
+  }
   if (pendingText) {
     flushPendingText();
   }

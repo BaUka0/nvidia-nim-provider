@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Text last-resort failover (`src/models/catalog.ts`).** If the configured text fallback is missing from the live catalog, `getFallbackModel` now sweeps remaining available models and skips `pickerStatus: "unavailable"` entries (Lightning).
+- **Fallback notices (`src/provider/fallback-orchestrator.ts`).** `network_error` is failover-eligible. Capacity labels distinguish network/server/overflow from rate limits.
+- **Thinking emission (`src/provider/stream-pump.ts`).** Thinking parts are buffered until the attempt emits visible text or a tool call, so thinking-only empty streams can fail over without splicing two models into one turn.
+- **Vision analysis tool (`src/tools/vision.ts`).** Uses `fallback.visionModel` when that id is cached; HTTP retries follow `maxHttpRetries`.
+- **Unknown reasoning modes (`src/provider/request-builder.ts`).** Unsupported Copilot/global modes map to the adapter's first effort mode instead of silently forcing `none`.
+
+### Fixed
+
+- **SSE `{error, choices: []}` (`src/api/client.ts`).** Empty `choices` no longer hide stream error objects.
+- **Local `token_limit` compaction (`src/provider/chat-provider.ts`).** Budget misses compact once like `context_overflow` before hopping models.
+- **Oversized `number[]` chat images (`src/messages/converter.ts`).** Number-array image parts honor the 20 MiB cap and throw `invalid_request` instead of dropping the image.
+- **Missing API key (`src/provider/chat-provider.ts`).** Turns fail with `LanguageModelError.NoPermissions` instead of completing as a successful assistant message. `auth_failed` / `model_unavailable` map to Copilot `NoPermissions` / `NotFound` when those constructors exist.
+- **API key clear (`src/extension.ts`).** Clearing SecretStorage invalidates the model cache and warns that the Copilot Manage Models group may still hold a key.
+
 ## [0.9.2] - 2026-08-28
 
 ### Removed

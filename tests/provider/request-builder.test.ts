@@ -8,7 +8,7 @@ jest.mock("../../src/api/client", () => ({
 }));
 
 jest.mock("vscode", () => ({
-  LanguageModelChatMessageRole: { User: 1, Assistant: 2 },
+  LanguageModelChatMessageRole: { User: 1, Assistant: 2, System: 3 },
   LanguageModelTextPart: class {
     constructor(public value: string) {}
   },

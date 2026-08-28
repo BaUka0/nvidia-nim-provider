@@ -9,8 +9,10 @@ import {
   MODELS_STATE_KEY,
   PROVIDER_DISPLAY_NAME,
 } from "../shared/constants";
-import { MODEL_LIST, isNormalizedNvidiaModel } from "../models/catalog";
+import { MODEL_LIST, isNormalizedNvidiaModel, NormalizedNvidiaModel } from "../models/catalog";
 import { NvidiaApiKeyResolver } from "../api/key-resolver";
+import { ConfigManager } from "../shared/config";
+import { httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
 
 /**
  * Validate that image_data is a base64 image data URL and return its decoded
@@ -59,15 +61,17 @@ export class NimVisionClient {
 
   private getVisionModelId(): string {
     const cachedModels = this.modelStorage?.get<unknown>(MODELS_STATE_KEY);
-    const visionModel = Array.isArray(cachedModels)
-      ? cachedModels.find(
-          (model) =>
+    const visionModels = Array.isArray(cachedModels)
+      ? cachedModels.filter(
+          (model): model is NormalizedNvidiaModel =>
             isNormalizedNvidiaModel(model) &&
             Object.prototype.hasOwnProperty.call(MODEL_LIST, model.id) &&
             MODEL_LIST[model.id].supportsVision &&
             model.supportsVision,
         )
-      : undefined;
+      : [];
+    const preferredId = ConfigManager.getFallbackConfig().visionModel;
+    const visionModel = visionModels.find((model) => model.id === preferredId) ?? visionModels[0];
 
     if (!visionModel || !isNormalizedNvidiaModel(visionModel)) {
       throw new Error(
@@ -124,7 +128,7 @@ export class NimVisionClient {
         }),
         signal,
       },
-      3,
+      httpAttemptsFromConfig(ConfigManager.getNetworkConfig().maxHttpRetries),
       { operation: "vision", model },
     );
 

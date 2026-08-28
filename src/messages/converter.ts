@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import * as vscode from "vscode";
+import { createStructuredError } from "../api/errors";
 import { debugLog } from "../shared/logging";
 import { MAX_CHAT_IMAGE_BYTES } from "../shared/constants";
 import { getLanguageModelChatToolModeRequired } from "../shared/proposed-apis";
@@ -166,6 +167,15 @@ export function getDataPartTextValue(
   }
 }
 
+function rejectOversizedChatImage(byteLength: number, mimeType: string): void {
+  if (byteLength > MAX_CHAT_IMAGE_BYTES) {
+    throw createStructuredError(
+      "invalid_request",
+      `Image (${mimeType}) exceeds the ${MAX_CHAT_IMAGE_BYTES}-byte chat image limit.`,
+    );
+  }
+}
+
 function extractImageData(
   part: vscode.LanguageModelInputPart | LegacyPart,
 ): { mimeType: string; data: Uint8Array } | undefined {
@@ -178,21 +188,26 @@ function extractImageData(
   }
 
   if (p.data instanceof Uint8Array && p.data.length > 0) {
-    return p.data.length > MAX_CHAT_IMAGE_BYTES ? undefined : { mimeType, data: p.data };
+    rejectOversizedChatImage(p.data.length, mimeType);
+    return { mimeType, data: p.data };
   }
   if (p.bytes instanceof Uint8Array && p.bytes.length > 0) {
-    return p.bytes.length > MAX_CHAT_IMAGE_BYTES ? undefined : { mimeType, data: p.bytes };
+    rejectOversizedChatImage(p.bytes.length, mimeType);
+    return { mimeType, data: p.bytes };
   }
   if (p.buffer instanceof ArrayBuffer && p.buffer.byteLength > 0) {
-    return p.buffer.byteLength > MAX_CHAT_IMAGE_BYTES
-      ? undefined
-      : { mimeType, data: new Uint8Array(p.buffer) };
+    rejectOversizedChatImage(p.buffer.byteLength, mimeType);
+    return { mimeType, data: new Uint8Array(p.buffer) };
   }
   if (Array.isArray(p.bytes) && p.bytes.length > 0) {
-    return { mimeType, data: new Uint8Array(p.bytes) };
+    const data = new Uint8Array(p.bytes);
+    rejectOversizedChatImage(data.length, mimeType);
+    return { mimeType, data };
   }
   if (Array.isArray(p.data) && p.data.length > 0) {
-    return { mimeType, data: new Uint8Array(p.data) };
+    const data = new Uint8Array(p.data);
+    rejectOversizedChatImage(data.length, mimeType);
+    return { mimeType, data };
   }
 
   if (typeof p.data === "string" && p.data.trim().length > 0) {
@@ -200,7 +215,8 @@ function extractImageData(
     const payload = raw.startsWith("data:") ? raw.slice(raw.indexOf(",") + 1) : raw;
     if (/^[A-Za-z0-9+/\s]+={0,2}$/.test(payload)) {
       const decoded = Buffer.from(payload.replace(/\s/g, ""), "base64");
-      if (decoded.length > 0 && decoded.length <= MAX_CHAT_IMAGE_BYTES) {
+      if (decoded.length > 0) {
+        rejectOversizedChatImage(decoded.length, mimeType);
         return { mimeType, data: new Uint8Array(decoded) };
       }
     }

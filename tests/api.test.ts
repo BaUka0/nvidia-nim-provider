@@ -653,6 +653,32 @@ describe("streamChatCompletion", () => {
     });
   });
 
+  it("classifies SSE error objects with empty choices as failures", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"error":{"message":"backend stalled","code":503},"choices":[]}\n\n',
+          ),
+        );
+        controller.close();
+      },
+    });
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: stream,
+      }),
+    );
+    const gen = streamChatCompletion("key", { model: "kimi-k3", messages: [], stream: true });
+    await expect(gen.next()).rejects.toMatchObject({
+      name: "NvidiaApiError",
+      kind: "server_error",
+      status: 503,
+    });
+  });
+
   it("skips malformed JSON lines", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

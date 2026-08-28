@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   FALLBACK_MODEL_ID,
   FALLBACK_VISION_MODEL_ID,
+  MODEL_LIST,
   getFallbackModel,
   isNormalizedNvidiaModel,
   normalizeNvidiaModels,
@@ -239,8 +242,8 @@ describe("getFallbackModel", () => {
     expect(getFallbackModel(kimi.id, [kimi, lightning, super120, minimax])).toEqual(super120);
   });
 
-  it("does not fall back when the current model is already Super 120B", () => {
-    expect(getFallbackModel(super120.id, [kimi, lightning, super120, minimax])).toBeUndefined();
+  it("last-resorts to another available model when the current model is already the text fallback", () => {
+    expect(getFallbackModel(super120.id, [kimi, lightning, super120, minimax])).toEqual(kimi);
   });
 
   it("supports string fallback argument for backward compatibility", () => {
@@ -261,9 +264,25 @@ describe("getFallbackModel", () => {
 
     it("skips the currently failing model and already-tried ids", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, flash, minimax], {
+        getFallbackModel(kimi.id, [kimi, flash], {
           configuredFallbackModelId: FALLBACK_MODEL_ID,
           triedModelIds: ["deepseek-ai/deepseek-v4-flash-0731"],
+        }),
+      ).toBeUndefined();
+    });
+
+    it("last-resorts to another available text model when the configured fallback is missing", () => {
+      expect(
+        getFallbackModel(kimi.id, [kimi, flash], {
+          configuredFallbackModelId: FALLBACK_MODEL_ID,
+        }),
+      ).toEqual(flash);
+    });
+
+    it("does not last-resort to a picker-unavailable model", () => {
+      expect(
+        getFallbackModel(kimi.id, [kimi, lightning], {
+          configuredFallbackModelId: FALLBACK_MODEL_ID,
         }),
       ).toBeUndefined();
     });
@@ -330,5 +349,15 @@ describe("getFallbackModel", () => {
         }),
       ).toBeUndefined();
     });
+  });
+});
+
+describe("models probe curated ids", () => {
+  it("matches MODEL_LIST", () => {
+    const probe = readFileSync(join(__dirname, "../scripts/nim-models-probe.mjs"), "utf8");
+    const block = probe.match(/CURATED_MODEL_IDS = new Set\(\[([\s\S]*?)\]\)/);
+    expect(block).not.toBeNull();
+    const probeIds = [...(block?.[1].matchAll(/"([^"]+)"/g) ?? [])].map((match) => match[1]).sort();
+    expect(probeIds).toEqual(Object.keys(MODEL_LIST).sort());
   });
 });

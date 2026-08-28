@@ -61,6 +61,7 @@ export function isFallbackEligibleError(
       (err.kind === "empty_stream" && fallbackConfig.onEmptyStream) ||
       (err.kind === "timeout" && fallbackConfig.onTimeout) ||
       err.kind === "server_error" ||
+      err.kind === "network_error" ||
       err.kind === "token_limit" ||
       err.kind === "context_overflow")
   );
@@ -75,6 +76,15 @@ export function fallbackCapacityLabel(err: NvidiaApiError): string {
   }
   if (err.kind === "timeout") {
     return "Timeout";
+  }
+  if (err.kind === "network_error") {
+    return "Network error";
+  }
+  if (err.kind === "server_error") {
+    return "Server error";
+  }
+  if (err.kind === "context_overflow" || err.kind === "token_limit") {
+    return "Context overflow";
   }
   if (err.status === 529) {
     return "Overloaded";

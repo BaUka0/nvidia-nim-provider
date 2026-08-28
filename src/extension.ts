@@ -110,10 +110,10 @@ function registerCommands(
       }
       if (!apiKey.trim()) {
         await context.secrets.delete(SECRET_STORAGE_KEY);
-        vscode.window.showInformationMessage(
-          `${PROVIDER_DISPLAY_NAME} legacy API key cleared. If ${PROVIDER_DISPLAY_NAME} still appears in Copilot Chat, remove its model group from Manage Models.`,
+        _provider?.fireModelInfoChanged({ invalidateModelCache: true });
+        vscode.window.showWarningMessage(
+          `${PROVIDER_DISPLAY_NAME} stored API key cleared. Also remove the ${PROVIDER_DISPLAY_NAME} model group in Copilot Chat > Manage Models if it still appears.`,
         );
-        _provider?.fireModelInfoChanged();
         return;
       }
       const trimmed = apiKey.trim();

@@ -1,6 +1,9 @@
 import { NvidiaApiError } from "../src/api/errors";
 import { DEFAULT_FALLBACK_CONFIG } from "../src/shared/config";
-import { isFallbackEligibleError } from "../src/provider/fallback-orchestrator";
+import {
+  fallbackCapacityLabel,
+  isFallbackEligibleError,
+} from "../src/provider/fallback-orchestrator";
 
 describe("isFallbackEligibleError", () => {
   const config = { ...DEFAULT_FALLBACK_CONFIG, enabled: true, priorityList: ["a"] };
@@ -40,5 +43,39 @@ describe("isFallbackEligibleError", () => {
         false,
       ),
     ).toBe(false);
+  });
+
+  it("allows failover for network_error when nothing visible was reported", () => {
+    expect(
+      isFallbackEligibleError(
+        new NvidiaApiError("network_error", "fetch failed"),
+        config,
+        0,
+        false,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("fallbackCapacityLabel", () => {
+  it("does not label overflow or server failures as rate limited", () => {
+    expect(fallbackCapacityLabel(new NvidiaApiError("context_overflow", "too long"))).toBe(
+      "Context overflow",
+    );
+    expect(fallbackCapacityLabel(new NvidiaApiError("token_limit", "too long"))).toBe(
+      "Context overflow",
+    );
+    expect(fallbackCapacityLabel(new NvidiaApiError("server_error", "502", { status: 502 }))).toBe(
+      "Server error",
+    );
+    expect(fallbackCapacityLabel(new NvidiaApiError("network_error", "offline"))).toBe(
+      "Network error",
+    );
+    expect(fallbackCapacityLabel(new NvidiaApiError("rate_limited", "429", { status: 529 }))).toBe(
+      "Overloaded",
+    );
+    expect(fallbackCapacityLabel(new NvidiaApiError("rate_limited", "429", { status: 429 }))).toBe(
+      "Rate limited",
+    );
   });
 });

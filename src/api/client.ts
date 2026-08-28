@@ -96,7 +96,8 @@ function sseErrorStatus(error: unknown): number | undefined {
 function parseSseDataLine(data: string, model: string): NimStreamResponse | undefined {
   try {
     const parsed = JSON.parse(data) as NimStreamResponse & { error?: unknown };
-    if (parsed && typeof parsed === "object" && parsed.error && !parsed.choices) {
+    const hasChoices = Array.isArray(parsed.choices) && parsed.choices.length > 0;
+    if (parsed && typeof parsed === "object" && parsed.error && !hasChoices) {
       const detail =
         typeof parsed.error === "string"
           ? parsed.error

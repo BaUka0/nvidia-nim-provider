@@ -18,7 +18,7 @@ jest.mock("../../src/api/client", () => ({
 
 jest.mock("vscode", () => ({
   SecretStorage: class {},
-  LanguageModelChatMessageRole: { User: 1, Assistant: 2, System: 0 },
+  LanguageModelChatMessageRole: { User: 1, Assistant: 2, System: 3 },
   LanguageModelChatMessage: {
     User: (content: unknown[]) => ({ role: 1, content }),
   },

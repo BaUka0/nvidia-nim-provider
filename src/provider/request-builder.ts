@@ -326,7 +326,8 @@ export class NimRequestBuilder {
     reasoningMode ??= "none";
 
     if (modes && modes.length > 0 && !modes.includes(reasoningMode)) {
-      reasoningMode = modes.includes("none") ? "none" : modes[0];
+      const effortModes = modes.filter((mode) => mode !== "none");
+      reasoningMode = effortModes[0] ?? modes[0];
     }
 
     if (adapter.applyReasoningMode) {

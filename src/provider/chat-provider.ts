@@ -111,6 +111,25 @@ function buildMissingApiKeyFallback(): string {
   return `${PROVIDER_DISPLAY_NAME} API key is not configured. Run "${PROVIDER_DISPLAY_NAME}: Manage ${PROVIDER_DISPLAY_NAME} API Key" from the Command Palette, or retry this request and enter the key when prompted.`;
 }
 
+function toHostChatError(err: unknown): Error {
+  if (!(err instanceof NvidiaApiError)) {
+    return err instanceof Error ? err : new Error(String(err));
+  }
+  const hostError = vscode.LanguageModelError as
+    | {
+        NoPermissions?: (message: string) => Error;
+        NotFound?: (message: string) => Error;
+      }
+    | undefined;
+  if (err.kind === "auth_failed" && typeof hostError?.NoPermissions === "function") {
+    return hostError.NoPermissions(err.message);
+  }
+  if (err.kind === "model_unavailable" && typeof hostError?.NotFound === "function") {
+    return hostError.NotFound(err.message);
+  }
+  return err;
+}
+
 /**
  * Wraps real stream usage into a Copilot-compatible data part.
  * Copilot Chat's extension-contributed endpoint wrapper scans streamed
@@ -435,7 +454,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           const fallbackConfig = ConfigManager.getFallbackConfig();
           const priorDepth = currentOptions.fallbackDepth ?? 0;
           if (fetchBudget.exhausted) {
-            throw err;
+            throw toHostChatError(err);
           }
           if (
             !isFallbackEligibleError(
@@ -445,7 +464,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               reportState.hasReportedVisibleContent,
             )
           ) {
-            throw err;
+            throw toHostChatError(err);
           }
 
           const modelApiKey = (await this.apiKeyResolver.resolveForModel(currentModel))?.value;
@@ -465,17 +484,19 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
           if (!fallbackModel) {
             if (priorDepth > 0) {
-              throw createStructuredError(
-                err instanceof NvidiaApiError ? err.kind : "rate_limited",
-                [
-                  `All NVIDIA NIM failover candidates failed after ${priorDepth} step(s).`,
-                  `Tried chain: ${[...triedFallbackModelIds, currentModel.id].join(" -> ")}`,
-                  `Last error (${err instanceof NvidiaApiError ? err.kind : "unknown"}): ${err instanceof Error ? err.message : String(err)}`,
-                  "Adjust nvidia-nim.fallback.priorityList or pick another model in the picker.",
-                ].join("\n"),
+              throw toHostChatError(
+                createStructuredError(
+                  err instanceof NvidiaApiError ? err.kind : "rate_limited",
+                  [
+                    `All NVIDIA NIM failover candidates failed after ${priorDepth} step(s).`,
+                    `Tried chain: ${[...triedFallbackModelIds, currentModel.id].join(" -> ")}`,
+                    `Last error (${err instanceof NvidiaApiError ? err.kind : "unknown"}): ${err instanceof Error ? err.message : String(err)}`,
+                    "Adjust nvidia-nim.fallback.priorityList or pick another model in the picker.",
+                  ].join("\n"),
+                ),
               );
             }
-            throw err;
+            throw toHostChatError(err);
           }
 
           reportFallbackHop({
@@ -548,9 +569,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     try {
       apiKey = await this.ensureApiKey(false, model);
       if (!apiKey) {
-        progress.report(new vscode.LanguageModelTextPart(buildMissingApiKeyFallback()));
-        reportState.hasReportedContent = true;
-        return;
+        const message = buildMissingApiKeyFallback();
+        if (typeof vscode.LanguageModelError?.NoPermissions === "function") {
+          throw vscode.LanguageModelError.NoPermissions(message);
+        }
+        throw createStructuredError("auth_failed", message);
       }
 
       const requestPreparationStartedAtMs = debugEnabled() ? Date.now() : undefined;
@@ -977,7 +1000,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         !hasReportedContent &&
         !hasRetriedContextOverflow &&
         err instanceof NvidiaApiError &&
-        err.kind === "context_overflow" &&
+        (err.kind === "context_overflow" || err.kind === "token_limit") &&
         apiKey &&
         activeRequestBody &&
         ConfigManager.getContextConfig().autoCompactOnOverflow
@@ -1079,7 +1102,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           if (compactErr instanceof Error && compactErr.name === "AbortError") {
             throw new vscode.CancellationError();
           }
-          if (compactErr instanceof NvidiaApiError && compactErr.kind !== "context_overflow") {
+          if (
+            compactErr instanceof NvidiaApiError &&
+            compactErr.kind !== "context_overflow" &&
+            compactErr.kind !== "token_limit"
+          ) {
             throw compactErr;
           }
           debugLog("contextOverflow", {

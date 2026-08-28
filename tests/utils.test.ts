@@ -51,6 +51,19 @@ describe("convertMessages", () => {
     expect(result).toEqual<NimChatMessage[]>([{ role: "user", content: "(empty message)" }]);
   });
 
+  it("rejects number-array images over the chat size cap", () => {
+    const oversized = Array.from({ length: 20 * 1024 * 1024 + 1 }, () => 1);
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [{ mimeType: "image/png", data: oversized }],
+      },
+    ];
+    expect(() => convertMessages(makeChatMessages(...messages), { supportsVision: true })).toThrow(
+      /exceeds the .* chat image limit/,
+    );
+  });
+
   it("converts image parts to image_url for vision-capable models", () => {
     const imageData = new Uint8Array([1, 2, 3]);
     const messages = [
