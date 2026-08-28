@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-08-28
+
 ### Removed
 
 - **`stepfun-ai/step-3.7-flash` catalog de-list (`src/models/catalog.ts`, `package.json`, `README.md`, `docs/README.md`, `scripts/nim-models-probe.mjs`).** NVIDIA NIM returned HTTP 410 Gone (`end of life on 2026-08-28`). Dropped the id from `MODEL_LIST` and fallback/summarization enums. Preserved `StepfunAdapter` for a possible successor. Bumped `MODELS_CACHE_VERSION=15`. Addresses the Step 3.7 Flash report in #9.
