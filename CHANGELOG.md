@@ -4,6 +4,7 @@
 
 ### Changed
 
+- **Documentation modularization (`docs/*`).** Split the monolithic `docs/README.md` user guide into modular topic guides (`docs/getting-started.md`, `docs/models.md`, `docs/failover.md`, `docs/tools-and-agent.md`, `docs/context-management.md`, `docs/configuration.md`, `docs/troubleshooting.md`), with `docs/README.md` serving as the central documentation hub.
 - **Packaging (`.vscodeignore`).** Exclude `coverage/**` from VSIX payloads (0.9.2 shipped ~2 MiB of lcov/HTML reports).
 - **Text last-resort failover (`src/models/catalog.ts`).** If the configured text fallback is missing from the live catalog, `getFallbackModel` now sweeps remaining available models and skips `pickerStatus: "unavailable"` entries (Lightning).
 - **Fallback notices (`src/provider/fallback-orchestrator.ts`).** `network_error` is failover-eligible. Capacity labels distinguish network/server/overflow from rate limits.
