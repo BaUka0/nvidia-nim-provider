@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-08-30
+
 ### Changed
 
 - **Lightning picker restored (`src/models/catalog.ts`, `src/shared/constants.ts`).** `nvidia/nemotron-3.5-lightning-30b-a3b` is healthy again: picker name is `Nemotron 3.5 Lightning 30B` (no Unavailable subtitle), and last-resort text failover may select it. Bumped `MODELS_CACHE_VERSION=16` so cached picker labels refresh.
