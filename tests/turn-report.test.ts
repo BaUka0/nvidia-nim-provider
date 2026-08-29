@@ -1,11 +1,14 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { EXTENSION_VERSION } from "../src/shared/constants";
+import { debugLog, resetSessionLogsForTests } from "../src/shared/logging";
 import {
   MAX_TURN_REPORTS,
+  buildSessionLogFilename,
   buildTurnReportFilename,
   clipHeadTail,
   detectCycleHint,
+  formatSessionLogsPayload,
   formatTurnReportsPayload,
   inferReasoningModeFromRequest,
   recordTurnReport,
@@ -14,6 +17,14 @@ import {
   writeTurnReportFile,
 } from "../src/shared/turn-report";
 import { NimChatRequest } from "../src/types";
+
+jest.mock("vscode", () => ({
+  workspace: {
+    getConfiguration: jest.fn(() => ({
+      get: (_key: string, defaultValue: unknown) => defaultValue,
+    })),
+  },
+}));
 
 jest.mock("node:fs/promises", () => ({
   mkdir: jest.fn(async () => undefined),
@@ -29,6 +40,7 @@ const ISSUE_7_SUPER_CYCLE = [
 describe("turn-report", () => {
   beforeEach(() => {
     resetTurnReportsForTests();
+    resetSessionLogsForTests();
     jest.clearAllMocks();
   });
 
@@ -154,6 +166,31 @@ describe("turn-report", () => {
     expect(buildTurnReportFilename(new Date(2026, 7, 29, 15, 4, 9))).toBe(
       "nvidia-nim-turn-report-20260829-150409.json",
     );
+    expect(buildSessionLogFilename(new Date(2026, 7, 29, 15, 4, 9))).toBe(
+      "nvidia-nim-session-20260829-150409.json",
+    );
+  });
+
+  it("packs turns and session events into one payload", () => {
+    expect(formatSessionLogsPayload()).toBeUndefined();
+    debugLog("budget", { remaining: 3 });
+    recordTurnReport({
+      outcome: "ok",
+      modelId: "nvidia/nemotron-3-super-120b-a12b",
+      lastVisibleText: "hello",
+      recordedAt: "2026-08-29T00:00:00.000Z",
+    });
+    const payload = formatSessionLogsPayload();
+    expect(payload).toBeDefined();
+    const parsed = JSON.parse(payload ?? "{}") as {
+      settings: { logStreamChunks: boolean; logUserMessages: boolean };
+      turns: { modelId: string }[];
+      events: { label: string }[];
+    };
+    expect(parsed.settings.logStreamChunks).toBe(false);
+    expect(parsed.settings.logUserMessages).toBe(false);
+    expect(parsed.turns).toHaveLength(1);
+    expect(parsed.events.some((event) => event.label === "budget")).toBe(true);
   });
 
   it("creates the parent directory before writing the report file", async () => {

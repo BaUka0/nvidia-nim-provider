@@ -93,4 +93,50 @@ describe("output-channel", () => {
 
     expect(mockAppendLine).toHaveBeenCalledTimes(2);
   });
+
+  it("records technical debug events in the session ring when debug output is off", async () => {
+    delete process.env.NVIDIA_NIM_DEBUG;
+
+    const { debugLog, getSessionEvents, getOutputChannel } = await import("../src/shared/logging");
+    getOutputChannel();
+    mockAppendLine.mockClear();
+    debugLog("budget", { remaining: 12 });
+
+    expect(mockAppendLine).not.toHaveBeenCalled();
+    expect(getSessionEvents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "debug",
+          kind: "tech",
+          label: "budget",
+        }),
+      ]),
+    );
+  });
+
+  it("keeps stream chunks and user messages out of the log unless enabled", async () => {
+    process.env.NVIDIA_NIM_DEBUG = "1";
+
+    const {
+      debugLog,
+      getSessionEvents,
+      getOutputChannel,
+      resetSessionLogsForTests,
+      setDeveloperLogOptions,
+    } = await import("../src/shared/logging");
+    getOutputChannel();
+    resetSessionLogsForTests();
+    mockAppendLine.mockClear();
+
+    debugLog("stream chunk", { contentHead: "secret" }, "chunk");
+    debugLog("Outgoing request messages", [{ role: "user", content: "prompt" }], "messages");
+    expect(mockAppendLine).not.toHaveBeenCalled();
+    expect(getSessionEvents()).toHaveLength(0);
+
+    setDeveloperLogOptions({ logStreamChunks: true, logUserMessages: true });
+    debugLog("stream chunk", { contentHead: "secret" }, "chunk");
+    debugLog("Outgoing request messages", [{ role: "user", content: "prompt" }], "messages");
+    expect(mockAppendLine).toHaveBeenCalledTimes(2);
+    expect(getSessionEvents()).toHaveLength(2);
+  });
 });

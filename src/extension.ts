@@ -6,6 +6,7 @@ import {
   MANAGE_COMMAND_ID,
   MIGRATION_DONE_KEY,
   OPEN_DEBUG_LOG_COMMAND_ID,
+  SAVE_SESSION_LOGS_COMMAND_ID,
   SAVE_TURN_REPORT_COMMAND_ID,
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
@@ -18,7 +19,7 @@ import {
   disposeOutputChannel,
   getOutputChannel,
   outputLog,
-  setDeveloperDebugLogging,
+  setDeveloperLogOptions,
 } from "./shared/logging";
 import { StatusBarManager } from "./shared/status-bar";
 import { NimChatModelProvider } from "./provider/chat-provider";
@@ -28,12 +29,71 @@ import { NvidiaApiKeyResolver } from "./api/key-resolver";
 import { ConfigManager } from "./shared/config";
 import { isLikelyNvidiaApiKey } from "./shared/api-key-format";
 import {
-  buildTurnReportFilename,
-  formatTurnReportsPayload,
+  buildSessionLogFilename,
+  formatSessionLogsPayload,
   resolveDownloadsDir,
   writeTurnReportFile,
 } from "./shared/turn-report";
 import * as path from "node:path";
+
+function applyDeveloperLogOptions(context: vscode.ExtensionContext): void {
+  const developer = ConfigManager.getDeveloperConfig();
+  const debugFlag = context.globalState.get<boolean>(DEBUG_STATE_KEY, false);
+  setDeveloperLogOptions({
+    debugLogging: debugFlag || developer.debugLogging,
+    logStreamChunks: developer.logStreamChunks,
+    logUserMessages: developer.logUserMessages,
+  });
+}
+
+async function saveSessionLogs(): Promise<void> {
+  const payload = formatSessionLogsPayload();
+  if (!payload) {
+    vscode.window.showWarningMessage(
+      `${PROVIDER_DISPLAY_NAME} has no session logs yet. Send a chat message first, then run this command again.`,
+    );
+    return;
+  }
+
+  const filename = buildSessionLogFilename();
+  const downloadsDir = resolveDownloadsDir();
+  let savedPath = path.join(downloadsDir, filename);
+  try {
+    await writeTurnReportFile(savedPath, payload);
+  } catch (error) {
+    const fallback = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(savedPath),
+      filters: { JSON: ["json"] },
+      saveLabel: "Save session logs",
+    });
+    if (!fallback) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(
+        `${PROVIDER_DISPLAY_NAME} could not save the session logs: ${message}`,
+      );
+      return;
+    }
+    savedPath = fallback.fsPath;
+    try {
+      await writeTurnReportFile(savedPath, payload);
+    } catch (retryError) {
+      const message = retryError instanceof Error ? retryError.message : String(retryError);
+      vscode.window.showErrorMessage(
+        `${PROVIDER_DISPLAY_NAME} could not save the session logs: ${message}`,
+      );
+      return;
+    }
+  }
+
+  const showInFolder = "Show in Folder";
+  const choice = await vscode.window.showInformationMessage(
+    `${PROVIDER_DISPLAY_NAME}: saved session logs to ${savedPath}`,
+    showInFolder,
+  );
+  if (choice === showInFolder) {
+    await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(savedPath));
+  }
+}
 
 let _provider: NimChatModelProvider | null = null;
 
@@ -163,7 +223,7 @@ function registerCommands(
       const next = !current;
       await context.globalState.update(DEBUG_STATE_KEY, next);
       process.env[DEBUG_ENV_VAR] = next ? "1" : "0";
-      setDeveloperDebugLogging(next || ConfigManager.getDeveloperConfig().debugLogging);
+      applyDeveloperLogOptions(context);
       debugLog("toggleDebug", `Debug logging ${next ? "enabled" : "disabled"}.`);
       vscode.window.showInformationMessage(
         `${PROVIDER_DISPLAY_NAME} debug logging ${next ? "enabled" : "disabled"}.`,
@@ -179,54 +239,8 @@ function registerCommands(
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand(SAVE_TURN_REPORT_COMMAND_ID, async () => {
-      const payload = formatTurnReportsPayload();
-      if (!payload) {
-        vscode.window.showWarningMessage(
-          `${PROVIDER_DISPLAY_NAME} has no turn reports yet. Send a chat message first, then run this command again.`,
-        );
-        return;
-      }
-
-      const filename = buildTurnReportFilename();
-      const downloadsDir = resolveDownloadsDir();
-      let savedPath = path.join(downloadsDir, filename);
-      try {
-        await writeTurnReportFile(savedPath, payload);
-      } catch (error) {
-        const fallback = await vscode.window.showSaveDialog({
-          defaultUri: vscode.Uri.file(savedPath),
-          filters: { JSON: ["json"] },
-          saveLabel: "Save turn report",
-        });
-        if (!fallback) {
-          const message = error instanceof Error ? error.message : String(error);
-          vscode.window.showErrorMessage(
-            `${PROVIDER_DISPLAY_NAME} could not save the turn report: ${message}`,
-          );
-          return;
-        }
-        savedPath = fallback.fsPath;
-        try {
-          await writeTurnReportFile(savedPath, payload);
-        } catch (retryError) {
-          const message = retryError instanceof Error ? retryError.message : String(retryError);
-          vscode.window.showErrorMessage(
-            `${PROVIDER_DISPLAY_NAME} could not save the turn report: ${message}`,
-          );
-          return;
-        }
-      }
-
-      const showInFolder = "Show in Folder";
-      const choice = await vscode.window.showInformationMessage(
-        `${PROVIDER_DISPLAY_NAME}: saved turn report to ${savedPath}`,
-        showInFolder,
-      );
-      if (choice === showInFolder) {
-        await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(savedPath));
-      }
-    }),
+    vscode.commands.registerCommand(SAVE_SESSION_LOGS_COMMAND_ID, saveSessionLogs),
+    vscode.commands.registerCommand(SAVE_TURN_REPORT_COMMAND_ID, saveSessionLogs),
   );
 }
 
@@ -242,7 +256,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize debug logging
   const debugEnabledFlag = context.globalState.get<boolean>(DEBUG_STATE_KEY, false);
   process.env[DEBUG_ENV_VAR] = debugEnabledFlag ? "1" : "0";
-  setDeveloperDebugLogging(debugEnabledFlag || ConfigManager.getDeveloperConfig().debugLogging);
+  applyDeveloperLogOptions(context);
   debugLog(
     "activate",
     `Extension activated. Debug logging ${debugEnabledFlag ? "enabled" : "disabled"}.`,
@@ -272,11 +286,8 @@ export function activate(context: vscode.ExtensionContext) {
       if (e.affectsConfiguration("nvidia-nim.ui.showStatusBarItem")) {
         statusBar.updateVisibility();
       }
-      if (e.affectsConfiguration("nvidia-nim.developer.debugLogging")) {
-        setDeveloperDebugLogging(
-          context.globalState.get<boolean>(DEBUG_STATE_KEY, false) ||
-            ConfigManager.getDeveloperConfig().debugLogging,
-        );
+      if (e.affectsConfiguration("nvidia-nim.developer")) {
+        applyDeveloperLogOptions(context);
       }
       if (
         e.affectsConfiguration("nvidia-nim.fallback") ||

@@ -23,6 +23,7 @@ import {
   MODELS_CACHE_VERSION_STATE_KEY,
 } from "../../src/shared/constants";
 import { getTurnReports, resetTurnReportsForTests } from "../../src/shared/turn-report";
+import { setDeveloperLogOptions } from "../../src/shared/logging";
 
 jest.mock("../../src/api/client", () => ({
   fetchModels: jest.fn(),
@@ -44,6 +45,7 @@ describe("NimChatModelProvider", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resetTurnReportsForTests();
+    setDeveloperLogOptions({ logStreamChunks: false, logUserMessages: false });
     secrets = makeSecrets();
     globalState = makeMemento((key) =>
       key === "nvidia-nim.models"
@@ -519,8 +521,43 @@ describe("NimChatModelProvider", () => {
     expect(textContent).toBe("actual answer text");
   });
 
-  it("logs raw stream chunk metadata when debug logging is enabled", async () => {
+  it("does not log stream chunks when debug is on unless logStreamChunks is enabled", async () => {
     process.env.NVIDIA_NIM_DEBUG = "1";
+    setDeveloperLogOptions({ logStreamChunks: false });
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      const mockStream = async function* () {
+        yield { choices: [{ delta: { content: "answer" }, finish_reason: "stop" }] };
+      };
+      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+      await provider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "deepseek-ai/deepseek-v4",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        }),
+        makeUserMessages("Hi"),
+        makeChatOptions(),
+        { report: jest.fn() },
+        makeToken(),
+      );
+
+      const chunkLogs = consoleSpy.mock.calls.filter((c) => c[0]?.includes?.("stream chunk"));
+      expect(chunkLogs).toHaveLength(0);
+    } finally {
+      consoleSpy.mockRestore();
+      delete process.env.NVIDIA_NIM_DEBUG;
+      setDeveloperLogOptions({ logStreamChunks: false });
+    }
+  });
+
+  it("logs raw stream chunk metadata when logStreamChunks is enabled", async () => {
+    process.env.NVIDIA_NIM_DEBUG = "1";
+    setDeveloperLogOptions({ logStreamChunks: true });
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
@@ -566,6 +603,7 @@ describe("NimChatModelProvider", () => {
     } finally {
       consoleSpy.mockRestore();
       delete process.env.NVIDIA_NIM_DEBUG;
+      setDeveloperLogOptions({ logStreamChunks: false });
     }
   });
 

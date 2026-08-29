@@ -9,14 +9,90 @@ const logPrefix = (): string => `[${PROVIDER_DISPLAY_NAME}]`;
 const errorPrefix = (): string => `[${PROVIDER_DISPLAY_NAME} Error]`;
 const warnPrefix = (): string => `[${PROVIDER_DISPLAY_NAME} Warning]`;
 
+export type DebugLogKind = "tech" | "chunk" | "messages";
+
+export interface DeveloperLogOptions {
+  readonly debugLogging: boolean;
+  readonly logStreamChunks: boolean;
+  readonly logUserMessages: boolean;
+}
+
+export interface SessionLogEvent {
+  readonly ts: string;
+  readonly level: "debug" | "info" | "warn" | "error";
+  readonly kind?: DebugLogKind;
+  readonly label: string;
+  readonly value: unknown;
+}
+
+const MAX_SESSION_EVENTS = 1000;
+const MAX_SESSION_CHARS = 256 * 1024;
+
 let outputChannel: vscode.OutputChannel | undefined;
 let developerDebugLogging = false;
+let logStreamChunks = false;
+let logUserMessages = false;
 let debugEnabledCache: boolean | undefined;
+let sessionEvents: SessionLogEvent[] = [];
+let sessionChars = 0;
 
 /** Called from activation / config changes; avoids a logging ↔ config import cycle. */
-export function setDeveloperDebugLogging(enabled: boolean): void {
-  developerDebugLogging = enabled;
+export function setDeveloperLogOptions(options: Partial<DeveloperLogOptions>): void {
+  if (options.debugLogging !== undefined) {
+    developerDebugLogging = options.debugLogging;
+  }
+  if (options.logStreamChunks !== undefined) {
+    logStreamChunks = options.logStreamChunks;
+  }
+  if (options.logUserMessages !== undefined) {
+    logUserMessages = options.logUserMessages;
+  }
   debugEnabledCache = undefined;
+}
+
+export function setDeveloperDebugLogging(enabled: boolean): void {
+  setDeveloperLogOptions({ debugLogging: enabled });
+}
+
+export function getSessionEvents(): readonly SessionLogEvent[] {
+  return sessionEvents;
+}
+
+export function resetSessionLogsForTests(): void {
+  sessionEvents = [];
+  sessionChars = 0;
+}
+
+function eventSize(event: SessionLogEvent): number {
+  return event.label.length + (typeof event.value === "string" ? event.value.length : 128);
+}
+
+function appendSessionEvent(event: SessionLogEvent): void {
+  sessionEvents.push(event);
+  sessionChars += eventSize(event);
+  while (
+    sessionEvents.length > MAX_SESSION_EVENTS ||
+    (sessionChars > MAX_SESSION_CHARS && sessionEvents.length > 0)
+  ) {
+    const removed = sessionEvents.shift();
+    if (!removed) {
+      break;
+    }
+    sessionChars -= eventSize(removed);
+    if (sessionChars < 0) {
+      sessionChars = 0;
+    }
+  }
+}
+
+function isKindEnabled(kind: DebugLogKind): boolean {
+  if (kind === "chunk") {
+    return logStreamChunks;
+  }
+  if (kind === "messages") {
+    return logUserMessages;
+  }
+  return true;
 }
 
 export function getOutputChannel(): vscode.OutputChannel {
@@ -106,37 +182,72 @@ function toLogMessage(value: unknown): string {
   }
 }
 
-export function debugLog(label: string, value: unknown): void {
+export function debugLog(label: string, value: unknown, kind: DebugLogKind = "tech"): void {
+  if (!isKindEnabled(kind)) {
+    return;
+  }
+  const redacted = redactValue(value);
+  appendSessionEvent({
+    ts: new Date().toISOString(),
+    level: "debug",
+    kind,
+    label,
+    value: redacted,
+  });
   if (!debugEnabled()) {
     return;
   }
   if (outputChannel) {
-    outputChannel.appendLine(`${debugPrefix()} ${label}: ${toLogMessage(value)}`);
+    outputChannel.appendLine(`${debugPrefix()} ${label}: ${toLogMessage(redacted)}`);
     return;
   }
-  console.log(`${debugPrefix()} ${label}:`, redactValue(value));
+  console.log(`${debugPrefix()} ${label}:`, redacted);
 }
 
 export function outputLog(label: string, value: unknown): void {
+  const redacted = redactValue(value);
+  appendSessionEvent({
+    ts: new Date().toISOString(),
+    level: "info",
+    kind: "tech",
+    label,
+    value: redacted,
+  });
   if (outputChannel) {
-    outputChannel.appendLine(`${logPrefix()} ${label}: ${toLogMessage(value)}`);
+    outputChannel.appendLine(`${logPrefix()} ${label}: ${toLogMessage(redacted)}`);
     return;
   }
-  console.log(`${logPrefix()} ${label}:`, redactValue(value));
+  console.log(`${logPrefix()} ${label}:`, redacted);
 }
 
 export function errorLog(label: string, value: unknown): void {
+  const redacted = redactValue(value);
+  appendSessionEvent({
+    ts: new Date().toISOString(),
+    level: "error",
+    kind: "tech",
+    label,
+    value: redacted,
+  });
   if (outputChannel) {
-    outputChannel.appendLine(`${errorPrefix()} ${label}: ${toLogMessage(value)}`);
+    outputChannel.appendLine(`${errorPrefix()} ${label}: ${toLogMessage(redacted)}`);
     return;
   }
-  console.error(`${errorPrefix()} ${label}:`, redactValue(value));
+  console.error(`${errorPrefix()} ${label}:`, redacted);
 }
 
 export function warnLog(label: string, value: unknown): void {
+  const redacted = redactValue(value);
+  appendSessionEvent({
+    ts: new Date().toISOString(),
+    level: "warn",
+    kind: "tech",
+    label,
+    value: redacted,
+  });
   if (outputChannel) {
-    outputChannel.appendLine(`${warnPrefix()} ${label}: ${toLogMessage(value)}`);
+    outputChannel.appendLine(`${warnPrefix()} ${label}: ${toLogMessage(redacted)}`);
     return;
   }
-  console.warn(`${warnPrefix()} ${label}:`, redactValue(value));
+  console.warn(`${warnPrefix()} ${label}:`, redacted);
 }

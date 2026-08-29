@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-08-29
+
+### Added
+
+- **Session log export (`src/shared/logging.ts`, `src/shared/turn-report.ts`, `src/extension.ts`, `src/shared/config.ts`, `package.json`).** Always-on in-memory ring of technical events (retries, budget, finish reasons, tool names) even when debug output is off. Command Palette **NVIDIA NIM: Save Session Logs** writes one JSON (`turns` + `events` + redacted settings) to Downloads; **Save Last Turn Report** remains an alias. New settings `nvidia-nim.developer.logStreamChunks` and `nvidia-nim.developer.logUserMessages` (default `false`) opt into SSE chunk dumps and outgoing message bodies. Default debug output is technical-only.
+
+### Changed
+
+- **Debug defaults (`src/provider/stream-pump.ts`, `src/provider/request-builder.ts`).** `stream chunk` and `Outgoing request messages` are tagged log kinds and no longer appear when debug logging is enabled unless their settings are on.
+
 ## [0.9.3] - 2026-08-29
 
 ### Added

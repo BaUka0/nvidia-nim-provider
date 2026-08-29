@@ -314,6 +314,16 @@ describe("ConfigManager", () => {
       expect(config).toEqual(DEFAULT_DEVELOPER_CONFIG);
       expect(config.debugLogging).toBe(false);
       expect(config.logTimingBreakdowns).toBe(true);
+      expect(config.logStreamChunks).toBe(false);
+      expect(config.logUserMessages).toBe(false);
+    });
+
+    it("honors developer logStreamChunks and logUserMessages overrides", () => {
+      mockStore["developer.logStreamChunks"] = true;
+      mockStore["developer.logUserMessages"] = true;
+      const config = ConfigManager.getDeveloperConfig();
+      expect(config.logStreamChunks).toBe(true);
+      expect(config.logUserMessages).toBe(true);
     });
   });
 

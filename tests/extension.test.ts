@@ -130,7 +130,9 @@ describe("activate", () => {
     jest.clearAllMocks();
     delete process.env.NVIDIA_NIM_DEBUG;
     const { resetTurnReportsForTests } = await import("../src/shared/turn-report");
+    const { resetSessionLogsForTests } = await import("../src/shared/logging");
     resetTurnReportsForTests();
+    resetSessionLogsForTests();
   });
 
   it("registers the NVIDIA NIM provider and management command on activation", async () => {
@@ -899,7 +901,7 @@ describe("activate", () => {
     expect(process.env.NVIDIA_NIM_DEBUG).toBe("1");
   });
 
-  it("warns when Save Last Turn Report has nothing to write", async () => {
+  it("warns when Save Session Logs has nothing to write", async () => {
     const secrets = {
       get: jest.fn(async () => undefined),
       store: jest.fn(),
@@ -920,18 +922,23 @@ describe("activate", () => {
 
     const { activate } = await import("../src/extension");
     activate(context as never);
+    const { resetTurnReportsForTests } = await import("../src/shared/turn-report");
+    const { resetSessionLogsForTests } = await import("../src/shared/logging");
+    resetTurnReportsForTests();
+    resetSessionLogsForTests();
 
-    const saveReport = registeredCommands.get("nvidia-nim.saveLastTurnReport");
+    const saveReport = registeredCommands.get("nvidia-nim.saveSessionLogs");
     expect(saveReport).toBeDefined();
+    expect(registeredCommands.get("nvidia-nim.saveLastTurnReport")).toBe(saveReport);
     await saveReport?.();
 
     expect(mockShowWarningMessage).toHaveBeenCalledWith(
-      "NVIDIA NIM has no turn reports yet. Send a chat message first, then run this command again.",
+      "NVIDIA NIM has no session logs yet. Send a chat message first, then run this command again.",
     );
     expect(fs.writeFile).not.toHaveBeenCalled();
   });
 
-  it("saves the last turn report into Downloads and can reveal it", async () => {
+  it("saves session logs into Downloads and can reveal them", async () => {
     const secrets = {
       get: jest.fn(async () => undefined),
       store: jest.fn(),
@@ -969,15 +976,19 @@ describe("activate", () => {
       recursive: true,
     });
     expect(fs.writeFile).toHaveBeenCalledWith(
-      expect.stringMatching(/nvidia-nim-turn-report-\d{8}-\d{6}\.json$/),
-      expect.stringContaining("nvidia/nemotron-3-super-120b-a12b"),
+      expect.stringMatching(/nvidia-nim-session-\d{8}-\d{6}\.json$/),
+      expect.stringMatching(/"turns"|"events"|"settings"/),
       "utf8",
     );
+    const written = (fs.writeFile as jest.Mock).mock.calls[0][1] as string;
+    expect(written).toContain("nvidia/nemotron-3-super-120b-a12b");
+    expect(written).toContain('"events"');
+    expect(written).toContain("logStreamChunks");
     expect(mockShowSaveDialog).not.toHaveBeenCalled();
     expect(mockExecuteCommand).toHaveBeenCalledWith(
       "revealFileInOS",
       expect.objectContaining({
-        fsPath: expect.stringMatching(/nvidia-nim-turn-report-\d{8}-\d{6}\.json$/),
+        fsPath: expect.stringMatching(/nvidia-nim-session-\d{8}-\d{6}\.json$/),
       }),
     );
   });
@@ -1009,18 +1020,18 @@ describe("activate", () => {
     });
     (fs.writeFile as jest.Mock).mockRejectedValueOnce(new Error("EACCES"));
     mockShowSaveDialog.mockResolvedValue({
-      fsPath: path.join("/tmp", "custom-turn-report.json"),
+      fsPath: path.join("/tmp", "custom-session.json"),
     });
 
     const { activate } = await import("../src/extension");
     activate(context as never);
 
-    const saveReport = registeredCommands.get("nvidia-nim.saveLastTurnReport");
+    const saveReport = registeredCommands.get("nvidia-nim.saveSessionLogs");
     await saveReport?.();
 
     expect(mockShowSaveDialog).toHaveBeenCalled();
     expect(fs.writeFile).toHaveBeenLastCalledWith(
-      path.join("/tmp", "custom-turn-report.json"),
+      path.join("/tmp", "custom-session.json"),
       expect.stringContaining("nvidia/nemotron-3-super-120b-a12b"),
       "utf8",
     );

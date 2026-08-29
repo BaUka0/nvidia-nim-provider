@@ -381,8 +381,9 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
 
       const streamedToolCalls = choice ? collectChoiceToolCalls(choice) : [];
 
-      if (debugEnabled()) {
-        debugLog("stream chunk", {
+      debugLog(
+        "stream chunk",
+        {
           rc: Boolean(reasoningContent),
           rcTail: reasoningContent?.slice(-32),
           content: Boolean(content),
@@ -396,8 +397,9 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
             argsChars: toolCall.function?.arguments?.length ?? 0,
           })),
           finish: choice?.finish_reason ?? null,
-        });
-      }
+        },
+        "chunk",
+      );
 
       if (reasoningContent) {
         router.handleReasoningContent(reasoningContent);

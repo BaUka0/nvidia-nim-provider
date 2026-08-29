@@ -6,12 +6,12 @@ Diagnostics guide, common HTTP error codes, debugging workflows, and security de
 
 ## How to View and Export Debug Logs
 
-If something goes wrong, the debug log shows what happened:
+If something goes wrong, save the session file. Debug logging does not need to be on first.
 
 1. Open the Command Palette (`Ctrl + Shift + P` / `Cmd + Shift + P`).
-2. Run `NVIDIA NIM: Save Last Turn Report`. This writes a small JSON file to your Downloads folder (no debug toggle required). Attach that file to a GitHub issue.
+2. Run `NVIDIA NIM: Save Session Logs` (the older `Save Last Turn Report` command does the same thing). This writes one JSON file to your Downloads folder with recent turns and technical events. Attach that file to a GitHub issue.
 3. Run `NVIDIA NIM: Open Debug Log` if you still need the Output panel.
-4. *(Optional)* Run `NVIDIA NIM: Toggle Debug Logging` to enable full chunk-by-chunk logging.
+4. *(Optional)* Enable `nvidia-nim.developer.debugLogging` in the Settings UI or `settings.json` for a live technical trace. SSE chunk dumps and outgoing message bodies stay off unless you also enable `nvidia-nim.developer.logStreamChunks` / `nvidia-nim.developer.logUserMessages`.
 
 ---
 

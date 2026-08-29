@@ -80,6 +80,8 @@ export interface UiConfig {
 export interface DeveloperConfig {
   readonly debugLogging: boolean;
   readonly logTimingBreakdowns: boolean;
+  readonly logStreamChunks: boolean;
+  readonly logUserMessages: boolean;
 }
 
 export interface NimConfig {
@@ -148,6 +150,8 @@ export const DEFAULT_UI_CONFIG: UiConfig = {
 export const DEFAULT_DEVELOPER_CONFIG: DeveloperConfig = {
   debugLogging: false,
   logTimingBreakdowns: true,
+  logStreamChunks: false,
+  logUserMessages: false,
 };
 
 export class ConfigManager {
@@ -417,9 +421,19 @@ export class ConfigManager {
       "developer.logTimingBreakdowns",
       DEFAULT_DEVELOPER_CONFIG.logTimingBreakdowns,
     );
+    const logStreamChunks = config.get<boolean>(
+      "developer.logStreamChunks",
+      DEFAULT_DEVELOPER_CONFIG.logStreamChunks,
+    );
+    const logUserMessages = config.get<boolean>(
+      "developer.logUserMessages",
+      DEFAULT_DEVELOPER_CONFIG.logUserMessages,
+    );
     return {
       debugLogging,
       logTimingBreakdowns,
+      logStreamChunks: logStreamChunks ?? DEFAULT_DEVELOPER_CONFIG.logStreamChunks,
+      logUserMessages: logUserMessages ?? DEFAULT_DEVELOPER_CONFIG.logUserMessages,
     };
   }
 

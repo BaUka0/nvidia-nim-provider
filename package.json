@@ -3,7 +3,7 @@
   "publisher": "neuraldock",
   "displayName": "NVIDIA NIM Agent",
   "description": "Use NVIDIA NIM reasoning models in GitHub Copilot Chat for VS Code",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "license": "MIT",
   "homepage": "https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent",
   "bugs": {
@@ -126,6 +126,11 @@
       {
         "command": "nvidia-nim.saveLastTurnReport",
         "title": "Save Last Turn Report",
+        "category": "NVIDIA NIM"
+      },
+      {
+        "command": "nvidia-nim.saveSessionLogs",
+        "title": "Save Session Logs",
         "category": "NVIDIA NIM"
       }
     ],
@@ -380,12 +385,22 @@
         "nvidia-nim.developer.debugLogging": {
           "type": "boolean",
           "default": false,
-          "description": "Enable verbose debug logging of requests, SSE chunks, and internal operations."
+          "description": "Enable verbose technical debug logging (retries, budget, tool names, finish reasons). SSE chunks and user message bodies stay off unless their own settings are enabled."
         },
         "nvidia-nim.developer.logTimingBreakdowns": {
           "type": "boolean",
           "default": true,
           "description": "Log detailed generation timing and speed metrics (tokens/sec, TTFT, durations)."
+        },
+        "nvidia-nim.developer.logStreamChunks": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include per-chunk SSE dumps in the debug log and saved session logs. Off by default because it is huge and often contains answer text."
+        },
+        "nvidia-nim.developer.logUserMessages": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include outgoing chat message bodies in the debug log and saved session logs. Off by default to avoid leaking prompt and file contents."
         },
         "nvidia-nim.reasoningMode": {
           "type": "string",

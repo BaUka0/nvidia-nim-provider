@@ -139,8 +139,10 @@ Optional sampling parameters sent with each request.
 | Setting | Default | What it does |
 | :--- | :--- | :--- |
 | `nvidia-nim.ui.showStatusBarItem` | `true` | Shows real-time token utilization at the bottom of your VS Code window. |
-| `nvidia-nim.developer.debugLogging` | `false` | Enables detailed logging in the VS Code Output panel for troubleshooting. |
+| `nvidia-nim.developer.debugLogging` | `false` | Technical debug logging in the Output panel (retries, budget, tool names, finish reasons). |
 | `nvidia-nim.developer.logTimingBreakdowns` | `true` | Records millisecond-level response speed metrics (TTFT and tokens-per-second) in debug logs. |
+| `nvidia-nim.developer.logStreamChunks` | `false` | Include per-chunk SSE dumps in the debug log and saved session file. Leave off unless asked. |
+| `nvidia-nim.developer.logUserMessages` | `false` | Include outgoing chat message bodies in the debug log and saved session file. Leave off unless asked. |
 
 ---
 
@@ -152,4 +154,4 @@ Press `Ctrl + Shift + P` (or `Cmd + Shift + P` on macOS) to access quick extensi
 - **`NVIDIA NIM: Refresh Available Models`**: Re-sync the available models list with NVIDIA servers.
 - **`NVIDIA NIM: Toggle Debug Logging`**: Turn verbose debug logs on or off in one click.
 - **`NVIDIA NIM: Open Debug Log`**: Open the dedicated NVIDIA NIM Output panel to view logs.
-- **`NVIDIA NIM: Save Last Turn Report`**: Write the last few chat turns (redacted sampling/tool metadata) to a JSON file in Downloads.
+- **`NVIDIA NIM: Save Session Logs`**: Write recent turns plus the technical session log to a JSON file in Downloads. `NVIDIA NIM: Save Last Turn Report` is an alias for the same command.

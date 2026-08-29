@@ -1,8 +1,9 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { ConfigManager } from "./config";
 import { EXTENSION_VERSION } from "./constants";
-import { redactSecrets } from "./logging";
+import { getSessionEvents, redactSecrets } from "./logging";
 import { NimChatRequest } from "../types";
 
 /** Keep a short in-memory trail so a loop can be saved after the fact. */
@@ -94,9 +95,9 @@ export function resolveDownloadsDir(homeDir: string = os.homedir()): string {
   return path.join(homeDir, "Downloads");
 }
 
-export function buildTurnReportFilename(now: Date = new Date()): string {
+function timestampStamp(now: Date): string {
   const pad = (value: number): string => String(value).padStart(2, "0");
-  const stamp = [
+  return [
     now.getFullYear(),
     pad(now.getMonth() + 1),
     pad(now.getDate()),
@@ -105,7 +106,14 @@ export function buildTurnReportFilename(now: Date = new Date()): string {
     pad(now.getMinutes()),
     pad(now.getSeconds()),
   ].join("");
-  return `nvidia-nim-turn-report-${stamp}.json`;
+}
+
+export function buildTurnReportFilename(now: Date = new Date()): string {
+  return `nvidia-nim-turn-report-${timestampStamp(now)}.json`;
+}
+
+export function buildSessionLogFilename(now: Date = new Date()): string {
+  return `nvidia-nim-session-${timestampStamp(now)}.json`;
 }
 
 function clipText(text: string, maxChars: number): string {
@@ -291,6 +299,39 @@ export function formatTurnReportsPayload(): string | undefined {
     version: EXTENSION_VERSION,
     generatedAt: new Date().toISOString(),
     turns: reports,
+  };
+  return redactSecrets(JSON.stringify(payload, null, 2));
+}
+
+export function formatSessionLogsPayload(): string | undefined {
+  const events = getSessionEvents();
+  if (reports.length === 0 && events.length === 0) {
+    return undefined;
+  }
+  const developer = ConfigManager.getDeveloperConfig();
+  const generation = ConfigManager.getGenerationConfig();
+  const fallback = ConfigManager.getFallbackConfig();
+  const payload = {
+    extension: "nvidia-nim-provider",
+    version: EXTENSION_VERSION,
+    generatedAt: new Date().toISOString(),
+    settings: {
+      debugLogging: developer.debugLogging,
+      logStreamChunks: developer.logStreamChunks,
+      logUserMessages: developer.logUserMessages,
+      logTimingBreakdowns: developer.logTimingBreakdowns,
+      maxRepeatedLines: generation.maxRepeatedLines,
+      autoContinueOnLoop: generation.autoContinueOnLoop,
+      fallbackEnabled: fallback.enabled,
+      fallbackModel: fallback.model,
+      fallbackVisionModel: fallback.visionModel,
+      fallbackOnRateLimit: fallback.onRateLimit,
+      fallbackOnModelUnavailable: fallback.onModelUnavailable,
+      fallbackOnEmptyStream: fallback.onEmptyStream,
+      fallbackOnTimeout: fallback.onTimeout,
+    },
+    turns: reports,
+    events,
   };
   return redactSecrets(JSON.stringify(payload, null, 2));
 }

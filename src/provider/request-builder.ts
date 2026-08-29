@@ -406,7 +406,7 @@ export class NimRequestBuilder {
       requestBody.tool_choice = toolConfig.tool_choice;
     }
 
-    debugLog("Outgoing request messages", requestBody.messages);
+    debugLog("Outgoing request messages", requestBody.messages, "messages");
 
     const safetyMargin = calculateSafetyMargin(contextWindow);
     const remainingBudget = Math.max(
