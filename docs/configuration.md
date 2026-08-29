@@ -129,7 +129,7 @@ Optional sampling parameters sent with each request.
 | `nvidia-nim.generation.frequencyPenalty` | `null` | `-2`–`2` | Discourages the model from repeating words. `null` omits the parameter. |
 | `nvidia-nim.generation.presencePenalty` | `null` | `-2`–`2` | Encourages the model to introduce new topics. `null` omits the parameter. |
 | `nvidia-nim.generation.repetitionPenalty` | `null` | `0.5`–`2` | Specific penalty against repetitive phrasing. Values above `1.0` reduce repetition. |
-| `nvidia-nim.generation.maxRepeatedLines` | `4` | `0`–`50` | Stops the response early if the model gets stuck repeating the same sentence. `0` disables loop detection. |
+| `nvidia-nim.generation.maxRepeatedLines` | `4` | `0`–`50` | Stops the response early if the model gets stuck repeating the same sentence or a paragraph with no line breaks. `0` disables loop detection. |
 | `nvidia-nim.generation.autoContinueOnLoop` | `true` | — | Automatically prompts the model to continue working if it pauses mid-sentence or gets caught in a loop. |
 
 ---

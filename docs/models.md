@@ -15,7 +15,7 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 | **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **38** | 1,000,000 | 65,536 | `None`, `Medium`, `High` | No | Heavy multi-file reasoning, system design, enterprise docs |
 | **Muse Glimmer** | `Muse Glimmer` | **35** | 131,072 | 32,768 | `None` to `XHigh` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
 | **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **26** | 1,000,000 | 65,536 | `None`, `Low`, `High` | No | Workhorse for everyday coding; default text fallback and summarizer |
-| **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B (Unavailable)` | **24** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Listed on `/v1/models`; picker marks it Unavailable while the endpoint is overloaded |
+| **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **24** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; compact 30B/3B-active MoE |
 
 Intelligence Index values are from the Artificial Analysis Intelligence Index (verified; see `CHANGELOG.md` 0.9.2).
 
@@ -25,7 +25,7 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 
 **Nemotron 3 Super 120B.** Default text fallback and summarization model. MoE reasoning, 1M context, up to 65,536 output tokens. Reasoning: `None` (standard), `Low` (quick pass), `High` (thorough).
 
-**Nemotron 3.5 Lightning 30B.** The picker shows `(Unavailable)` because the endpoint is currently overloaded. The id still appears in `/v1/models` and remains selectable; if it recovers, the label will follow. Use it for fast agentic turns once it's healthy again.
+**Nemotron 3.5 Lightning 30B.** Compact 30B/3B-active MoE for fast agentic turns. 1M context, up to 32,768 output tokens. Reasoning: `None`, `Medium`, `High`, `XHigh`. Text-only; vision requests fail over to `fallback.visionModel`.
 
 **DeepSeek V4 Flash 0731.** Strong on algorithms, debugging, schema design, SQL, and refactors. Reasoning: `None`, `High`, `Max`.
 

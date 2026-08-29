@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Lightning picker restored (`src/models/catalog.ts`, `src/shared/constants.ts`).** `nvidia/nemotron-3.5-lightning-30b-a3b` is healthy again: picker name is `Nemotron 3.5 Lightning 30B` (no Unavailable subtitle), and last-resort text failover may select it. Bumped `MODELS_CACHE_VERSION=16` so cached picker labels refresh.
+
+### Fixed
+
+- **Phrase-cycle repetition guard (`src/provider/repetition-guard.ts`).** `RepetitionGuard` now scans unterminated `pendingLine` (and a single completed line) for a repeating 6-word gram (3 hits, 4000-char window), so Super 120B-style run-on paragraph loops without newlines trip mid-stream. Identical completed lines still honor `maxRepeatedLines`. `detectCycleHint` is a boolean wrapper over `detectPhraseCycle`. Addresses the v0.9.2 reopen of #7.
+
 ## [0.9.4] - 2026-08-29
 
 ### Added

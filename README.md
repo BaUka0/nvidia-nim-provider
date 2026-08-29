@@ -57,7 +57,7 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | **Nemotron 3 Ultra 550B** | **38** | 1M | `None`, `Medium`, `High` | Yes | No | Heavy multi-step reasoning, technical docs |
 | **Muse Glimmer** | **35** | 131K | `None` to `XHigh` | Yes | Yes | Visual UX/UI work; default vision fallback |
 | **Nemotron 3 Super 120B** | **26** | 1M | `None`, `Low`, `High` | Yes | No | Workhorse for everyday coding; default text fallback |
-| **Nemotron 3.5 Lightning 30B (Unavailable)** | **24** | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Listed on `/v1/models`; picker shows Unavailable while overloaded |
+| **Nemotron 3.5 Lightning 30B** | **24** | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Fast agentic turns; compact 30B/3B-active MoE |
 
 Intelligence Index values are from the Artificial Analysis Intelligence Index (verified; see `CHANGELOG.md` 0.9.2).
 

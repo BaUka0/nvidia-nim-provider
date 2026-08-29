@@ -30,7 +30,7 @@ Models often emit slightly malformed JSON (missing braces, unescaped quotes insi
 
 Autonomous agents can get stuck re-reading the same file. The extension tracks read-only operations and suppresses identical consecutive calls. Write operations and terminal execution (e.g. re-running a failed build) are never blocked.
 
-Additionally, repetition guards monitor generation lines. If a line repeats `maxRepeatedLines` times (default `4`), the turn halts or auto-nudges the model to continue productive work.
+Additionally, repetition guards monitor generation lines and run-on paragraphs. If a line repeats `maxRepeatedLines` times (default `4`), or the same paragraph keeps cycling with no line breaks, the turn halts or auto-nudges the model to continue productive work.
 
 ---
 

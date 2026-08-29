@@ -1,19 +1,18 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { detectCycleHint } from "../provider/repetition-guard";
 import { ConfigManager } from "./config";
 import { EXTENSION_VERSION } from "./constants";
 import { getSessionEvents, redactSecrets } from "./logging";
 import { NimChatRequest } from "../types";
 
+export { detectCycleHint };
+
 /** Keep a short in-memory trail so a loop can be saved after the fact. */
 export const MAX_TURN_REPORTS = 5;
 const TEXT_SNIPPET_CHARS = 240;
 const MAX_ERROR_MESSAGE_CHARS = 300;
-const CYCLE_SCAN_CHARS = 4000;
-const CYCLE_GRAM_WORDS = 6;
-const CYCLE_MIN_GRAM_CHARS = 20;
-const CYCLE_MIN_REPEATS = 3;
 
 const TEMPLATE_KWARG_KEYS = [
   "enable_thinking",
@@ -135,45 +134,6 @@ export function clipHeadTail(
     head: redacted.slice(0, maxChars),
     tail: redacted.slice(-maxChars),
   };
-}
-
-function normalizeForCycle(text: string): string {
-  return text
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim();
-}
-
-/**
- * Cheap phrase-cycle fingerprint for the turn report only. Does not stop the
- * stream. Looks at a trailing window of normalized words and trips when the
- * same 6-word gram appears three or more times (the Super 120B #7 paragraph).
- */
-export function detectCycleHint(text: string): boolean {
-  if (!text) {
-    return false;
-  }
-  const normalized = normalizeForCycle(text);
-  const window =
-    normalized.length > CYCLE_SCAN_CHARS ? normalized.slice(-CYCLE_SCAN_CHARS) : normalized;
-  const words = window.split(/\s+/).filter((word) => word.length > 0);
-  if (words.length < CYCLE_GRAM_WORDS * CYCLE_MIN_REPEATS) {
-    return false;
-  }
-  const counts = new Map<string, number>();
-  for (let i = 0; i <= words.length - CYCLE_GRAM_WORDS; i += 1) {
-    const gram = words.slice(i, i + CYCLE_GRAM_WORDS).join(" ");
-    if (gram.length < CYCLE_MIN_GRAM_CHARS) {
-      continue;
-    }
-    const count = (counts.get(gram) ?? 0) + 1;
-    if (count >= CYCLE_MIN_REPEATS) {
-      return true;
-    }
-    counts.set(gram, count);
-  }
-  return false;
 }
 
 export function inferReasoningModeFromRequest(

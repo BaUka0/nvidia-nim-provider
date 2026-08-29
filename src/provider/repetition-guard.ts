@@ -4,9 +4,11 @@ import * as vscode from "vscode";
  * Detects degenerate "Let me..." style loops while an answer is streaming.
  * Lines are normalized (NFKC, lowercased, punctuation collapsed) so cosmetic
  * variations of the same sentence accumulate toward the repetition limit.
- * Markdown code fences are tracked and ignored to avoid false positives on
- * repetitive code generation. Normalization is Unicode-aware so non-English
- * loops (Cyrillic, CJK, accented) are caught too.
+ * Run-on paragraphs without newlines are caught by a trailing 6-word-gram
+ * window (the Super 120B #7 cycle). Markdown code fences are tracked and
+ * ignored to avoid false positives on repetitive code generation.
+ * Normalization is Unicode-aware so non-English loops (Cyrillic, CJK,
+ * accented) are caught too.
  */
 import { buildToolCallCanonicalKey, tryParseJsonValue } from "../tools/parser";
 
@@ -25,14 +27,58 @@ const MAX_KEY_LENGTH = 200;
 const MAX_FENCE_SKIPPED_LINES = 5000;
 /** Bound the number of distinct lines tracked to keep memory predictable. */
 const MAX_TRACKED_LINES = 4096;
+/** Trailing window scanned for repeating 6-word grams (issue #7 paragraphs). */
+const CYCLE_SCAN_CHARS = 4000;
+const CYCLE_GRAM_WORDS = 6;
+const CYCLE_MIN_GRAM_CHARS = 20;
+const CYCLE_MIN_REPEATS = 3;
 
-export function normalizeLineForRepetition(line: string): string {
-  return line
+function normalizeForCycle(text: string): string {
+  return text
     .normalize("NFKC")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .slice(0, MAX_KEY_LENGTH);
+    .trim();
+}
+
+export function normalizeLineForRepetition(line: string): string {
+  return normalizeForCycle(line).slice(0, MAX_KEY_LENGTH);
+}
+
+/**
+ * Returns the first 6-word gram that appears `CYCLE_MIN_REPEATS` times in a
+ * trailing window of `text`. Used by the live guard and by turn-report
+ * `cycleHint`. Does not stop a stream by itself.
+ */
+export function detectPhraseCycle(text: string): string | undefined {
+  if (!text) {
+    return undefined;
+  }
+  const normalized = normalizeForCycle(text);
+  const window =
+    normalized.length > CYCLE_SCAN_CHARS ? normalized.slice(-CYCLE_SCAN_CHARS) : normalized;
+  const words = window.split(/\s+/).filter((word) => word.length > 0);
+  if (words.length < CYCLE_GRAM_WORDS * CYCLE_MIN_REPEATS) {
+    return undefined;
+  }
+  const counts = new Map<string, number>();
+  for (let i = 0; i <= words.length - CYCLE_GRAM_WORDS; i += 1) {
+    const gram = words.slice(i, i + CYCLE_GRAM_WORDS).join(" ");
+    if (gram.length < CYCLE_MIN_GRAM_CHARS) {
+      continue;
+    }
+    const count = (counts.get(gram) ?? 0) + 1;
+    if (count >= CYCLE_MIN_REPEATS) {
+      return gram;
+    }
+    counts.set(gram, count);
+  }
+  return undefined;
+}
+
+/** Boolean wrapper over `detectPhraseCycle` for turn-report `cycleHint`. */
+export function detectCycleHint(text: string): boolean {
+  return detectPhraseCycle(text) !== undefined;
 }
 
 /**
@@ -69,7 +115,9 @@ export class RepetitionGuard {
   /**
    * Feeds streamed answer text into the counter. Returns true exactly when
    * this call crossed the configured repetition limit. Text may be split at
-   * arbitrary points; lines are only counted once a newline terminates them.
+   * arbitrary points; completed lines are counted on newline, and unterminated
+   * `pendingLine` is scanned for repeating 6-word grams so run-on paragraphs
+   * still trip mid-stream.
    */
   add(text: string): boolean {
     const threshold = this.threshold;
@@ -86,7 +134,7 @@ export class RepetitionGuard {
         return true;
       }
     }
-    return false;
+    return this.scanPendingCycle();
   }
 
   /**
@@ -124,7 +172,7 @@ export class RepetitionGuard {
     }
     const key = normalizeLineForRepetition(rawLine);
     if (key.length < MIN_NORMALIZED_LINE_LENGTH) {
-      return false;
+      return this.tripFromPhrase(rawLine);
     }
     if (this.lineCounts.size >= MAX_TRACKED_LINES && !this.lineCounts.has(key)) {
       // Predictable memory bound: reset counts rather than grow without limit.
@@ -136,7 +184,29 @@ export class RepetitionGuard {
       this.trippedLineValue = key;
       return true;
     }
-    return false;
+    // A single huge line can itself be a run-on paragraph cycle (#7 on flush).
+    return this.tripFromPhrase(rawLine);
+  }
+
+  /**
+   * Scan unterminated `pendingLine` so a run-on paragraph can trip before a
+   * newline (or stream end) arrives. Completed identical lines stay on the
+   * line-frequency counter so `maxRepeatedLines` is not silently lowered.
+   */
+  private scanPendingCycle(): boolean {
+    if (this.inCodeFence || this.trippedLineValue !== undefined) {
+      return false;
+    }
+    return this.tripFromPhrase(this.pendingLine);
+  }
+
+  private tripFromPhrase(text: string): boolean {
+    const gram = detectPhraseCycle(text);
+    if (!gram) {
+      return false;
+    }
+    this.trippedLineValue = gram;
+    return true;
   }
 
   /**

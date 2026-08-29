@@ -71,12 +71,11 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsVision: false,
   },
   "nvidia/nemotron-3.5-lightning-30b-a3b": {
-    displayName: "Nemotron 3.5 Lightning 30B (Unavailable)",
+    displayName: "Nemotron 3.5 Lightning 30B",
     contextWindow: 1000000,
     maxOutputTokens: 32768,
     supportsTools: true,
     supportsVision: false,
-    pickerStatus: "unavailable",
   },
   "meta/muse-glimmer-30b": {
     displayName: "Muse Glimmer",

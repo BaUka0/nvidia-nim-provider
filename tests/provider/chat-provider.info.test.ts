@@ -577,11 +577,11 @@ describe("NimChatModelProvider", () => {
     expect(fetchModels).not.toHaveBeenCalled();
   });
 
-  it("labels Lightning as Unavailable in the Copilot model picker", async () => {
+  it("lists Lightning as a normal selectable model in the Copilot picker", async () => {
     const cachedModels = [
       {
         id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-        displayName: "Nemotron 3.5 Lightning 30B (Unavailable)",
+        displayName: "Nemotron 3.5 Lightning 30B",
         contextWindow: 1000000,
         maxOutputTokens: 32768,
         supportsTools: true,
@@ -608,12 +608,12 @@ describe("NimChatModelProvider", () => {
     expect(infos).toEqual([
       expect.objectContaining({
         id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-        name: "Nemotron 3.5 Lightning 30B (Unavailable)",
-        detail: "Unavailable",
+        name: "Nemotron 3.5 Lightning 30B",
+        detail: "NVIDIA NIM",
         isUserSelectable: true,
       }),
     ]);
-    expect(infos[0].tooltip).toMatch(/overloaded or not serving/i);
+    expect(infos[0].tooltip).toBe("NVIDIA NIM Nemotron 3.5 Lightning 30B");
     expect(fetchModels).not.toHaveBeenCalled();
   });
 

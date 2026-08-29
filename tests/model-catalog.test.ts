@@ -100,7 +100,7 @@ describe("normalizeNvidiaModels", () => {
     expect(normalizeNvidiaModels(raw)).toEqual([
       {
         id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-        displayName: "Nemotron 3.5 Lightning 30B (Unavailable)",
+        displayName: "Nemotron 3.5 Lightning 30B",
         contextWindow: 1000000,
         maxOutputTokens: 32768,
         supportsTools: true,
@@ -198,7 +198,7 @@ describe("getFallbackModel", () => {
   };
   const lightning = {
     id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-    displayName: "Nemotron 3.5 Lightning 30B (Unavailable)",
+    displayName: "Nemotron 3.5 Lightning 30B",
     contextWindow: 1000000,
     maxOutputTokens: 32768,
     supportsTools: true,
@@ -279,12 +279,12 @@ describe("getFallbackModel", () => {
       ).toEqual(flash);
     });
 
-    it("does not last-resort to a picker-unavailable model", () => {
+    it("last-resorts to Lightning when the configured fallback is missing", () => {
       expect(
         getFallbackModel(kimi.id, [kimi, lightning], {
           configuredFallbackModelId: FALLBACK_MODEL_ID,
         }),
-      ).toBeUndefined();
+      ).toEqual(lightning);
     });
 
     it("skips unknown entries and keeps walking the chain", () => {
