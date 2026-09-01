@@ -114,6 +114,19 @@ function buildMissingApiKeyFallback(): string {
   return `${PROVIDER_DISPLAY_NAME} API key is not configured. Run "${PROVIDER_DISPLAY_NAME}: Manage ${PROVIDER_DISPLAY_NAME} API Key" from the Command Palette, or retry this request and enter the key when prompted.`;
 }
 
+interface ModelTurnReportState {
+  hasReportedContent: boolean;
+  hasReportedVisibleContent: boolean;
+  failingAttemptHasVisibleContent: boolean;
+}
+
+function isTransientStreamError(err: unknown): boolean {
+  if (err instanceof NvidiaApiError) {
+    return err.kind === "network_error" || err.kind === "server_error";
+  }
+  return err instanceof Error && err.name === "TypeError";
+}
+
 function toHostChatError(err: unknown): Error {
   if (!(err instanceof NvidiaApiError)) {
     return err instanceof Error ? err : new Error(String(err));
@@ -473,7 +486,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       fallbackDepth: readFallbackDepth(options),
       triedFallbackModelIds: readTriedFallbackModelIds(options),
     };
-    const reportState = { hasReportedContent: false, hasReportedVisibleContent: false };
+    const reportState: ModelTurnReportState = {
+      hasReportedContent: false,
+      hasReportedVisibleContent: false,
+      failingAttemptHasVisibleContent: false,
+    };
 
     try {
       while (true) {
@@ -507,7 +524,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               err,
               fallbackConfig,
               priorDepth,
-              reportState.hasReportedVisibleContent,
+              reportState.failingAttemptHasVisibleContent,
             )
           ) {
             throw toHostChatError(err);
@@ -583,7 +600,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     token: CancellationToken,
     abortController: AbortController,
     fetchBudget: FetchAttemptBudget,
-    reportState: { hasReportedContent: boolean; hasReportedVisibleContent: boolean },
+    reportState: ModelTurnReportState,
   ): Promise<void> {
     let hasReportedContent = false;
     let hasReportedVisibleContent = false;
@@ -684,7 +701,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       let requestPreparationDurationMs: number | undefined;
       let toolParsingStateInitDurationMs: number | undefined;
       let finalUsage: NimStreamUsage | undefined;
-      let networkRetryCount = 0;
+      let transientRetryCount = 0;
+      let lastTransientError: unknown;
       const networkConfig = ConfigManager.getNetworkConfig();
       const fallbackConfig = ConfigManager.getFallbackConfig();
       const MAX_NETWORK_RETRIES = httpAttemptsFromConfig(networkConfig.maxHttpRetries);
@@ -733,7 +751,15 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         }
       };
 
-      const maxAttempts = Math.max(1, MAX_EMPTY_STREAM_RETRIES + 1, MAX_NETWORK_RETRIES + 1, 2);
+      const maxAttempts = Math.max(
+        1,
+        MAX_EMPTY_STREAM_RETRIES + 1,
+        MAX_NETWORK_RETRIES + 1,
+        2,
+        // Initial stream + one invalid-tool retry + transient retries on the follow-up.
+        2 + MAX_NETWORK_RETRIES,
+      );
+      let attemptCompleted = false;
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         totalAttempts += 1;
         finalUsage = undefined;
@@ -769,6 +795,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         }
         activeRequestBody = attemptBody;
 
+        let thisAttemptReportedContent = false;
+        let thisAttemptReportedVisibleContent = false;
+        reportState.failingAttemptHasVisibleContent = false;
+
         let result: StreamAttemptResult;
         try {
           result = await runStreamAttempt({
@@ -787,12 +817,15 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             firstTokenTimeoutMs,
             hasRetriedRepetitionLoop,
             onContentReported: () => {
+              thisAttemptReportedContent = true;
               hasReportedContent = true;
               reportState.hasReportedContent = true;
             },
             onVisibleContentReported: () => {
+              thisAttemptReportedVisibleContent = true;
               hasReportedVisibleContent = true;
               reportState.hasReportedVisibleContent = true;
+              reportState.failingAttemptHasVisibleContent = true;
             },
           });
         } catch (streamErr) {
@@ -803,15 +836,19 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           const isNetworkError =
             (streamErr instanceof NvidiaApiError && streamErr.kind === "network_error") ||
             (streamErr instanceof Error && streamErr.name === "TypeError");
-          const willNetworkRetry =
+          const isServerError =
+            streamErr instanceof NvidiaApiError && streamErr.kind === "server_error";
+          const willTransientRetry =
             !cancelled &&
             !abortController.signal.aborted &&
-            isNetworkError &&
-            !hasReportedContent &&
-            networkRetryCount < MAX_NETWORK_RETRIES;
+            isTransientStreamError(streamErr) &&
+            !thisAttemptReportedContent &&
+            transientRetryCount < MAX_NETWORK_RETRIES;
+
+          reportState.failingAttemptHasVisibleContent = thisAttemptReportedVisibleContent;
 
           recordAttemptTurn({
-            outcome: cancelled ? "cancelled" : willNetworkRetry ? "retry" : "error",
+            outcome: cancelled ? "cancelled" : willTransientRetry ? "retry" : "error",
             modelId: model.id,
             body: attemptBody,
             durationMs: Date.now() - attemptStartedAtMs,
@@ -819,17 +856,20 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             error: streamErr,
           });
 
-          if (willNetworkRetry) {
-            networkRetryCount += 1;
+          if (willTransientRetry) {
+            lastTransientError = streamErr;
+            transientRetryCount += 1;
             debugLog(
               "streamRetry",
-              `Network error during stream (retry ${networkRetryCount}/${MAX_NETWORK_RETRIES}): ${streamErr instanceof Error ? streamErr.message : String(streamErr)}`,
+              `${isServerError ? "Server" : "Network"} error during stream (retry ${transientRetryCount}/${MAX_NETWORK_RETRIES}): ${streamErr instanceof Error ? streamErr.message : String(streamErr)}`,
             );
-            retryNudge = {
-              role: "user",
-              content:
-                "Your previous response was interrupted by a network error. Please start over and provide a complete response.",
-            };
+            if (isNetworkError) {
+              retryNudge = {
+                role: "user",
+                content:
+                  "Your previous response was interrupted by a network error. Please start over and provide a complete response.",
+              };
+            }
             continue;
           }
 
@@ -1035,11 +1075,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             );
           }
           progress.report(new vscode.LanguageModelTextPart(CONTENT_FILTER_NOTICE));
+          attemptCompleted = true;
           break;
         }
 
         if (isTruncatedLength && !willRetryTruncation && result.reportedVisibleContent) {
           progress.report(new vscode.LanguageModelTextPart(OUTPUT_TRUNCATED_NOTICE));
+          attemptCompleted = true;
           break;
         }
 
@@ -1072,7 +1114,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           );
           continue;
         }
+        attemptCompleted = true;
         break;
+      }
+
+      if (!attemptCompleted && lastTransientError) {
+        throw lastTransientError;
       }
 
       if (!hasReportedVisibleContent && !sawToolCallOverall) {
@@ -1198,6 +1245,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               onVisibleContentReported: () => {
                 hasReportedVisibleContent = true;
                 reportState.hasReportedVisibleContent = true;
+                reportState.failingAttemptHasVisibleContent = true;
               },
             });
             markReported(result);

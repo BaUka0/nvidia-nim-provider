@@ -2692,6 +2692,281 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("retries on server_error during stream when no content was emitted", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const serverError = new NvidiaApiError("server_error", "[SERVER_ERROR] Server error.", {
+      status: 503,
+    });
+    const failingStream = async function* () {
+      throw serverError;
+    };
+    const successStream = async function* () {
+      yield { choices: [{ delta: { content: "Recovered" } }] };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => failingStream())
+      .mockImplementationOnce(() => successStream());
+
+    const progress = { report: jest.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "moonshotai/kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: true },
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Recovered" }));
+    const retryRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(retryRequest.model).toBe("moonshotai/kimi-k2.6");
+    expect(retryRequest.messages).toEqual(
+      (streamChatCompletion as jest.Mock).mock.calls[0][1].messages,
+    );
+  });
+
+  it("does not retry a server_error after this attempt already reported visible content", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const partialStream = async function* () {
+      yield { choices: [{ delta: { content: "Partial response" } }] };
+      throw new NvidiaApiError("server_error", "[SERVER_ERROR] Server error.", { status: 503 });
+    };
+    (streamChatCompletion as jest.Mock).mockImplementation(() => partialStream());
+    const progress = { report: jest.fn() };
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "moonshotai/kimi-k2.6",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+          capabilities: { toolCalling: 128, imageInput: true },
+        }),
+        makeUserMessages("Hi"),
+        makeChatOptions(),
+        progress,
+        makeToken(),
+      ),
+    ).rejects.toThrow("[SERVER_ERROR]");
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Partial response" }),
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalledWith(
+      expect.stringContaining("Falling back"),
+    );
+  });
+
+  it("retries a server_error after an invalid-tool attempt that already printed text", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const invalidStream = async function* () {
+      yield { choices: [{ delta: { content: "Let me check the wallpapers.\n" } }] };
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_bash",
+                  type: "function",
+                  function: { name: "bash", arguments: '{"command":"ls"}' },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      };
+    };
+    const overloadedStream = async function* () {
+      throw new NvidiaApiError("server_error", "[SERVER_ERROR] Server error.", { status: 503 });
+    };
+    const recoveredStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_list",
+                  type: "function",
+                  function: { name: "list_dir", arguments: '{"path":"."}' },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => invalidStream())
+      .mockImplementationOnce(() => overloadedStream())
+      .mockImplementationOnce(() => recoveredStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "moonshotai/kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: false },
+      }),
+      makeUserMessages("Why does the image fail?"),
+      makeChatOptions({
+        tools: [
+          {
+            name: "list_dir",
+            description: "List a directory",
+            inputSchema: {
+              type: "object",
+              properties: { path: { type: "string" } },
+              required: ["path"],
+            },
+          },
+        ],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(3);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Let me check the wallpapers.\n" }),
+    );
+    expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ name: "list_dir" }));
+    const thirdRequest = (streamChatCompletion as jest.Mock).mock.calls[2][1];
+    expect(thirdRequest.model).toBe("moonshotai/kimi-k2.6");
+    const thirdLastMessage = thirdRequest.messages[thirdRequest.messages.length - 1];
+    expect(thirdLastMessage).toEqual(
+      expect.objectContaining({
+        role: "user",
+        content: expect.stringContaining("bash"),
+      }),
+    );
+    expect(thirdLastMessage.content).not.toEqual(
+      expect.stringContaining("interrupted by a network error"),
+    );
+  });
+
+  it("falls back after server_error retries are exhausted following an invalid-tool attempt", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (globalState.get as jest.Mock).mockImplementation((key: string) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "moonshotai/kimi-k2.6",
+              displayName: "Kimi k2.6",
+              contextWindow: 262144,
+              maxOutputTokens: 65536,
+              supportsTools: true,
+              supportsVision: true,
+            },
+            {
+              id: "nvidia/nemotron-3-super-120b-a12b",
+              displayName: "Nemotron 3 Super 120B",
+              contextWindow: 1000000,
+              maxOutputTokens: 65536,
+              supportsTools: true,
+              supportsVision: false,
+            },
+          ]
+        : key === MODELS_CACHE_VERSION_STATE_KEY
+          ? MODELS_CACHE_VERSION
+          : key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY
+            ? getApiKeyFingerprint("test-key")
+            : undefined,
+    );
+
+    const invalidStream = async function* () {
+      yield { choices: [{ delta: { content: "Let me check the wallpapers.\n" } }] };
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_bash",
+                  type: "function",
+                  function: { name: "bash", arguments: '{"command":"ls"}' },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      };
+    };
+    const overloadedStream = async function* () {
+      throw new NvidiaApiError("server_error", "[SERVER_ERROR] Server error.", { status: 503 });
+    };
+    const fallbackStream = async function* () {
+      yield { choices: [{ delta: { content: "Fallback listing" } }] };
+    };
+
+    let primaryCalls = 0;
+    (streamChatCompletion as jest.Mock).mockImplementation(
+      (_key: string, body: { model: string }) => {
+        if (body.model !== "moonshotai/kimi-k2.6") {
+          return fallbackStream();
+        }
+        primaryCalls += 1;
+        return primaryCalls === 1 ? invalidStream() : overloadedStream();
+      },
+    );
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "moonshotai/kimi-k2.6",
+        name: "Kimi k2.6",
+        maxInputTokens: 200000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: false },
+      }),
+      makeUserMessages("Why does the image fail?"),
+      makeChatOptions({
+        tools: [
+          {
+            name: "list_dir",
+            description: "List a directory",
+            inputSchema: {
+              type: "object",
+              properties: { path: { type: "string" } },
+              required: ["path"],
+            },
+          },
+        ],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
+    expect(fallbackRequest.model).toBe("nvidia/nemotron-3-super-120b-a12b");
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Let me check the wallpapers.\n" }),
+    );
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Fallback listing" }),
+    );
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining("Falling back to Nemotron 3 Super 120B"),
+    );
+  });
+
   it("shares one interactive API-key prompt across parallel chat requests", async () => {
     (secrets.get as jest.Mock).mockResolvedValue(undefined);
     let resolvePrompt!: (value: string | undefined) => void;

@@ -32,6 +32,11 @@ If something goes wrong, save the session file. Debug logging does not need to b
 - **Cause:** NVIDIA NIM rate limit reached on the free tier.
 - **Fix:** Failover routes the current prompt to the backup model; the next prompt retries the primary model.
 
+### HTTP 502 / 503 Service Overloaded
+
+- **Cause:** NVIDIA NIM accepted the request but the model backend is overloaded. This can arrive as an HTTP status or as an error object inside the stream.
+- **Fix:** The extension retries the same model, then failsover to the backup if the retry still returns nothing. Wait a minute if every candidate is overloaded. You do not need to switch models by hand.
+
 ### Request timed out waiting for stream data
 
 - **Cause:** Slow network or high server load.

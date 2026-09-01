@@ -6,7 +6,7 @@ Architecture and routing rules for automatic re-routing on API errors.
 
 ## How Failover Works (Per-Turn Routing)
 
-Cloud inference APIs occasionally return a rate limit (`HTTP 429`), server overload (`529`), a decommissioned model (`404` / `410 Gone`), an empty stream, or a network timeout. When that happens, the extension re-routes the same prompt to a backup model so you don't see an error or have to retype.
+Cloud inference APIs occasionally return a rate limit (`HTTP 429`), server overload (`HTTP 529` or a stream error `503` "Service temporarily overloaded"), a decommissioned model (`404` / `410 Gone`), an empty stream, or a network timeout. When that happens, the extension re-routes the same prompt to a backup model so you don't see an error or have to retype. A `503` with no text yet is retried on the same model first.
 
 1. The extension catches the error on the current turn.
 2. It immediately routes the same prompt to a backup model (defaults in [Text vs. Vision Failover](#text-vs-vision-failover)).
@@ -17,7 +17,7 @@ Cloud inference APIs occasionally return a rate limit (`HTTP 429`), server overl
 flowchart TD
     A[User sends prompt in Copilot Chat] --> B{Primary Model Call}
     B -- Success 200 OK --> C[Stream Response to User]
-    B -- Failure 429 / 404 / Timeout --> D{Request Type}
+    B -- Failure 429 / 503 / 404 / Timeout --> D{Request Type}
     D -- Contains Images --> E[Route turn to Vision Backup: Muse Glimmer]
     D -- Text Only --> F[Route turn to Text Backup: Nemotron Super 120B]
     E --> G[Stream Response with Fallback Banner]

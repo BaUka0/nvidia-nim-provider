@@ -48,10 +48,10 @@ export function isFallbackEligibleError(
   err: unknown,
   fallbackConfig: FallbackConfig,
   priorDepth: number,
-  hasReportedVisibleContent: boolean,
+  failingAttemptHasVisibleContent: boolean,
 ): err is NvidiaApiError {
   const maxChainLength = Math.max(1, fallbackConfig.priorityList.length + 1);
-  if (!fallbackConfig.enabled || priorDepth >= maxChainLength || hasReportedVisibleContent) {
+  if (!fallbackConfig.enabled || priorDepth >= maxChainLength || failingAttemptHasVisibleContent) {
     return false;
   }
   return (
