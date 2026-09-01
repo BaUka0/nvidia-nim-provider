@@ -131,6 +131,34 @@ All requests go directly from your VS Code client to the official NVIDIA NIM API
 
 ---
 
+## Development
+
+### Prerequisites
+- Node.js (>=20) and npm
+
+### Install dependencies
+```bash
+npm install
+```
+
+### Build the extension
+```bash
+npm run compile   # produces the compiled output in ./out
+```
+
+### Run the test suite
+```bash
+npm test          # runs Jest; all tests should pass
+```
+
+### Create a VSIX package (for local installation)
+```bash
+npm run package:vsix   # compiles then packages the extension
+```
+The resulting `.vsix` file can be installed via **Extensions → Install from VSIX…** in VS Code.
+
+---
+
 ## License
 
 [MIT](LICENSE)
