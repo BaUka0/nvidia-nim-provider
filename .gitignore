@@ -19,6 +19,7 @@ coverage/
 .gemini/
 .qoder/
 .commandcode/
+.agents/
 
 # Local planning docs & agent guidelines (not part of the extension)
 *_PLAN.md
