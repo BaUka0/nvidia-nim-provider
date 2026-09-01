@@ -786,6 +786,60 @@ describe("tool argument parsing and validation", () => {
     expect(stripKnownControlText(rawText)).toBe("Hello  world!");
   });
 
+  it("unwraps Copilot scaffold tags and keeps inner markdown", () => {
+    const rawText = [
+      "<steps>### Verification</steps>",
+      "<suggested_fix>Add a fallback pixmap.</suggested_fix>",
+      "<next_steps>Want a patch?</next_steps>",
+    ].join(" ");
+
+    expect(stripKnownControlText(rawText)).toBe(
+      "### Verification Add a fallback pixmap. Want a patch?",
+    );
+  });
+
+  it("replaces _vscodecontentref_ markdown links with the label and drops bare refs", () => {
+    const rawText =
+      "See [natureprovider.cpp](http://_vscodecontentref_/0) and https://_vscodecontentref_/1 then _vscodecontentref_/2.";
+
+    expect(stripKnownControlText(rawText)).toBe("See natureprovider.cpp and  then .");
+  });
+
+  it("preserves _vscodecontentref_ and scaffold tags inside fences and string literals", () => {
+    const fenced = '```ts\nconst url = "http://_vscodecontentref_/0";\nconst tag = "<steps>";\n```';
+    expect(stripKnownControlText(fenced)).toBe(fenced);
+
+    const quoted = 'const link = "[file.cpp](http://_vscodecontentref_/0)";';
+    expect(stripKnownControlText(quoted)).toBe(quoted);
+  });
+
+  it("does not unwrap HTML, C# doc tags, or tool XML as scaffold", () => {
+    expect(stripKnownControlText("<div>keep</div>")).toBe("<div>keep</div>");
+    expect(stripKnownControlText("/// <summary>Docs</summary>")).toBe(
+      "/// <summary>Docs</summary>",
+    );
+    expect(stripKnownControlText('<tool_call name="read_file">')).toBe(
+      '<tool_call name="read_file">',
+    );
+  });
+
+  it("buffers an incomplete scaffold tag or vscodecontentref URL across chunks", () => {
+    const splitTag = parseTextEmbeddedToolCalls("Before <steps");
+    expect(splitTag.incompleteText).toBe("<steps");
+    expect(splitTag.segments).toEqual([{ type: "text", text: "Before " }]);
+
+    const completedTag = parseTextEmbeddedToolCalls(splitTag.incompleteText + ">Look here</steps>");
+    expect(completedTag.incompleteText).toBe("");
+    expect(completedTag.segments).toEqual([{ type: "text", text: "Look here" }]);
+
+    const splitRef = parseTextEmbeddedToolCalls("See [file.cpp](http://_vscodecontentref_");
+    expect(splitRef.incompleteText).toContain("_vscodecontentref_");
+    expect(splitRef.segments).toEqual([{ type: "text", text: "See " }]);
+    const completedRef = parseTextEmbeddedToolCalls(splitRef.incompleteText + "/0)");
+    expect(completedRef.incompleteText).toBe("");
+    expect(completedRef.segments).toEqual([{ type: "text", text: "file.cpp" }]);
+  });
+
   it("preserves source code containing XML token string literals without corrupting text", () => {
     const codeSnippet =
       'Here is the source code:\n```typescript\nconst toolCallsStartToken = "<tool_calls>";\nconst toolCallsEndPattern = /^\\s*<\\/tool_calls>/;\n```\nAll done.';
