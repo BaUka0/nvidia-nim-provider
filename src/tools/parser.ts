@@ -558,125 +558,17 @@ export function parseEmbeddedToolParameterValue(rawValue: string): unknown {
   return trimmed;
 }
 
-/**
- * Copilot / agent XML wrappers that models echo into visible chat.
- * Tags are stripped; inner text is kept. Not tool XML, think tags, HTML, or C# docs.
- */
-export const SCAFFOLD_WRAPPER_TAGS: readonly string[] = [
-  "action_items",
-  "analysis",
-  "answer",
-  "attached_files",
-  "attachment",
-  "attachments",
-  "checklist",
-  "code_selection",
-  "commentary",
-  "context",
-  "current_file",
-  "diagnosis",
-  "environment_info",
-  "file",
-  "filename",
-  "filepath",
-  "files",
-  "final",
-  "findings",
-  "implementation",
-  "issue_description",
-  "issue_title",
-  "message",
-  "mitigations",
-  "next_action",
-  "next_steps",
-  "observations",
-  "open_and_recently_viewed_files",
-  "plan",
-  "proposed_fix",
-  "recommendations",
-  "reflection",
-  "root_cause",
-  "scratchpad",
-  "selection",
-  "steps",
-  "suggested_changes",
-  "suggested_fix",
-  "system_reminder",
-  "terminal_last_command",
-  "terminal_selection",
-  "user_query",
-  "verification",
-  "workspace",
-  "workspace_info",
-];
-
-const SCAFFOLD_WRAPPER_TAG_PATTERN = new RegExp(
-  `</?(?:${SCAFFOLD_WRAPPER_TAGS.map(escapeRegExp).join("|")})\\b[^>]*>`,
-  "gi",
-);
-
-const VSCODE_CONTENT_REF_MARKDOWN_LINK =
-  /\[([^\]]+?)\]\(\s*(?:https?:\/\/)?_vscodecontentref_\/\d+\s*\)/gi;
-const VSCODE_CONTENT_REF_BARE = /(?:https?:\/\/)?_vscodecontentref_\/\d+/gi;
-
-export const SCAFFOLD_PARTIAL_TOKENS: readonly string[] = [
-  ...SCAFFOLD_WRAPPER_TAGS.flatMap((tag) => [`<${tag}>`, `</${tag}>`]),
-  "http://_vscodecontentref_",
-  "https://_vscodecontentref_",
-  "](http://_vscodecontentref_",
-  "](https://_vscodecontentref_",
-];
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function findTrailingVscodeContentRefMarkdownStart(text: string): number {
-  const match = text.match(/\[[^\]]{0,256}\]\(\s*(?:https?:\/\/)?_vscodecontentref_[^)\s]*$/);
-  return match?.index ?? -1;
-}
-
-function replacePatternOutsideLiterals(
-  text: string,
-  pattern: RegExp,
-  replacer: (match: string, ...groups: string[]) => string,
-  contextPrefix = "",
-): string {
+function stripPatternOutsideLiterals(text: string, pattern: RegExp, contextPrefix = ""): string {
   const global = new RegExp(
     pattern.source,
     pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`,
   );
   return text.replace(global, (match, ...rest) => {
     const offset = rest[rest.length - 2] as number;
-    if (isTokenInStringOrRegexLiteral(contextPrefix + text, contextPrefix.length + offset)) {
-      return match;
-    }
-    const groups = rest.slice(0, -2) as string[];
-    return replacer(match, ...groups);
+    return isTokenInStringOrRegexLiteral(contextPrefix + text, contextPrefix.length + offset)
+      ? match
+      : "";
   });
-}
-
-function stripPatternOutsideLiterals(text: string, pattern: RegExp, contextPrefix = ""): string {
-  return replacePatternOutsideLiterals(text, pattern, () => "", contextPrefix);
-}
-
-function applyOutsideFences(
-  text: string,
-  contextPrefix: string,
-  transform: (chunk: string, prefix: string) => string,
-): string {
-  if (!text.includes("```")) {
-    return transform(text, contextPrefix);
-  }
-  const parts = text.split(/(```[\s\S]*?```)/g);
-  let walked = contextPrefix;
-  return parts
-    .map((part) => {
-      const next = part.startsWith("```") ? part : transform(part, walked);
-      walked += part;
-      return next;
-    })
-    .join("");
 }
 
 export function stripKnownControlText(text: string, contextPrefix = ""): string {
@@ -702,17 +594,21 @@ export function stripKnownControlText(text: string, contextPrefix = ""): string 
   }
 
   const orphanClose = /<\/(?:tool_calls|tool_call|function|parameter|tool_parameter|invoke)>/gi;
-  return applyOutsideFences(sanitized, contextPrefix, (chunk, prefix) => {
-    let next = replacePatternOutsideLiterals(
-      chunk,
-      VSCODE_CONTENT_REF_MARKDOWN_LINK,
-      (_match, label) => label ?? "",
-      prefix,
-    );
-    next = stripPatternOutsideLiterals(next, VSCODE_CONTENT_REF_BARE, prefix);
-    next = stripPatternOutsideLiterals(next, SCAFFOLD_WRAPPER_TAG_PATTERN, prefix);
-    return stripPatternOutsideLiterals(next, orphanClose, prefix);
-  });
+  if (!sanitized.includes("```")) {
+    return stripPatternOutsideLiterals(sanitized, orphanClose, contextPrefix);
+  }
+
+  const parts = sanitized.split(/(```[\s\S]*?```)/g);
+  let walked = contextPrefix;
+  return parts
+    .map((part) => {
+      const next = part.startsWith("```")
+        ? part
+        : stripPatternOutsideLiterals(part, orphanClose, walked);
+      walked += part;
+      return next;
+    })
+    .join("");
 }
 
 export function parseXmlParameters(content: string): Record<string, unknown> {
@@ -810,8 +706,7 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
     "<|start_header_id|>",
     "<|im_start|>",
     "[gMASK]",
-    ...SCAFFOLD_PARTIAL_TOKENS,
-  ];
+  ] as const;
 
   const extractedParams: Record<string, unknown> = {};
   const segments: ParsedTextSegment[] = [];
@@ -884,14 +779,7 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
     const nextTokenMatch = tokenMatches[0];
 
     if (!nextTokenMatch) {
-      let partialBeginIndex = findTrailingTokenPrefixStartAny(remaining, partialTokens);
-      const markdownRefStart = findTrailingVscodeContentRefMarkdownStart(remaining);
-      if (
-        markdownRefStart !== -1 &&
-        (partialBeginIndex === -1 || markdownRefStart < partialBeginIndex)
-      ) {
-        partialBeginIndex = markdownRefStart;
-      }
+      const partialBeginIndex = findTrailingTokenPrefixStartAny(remaining, partialTokens);
       if (
         partialBeginIndex === -1 ||
         isTokenInStringOrRegexLiteral(

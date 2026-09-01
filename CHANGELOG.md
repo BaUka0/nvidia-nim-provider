@@ -4,10 +4,11 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-09-01
+
 ### Fixed
 
 - **Temporary NVIDIA overload no longer ends the chat.** If the service is briefly overloaded, the extension retries the same model and, if needed, continues on the backup model. This still works when the model had already printed some text and then retried a bad tool call. The reply should continue instead of stopping with an error.
-- **Broken Copilot file links and XML wrappers are cleaned up.** Fake `[file](http://_vscodecontentref_/0)` links show as the file name, and tags like `<steps>` / `<suggested_fix>` are removed so you see the answer, not the scaffolding.
 
 ## [0.9.5] - 2026-08-30
 

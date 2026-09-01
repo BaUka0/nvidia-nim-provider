@@ -46,6 +46,10 @@ export interface ModelAdapter {
 
 export const DEFAULT_TEMPERATURE = 0.7;
 
+/** Shared visible-reply hygiene. Prefer this over growing the stream sanitizer. */
+export const VISIBLE_REPLY_HYGIENE_MESSAGE =
+  "Visible replies must be markdown only. Do not emit XML section wrappers such as <steps>, <suggested_fix>, <next_steps>, <analysis>, or <plan>. Do not emit _vscodecontentref_ URLs or markdown links to them; write plain file names.";
+
 export abstract class BaseModelAdapter implements ModelAdapter {
   abstract readonly idPattern: RegExp;
   abstract readonly defaultTemperature: number;
@@ -91,7 +95,9 @@ export abstract class BaseModelAdapter implements ModelAdapter {
       defaultFrequencyPenalty: this.defaultFrequencyPenalty,
       defaultPresencePenalty: this.defaultPresencePenalty,
       extraSystemMessages:
-        options.toolsEnabled && this.toolSystemMessage ? [this.toolSystemMessage] : [],
+        options.toolsEnabled && this.toolSystemMessage
+          ? [this.toolSystemMessage, VISIBLE_REPLY_HYGIENE_MESSAGE]
+          : [],
     };
   }
 

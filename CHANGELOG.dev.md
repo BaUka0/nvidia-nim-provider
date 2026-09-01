@@ -4,10 +4,12 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-09-01
+
 ### Fixed
 
 - **SSE 503 after an invalid-tool retry (`src/provider/chat-provider.ts`, `src/provider/fallback-orchestrator.ts`).** In-stream `server_error` (HTTP/SSE 503) with no content on the current attempt now retries the same request body, then failsover. The no-splice gate uses that attempt's visible output, not earlier preamble from an invalid-tool retry, so a later 503 no longer kills the Copilot turn. Network retries still inject the "start over" nudge; 503 retries do not. Resolves #10.
-- **Copilot scaffold / `_vscodecontentref_` leak (`src/tools/parser.ts`).** `stripKnownControlText` unwraps `SCAFFOLD_WRAPPER_TAGS` (keep inner text), replaces `[label](http://_vscodecontentref_/N)` with `label`, and drops bare `_vscodecontentref_` URLs. Fences and string/regex literals are preserved. Incomplete tags/URLs are buffered via `SCAFFOLD_PARTIAL_TOKENS` and trailing markdown-ref detection. Does not strip tool XML, think tags, HTML, or C# doc comments.
+- **Visible-reply hygiene (`src/models/adapters/base.ts`).** Dropped the stream-side scaffold/`_vscodecontentref_` sanitizer. Tool-enabled profiles append `VISIBLE_REPLY_HYGIENE_MESSAGE` so models are instructed not to emit XML section wrappers or `_vscodecontentref_` links.
 
 ## [0.9.5] - 2026-08-30
 
