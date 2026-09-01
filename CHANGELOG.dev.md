@@ -4,6 +4,10 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Fixed
+
+- **Invalid-tool retry is no longer one-shot (`src/provider/chat-provider.ts`).** `invalidToolRetryCount` follows `maxEmptyStreamRetries`. After the cap, a skipped-only tool stream throws `empty_stream` with `failingAttemptHasVisibleContent` cleared so failover can continue instead of recording `ok` on a preamble. Follow-up to the 0.9.6 503 retry (issue #10 reopen).
+
 ## [0.9.6] - 2026-09-01
 
 ### Fixed

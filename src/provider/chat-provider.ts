@@ -708,11 +708,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       const MAX_NETWORK_RETRIES = httpAttemptsFromConfig(networkConfig.maxHttpRetries);
       let emptyStreamRetryCount = 0;
       const MAX_EMPTY_STREAM_RETRIES = networkConfig.maxEmptyStreamRetries;
+      const MAX_INVALID_TOOL_RETRIES = MAX_EMPTY_STREAM_RETRIES;
       const streamHttpAttempts = MAX_NETWORK_RETRIES;
       let everSawReasoning = false;
       let lastFinishReasonOverall: string | null | undefined = undefined;
       let hasRetriedRepetitionLoop = false;
-      let hasRetriedInvalidToolCall = false;
+      let invalidToolRetryCount = 0;
 
       const firstTokenTimeoutMs =
         typeof fallbackConfig.firstTokenTimeoutSeconds === "number" &&
@@ -756,8 +757,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         MAX_EMPTY_STREAM_RETRIES + 1,
         MAX_NETWORK_RETRIES + 1,
         2,
-        // Initial stream + one invalid-tool retry + transient retries on the follow-up.
-        2 + MAX_NETWORK_RETRIES,
+        1 + MAX_INVALID_TOOL_RETRIES + MAX_NETWORK_RETRIES,
       );
       let attemptCompleted = false;
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -892,11 +892,29 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         const retryMessage = result.sawToolCall
           ? buildInvalidToolCallRetryMessage(result.skippedToolCalls)
           : undefined;
+        const knownToolNames = new Set<string>();
+        for (const tool of tools ?? []) {
+          if (tool.function.name) {
+            knownToolNames.add(tool.function.name);
+          }
+        }
+        for (const tool of options.tools ?? []) {
+          if (typeof tool.name === "string" && tool.name.length > 0) {
+            knownToolNames.add(tool.name);
+          }
+        }
+        const skippedUnknownTool =
+          knownToolNames.size > 0 &&
+          result.skippedToolCalls.some(
+            (call) =>
+              call.name.length > 0 && call.name !== "tool_call" && !knownToolNames.has(call.name),
+          );
+        const invalidToolRetryBudget = skippedUnknownTool ? MAX_INVALID_TOOL_RETRIES : 1;
         const willRetryAfterInvalidToolCall =
           ConfigManager.getToolsConfig().autoRetryInvalidCalls &&
           result.sawToolCall &&
           !result.emittedToolCall &&
-          !hasRetriedInvalidToolCall &&
+          invalidToolRetryCount < invalidToolRetryBudget &&
           Boolean(retryMessage);
         const willRetryEmptyStream =
           !result.sawReasoning &&
@@ -1060,11 +1078,34 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           willRetryAfterInvalidToolCall &&
           retryMessage
         ) {
-          hasRetriedInvalidToolCall = true;
+          invalidToolRetryCount += 1;
           retryReason = "invalid_tool_call";
           retryReasonHistory.push("invalid_tool_call");
           retryNudge = { role: "user", content: retryMessage };
           continue;
+        }
+
+        if (
+          result.sawToolCall &&
+          !result.emittedToolCall &&
+          skippedUnknownTool &&
+          ConfigManager.getToolsConfig().autoRetryInvalidCalls &&
+          retryMessage
+        ) {
+          reportState.failingAttemptHasVisibleContent = false;
+          throw createStructuredError(
+            "empty_stream",
+            [
+              `Model: ${model.name ?? model.id}`,
+              `The model kept emitting a tool call that could not be executed after ${invalidToolRetryCount} retry(ies).`,
+              skippedToolCallNames.length > 0
+                ? `Skipped: ${skippedToolCallNames.join(", ")}`
+                : null,
+              "The request will be retried on a fallback model if failover is enabled.",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          );
         }
 
         if (result.lastFinishReason === "content_filter") {

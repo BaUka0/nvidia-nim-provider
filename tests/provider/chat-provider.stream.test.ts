@@ -2967,6 +2967,178 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("retries more than once when the model keeps emitting an unknown tool", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const bashStream = async function* (text: string) {
+      yield { choices: [{ delta: { content: text } }] };
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_bash",
+                  type: "function",
+                  function: { name: "bash", arguments: '{"command":"ls"}' },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      };
+    };
+    const recoveredStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_list",
+                  type: "function",
+                  function: { name: "list_dir", arguments: '{"path":"."}' },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => bashStream("Let me list files.\n"))
+      .mockImplementationOnce(() => bashStream("Trying again.\n"))
+      .mockImplementationOnce(() => recoveredStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "moonshotai/kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: false },
+      }),
+      makeUserMessages("List wallpapers"),
+      makeChatOptions({
+        tools: [
+          {
+            name: "list_dir",
+            description: "List a directory",
+            inputSchema: {
+              type: "object",
+              properties: { path: { type: "string" } },
+              required: ["path"],
+            },
+          },
+        ],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(3);
+    expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ name: "list_dir" }));
+  });
+
+  it("fails over when invalid tool retries are exhausted", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (globalState.get as jest.Mock).mockImplementation((key: string) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "moonshotai/kimi-k2.6",
+              displayName: "Kimi k2.6",
+              contextWindow: 262144,
+              maxOutputTokens: 65536,
+              supportsTools: true,
+              supportsVision: true,
+            },
+            {
+              id: "nvidia/nemotron-3-super-120b-a12b",
+              displayName: "Nemotron 3 Super 120B",
+              contextWindow: 1000000,
+              maxOutputTokens: 65536,
+              supportsTools: true,
+              supportsVision: false,
+            },
+          ]
+        : key === MODELS_CACHE_VERSION_STATE_KEY
+          ? MODELS_CACHE_VERSION
+          : key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY
+            ? getApiKeyFingerprint("test-key")
+            : undefined,
+    );
+
+    const bashStream = async function* () {
+      yield { choices: [{ delta: { content: "Let me check permissions.\n" } }] };
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_bash",
+                  type: "function",
+                  function: { name: "bash", arguments: '{"command":"ls"}' },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      };
+    };
+    const fallbackStream = async function* () {
+      yield { choices: [{ delta: { content: "Fallback listing" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockImplementation(
+      (_key: string, body: { model: string }) => {
+        if (body.model !== "moonshotai/kimi-k2.6") {
+          return fallbackStream();
+        }
+        return bashStream();
+      },
+    );
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "moonshotai/kimi-k2.6",
+        name: "Kimi k2.6",
+        maxInputTokens: 200000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: false },
+      }),
+      makeUserMessages("Check permissions"),
+      makeChatOptions({
+        tools: [
+          {
+            name: "list_dir",
+            description: "List a directory",
+            inputSchema: {
+              type: "object",
+              properties: { path: { type: "string" } },
+              required: ["path"],
+            },
+          },
+        ],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
+    expect(fallbackRequest.model).toBe("nvidia/nemotron-3-super-120b-a12b");
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Fallback listing" }),
+    );
+  });
+
   it("shares one interactive API-key prompt across parallel chat requests", async () => {
     (secrets.get as jest.Mock).mockResolvedValue(undefined);
     let resolvePrompt!: (value: string | undefined) => void;

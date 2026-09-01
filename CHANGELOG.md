@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Fixed
+
+- **A skipped fake tool call no longer ends the turn.** If the model keeps calling something that is not a Copilot tool (for example `bash`), the extension retries more than once and then failsover instead of stopping after a preamble.
+
 ## [0.9.6] - 2026-09-01
 
 ### Fixed
