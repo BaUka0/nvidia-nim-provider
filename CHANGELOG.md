@@ -4,6 +4,11 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Changed
+
+- **Tool-enabled MiniMax (and similar models) now get the same visible-reply hygiene as the rest of the catalog.** They are instructed not to emit XML section wrappers or Copilot content-ref links.
+- **Context overflow retry now follows the same recovery path as a normal turn.** After the history is compacted, the reply can still recover from an empty stream or a bad tool call, and the Copilot token widget is updated.
+
 ## [0.9.7] - 2026-09-02
 
 ### Fixed

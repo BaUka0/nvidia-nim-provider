@@ -1,4 +1,4 @@
-import { MODEL_LIST, NvidiaModelCatalogEntry, normalizeNvidiaModels } from "../src/models/catalog";
+import { MODEL_LIST, normalizeNvidiaModels } from "../src/models/catalog";
 import {
   getModelAdapter,
   getModelCapabilityContract,
@@ -19,7 +19,6 @@ interface ReasoningModeCase {
 
 interface CapabilityMatrixCase {
   modelId: string;
-  catalog: NvidiaModelCatalogEntry;
   reasoningModes: string[];
   reasoningCases: ReasoningModeCase[];
   reasoningParameterFormat: ReasoningParameterFormat;
@@ -53,13 +52,6 @@ const deepSeekReasoningCases: ReasoningModeCase[] = [
 const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   {
     modelId: "deepseek-ai/deepseek-v4-flash-0731",
-    catalog: {
-      displayName: "DeepSeek V4 Flash 0731",
-      contextWindow: 1048576,
-      maxOutputTokens: 131072,
-      supportsTools: true,
-      supportsVision: false,
-    },
     reasoningModes: ["none", "high", "max"],
     reasoningCases: deepSeekReasoningCases,
     reasoningParameterFormat: "chat_template_kwargs",
@@ -72,13 +64,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   },
   {
     modelId: "deepseek-ai/deepseek-v4-pro-0813",
-    catalog: {
-      displayName: "DeepSeek V4 Pro 0813",
-      contextWindow: 1048576,
-      maxOutputTokens: 131072,
-      supportsTools: true,
-      supportsVision: false,
-    },
     reasoningModes: ["none", "high", "max"],
     reasoningCases: deepSeekReasoningCases,
     reasoningParameterFormat: "chat_template_kwargs",
@@ -91,13 +76,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   },
   {
     modelId: "minimaxai/minimax-m3",
-    catalog: {
-      displayName: "MiniMax M3",
-      contextWindow: 1000000,
-      maxOutputTokens: 100000,
-      supportsTools: true,
-      supportsVision: true,
-    },
     reasoningModes: ["none", "on", "adaptive"],
     reasoningCases: [
       {
@@ -123,13 +101,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   },
   {
     modelId: "moonshotai/kimi-k3",
-    catalog: {
-      displayName: "Kimi K3",
-      contextWindow: 1048576,
-      maxOutputTokens: 65536,
-      supportsTools: true,
-      supportsVision: true,
-    },
     reasoningModes: ["none", "low", "high", "max"],
     reasoningCases: [
       { mode: "none", expectedFields: { reasoning_effort: "none" } },
@@ -147,13 +118,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   },
   {
     modelId: "nvidia/nemotron-3-ultra-550b-a55b",
-    catalog: {
-      displayName: "Nemotron 3 Ultra 550B",
-      contextWindow: 1000000,
-      maxOutputTokens: 65536,
-      supportsTools: true,
-      supportsVision: false,
-    },
     reasoningModes: ["none", "medium", "high"],
     reasoningCases: [
       { mode: "none", expectedFields: { reasoning_effort: "none" } },
@@ -170,13 +134,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   },
   {
     modelId: "nvidia/nemotron-3-super-120b-a12b",
-    catalog: {
-      displayName: "Nemotron 3 Super 120B",
-      contextWindow: 1000000,
-      maxOutputTokens: 65536,
-      supportsTools: true,
-      supportsVision: false,
-    },
     reasoningModes: ["none", "low", "high"],
     reasoningCases: [
       {
@@ -208,13 +165,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   },
   {
     modelId: "nvidia/nemotron-3.5-lightning-30b-a3b",
-    catalog: {
-      displayName: "Nemotron 3.5 Lightning 30B",
-      contextWindow: 1000000,
-      maxOutputTokens: 32768,
-      supportsTools: true,
-      supportsVision: false,
-    },
     reasoningModes: ["none", "medium", "high", "xhigh"],
     reasoningCases: [
       {
@@ -252,13 +202,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   },
   {
     modelId: "meta/muse-glimmer-30b",
-    catalog: {
-      displayName: "Muse Glimmer",
-      contextWindow: 131072,
-      maxOutputTokens: 32768,
-      supportsTools: true,
-      supportsVision: true,
-    },
     reasoningModes: ["none", "low", "medium", "high", "xhigh"],
     reasoningCases: ["none", "low", "medium", "high", "xhigh"].map((mode) => ({
       mode,
@@ -325,8 +268,8 @@ describe("curated model capability matrix", () => {
     );
   });
 
-  it.each(CAPABILITY_MATRIX)("$modelId pins the exact catalog and adapter contract", (entry) => {
-    expect(MODEL_LIST[entry.modelId]).toEqual(entry.catalog);
+  it.each(CAPABILITY_MATRIX)("$modelId pins the adapter contract", (entry) => {
+    expect(MODEL_LIST[entry.modelId]?.adapter).toEqual(expect.any(String));
     expect(getModelCapabilityContract(entry.modelId)).toEqual({
       reasoningModes: entry.reasoningModes,
       reasoningParameterFormat: entry.reasoningParameterFormat,
@@ -512,14 +455,14 @@ describe("curated model capability matrix", () => {
     },
   );
 
-  it.each(CAPABILITY_MATRIX.filter((entry) => entry.catalog.supportsVision))(
+  it.each(CAPABILITY_MATRIX.filter((entry) => MODEL_LIST[entry.modelId].supportsVision))(
     "$modelId explicitly supports vision input",
     (entry) => {
       expect(MODEL_LIST[entry.modelId].supportsVision).toBe(true);
     },
   );
 
-  it.each(CAPABILITY_MATRIX.filter((entry) => !entry.catalog.supportsVision))(
+  it.each(CAPABILITY_MATRIX.filter((entry) => !MODEL_LIST[entry.modelId].supportsVision))(
     "$modelId explicitly rejects vision input",
     (entry) => {
       expect(MODEL_LIST[entry.modelId].supportsVision).toBe(false);

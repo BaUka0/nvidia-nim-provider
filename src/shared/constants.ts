@@ -1,5 +1,6 @@
 import packageJson from "../../package.json";
 import { ConfigManager } from "./config";
+export { DEFAULT_MAX_OUTPUT_TOKENS } from "./token-defaults";
 
 export const PROVIDER_VENDOR = "nvidia-nim";
 export const PROVIDER_DISPLAY_NAME = "NVIDIA NIM";
@@ -41,9 +42,6 @@ export function calculateSafetyMargin(contextWindow: number, customPercent?: num
 
 /** Legacy fixed safety margin kept for backward-compatible call sites. */
 export const CONTEXT_WINDOW_SAFETY_MARGIN = 4096;
-
-/** Default token limit if model info is unknown */
-export const DEFAULT_MAX_OUTPUT_TOKENS = 65536;
 
 /**
  * Total HTTP connection-attempt budget shared by every stream of a single

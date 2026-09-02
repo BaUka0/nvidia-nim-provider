@@ -1,4 +1,5 @@
 import type { NvidiaModelSummary } from "../types";
+import { DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/token-defaults";
 
 export interface NormalizedNvidiaModel {
   id: string;
@@ -22,10 +23,18 @@ export interface NvidiaModelCatalogEntry {
   supportsVision: boolean;
   /** Surfaced in the Copilot model picker as a subtitle/tooltip. */
   pickerStatus?: "unavailable";
+  /** Adapter registry key. Family regex is only used for uncatalogued IDs. */
+  adapter: CatalogAdapterId;
 }
 
-const DEFAULT_CONTEXT_WINDOW = 131072;
-const DEFAULT_MAX_OUTPUT_TOKENS = 65536;
+export type CatalogAdapterId =
+  | "deepseek"
+  | "kimi"
+  | "minimax"
+  | "nemotron"
+  | "nemotron-super"
+  | "nemotron-lightning"
+  | "muse-glimmer";
 
 export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
   "deepseek-ai/deepseek-v4-flash-0731": {
@@ -34,6 +43,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     maxOutputTokens: 131072,
     supportsTools: true,
     supportsVision: false,
+    adapter: "deepseek",
   },
   "deepseek-ai/deepseek-v4-pro-0813": {
     displayName: "DeepSeek V4 Pro 0813",
@@ -41,6 +51,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     maxOutputTokens: 131072,
     supportsTools: true,
     supportsVision: false,
+    adapter: "deepseek",
   },
   "minimaxai/minimax-m3": {
     displayName: "MiniMax M3",
@@ -48,6 +59,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     maxOutputTokens: 100000,
     supportsTools: true,
     supportsVision: true,
+    adapter: "minimax",
   },
   "moonshotai/kimi-k3": {
     displayName: "Kimi K3",
@@ -55,6 +67,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     maxOutputTokens: 65536,
     supportsTools: true,
     supportsVision: true,
+    adapter: "kimi",
   },
   "nvidia/nemotron-3-ultra-550b-a55b": {
     displayName: "Nemotron 3 Ultra 550B",
@@ -62,6 +75,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     maxOutputTokens: 65536,
     supportsTools: true,
     supportsVision: false,
+    adapter: "nemotron",
   },
   "nvidia/nemotron-3-super-120b-a12b": {
     displayName: "Nemotron 3 Super 120B",
@@ -69,6 +83,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     maxOutputTokens: 65536,
     supportsTools: true,
     supportsVision: false,
+    adapter: "nemotron-super",
   },
   "nvidia/nemotron-3.5-lightning-30b-a3b": {
     displayName: "Nemotron 3.5 Lightning 30B",
@@ -76,6 +91,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     maxOutputTokens: 32768,
     supportsTools: true,
     supportsVision: false,
+    adapter: "nemotron-lightning",
   },
   "meta/muse-glimmer-30b": {
     displayName: "Muse Glimmer",
@@ -83,11 +99,9 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     maxOutputTokens: 32768,
     supportsTools: true,
     supportsVision: true,
+    adapter: "muse-glimmer",
   },
 };
-
-/** @deprecated Alias for MODEL_LIST */
-export const ELITE_MODELS_WHITELIST = MODEL_LIST;
 
 export const FALLBACK_MODEL_ID = "nvidia/nemotron-3-super-120b-a12b";
 export const FALLBACK_VISION_MODEL_ID = "meta/muse-glimmer-30b";

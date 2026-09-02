@@ -12,7 +12,6 @@ import {
 import { streamChatCompletion } from "../api/client";
 import { ReasoningStreamRouter } from "../messages/reasoning-router";
 import { ModelAdapter } from "../models/adapters";
-import { ConfigManager } from "../shared/config";
 import { emitThinkingPart } from "../shared/proposed-apis";
 import { MAX_EMBEDDED_TOOL_TEXT_CHARS } from "../shared/constants";
 import { TEXT_EMBEDDED_TOOL_CALL_ID_PREFIX } from "../shared/tool-call-ids";
@@ -63,6 +62,9 @@ export interface StreamAttemptInput {
   maxFetchAttempts: number;
   firstTokenTimeoutMs?: number;
   hasRetriedRepetitionLoop: boolean;
+  maxRepeatedLines: number;
+  autoContinueOnLoop: boolean;
+  idleTimeoutMs?: number;
   onContentReported?: () => void;
   onVisibleContentReported?: () => void;
 }
@@ -109,7 +111,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   let toolParsingStateInitDurationMs: number | undefined;
 
   const repetitionGuard = new RepetitionGuard({
-    maxRepeatedLines: ConfigManager.getGenerationConfig().maxRepeatedLines,
+    maxRepeatedLines: input.maxRepeatedLines,
   });
 
   const markFirstResponse = (): void => {
@@ -172,7 +174,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       input.onVisibleContentReported?.();
     }
     if (crossedThreshold && !repetitionNoticeSent) {
-      const autoContinue = ConfigManager.getGenerationConfig().autoContinueOnLoop;
+      const autoContinue = input.autoContinueOnLoop;
       if (autoContinue && !input.hasRetriedRepetitionLoop) {
         debugLog("repetitionGuard", {
           model: input.model.id,
@@ -356,6 +358,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
         maxOutputTokens: input.model.maxOutputTokens,
         maxFetchAttempts: input.maxFetchAttempts,
         firstTokenTimeoutMs: input.firstTokenTimeoutMs,
+        idleTimeoutMs: input.idleTimeoutMs,
       },
     )) {
       if (input.token.isCancellationRequested) {
@@ -425,7 +428,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     }
 
     if (!repetitionGuard.tripped && repetitionGuard.flush()) {
-      const autoContinue = ConfigManager.getGenerationConfig().autoContinueOnLoop;
+      const autoContinue = input.autoContinueOnLoop;
       if (autoContinue && !input.hasRetriedRepetitionLoop) {
         debugLog("repetitionGuard", {
           model: input.model.id,

@@ -241,10 +241,11 @@ describe("model cache key ownership and refresh", () => {
 
   it("serializes discovery rollback before a queued manual refresh write", async () => {
     const initialRawModels = [{ id: "deepseek-ai/deepseek-v4-flash-0731" }];
+    const { adapter: _adapter, ...flashCatalog } = MODEL_LIST["deepseek-ai/deepseek-v4-flash-0731"];
     const initialNormalizedModels = [
       {
         id: "deepseek-ai/deepseek-v4-flash-0731",
-        ...MODEL_LIST["deepseek-ai/deepseek-v4-flash-0731"],
+        ...flashCatalog,
       },
     ];
     const discoveryRawModels = [{ id: "nvidia/nemotron-3.5-lightning-30b-a3b" }];

@@ -7,7 +7,7 @@ import {
   truncateMessagesForContext,
   truncatePreservingSurrogates,
 } from "../messages/converter";
-import { ConfigManager } from "../shared/config";
+import { DEFAULT_NETWORK_CONFIG } from "../shared/config";
 import { FetchAttemptBudget, httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
 
 export class SummarizationError extends Error {
@@ -103,11 +103,9 @@ export async function summarizeOldMessages(
   signal?: AbortSignal,
   summarizationModel?: string,
   fetchAttemptBudget?: FetchAttemptBudget,
+  maxHttpRetries?: number,
 ): Promise<NimChatMessage> {
-  const targetModel =
-    summarizationModel?.trim() ||
-    ConfigManager.getContextConfig().summarizationModel ||
-    FALLBACK_MODEL_ID;
+  const targetModel = summarizationModel?.trim() || FALLBACK_MODEL_ID;
   const conversationText = messagesToText(oldMessages);
   try {
     debugLog(
@@ -115,7 +113,7 @@ export async function summarizeOldMessages(
       `Summarizing ${oldMessages.length} messages (${conversationText.length} chars) via ${targetModel}.`,
     );
     const configuredAttempts = httpAttemptsFromConfig(
-      ConfigManager.getNetworkConfig().maxHttpRetries,
+      maxHttpRetries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries,
     );
     const attempts = fetchAttemptBudget
       ? fetchAttemptBudget.consume(configuredAttempts)
@@ -234,6 +232,7 @@ export interface CompactConversationOptions {
   summarizationModel?: string;
   extraTokenCount?: number;
   fetchAttemptBudget?: FetchAttemptBudget;
+  maxHttpRetries?: number;
 }
 
 /**
@@ -264,6 +263,7 @@ export async function compactConversationHistory(
     options.signal,
     options.summarizationModel,
     options.fetchAttemptBudget,
+    options.maxHttpRetries,
   );
   const recentSystemMessages = recentMessages.filter((message) => message.role === "system");
   const recentConversationMessages = recentMessages.filter((message) => message.role !== "system");

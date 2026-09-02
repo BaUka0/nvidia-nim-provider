@@ -46,6 +46,14 @@ export interface ModelAdapter {
 
 export const DEFAULT_TEMPERATURE = 0.7;
 
+export function assignReasoningEffort(
+  request: import("../../types").NimChatRequest,
+  mode: string,
+  supportedModes: readonly string[],
+): void {
+  request.reasoning_effort = supportedModes.includes(mode) ? mode : "none";
+}
+
 /** Shared visible-reply hygiene. Prefer this over growing the stream sanitizer. */
 export const VISIBLE_REPLY_HYGIENE_MESSAGE =
   "Visible replies must be markdown only. Do not emit XML section wrappers such as <steps>, <suggested_fix>, <next_steps>, <analysis>, or <plan>. Do not emit _vscodecontentref_ URLs or markdown links to them; write plain file names.";
@@ -94,14 +102,33 @@ export abstract class BaseModelAdapter implements ModelAdapter {
       defaultTopP: this.defaultTopP,
       defaultFrequencyPenalty: this.defaultFrequencyPenalty,
       defaultPresencePenalty: this.defaultPresencePenalty,
-      extraSystemMessages:
-        options.toolsEnabled && this.toolSystemMessage
-          ? [this.toolSystemMessage, VISIBLE_REPLY_HYGIENE_MESSAGE]
-          : [],
+      extraSystemMessages: options.toolsEnabled
+        ? [
+            ...(this.toolSystemMessage ? [this.toolSystemMessage] : []),
+            VISIBLE_REPLY_HYGIENE_MESSAGE,
+          ]
+        : [],
     };
   }
 
   matches(modelId: string): boolean {
     return this.idPattern.test(modelId);
+  }
+}
+
+export class ReasoningEffortAdapter extends BaseModelAdapter {
+  constructor(
+    readonly idPattern: RegExp,
+    readonly defaultTemperature: number,
+    readonly supportedReasoningModes: string[],
+    readonly isolateUntaggedReasoning?: boolean,
+  ) {
+    super();
+  }
+
+  readonly reasoningParameterFormat = "reasoning_effort" as const;
+
+  applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
+    assignReasoningEffort(request, mode, this.supportedReasoningModes);
   }
 }

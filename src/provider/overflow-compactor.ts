@@ -3,7 +3,6 @@ import { LanguageModelChatMessage } from "vscode";
 import { convertMessages, estimateToolsTokens } from "../messages/converter";
 import { getModelAdapter, ModelAdapter } from "../models/adapters";
 import { compactConversationHistory } from "../models/summarizer";
-import { ConfigManager } from "../shared/config";
 import {
   calculateSafetyMargin,
   COMPACTION_MIN_OUTPUT_TOKENS,
@@ -25,6 +24,8 @@ export interface OverflowCompactionInput {
   userAgent: string;
   signal?: AbortSignal;
   fetchAttemptBudget?: FetchAttemptBudget;
+  summarizationModel?: string;
+  maxHttpRetries?: number;
 }
 
 export interface OverflowCompactionResult {
@@ -70,9 +71,10 @@ export async function buildOverflowRetryRequest(
     apiKey: input.apiKey,
     userAgent: input.userAgent,
     signal: input.signal,
-    summarizationModel: ConfigManager.getContextConfig().summarizationModel,
+    summarizationModel: input.summarizationModel,
     extraTokenCount: toolDefinitionTokens,
     fetchAttemptBudget: input.fetchAttemptBudget,
+    maxHttpRetries: input.maxHttpRetries,
   });
 
   if (!compacted.compacted) {

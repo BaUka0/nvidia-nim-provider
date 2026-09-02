@@ -100,6 +100,22 @@ describe("applyReasoningMode", () => {
     expect(adapter.supportedReasoningModes).toEqual(["none", "on", "adaptive"]);
   });
 
+  it("dispatches Lightning from the catalog adapter id, not the generic nemotron regex", () => {
+    expect(getModelAdapter("nvidia/nemotron-3.5-lightning-30b-a3b").reasoningParameterFormat).toBe(
+      "chat_template_kwargs",
+    );
+    expect(getModelAdapter("nvidia/nemotron-3-ultra-550b-a55b").reasoningParameterFormat).toBe(
+      "reasoning_effort",
+    );
+  });
+
+  it("attaches visible-reply hygiene for tool-enabled MiniMax even without a vendor tool prompt", () => {
+    const profile = getModelAdapter("minimaxai/minimax-m3").getProfile({ toolsEnabled: true });
+    expect(profile.extraSystemMessages).toEqual(
+      expect.arrayContaining([expect.stringContaining("Do not emit XML section wrappers")]),
+    );
+  });
+
   it("exposes Kimi reasoning effort modes and sends the selected mode", () => {
     const adapter = getModelAdapter("moonshotai/kimi-k3");
     const request: NimChatRequest = {

@@ -1,8 +1,6 @@
 import * as vscode from "vscode";
-import { fetchWithRetry } from "../api/client";
-import { classifyApiError } from "../api/errors";
+import { chatCompletion } from "../api/client";
 import {
-  BASE_URL,
   EXTENSION_VERSION,
   MAX_CHAT_IMAGE_BYTES,
   MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY,
@@ -103,53 +101,27 @@ export class NimVisionClient {
     }
     const model = this.getVisionModelId();
     const ua = `nvidia-nim-provider/${EXTENSION_VERSION} VSCode/${vscode.version}`;
-
-    const response = await fetchWithRetry(
-      `${BASE_URL}/chat/completions`,
+    const content = await chatCompletion(
+      apiKey,
       {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "User-Agent": ua,
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: prompt },
-                { type: "image_url", image_url: { url: imageData } },
-              ],
-            },
-          ],
-          max_tokens: 2000,
-        }),
-        signal,
+        model,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: imageData } },
+            ],
+          },
+        ],
+        max_tokens: 2000,
       },
+      signal,
+      ua,
       httpAttemptsFromConfig(ConfigManager.getNetworkConfig().maxHttpRetries),
-      { operation: "vision", model },
+      "vision",
     );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw classifyApiError(new Error(`HTTP ${response.status} ${response.statusText}`), {
-        operation: "vision",
-        status: response.status,
-        detail: errorText,
-      });
-    }
-
-    try {
-      const data = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-
-      return data.choices?.[0]?.message?.content ?? "Failed to analyze image";
-    } catch (error) {
-      throw classifyApiError(error, { operation: "vision", model });
-    }
+    return content || "Failed to analyze image";
   }
 }
 

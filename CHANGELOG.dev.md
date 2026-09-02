@@ -4,6 +4,14 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Changed
+
+- **Catalog-keyed adapter dispatch (`src/models/catalog.ts`, `src/models/adapters/index.ts`).** Each `MODEL_LIST` entry has an `adapter` id. Curated IDs resolve through `ADAPTERS_BY_ID`; family regex remains only for uncatalogued successors. Settings enums/defaults are asserted against `MODEL_LIST` in `tests/model-catalog.test.ts`. Capability matrix no longer re-authors catalog rows.
+- **Shared Nemotron / reasoning-effort helpers (`src/models/adapters/base.ts`, `nemotron.ts`).** One `NEMOTRON_TOOL_SYSTEM_MESSAGE`; `assignReasoningEffort` writes `"none"` for unknown modes (Ultra no longer no-ops). Hygiene (`VISIBLE_REPLY_HYGIENE_MESSAGE`) is attached whenever tools are enabled, even without a vendor tool prompt.
+- **Layering and dead code.** `detectCycleHint` lives in `src/shared/cycle-detection.ts` so `turn-report` no longer imports provider. Removed `ELITE_MODELS_WHITELIST`, unused `parseXmlParameters`, and `ensureApiKey(silent)`. Stream pump takes a per-turn generation snapshot (`maxRepeatedLines` / `autoContinueOnLoop`) instead of re-reading `ConfigManager`. Discovery `maxInputTokens` subtracts the curated `maxOutputTokens` instead of clamping it to 65536. Shared `DEFAULT_MAX_OUTPUT_TOKENS` lives in `src/shared/token-defaults.ts`.
+- **Overflow re-enters the attempt loop (`src/provider/chat-provider.ts`).** Stream `context_overflow` / `token_limit` compact via `applyOverflowCompaction` and `continue` the same retry `for` (empty-stream / invalid-tool / usage+status-bar). Removed the one-shot `runStreamAttempt` overflow path. Turn snapshot `NimConfig` is passed into `prepareRequest` and overflow summarization. Tool JSON parse and invalid-call copy live in `src/tools/json-args.ts` and `src/tools/invalid-call-messages.ts`.
+- **Module splits and HTTP DIP.** Embedded tool text parsing is `src/tools/embedded-parser.ts`. Message extractors / token estimates are `src/messages/parts.ts` and `src/messages/token-estimate.ts`. `api/client.ts` no longer reads workspace config (callers pass retries / idle timeout; defaults are `DEFAULT_NETWORK_CONFIG`). Vision analysis goes through `chatCompletion()`. Nemotron family shares `NemotronFamilyAdapter`; Inkling/Muse Glimmer use `ReasoningEffortAdapter`.
+
 ## [0.9.7] - 2026-09-02
 
 ### Fixed

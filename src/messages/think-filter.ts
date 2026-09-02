@@ -78,7 +78,7 @@ export function filterThinkTagsFromChunk(
 
   while (remaining.length > 0) {
     if (state.insideThinkBlock) {
-      const closeTag = state.closeTag ?? "</think>";
+      const closeTag = state.closeTag ?? THINK_TAG_PAIRS[0].close;
       const closeIndex = remaining.toLowerCase().indexOf(closeTag.toLowerCase());
       if (closeIndex === -1) {
         const partialCloseIndex = findTrailingCaseInsensitivePrefixStart(remaining, closeTag);

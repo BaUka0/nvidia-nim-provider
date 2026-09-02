@@ -1,5 +1,5 @@
 import { NimChatMessage } from "../../types";
-import { BaseModelAdapter } from "./base";
+import { assignReasoningEffort, BaseModelAdapter } from "./base";
 
 export class KimiAdapter extends BaseModelAdapter {
   readonly idPattern = /(^|[\/_-])kimi([\/_-]|$)/i;
@@ -34,6 +34,6 @@ export class KimiAdapter extends BaseModelAdapter {
   readonly toolCallProtocol = "native-and-text" as const;
 
   applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
-    request.reasoning_effort = this.supportedReasoningModes.includes(mode) ? mode : "none";
+    assignReasoningEffort(request, mode, this.supportedReasoningModes);
   }
 }

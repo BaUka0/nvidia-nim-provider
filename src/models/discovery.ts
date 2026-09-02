@@ -25,13 +25,6 @@ import {
   writeModelCacheAtomically,
 } from "./cache";
 
-export interface ChatRuntimeMetadata {
-  supportsTools: boolean;
-  supportsVision: boolean;
-  contextWindow: number;
-  runtimeMetadataSource: "catalog" | "api" | "fallback";
-}
-
 export interface NvidiaConfigurationProperty {
   type: "string" | "number" | "boolean" | "object" | "array";
   title?: string;
@@ -240,10 +233,10 @@ export class NvidiaModelDiscoveryService {
         maxInputTokens: Math.max(
           1,
           model.contextWindow -
-            Math.min(model.maxOutputTokens ?? 65536, DEFAULT_MAX_OUTPUT_TOKENS) -
+            (model.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS) -
             calculateSafetyMargin(model.contextWindow),
         ),
-        maxOutputTokens: model.maxOutputTokens ?? 65536,
+        maxOutputTokens: model.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
         contextWindow: model.contextWindow,
         isUserSelectable: true,
         capabilities: {

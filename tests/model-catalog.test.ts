@@ -352,6 +352,36 @@ describe("getFallbackModel", () => {
   });
 });
 
+describe("package.json model enums", () => {
+  it("matches MODEL_LIST keys and fallback defaults", () => {
+    const pkg = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf8")) as {
+      contributes: {
+        configuration: {
+          properties: Record<
+            string,
+            { enum?: string[]; items?: { enum?: string[] }; default?: unknown }
+          >;
+        };
+      };
+    };
+    const props = pkg.contributes.configuration.properties;
+    const catalogIds = Object.keys(MODEL_LIST).sort();
+    const visionIds = catalogIds.filter((id) => MODEL_LIST[id].supportsVision).sort();
+
+    expect([...(props["nvidia-nim.fallback.model"].enum ?? [])].sort()).toEqual(catalogIds);
+    expect([...(props["nvidia-nim.fallback.priorityList"].items?.enum ?? [])].sort()).toEqual(
+      catalogIds,
+    );
+    expect([...(props["nvidia-nim.context.summarizationModel"].enum ?? [])].sort()).toEqual(
+      catalogIds,
+    );
+    expect([...(props["nvidia-nim.fallback.visionModel"].enum ?? [])].sort()).toEqual(visionIds);
+    expect(props["nvidia-nim.fallback.model"].default).toEqual(FALLBACK_MODEL_ID);
+    expect(props["nvidia-nim.fallback.visionModel"].default).toEqual(FALLBACK_VISION_MODEL_ID);
+    expect(props["nvidia-nim.context.summarizationModel"].default).toEqual(FALLBACK_MODEL_ID);
+  });
+});
+
 describe("models probe curated ids", () => {
   it("matches MODEL_LIST", () => {
     const probe = readFileSync(join(__dirname, "../scripts/nim-models-probe.mjs"), "utf8");

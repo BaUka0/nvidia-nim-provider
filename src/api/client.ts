@@ -1,4 +1,4 @@
-import { ConfigManager } from "../shared/config";
+import { DEFAULT_NETWORK_CONFIG } from "../shared/config";
 import {
   BASE_RETRY_DELAY_MS,
   BASE_URL,
@@ -224,9 +224,7 @@ export async function fetchWithRetry(
   retries?: number,
   errorContext: { operation?: string; model?: string } = {},
 ): Promise<Response> {
-  const maxRetries = httpAttemptsFromConfig(
-    retries ?? ConfigManager.getNetworkConfig().maxHttpRetries,
-  );
+  const maxRetries = httpAttemptsFromConfig(retries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries);
   let lastError: Error | undefined;
   const signal = init.signal ?? undefined;
   const classificationContext = {
@@ -353,7 +351,7 @@ export async function fetchModelsOrThrow(
       },
       signal: withRequestTimeout(signal, NON_STREAM_REQUEST_TIMEOUT_MS),
     },
-    retries ?? ConfigManager.getNetworkConfig().maxHttpRetries,
+    retries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries,
     { operation: "models" },
   );
   if (!response.ok) {
@@ -377,6 +375,7 @@ export async function chatCompletion(
   signal?: AbortSignal,
   userAgent?: string,
   retries?: number,
+  operation = "completion",
 ): Promise<string> {
   const response = await fetchWithRetry(
     `${BASE_URL}/chat/completions`,
@@ -390,13 +389,13 @@ export async function chatCompletion(
       body: JSON.stringify({ ...requestBody, stream: false }),
       signal: withRequestTimeout(signal, NON_STREAM_REQUEST_TIMEOUT_MS),
     },
-    retries ?? ConfigManager.getNetworkConfig().maxHttpRetries,
-    { operation: "completion", model: requestBody.model },
+    retries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries,
+    { operation, model: requestBody.model },
   );
 
   if (!response.ok) {
     throw await classifyResponseError(response, {
-      operation: "completion",
+      operation,
       model: requestBody.model,
     });
   }
@@ -407,7 +406,7 @@ export async function chatCompletion(
     };
     return data.choices?.[0]?.message?.content ?? "";
   } catch (error) {
-    throw classifyApiError(error, { operation: "completion", model: requestBody.model });
+    throw classifyApiError(error, { operation, model: requestBody.model });
   }
 }
 
@@ -425,8 +424,7 @@ export async function* streamChatCompletion(
   userAgent?: string,
   options?: StreamChatCompletionOptions,
 ): AsyncGenerator<NimStreamResponse, void, unknown> {
-  const fetchAttempts =
-    options?.maxFetchAttempts ?? ConfigManager.getNetworkConfig().maxHttpRetries;
+  const fetchAttempts = options?.maxFetchAttempts ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries;
   if (fetchAttempts <= 0) {
     throw classifyApiError(new Error("NVIDIA NIM fetch attempt budget exhausted"), {
       operation: "stream",
@@ -482,7 +480,7 @@ export async function* streamChatCompletion(
   }
 
   const configuredIdleTimeoutMs =
-    options?.idleTimeoutMs ?? ConfigManager.getNetworkConfig().streamIdleTimeout * 1000;
+    options?.idleTimeoutMs ?? DEFAULT_NETWORK_CONFIG.streamIdleTimeout * 1000;
 
   // Adaptive idle timeout for large outputs (roughly 10 tokens/s), but the
   // user-configured timeout is always honored as a floor so a larger configured

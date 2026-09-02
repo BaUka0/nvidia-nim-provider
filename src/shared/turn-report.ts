@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { detectCycleHint } from "../provider/repetition-guard";
+import { detectCycleHint } from "./cycle-detection";
 import { ConfigManager } from "./config";
 import { EXTENSION_VERSION } from "./constants";
 import { getSessionEvents, redactSecrets } from "./logging";

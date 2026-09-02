@@ -12,7 +12,7 @@ import {
   Progress,
   ProvideLanguageModelChatResponseOptions,
 } from "vscode";
-import { buildInvalidToolCallFallback, buildInvalidToolCallRetryMessage } from "../tools/parser";
+import { buildInvalidToolCallRetryMessage } from "../tools/parser";
 import { ConfigManager } from "../shared/config";
 import {
   DEFAULT_MAX_OUTPUT_TOKENS,
@@ -514,7 +514,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             throw new vscode.CancellationError();
           }
 
-          const fallbackConfig = ConfigManager.getFallbackConfig();
+          const fallbackConfig = ConfigManager.getNimConfig().fallback;
           const priorDepth = currentOptions.fallbackDepth ?? 0;
           if (fetchBudget.exhausted) {
             throw toHostChatError(err);
@@ -602,7 +602,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     fetchBudget: FetchAttemptBudget,
     reportState: ModelTurnReportState,
   ): Promise<void> {
-    let hasReportedContent = false;
     let hasReportedVisibleContent = false;
     let sawToolCallOverall = false;
     let apiKey: string | undefined;
@@ -615,10 +614,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     let hasRetriedContextOverflow = false;
     let reasoningIsolationExpected = false;
     let totalAttempts = 0;
+    const nimConfig = ConfigManager.getNimConfig();
+    const generationConfig = nimConfig.generation;
 
     const markReported = (result: StreamAttemptResult): void => {
       if (result.reportedContent) {
-        hasReportedContent = true;
         reportState.hasReportedContent = true;
       }
       if (result.reportedVisibleContent) {
@@ -631,7 +631,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     };
 
     try {
-      apiKey = await this.ensureApiKey(false, model);
+      apiKey = await this.ensureApiKey(model);
       if (!apiKey) {
         const message = buildMissingApiKeyFallback();
         if (typeof vscode.LanguageModelError?.NoPermissions === "function") {
@@ -654,6 +654,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       effectiveContextWindow =
         runtimeLimit !== undefined ? Math.min(contextWindow, runtimeLimit) : contextWindow;
       const adapter = getModelAdapter(model.id);
+      let streamModel = model;
+      let streamMaxOutputTokens = model.maxOutputTokens;
 
       if (NimRequestBuilder.hasImageInput(messages) && !supportsVision) {
         throw createStructuredError(
@@ -673,6 +675,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         userAgent: this.userAgent,
         signal: abortController.signal,
         fetchAttemptBudget: fetchBudget,
+        config: nimConfig,
       });
 
       tools = prepared.tools;
@@ -683,7 +686,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         NimRequestBuilder.applyRequestBudget(body, {
           tools,
           effectiveContextWindow,
-          modelMaxOutputTokens: model.maxOutputTokens,
+          modelMaxOutputTokens: streamMaxOutputTokens,
           requestedMaxTokens,
         });
 
@@ -694,7 +697,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         applyBudget,
       });
 
-      const baselineRequestBody = cloneNimChatRequest(activeRequestBody);
+      let baselineRequestBody = cloneNimChatRequest(activeRequestBody);
       let retryNudge: NimChatMessage | undefined;
       let retryReason: "invalid_tool_call" | undefined;
       const retryReasonHistory: string[] = [];
@@ -703,8 +706,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       let finalUsage: NimStreamUsage | undefined;
       let transientRetryCount = 0;
       let lastTransientError: unknown;
-      const networkConfig = ConfigManager.getNetworkConfig();
-      const fallbackConfig = ConfigManager.getFallbackConfig();
+      const networkConfig = nimConfig.network;
+      const fallbackConfig = nimConfig.fallback;
       const MAX_NETWORK_RETRIES = httpAttemptsFromConfig(networkConfig.maxHttpRetries);
       let emptyStreamRetryCount = 0;
       const MAX_EMPTY_STREAM_RETRIES = networkConfig.maxEmptyStreamRetries;
@@ -808,7 +811,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             userAgent: this.userAgent,
             token,
             progress,
-            model,
+            model: streamModel,
             options,
             messages,
             adapter,
@@ -816,9 +819,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             maxFetchAttempts: allocated,
             firstTokenTimeoutMs,
             hasRetriedRepetitionLoop,
+            maxRepeatedLines: generationConfig.maxRepeatedLines,
+            autoContinueOnLoop: generationConfig.autoContinueOnLoop,
+            idleTimeoutMs: nimConfig.network.streamIdleTimeout * 1000,
             onContentReported: () => {
               thisAttemptReportedContent = true;
-              hasReportedContent = true;
               reportState.hasReportedContent = true;
             },
             onVisibleContentReported: () => {
@@ -873,6 +878,64 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             continue;
           }
 
+          const overflowEligible =
+            !thisAttemptReportedContent &&
+            !hasRetriedContextOverflow &&
+            streamErr instanceof NvidiaApiError &&
+            (streamErr.kind === "context_overflow" || streamErr.kind === "token_limit") &&
+            Boolean(apiKey) &&
+            Boolean(attemptBody) &&
+            nimConfig.context.autoCompactOnOverflow;
+          if (overflowEligible) {
+            const overflowApplied = await this.applyOverflowCompaction({
+              err: streamErr,
+              model: streamModel,
+              messages,
+              activeRequestBody: attemptBody,
+              adapter,
+              supportsVision,
+              contextWindow,
+              keyFingerprint,
+              apiKey: apiKey!,
+              userAgent: this.userAgent,
+              abortController,
+              fetchBudget,
+              summarizationModel: nimConfig.context.summarizationModel,
+              maxHttpRetries: nimConfig.network.maxHttpRetries,
+            });
+            hasRetriedContextOverflow = true;
+            if (overflowApplied) {
+              baselineRequestBody = overflowApplied.requestBody;
+              activeRequestBody = overflowApplied.requestBody;
+              streamMaxOutputTokens = overflowApplied.compactedMaxOutput;
+              streamModel = {
+                ...streamModel,
+                maxOutputTokens: overflowApplied.compactedMaxOutput,
+              };
+              if (overflowApplied.retryContextWindow > 0) {
+                effectiveContextWindow = Math.min(
+                  contextWindow,
+                  overflowApplied.retryContextWindow,
+                );
+              }
+              retryNudge = undefined;
+              retryReason = undefined;
+              emptyStreamRetryCount = 0;
+              transientRetryCount = 0;
+              invalidToolRetryCount = 0;
+              lastTransientError = undefined;
+              attempt = -1;
+              continue;
+            }
+            throw createStructuredError(
+              "context_overflow",
+              [
+                `Model: ${streamModel.name ?? streamModel.id}`,
+                "Start a new chat, reduce attachments, or switch to a model with a larger context window.",
+              ].join("\n"),
+            );
+          }
+
           throw streamErr;
         }
 
@@ -911,7 +974,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           );
         const invalidToolRetryBudget = skippedUnknownTool ? MAX_INVALID_TOOL_RETRIES : 1;
         const willRetryAfterInvalidToolCall =
-          ConfigManager.getToolsConfig().autoRetryInvalidCalls &&
+          nimConfig.tools.autoRetryInvalidCalls &&
           result.sawToolCall &&
           !result.emittedToolCall &&
           invalidToolRetryCount < invalidToolRetryBudget &&
@@ -935,7 +998,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             result.lastFinishReason === undefined);
         const isTruncatedLength =
           result.lastFinishReason === "length" && !result.sawToolCall && !result.emittedToolCall;
-        const autoContinueOnLoop = ConfigManager.getGenerationConfig().autoContinueOnLoop;
+        const autoContinueOnLoop = generationConfig.autoContinueOnLoop;
         const willRetryRepetitionLoop =
           isRepetitionLoop && autoContinueOnLoop && !hasRetriedRepetitionLoop && attempt === 0;
         const willRetryHangingColon =
@@ -1089,7 +1152,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           result.sawToolCall &&
           !result.emittedToolCall &&
           skippedUnknownTool &&
-          ConfigManager.getToolsConfig().autoRetryInvalidCalls &&
+          nimConfig.tools.autoRetryInvalidCalls &&
           retryMessage
         ) {
           reportState.failingAttemptHasVisibleContent = false;
@@ -1205,157 +1268,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         throw new vscode.CancellationError();
       }
 
-      if (
-        !hasReportedContent &&
-        !hasRetriedContextOverflow &&
-        err instanceof NvidiaApiError &&
-        (err.kind === "context_overflow" || err.kind === "token_limit") &&
-        apiKey &&
-        activeRequestBody &&
-        ConfigManager.getContextConfig().autoCompactOnOverflow
-      ) {
-        hasRetriedContextOverflow = true;
-        const overflowInfo =
-          err.contextOverflow ??
-          (err.status === 400 ? parseContextOverflowDetail(err.message) : {});
-        const reportedMax = overflowInfo.reportedMaximum;
-        const actualUsage = overflowInfo.actualUsage;
-        debugLog("contextOverflow", {
-          model: model.id,
-          reportedMax,
-          actualUsage,
-          catalogContextWindow: contextWindow,
-        });
-
-        if (
-          typeof reportedMax === "number" &&
-          reportedMax > 0 &&
-          reportedMax < contextWindow &&
-          keyFingerprint
-        ) {
-          this.contextLimitStore.set(model.id, reportedMax, keyFingerprint, contextWindow);
-        }
-
-        const retryContextWindow =
-          typeof reportedMax === "number" && reportedMax > 0 && reportedMax < contextWindow
-            ? reportedMax
-            : contextWindow;
-
-        try {
-          const compacted = await buildOverflowRetryRequest({
-            messages,
-            activeRequestBody,
-            adapter: getModelAdapter(model.id),
-            supportsVision,
-            retryContextWindow,
-            apiKey,
-            userAgent: this.userAgent,
-            signal: abortController.signal,
-            fetchAttemptBudget: fetchBudget,
-          });
-          const allocated = compacted
-            ? fetchBudget.consume(
-                httpAttemptsFromConfig(ConfigManager.getNetworkConfig().maxHttpRetries),
-              )
-            : 0;
-          if (compacted && allocated > 0) {
-            notifyOverflowRetry(model);
-            activeRequestBody = compacted.requestBody;
-            const overflowModel = {
-              ...model,
-              maxOutputTokens: compacted.compactedMaxOutput,
-            };
-            const result = await runStreamAttempt({
-              apiKey,
-              requestBody: compacted.requestBody,
-              signal: abortController.signal,
-              userAgent: this.userAgent,
-              token,
-              progress,
-              model: overflowModel,
-              options,
-              messages,
-              adapter: getModelAdapter(model.id),
-              reasoningIsolationExpected,
-              maxFetchAttempts: allocated,
-              hasRetriedRepetitionLoop: true,
-              onContentReported: () => {
-                hasReportedContent = true;
-                reportState.hasReportedContent = true;
-              },
-              onVisibleContentReported: () => {
-                hasReportedVisibleContent = true;
-                reportState.hasReportedVisibleContent = true;
-                reportState.failingAttemptHasVisibleContent = true;
-              },
-            });
-            markReported(result);
-            if (!hasReportedVisibleContent) {
-              const retryFallbackText = buildInvalidToolCallFallback(result.skippedToolCalls);
-              if (retryFallbackText) {
-                progress.report(new vscode.LanguageModelTextPart(retryFallbackText));
-                hasReportedVisibleContent = true;
-              } else {
-                const compactEmpty = createStructuredError(
-                  "empty_stream",
-                  `Compacted retry on ${model.name ?? model.id} produced no visible answer or tool call.`,
-                );
-                recordAttemptTurn({
-                  outcome: "error",
-                  modelId: model.id,
-                  body: compacted.requestBody,
-                  result,
-                  error: compactEmpty,
-                });
-                throw compactEmpty;
-              }
-            }
-            recordAttemptTurn({
-              outcome: "ok",
-              modelId: model.id,
-              body: compacted.requestBody,
-              result,
-            });
-            const usagePart = createUsageDataPart(result.lastUsage);
-            if (usagePart) {
-              progress.report(usagePart);
-            }
-            return;
-          }
-        } catch (compactErr) {
-          if (compactErr instanceof Error && compactErr.name === "AbortError") {
-            throw new vscode.CancellationError();
-          }
-          if (
-            compactErr instanceof NvidiaApiError &&
-            compactErr.kind !== "context_overflow" &&
-            compactErr.kind !== "token_limit"
-          ) {
-            throw compactErr;
-          }
-          debugLog("contextOverflow", {
-            action: "compactionFailed",
-            error: compactErr instanceof Error ? compactErr.message : String(compactErr),
-          });
-        }
-
-        throw createStructuredError(
-          "context_overflow",
-          [
-            `Model: ${model.name ?? model.id}`,
-            reportedMax !== undefined
-              ? `Server-reported limit: ${reportedMax.toLocaleString()} tokens`
-              : null,
-            actualUsage !== undefined
-              ? `Prompt used: ${actualUsage.toLocaleString()} tokens`
-              : null,
-            "Start a new chat, reduce attachments, or switch to a model with a larger context window.",
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        );
-      }
-
       throw err;
     }
   }
@@ -1380,16 +1292,105 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     }
   }
 
-  private async ensureApiKey(
-    silent: boolean,
-    model: LanguageModelChatInformation,
-  ): Promise<string | undefined> {
+  private async applyOverflowCompaction(input: {
+    err: NvidiaApiError;
+    model: LanguageModelChatInformation;
+    messages: readonly LanguageModelChatMessage[];
+    activeRequestBody: NimChatRequest;
+    adapter: ReturnType<typeof getModelAdapter>;
+    supportsVision: boolean;
+    contextWindow: number;
+    keyFingerprint: string | undefined;
+    apiKey: string;
+    userAgent: string;
+    abortController: AbortController;
+    fetchBudget: FetchAttemptBudget;
+    summarizationModel: string;
+    maxHttpRetries: number;
+  }): Promise<
+    | {
+        requestBody: NimChatRequest;
+        compactedMaxOutput: number;
+        retryContextWindow: number;
+      }
+    | undefined
+  > {
+    const overflowInfo =
+      input.err.contextOverflow ??
+      (input.err.status === 400 ? parseContextOverflowDetail(input.err.message) : {});
+    const reportedMax = overflowInfo.reportedMaximum;
+    debugLog("contextOverflow", {
+      model: input.model.id,
+      reportedMax,
+      actualUsage: overflowInfo.actualUsage,
+      catalogContextWindow: input.contextWindow,
+    });
+
+    if (
+      typeof reportedMax === "number" &&
+      reportedMax > 0 &&
+      reportedMax < input.contextWindow &&
+      input.keyFingerprint
+    ) {
+      this.contextLimitStore.set(
+        input.model.id,
+        reportedMax,
+        input.keyFingerprint,
+        input.contextWindow,
+      );
+    }
+
+    const retryContextWindow =
+      typeof reportedMax === "number" && reportedMax > 0 && reportedMax < input.contextWindow
+        ? reportedMax
+        : input.contextWindow;
+
+    try {
+      const compacted = await buildOverflowRetryRequest({
+        messages: input.messages,
+        activeRequestBody: input.activeRequestBody,
+        adapter: input.adapter,
+        supportsVision: input.supportsVision,
+        retryContextWindow,
+        apiKey: input.apiKey,
+        userAgent: input.userAgent,
+        signal: input.abortController.signal,
+        fetchAttemptBudget: input.fetchBudget,
+        summarizationModel: input.summarizationModel,
+        maxHttpRetries: input.maxHttpRetries,
+      });
+      if (!compacted) {
+        return undefined;
+      }
+      notifyOverflowRetry(input.model);
+      return {
+        requestBody: compacted.requestBody,
+        compactedMaxOutput: compacted.compactedMaxOutput,
+        retryContextWindow,
+      };
+    } catch (compactErr) {
+      if (compactErr instanceof Error && compactErr.name === "AbortError") {
+        throw new vscode.CancellationError();
+      }
+      if (
+        compactErr instanceof NvidiaApiError &&
+        compactErr.kind !== "context_overflow" &&
+        compactErr.kind !== "token_limit"
+      ) {
+        throw compactErr;
+      }
+      debugLog("contextOverflow", {
+        action: "compactionFailed",
+        error: compactErr instanceof Error ? compactErr.message : String(compactErr),
+      });
+      return undefined;
+    }
+  }
+
+  private async ensureApiKey(model: LanguageModelChatInformation): Promise<string | undefined> {
     const resolved = await this.apiKeyResolver.resolveForModel(model);
     if (resolved) {
       return resolved.value;
-    }
-    if (silent) {
-      return undefined;
     }
 
     // Assign the in-flight promise before any await so parallel callers share

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { ConfigManager } from "../shared/config";
+import { ConfigManager, NimConfig } from "../shared/config";
 import {
   calculateSafetyMargin,
   COMPACTION_RECENT_FRACTION,
@@ -136,6 +136,7 @@ export class NimRequestBuilder {
     userAgent: string;
     signal?: AbortSignal;
     fetchAttemptBudget?: FetchAttemptBudget;
+    config?: NimConfig;
   }): Promise<PreparedRequest> {
     const {
       model,
@@ -149,6 +150,7 @@ export class NimRequestBuilder {
       signal,
       fetchAttemptBudget,
     } = options;
+    const config = options.config ?? ConfigManager.getNimConfig();
 
     const rawInputTokenCount = estimateMessagesTokens(
       messages as readonly { content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
@@ -164,8 +166,8 @@ export class NimRequestBuilder {
       );
     }
 
-    const generationConfig = ConfigManager.getGenerationConfig();
-    const reasoningConfig = ConfigManager.getReasoningConfig();
+    const generationConfig = config.generation;
+    const reasoningConfig = config.reasoning;
 
     const maxTokensVal = model.maxOutputTokens;
     const modelMaxLimit =
@@ -235,9 +237,10 @@ export class NimRequestBuilder {
         apiKey,
         userAgent,
         signal,
-        summarizationModel: ConfigManager.getContextConfig().summarizationModel,
+        summarizationModel: config.context.summarizationModel,
         extraTokenCount: toolDefinitionTokens,
         fetchAttemptBudget,
+        maxHttpRetries: config.network.maxHttpRetries,
       });
       debugLog(
         "contextCompression",

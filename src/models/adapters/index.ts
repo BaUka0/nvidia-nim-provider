@@ -1,4 +1,5 @@
 import { BoundedMap } from "../../shared/bounded-map";
+import { CatalogAdapterId, MODEL_LIST } from "../catalog";
 import {
   ModelAdapter,
   BaseModelAdapter,
@@ -44,17 +45,39 @@ class DefaultAdapter extends BaseModelAdapter {
     "You are an expert AI programming assistant. Provide correct, concise, production-ready code. Prefer simple solutions. Analyze the problem before coding. When tools are available, answer with concise user-facing text or a valid tool call. Do not include disclaimers or apologies.";
 }
 
-const ADAPTERS: ModelAdapter[] = [
-  new DeepSeekAdapter(),
-  new KimiAdapter(),
-  new GlmAdapter(),
-  new NemotronLightningAdapter(),
-  new NemotronSuperAdapter(),
-  new NemotronAdapter(),
-  new MinimaxAdapter(),
-  new StepfunAdapter(),
-  new InklingAdapter(),
-  new MuseGlimmerAdapter(),
+const deepseekAdapter = new DeepSeekAdapter();
+const kimiAdapter = new KimiAdapter();
+const glmAdapter = new GlmAdapter();
+const nemotronLightningAdapter = new NemotronLightningAdapter();
+const nemotronSuperAdapter = new NemotronSuperAdapter();
+const nemotronAdapter = new NemotronAdapter();
+const minimaxAdapter = new MinimaxAdapter();
+const stepfunAdapter = new StepfunAdapter();
+const inklingAdapter = new InklingAdapter();
+const museGlimmerAdapter = new MuseGlimmerAdapter();
+
+const ADAPTERS_BY_ID: Record<CatalogAdapterId, ModelAdapter> = {
+  deepseek: deepseekAdapter,
+  kimi: kimiAdapter,
+  minimax: minimaxAdapter,
+  nemotron: nemotronAdapter,
+  "nemotron-super": nemotronSuperAdapter,
+  "nemotron-lightning": nemotronLightningAdapter,
+  "muse-glimmer": museGlimmerAdapter,
+};
+
+/** Family regex fallback for uncatalogued successor IDs. More-specific patterns first. */
+const FAMILY_ADAPTERS: ModelAdapter[] = [
+  deepseekAdapter,
+  kimiAdapter,
+  glmAdapter,
+  nemotronLightningAdapter,
+  nemotronSuperAdapter,
+  nemotronAdapter,
+  minimaxAdapter,
+  stepfunAdapter,
+  inklingAdapter,
+  museGlimmerAdapter,
 ];
 
 const DEFAULT_ADAPTER = new DefaultAdapter();
@@ -67,8 +90,15 @@ export function getModelAdapter(modelId: string): ModelAdapter {
     return cached;
   }
 
+  const catalogAdapterId = MODEL_LIST[modelId]?.adapter;
+  if (catalogAdapterId) {
+    const catalogAdapter = ADAPTERS_BY_ID[catalogAdapterId];
+    adapterCache.set(modelId, catalogAdapter);
+    return catalogAdapter;
+  }
+
   const normalizedModelId = modelId.toLowerCase();
-  const matched = ADAPTERS.find((adapter) => adapter.matches(normalizedModelId));
+  const matched = FAMILY_ADAPTERS.find((adapter) => adapter.matches(normalizedModelId));
   const result = matched ?? DEFAULT_ADAPTER;
   adapterCache.set(modelId, result);
   return result;
