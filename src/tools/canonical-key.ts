@@ -41,6 +41,7 @@ export function getCompletedToolCallKeys(
   messages: readonly LanguageModelChatMessage[],
   requestContext: ChatRequestContext | undefined,
   toolSchemas: ReadonlyMap<string, ToolSchema>,
+  toolsConfig: ToolsConfig = ConfigManager.getToolsConfig(),
 ): Set<string> {
   let startIndex = 0;
   for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -87,6 +88,7 @@ export function getCompletedToolCallKeys(
         toolCallPart.input ?? {},
         requestContext,
         toolSchemas.get(toolCallPart.name),
+        toolsConfig,
       );
       keys.add(buildToolCallCanonicalKey(toolCallPart.name, repairedArgs));
     }

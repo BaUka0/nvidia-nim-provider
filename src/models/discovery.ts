@@ -6,24 +6,14 @@ import {
   MODELS_STATE_KEY,
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
-  DEFAULT_MAX_OUTPUT_TOKENS,
-  calculateSafetyMargin,
 } from "../shared/constants";
-import {
-  MODEL_LIST,
-  isNormalizedNvidiaModel,
-  normalizeNvidiaModels,
-  NormalizedNvidiaModel,
-} from "./catalog";
-import { fetchModels, fetchModelsOrThrow } from "../api/client";
+import { calculateSafetyMargin } from "../shared/config";
+import { fetchCuratedModels } from "./fetch-curated";
+import { MODEL_LIST, isNormalizedNvidiaModel, NormalizedNvidiaModel } from "./catalog";
 import { outputLog } from "../shared/logging";
 import { getModelAdapter } from "./adapters";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver";
-import {
-  reportMissingCuratedModels,
-  runSerializedModelCacheOperation,
-  writeModelCacheAtomically,
-} from "./cache";
+import { runSerializedModelCacheOperation } from "./cache";
 
 export interface NvidiaConfigurationProperty {
   type: "string" | "number" | "boolean" | "object" | "array";
@@ -149,28 +139,17 @@ export class NvidiaModelDiscoveryService {
     const apiKey = resolved.value;
 
     try {
-      // Keep compatibility with test/extension hosts that only expose the
-      // nullable legacy fetchModels function while production uses the
-      // structured-error variant.
-      const fetchModelsRequest =
-        typeof fetchModelsOrThrow === "function" ? fetchModelsOrThrow : fetchModels;
-      const rawModels = await fetchModelsRequest(apiKey, undefined, this.userAgent);
-      if (!Array.isArray(rawModels)) {
+      const fetched = await fetchCuratedModels({
+        apiKey,
+        userAgent: this.userAgent,
+        globalState: this.globalState ?? undefined,
+      });
+      if (!fetched) {
         return undefined;
       }
-      reportMissingCuratedModels(rawModels);
-      const normalized = normalizeNvidiaModels(rawModels);
-      this.modelsByFingerprint.set(getApiKeyFingerprint(apiKey), normalized);
-      if (this.globalState) {
-        await writeModelCacheAtomically(
-          this.globalState,
-          rawModels,
-          normalized,
-          getApiKeyFingerprint(apiKey),
-        );
-      }
+      this.modelsByFingerprint.set(getApiKeyFingerprint(apiKey), fetched.normalizedModels);
       this.cacheInvalidated = false;
-      return normalized;
+      return fetched.normalizedModels;
     } catch (err) {
       outputLog(
         "error",
@@ -232,11 +211,9 @@ export class NvidiaModelDiscoveryService {
         version: "1.0.0",
         maxInputTokens: Math.max(
           1,
-          model.contextWindow -
-            (model.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS) -
-            calculateSafetyMargin(model.contextWindow),
+          model.contextWindow - model.maxOutputTokens - calculateSafetyMargin(model.contextWindow),
         ),
-        maxOutputTokens: model.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+        maxOutputTokens: model.maxOutputTokens,
         contextWindow: model.contextWindow,
         isUserSelectable: true,
         capabilities: {

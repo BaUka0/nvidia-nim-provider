@@ -30,7 +30,9 @@ import { ConfigManager } from "./shared/config";
 import { isLikelyNvidiaApiKey } from "./shared/api-key-format";
 import {
   buildSessionLogFilename,
+  buildTurnReportFilename,
   formatSessionLogsPayload,
+  formatTurnReportsPayload,
   resolveDownloadsDir,
   writeTurnReportFile,
 } from "./shared/turn-report";
@@ -46,40 +48,41 @@ function applyDeveloperLogOptions(context: vscode.ExtensionContext): void {
   });
 }
 
-async function saveSessionLogs(): Promise<void> {
-  const payload = formatSessionLogsPayload();
-  if (!payload) {
-    vscode.window.showWarningMessage(
-      `${PROVIDER_DISPLAY_NAME} has no session logs yet. Send a chat message first, then run this command again.`,
-    );
+async function saveDiagnosticsFile(input: {
+  payload: string | undefined;
+  emptyWarning: string;
+  filename: string;
+  saveLabel: string;
+}): Promise<void> {
+  if (!input.payload) {
+    vscode.window.showWarningMessage(input.emptyWarning);
     return;
   }
 
-  const filename = buildSessionLogFilename();
   const downloadsDir = resolveDownloadsDir();
-  let savedPath = path.join(downloadsDir, filename);
+  let savedPath = path.join(downloadsDir, input.filename);
   try {
-    await writeTurnReportFile(savedPath, payload);
+    await writeTurnReportFile(savedPath, input.payload);
   } catch (error) {
     const fallback = await vscode.window.showSaveDialog({
       defaultUri: vscode.Uri.file(savedPath),
       filters: { JSON: ["json"] },
-      saveLabel: "Save session logs",
+      saveLabel: input.saveLabel,
     });
     if (!fallback) {
       const message = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(
-        `${PROVIDER_DISPLAY_NAME} could not save the session logs: ${message}`,
+        `${PROVIDER_DISPLAY_NAME} could not save the diagnostics file: ${message}`,
       );
       return;
     }
     savedPath = fallback.fsPath;
     try {
-      await writeTurnReportFile(savedPath, payload);
+      await writeTurnReportFile(savedPath, input.payload);
     } catch (retryError) {
       const message = retryError instanceof Error ? retryError.message : String(retryError);
       vscode.window.showErrorMessage(
-        `${PROVIDER_DISPLAY_NAME} could not save the session logs: ${message}`,
+        `${PROVIDER_DISPLAY_NAME} could not save the diagnostics file: ${message}`,
       );
       return;
     }
@@ -87,12 +90,30 @@ async function saveSessionLogs(): Promise<void> {
 
   const showInFolder = "Show in Folder";
   const choice = await vscode.window.showInformationMessage(
-    `${PROVIDER_DISPLAY_NAME}: saved session logs to ${savedPath}`,
+    `${PROVIDER_DISPLAY_NAME}: saved to ${savedPath}`,
     showInFolder,
   );
   if (choice === showInFolder) {
     await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(savedPath));
   }
+}
+
+async function saveSessionLogs(): Promise<void> {
+  await saveDiagnosticsFile({
+    payload: formatSessionLogsPayload(),
+    emptyWarning: `${PROVIDER_DISPLAY_NAME} has no session logs yet. Send a chat message first, then run this command again.`,
+    filename: buildSessionLogFilename(),
+    saveLabel: "Save session logs",
+  });
+}
+
+async function saveLastTurnReport(): Promise<void> {
+  await saveDiagnosticsFile({
+    payload: formatTurnReportsPayload(),
+    emptyWarning: `${PROVIDER_DISPLAY_NAME} has no turn reports yet. Send a chat message first, then run this command again.`,
+    filename: buildTurnReportFilename(),
+    saveLabel: "Save turn report",
+  });
 }
 
 let _provider: NimChatModelProvider | null = null;
@@ -240,7 +261,7 @@ function registerCommands(
 
   context.subscriptions.push(
     vscode.commands.registerCommand(SAVE_SESSION_LOGS_COMMAND_ID, saveSessionLogs),
-    vscode.commands.registerCommand(SAVE_TURN_REPORT_COMMAND_ID, saveSessionLogs),
+    vscode.commands.registerCommand(SAVE_TURN_REPORT_COMMAND_ID, saveLastTurnReport),
   );
 }
 

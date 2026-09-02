@@ -1,7 +1,9 @@
+import { ConfigManager } from "../src/shared/config";
 import { MODEL_LIST, normalizeNvidiaModels } from "../src/models/catalog";
 import {
   getModelAdapter,
   getModelCapabilityContract,
+  isReasoningIsolationExpected,
   ModelAdapter,
   ReasoningParameterFormat,
   ReasoningRouting,
@@ -9,7 +11,7 @@ import {
 } from "../src/models/adapters";
 import { ReasoningStreamRouter } from "../src/messages/reasoning-router";
 import { ToolCallStreamAggregator } from "../src/provider/tool-call-aggregator";
-import { getIncompleteTextToolCallName } from "../src/tools/parser";
+import { getIncompleteTextToolCallName, parseTextEmbeddedToolCalls } from "../src/tools/parser";
 import { NimChatRequest } from "../src/types";
 
 interface ReasoningModeCase {
@@ -24,7 +26,6 @@ interface CapabilityMatrixCase {
   reasoningParameterFormat: ReasoningParameterFormat;
   toolCallProtocol: ToolCallProtocol;
   reasoningRouting: ReasoningRouting;
-  responseSanitization: "none" | "model-specific";
   contentOnlyMode: string;
   contentOnlyRouting: "text" | "thinking";
   thinkTag: "think" | "mm:think";
@@ -57,7 +58,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     reasoningParameterFormat: "chat_template_kwargs",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "isolated",
-    responseSanitization: "none",
     contentOnlyMode: "none",
     contentOnlyRouting: "text",
     thinkTag: "think",
@@ -69,7 +69,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     reasoningParameterFormat: "chat_template_kwargs",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "isolated",
-    responseSanitization: "none",
     contentOnlyMode: "none",
     contentOnlyRouting: "text",
     thinkTag: "think",
@@ -94,7 +93,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     reasoningParameterFormat: "chat_template_kwargs",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "isolated",
-    responseSanitization: "none",
     contentOnlyMode: "none",
     contentOnlyRouting: "text",
     thinkTag: "mm:think",
@@ -111,7 +109,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     reasoningParameterFormat: "reasoning_effort",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "isolated",
-    responseSanitization: "none",
     contentOnlyMode: "none",
     contentOnlyRouting: "text",
     thinkTag: "think",
@@ -127,7 +124,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     reasoningParameterFormat: "reasoning_effort",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "isolated",
-    responseSanitization: "none",
     contentOnlyMode: "none",
     contentOnlyRouting: "text",
     thinkTag: "think",
@@ -158,7 +154,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     reasoningParameterFormat: "chat_template_kwargs",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "isolated",
-    responseSanitization: "none",
     contentOnlyMode: "none",
     contentOnlyRouting: "text",
     thinkTag: "think",
@@ -195,7 +190,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     reasoningParameterFormat: "chat_template_kwargs",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "isolated",
-    responseSanitization: "none",
     contentOnlyMode: "none",
     contentOnlyRouting: "text",
     thinkTag: "think",
@@ -210,7 +204,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     reasoningParameterFormat: "reasoning_effort",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "direct-content",
-    responseSanitization: "none",
     contentOnlyMode: "medium",
     contentOnlyRouting: "text",
     thinkTag: "think",
@@ -231,15 +224,6 @@ function getReasoningFields(request: NimChatRequest): Record<string, unknown> {
   return result;
 }
 
-function reasoningIsolationExpected(adapter: ModelAdapter, mode: string): boolean {
-  return (
-    (Boolean(adapter.applyReasoningMode) &&
-      mode !== "none" &&
-      adapter.isolateUntaggedReasoning !== false) ||
-    Boolean(adapter.alwaysReasons)
-  );
-}
-
 function createRouter(
   adapter: ModelAdapter,
   mode: string,
@@ -254,7 +238,7 @@ function createRouter(
     thinking,
     text,
     router: new ReasoningStreamRouter({
-      reasoningIsolationExpected: reasoningIsolationExpected(adapter, mode),
+      reasoningIsolationExpected: isReasoningIsolationExpected(adapter, mode),
       onThinking: (value) => thinking.push(value),
       onText: (value) => text.push(value),
     }),
@@ -275,9 +259,7 @@ describe("curated model capability matrix", () => {
       reasoningParameterFormat: entry.reasoningParameterFormat,
       toolCallProtocol: entry.toolCallProtocol,
       reasoningRouting: entry.reasoningRouting,
-      responseSanitization: entry.responseSanitization,
     });
-    expect(getModelAdapter(entry.modelId).parseTextEmbeddedToolCalls).toEqual(expect.any(Function));
   });
 
   it.each(
@@ -292,13 +274,6 @@ describe("curated model capability matrix", () => {
       expect(getReasoningFields(request)).toEqual(reasoningCase.expectedFields);
     },
   );
-
-  it("keeps Stepfun content-only responses visible without inventing an API toggle", () => {
-    const adapter = getModelAdapter("stepfun-ai/step-3.7-flash");
-    expect(adapter.supportedReasoningModes).toBeUndefined();
-    expect(adapter.applyReasoningMode).toBeUndefined();
-    expect(adapter.isolateUntaggedReasoning).toBe(false);
-  });
 
   it.each(CAPABILITY_MATRIX)(
     "$modelId has an explicit content-only routing expectation",
@@ -390,6 +365,7 @@ describe("curated model capability matrix", () => {
         ],
       } as never,
       messages: [],
+      toolsConfig: ConfigManager.getToolsConfig(),
       onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
       onSkipToolCall: (name) => skipped.push(name),
     });
@@ -422,7 +398,7 @@ describe("curated model capability matrix", () => {
   });
 
   it.each(CAPABILITY_MATRIX)("$modelId accepts the text tool-call fallback", (entry) => {
-    const parser = getModelAdapter(entry.modelId).parseTextEmbeddedToolCalls!;
+    const parser = parseTextEmbeddedToolCalls;
     const parsed = parser(
       '<|tool_call_begin|>lookup_city<|tool_call_argument_begin|>{"city":"Tokyo"}<|tool_call_end|>',
     );
@@ -437,23 +413,19 @@ describe("curated model capability matrix", () => {
     ]);
   });
 
-  it.each(CAPABILITY_MATRIX)(
-    "$modelId classifies malformed and truncated text tool calls",
-    (entry) => {
-      const parser = getModelAdapter(entry.modelId).parseTextEmbeddedToolCalls!;
-      const malformed = parser(
-        '<|tool_call_begin|>lookup_city<|tool_call_argument_begin|>{"city":"Tokyo"<|tool_call_end|>',
-      );
-      const truncated = parser(
-        '<|tool_call_begin|>lookup_city<|tool_call_argument_begin|>{"city":"Tok',
-      );
+  it("classifies malformed and truncated text tool calls", () => {
+    const malformed = parseTextEmbeddedToolCalls(
+      '<|tool_call_begin|>lookup_city<|tool_call_argument_begin|>{"city":"Tokyo"<|tool_call_end|>',
+    );
+    const truncated = parseTextEmbeddedToolCalls(
+      '<|tool_call_begin|>lookup_city<|tool_call_argument_begin|>{"city":"Tok',
+    );
 
-      expect(malformed.segments).toEqual([{ type: "invalidToolCall", name: "lookup_city" }]);
-      expect(malformed.incompleteText).toBe("");
-      expect(truncated.segments).toEqual([]);
-      expect(getIncompleteTextToolCallName(truncated.incompleteText)).toBe("lookup_city");
-    },
-  );
+    expect(malformed.segments).toEqual([{ type: "invalidToolCall", name: "lookup_city" }]);
+    expect(malformed.incompleteText).toBe("");
+    expect(truncated.segments).toEqual([]);
+    expect(getIncompleteTextToolCallName(truncated.incompleteText)).toBe("lookup_city");
+  });
 
   it.each(CAPABILITY_MATRIX.filter((entry) => MODEL_LIST[entry.modelId].supportsVision))(
     "$modelId explicitly supports vision input",

@@ -1,17 +1,15 @@
 import { NimChatMessage } from "../../types";
-import { parseTextEmbeddedToolCalls, ParsedTextToolCallResult } from "../../tools/parser";
 
 export type ReasoningParameterFormat = "none" | "reasoning_effort" | "chat_template_kwargs";
 
 export type ToolCallProtocol = "native-and-text" | "native-only";
 
-export type ReasoningRouting = "direct-content" | "isolated" | "always-isolated";
+export type ReasoningRouting = "direct-content" | "isolated";
 
 export interface ModelAdapterCapabilityContract {
   readonly reasoningModes: readonly string[];
   readonly reasoningParameterFormat: ReasoningParameterFormat;
   readonly toolCallProtocol: ToolCallProtocol;
-  readonly responseSanitization: "none" | "model-specific";
   readonly reasoningRouting: ReasoningRouting;
 }
 
@@ -29,14 +27,11 @@ export interface ModelAdapter {
   matches(modelId: string): boolean;
   getProfile(options: { toolsEnabled?: boolean }): NvidiaModelRequestProfile;
   applyMessagesWorkaround?(messages: NimChatMessage[]): NimChatMessage[];
-  parseTextEmbeddedToolCalls?(text: string): ParsedTextToolCallResult;
   applyReasoningMode?(request: import("../../types").NimChatRequest, mode: string): void;
-  sanitizeResponseText?(text: string): string;
   readonly supportedReasoningModes?: string[];
   readonly reasoningParameterFormat?: ReasoningParameterFormat;
   readonly toolCallProtocol?: ToolCallProtocol;
   readonly isolateUntaggedReasoning?: boolean;
-  readonly alwaysReasons?: boolean;
   readonly supportsPresencePenalty?: boolean;
   readonly supportsFrequencyPenalty?: boolean;
   readonly supportsRepetitionPenalty?: boolean;
@@ -58,6 +53,23 @@ export function assignReasoningEffort(
 export const VISIBLE_REPLY_HYGIENE_MESSAGE =
   "Visible replies must be markdown only. Do not emit XML section wrappers such as <steps>, <suggested_fix>, <next_steps>, <analysis>, or <plan>. Do not emit _vscodecontentref_ URLs or markdown links to them; write plain file names.";
 
+/**
+ * Single source of the reasoning-isolation routing rule used by the request
+ * builder and the capability matrix: when an adapter sends a reasoning
+ * parameter for `mode` and does not opt out of isolation, reasoning content
+ * must arrive as isolated thinking parts rather than inline text.
+ */
+export function isReasoningIsolationExpected(
+  adapter: Pick<ModelAdapter, "applyReasoningMode" | "isolateUntaggedReasoning">,
+  mode: string,
+): boolean {
+  return (
+    Boolean(adapter.applyReasoningMode) &&
+    mode !== "none" &&
+    adapter.isolateUntaggedReasoning !== false
+  );
+}
+
 export abstract class BaseModelAdapter implements ModelAdapter {
   abstract readonly idPattern: RegExp;
   abstract readonly defaultTemperature: number;
@@ -66,29 +78,18 @@ export abstract class BaseModelAdapter implements ModelAdapter {
   readonly toolSystemMessage?: string;
   readonly supportedReasoningModes?: string[];
   readonly isolateUntaggedReasoning?: boolean;
-  readonly alwaysReasons?: boolean;
   readonly supportsPresencePenalty?: boolean;
   readonly supportsFrequencyPenalty?: boolean;
   readonly supportsRepetitionPenalty?: boolean;
-  sanitizeResponseText?(text: string): string;
   readonly reasoningParameterFormat: ReasoningParameterFormat = "none";
   readonly toolCallProtocol: ToolCallProtocol = "native-and-text";
-
-  parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResult {
-    return parseTextEmbeddedToolCalls(text);
-  }
 
   getCapabilityContract(): ModelAdapterCapabilityContract {
     return {
       reasoningModes: this.supportedReasoningModes ?? [],
       reasoningParameterFormat: this.reasoningParameterFormat,
       toolCallProtocol: this.toolCallProtocol,
-      responseSanitization: this.sanitizeResponseText ? "model-specific" : "none",
-      reasoningRouting: this.alwaysReasons
-        ? "always-isolated"
-        : this.isolateUntaggedReasoning === false
-          ? "direct-content"
-          : "isolated",
+      reasoningRouting: this.isolateUntaggedReasoning === false ? "direct-content" : "isolated",
     };
   }
 

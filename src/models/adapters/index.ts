@@ -8,13 +8,10 @@ import {
 } from "./base";
 import { DeepSeekAdapter } from "./deepseek";
 import { KimiAdapter } from "./kimi";
-import { GlmAdapter } from "./glm";
 import { NemotronAdapter } from "./nemotron";
 import { NemotronLightningAdapter } from "./nemotron-lightning";
 import { NemotronSuperAdapter } from "./nemotron-super";
 import { MinimaxAdapter } from "./minimax";
-import { StepfunAdapter } from "./stepfun";
-import { InklingAdapter } from "./inkling";
 import { MuseGlimmerAdapter } from "./muse-glimmer";
 
 export {
@@ -25,17 +22,8 @@ export {
   ReasoningParameterFormat,
   ToolCallProtocol,
   ReasoningRouting,
+  isReasoningIsolationExpected,
 } from "./base";
-export { DeepSeekAdapter } from "./deepseek";
-export { KimiAdapter } from "./kimi";
-export { GlmAdapter } from "./glm";
-export { NemotronAdapter } from "./nemotron";
-export { NemotronLightningAdapter } from "./nemotron-lightning";
-export { NemotronSuperAdapter } from "./nemotron-super";
-export { MinimaxAdapter } from "./minimax";
-export { StepfunAdapter } from "./stepfun";
-export { InklingAdapter } from "./inkling";
-export { MuseGlimmerAdapter } from "./muse-glimmer";
 
 class DefaultAdapter extends BaseModelAdapter {
   readonly idPattern = /.*/;
@@ -47,13 +35,10 @@ class DefaultAdapter extends BaseModelAdapter {
 
 const deepseekAdapter = new DeepSeekAdapter();
 const kimiAdapter = new KimiAdapter();
-const glmAdapter = new GlmAdapter();
 const nemotronLightningAdapter = new NemotronLightningAdapter();
 const nemotronSuperAdapter = new NemotronSuperAdapter();
 const nemotronAdapter = new NemotronAdapter();
 const minimaxAdapter = new MinimaxAdapter();
-const stepfunAdapter = new StepfunAdapter();
-const inklingAdapter = new InklingAdapter();
 const museGlimmerAdapter = new MuseGlimmerAdapter();
 
 const ADAPTERS_BY_ID: Record<CatalogAdapterId, ModelAdapter> = {
@@ -70,13 +55,10 @@ const ADAPTERS_BY_ID: Record<CatalogAdapterId, ModelAdapter> = {
 const FAMILY_ADAPTERS: ModelAdapter[] = [
   deepseekAdapter,
   kimiAdapter,
-  glmAdapter,
   nemotronLightningAdapter,
   nemotronSuperAdapter,
   nemotronAdapter,
   minimaxAdapter,
-  stepfunAdapter,
-  inklingAdapter,
   museGlimmerAdapter,
 ];
 

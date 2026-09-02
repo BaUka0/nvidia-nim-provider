@@ -1,13 +1,9 @@
-import * as vscode from "vscode";
 import { LanguageModelChatMessage } from "vscode";
-import { convertMessages, estimateToolsTokens } from "../messages/converter";
-import { getModelAdapter, ModelAdapter } from "../models/adapters";
+import { estimateToolsTokens } from "../messages/converter";
+import { getModelAdapter } from "../models/adapters";
 import { compactAndFit } from "../models/summarizer";
-import {
-  calculateSafetyMargin,
-  COMPACTION_MIN_OUTPUT_TOKENS,
-  COMPACTION_OUTPUT_FRACTION,
-} from "../shared/constants";
+import { calculateSafetyMargin } from "../shared/config";
+import { COMPACTION_MIN_OUTPUT_TOKENS, COMPACTION_OUTPUT_FRACTION } from "../shared/constants";
 import { FetchAttemptBudget } from "../shared/fetch-attempt-budget";
 import { debugLog } from "../shared/logging";
 import { NimChatRequest } from "../types";
@@ -16,7 +12,6 @@ import { NimRequestBuilder } from "./request-builder";
 export interface OverflowCompactionInput {
   messages?: readonly LanguageModelChatMessage[];
   activeRequestBody: NimChatRequest;
-  adapter?: ModelAdapter;
   supportsVision?: boolean;
   retryContextWindow: number;
   apiKey: string;
@@ -25,6 +20,8 @@ export interface OverflowCompactionInput {
   fetchAttemptBudget?: FetchAttemptBudget;
   summarizationModel?: string;
   maxHttpRetries?: number;
+  /** Per-turn config snapshot value; falls back to a live read when omitted. */
+  safetyMarginPercent?: number;
 }
 
 export interface OverflowCompactionResult {
@@ -36,7 +33,7 @@ export interface OverflowCompactionResult {
 export async function buildOverflowRetryRequest(
   input: OverflowCompactionInput,
 ): Promise<OverflowCompactionResult | undefined> {
-  const safetyMargin = calculateSafetyMargin(input.retryContextWindow);
+  const safetyMargin = calculateSafetyMargin(input.retryContextWindow, input.safetyMarginPercent);
   const compactedMaxOutput = Math.max(
     COMPACTION_MIN_OUTPUT_TOKENS,
     Math.floor(input.retryContextWindow * COMPACTION_OUTPUT_FRACTION),
@@ -49,24 +46,15 @@ export async function buildOverflowRetryRequest(
   let candidateMessages = input.activeRequestBody?.messages;
   if (!candidateMessages || candidateMessages.length === 0) {
     if (input.messages) {
-      const adapter = input.adapter ?? getModelAdapter(input.activeRequestBody.model);
+      const adapter = getModelAdapter(input.activeRequestBody.model);
       const toolsEnabled = Boolean(input.activeRequestBody.tools?.length);
-      const extraSystemMessages = adapter.getProfile({ toolsEnabled }).extraSystemMessages;
-
-      let apiMessages = convertMessages(Array.from(input.messages), {
-        maxToolResultChars: NimRequestBuilder.calculateMaxToolResultChars(input.retryContextWindow),
+      candidateMessages = NimRequestBuilder.convertMessagesWithProfile({
+        messages: input.messages,
+        adapter,
+        contextWindow: input.retryContextWindow,
         supportsVision: Boolean(input.supportsVision),
+        toolsEnabled,
       });
-      if (adapter.applyMessagesWorkaround) {
-        apiMessages = adapter.applyMessagesWorkaround(apiMessages);
-      }
-      if (extraSystemMessages.length > 0) {
-        apiMessages = [
-          ...extraSystemMessages.map((content) => ({ role: "system" as const, content })),
-          ...apiMessages,
-        ];
-      }
-      candidateMessages = apiMessages;
     } else {
       return undefined;
     }
@@ -112,10 +100,4 @@ export async function buildOverflowRetryRequest(
       max_tokens: compactedMaxOutput,
     },
   };
-}
-
-export function notifyOverflowRetry(model: { name?: string; id: string }): void {
-  vscode.window.showInformationMessage(
-    `Context overflow on ${model.name ?? model.id}. Retrying with compacted history…`,
-  );
 }

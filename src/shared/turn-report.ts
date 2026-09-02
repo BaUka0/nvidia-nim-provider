@@ -7,8 +7,6 @@ import { EXTENSION_VERSION } from "./constants";
 import { getSessionEvents, redactSecrets } from "./logging";
 import { NimChatRequest } from "../types";
 
-export { detectCycleHint };
-
 /** Keep a short in-memory trail so a loop can be saved after the fact. */
 export const MAX_TURN_REPORTS = 5;
 const TEXT_SNIPPET_CHARS = 240;

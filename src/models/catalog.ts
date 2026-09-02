@@ -120,30 +120,22 @@ export interface FallbackModelSelectionOptions {
  * Resolves the next failover candidate. Candidate order:
  * priorityList entries, then the configured text fallback, then the
  * configured vision fallback; unknown, already-tried, and the currently
- * failing model are skipped. Models with catalog pickerStatus "unavailable"
- * are skipped in last-resort sweeps. Vision requests additionally require
+ * failing model are skipped. Vision requests additionally require
  * supportsVision, with a last-resort sweep over any remaining vision model.
- * Text requests last-resort over any remaining non-unavailable model.
+ * Text requests last-resort over any remaining model.
  */
-function isPickerUnavailable(modelId: string): boolean {
-  return MODEL_LIST[modelId]?.pickerStatus === "unavailable";
-}
-
 export function getFallbackModel(
   currentModelId: string,
   availableModels: NormalizedNvidiaModel[],
-  options?: FallbackModelSelectionOptions | string,
+  options?: FallbackModelSelectionOptions,
 ): NormalizedNvidiaModel | undefined {
-  const normalizedOptions: FallbackModelSelectionOptions =
-    typeof options === "string" ? { configuredFallbackModelId: options } : (options ?? {});
-
   const {
     configuredFallbackModelId,
     configuredVisionFallbackModelId,
     requiresVision = false,
     priorityList,
     triedModelIds,
-  } = normalizedOptions;
+  } = options ?? {};
 
   const excluded = new Set<string>([currentModelId, ...(triedModelIds ?? [])]);
   const orderedCandidateIds: string[] = [];
@@ -181,11 +173,9 @@ export function getFallbackModel(
   }
 
   if (requiresVision) {
-    return availableModels.find(
-      (m) => m.supportsVision && !excluded.has(m.id) && !isPickerUnavailable(m.id),
-    );
+    return availableModels.find((m) => m.supportsVision && !excluded.has(m.id));
   }
-  return availableModels.find((m) => !excluded.has(m.id) && !isPickerUnavailable(m.id));
+  return availableModels.find((m) => !excluded.has(m.id));
 }
 
 export function normalizeNvidiaModels(models: NvidiaModelSummary[]): NormalizedNvidiaModel[] {

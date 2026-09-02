@@ -16,6 +16,7 @@ import {
   truncatePreservingSurrogates,
 } from "./parts";
 import { estimateNimMessagesTokens } from "./token-estimate";
+import { pairToolCallsAndResults } from "./tool-call-pairing";
 
 export type { LegacyPart } from "./parts";
 export {
@@ -29,14 +30,13 @@ export {
 export {
   estimateMessageTokens,
   estimateMessagesTokens,
-  estimateMessagesTokensByCategory,
   estimateNimMessagesTokens,
   estimateNimMessagesTokensByCategory,
   estimatePartTokens,
   estimateTokens,
   estimateToolsTokens,
 } from "./token-estimate";
-export type { NimTokenCategoryBreakdown, TokenCategoryBreakdown } from "./token-estimate";
+export type { NimTokenCategoryBreakdown } from "./token-estimate";
 
 function payloadRequiredFields(schema: Record<string, unknown> | undefined): string[] {
   if (!Array.isArray(schema?.required)) {
@@ -276,36 +276,7 @@ export function truncateMessagesForContext(
   // vice versa). Sending an orphan `tool_call_id` is rejected by many
   // OpenAI-compatible endpoints even when the text budget itself fits.
   const selected = new Set(kept);
-  let pairChanged = true;
-  while (pairChanged) {
-    pairChanged = false;
-    for (const message of nonSystemMessages) {
-      if (message.role === "tool" && selected.has(message) && message.tool_call_id) {
-        const owner = nonSystemMessages.find(
-          (candidate) =>
-            candidate.role === "assistant" &&
-            candidate.tool_calls?.some((call) => call.id === message.tool_call_id),
-        );
-        if (owner && !selected.has(owner)) {
-          selected.add(owner);
-          pairChanged = true;
-        }
-      }
-      if (message.role === "assistant" && selected.has(message) && message.tool_calls?.length) {
-        for (const result of nonSystemMessages) {
-          if (
-            result.role === "tool" &&
-            result.tool_call_id &&
-            message.tool_calls.some((call) => call.id === result.tool_call_id) &&
-            !selected.has(result)
-          ) {
-            selected.add(result);
-            pairChanged = true;
-          }
-        }
-      }
-    }
-  }
+  pairToolCallsAndResults(nonSystemMessages, selected);
   kept = nonSystemMessages.filter((message) => selected.has(message));
 
   if (kept.length === 0 && nonSystemMessages.length > 0) {

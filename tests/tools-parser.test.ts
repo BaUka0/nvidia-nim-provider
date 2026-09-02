@@ -1,3 +1,4 @@
+import { ConfigManager } from "../src/shared/config";
 import * as vscode from "vscode";
 import {
   buildInvalidToolCallFallback,
@@ -207,6 +208,7 @@ describe("tool argument parsing and validation", () => {
     const aggregator = new ToolCallStreamAggregator({
       options,
       messages: [],
+      toolsConfig: ConfigManager.getToolsConfig(),
       onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
       onSkipToolCall: (name, required) => skipped.push({ name, required }),
     });
@@ -248,6 +250,7 @@ describe("tool argument parsing and validation", () => {
     const aggregator = new ToolCallStreamAggregator({
       options,
       messages: [],
+      toolsConfig: ConfigManager.getToolsConfig(),
       onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
       onSkipToolCall: (name, required) => skipped.push({ name, required }),
     });
@@ -299,6 +302,7 @@ describe("tool argument parsing and validation", () => {
         ],
       }),
       messages: [],
+      toolsConfig: ConfigManager.getToolsConfig(),
       onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
       onSkipToolCall: (name, required) => skipped.push({ name, required }),
     });
@@ -335,6 +339,7 @@ describe("tool argument parsing and validation", () => {
     const aggregator = new ToolCallStreamAggregator({
       options,
       messages: [],
+      toolsConfig: ConfigManager.getToolsConfig(),
       onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
       onSkipToolCall: (name, required) => skipped.push({ name, required }),
     });
@@ -380,6 +385,7 @@ describe("tool argument parsing and validation", () => {
           content: [{ callId: "read_file:0", content: [{ value: "ok" }] }],
         } as never,
       ],
+      toolsConfig: ConfigManager.getToolsConfig(),
       onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
       onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
     });
@@ -444,6 +450,7 @@ describe("tool argument parsing and validation", () => {
           content: [{ callId: "term:0", content: [{ value: "error TS" }] }],
         } as never,
       ],
+      toolsConfig: ConfigManager.getToolsConfig(),
       onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
       onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
     });
@@ -525,6 +532,7 @@ describe("tool argument parsing and validation", () => {
           content: [{ callId: "grep:0", content: [{ value: "matches" }] }],
         } as never,
       ],
+      toolsConfig: ConfigManager.getToolsConfig(),
       onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
       onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
     });

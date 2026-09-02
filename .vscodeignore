@@ -5,6 +5,7 @@
 .gemini/**
 .opencode/**
 .qoder/**
+.zcode/**
 .commandcode/
 .vscode/**
 .vscode-test/**

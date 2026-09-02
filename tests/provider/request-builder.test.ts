@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { chatCompletion } from "../../src/api/client";
 import { NimRequestBuilder } from "../../src/provider/request-builder";
+import { ConfigManager } from "../../src/shared/config";
 import { makeChatMessages, makeChatOptions, makeModel } from "../helpers/fakes";
 
 jest.mock("../../src/api/client", () => ({
@@ -54,6 +55,7 @@ describe("NimRequestBuilder context accounting", () => {
       supportsVision: false,
       apiKey: "test-key",
       userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
     });
 
     expect(chatCompletion).toHaveBeenCalledTimes(1);
@@ -82,6 +84,7 @@ describe("NimRequestBuilder context accounting", () => {
         supportsVision: false,
         apiKey: "test-key",
         userAgent: "test-agent",
+        config: ConfigManager.getNimConfig(),
       }),
     ).rejects.toThrow("[TOKEN_LIMIT_EXCEEDED]");
   });
@@ -102,6 +105,7 @@ describe("NimRequestBuilder context accounting", () => {
         supportsVision: false,
         apiKey: "test-key",
         userAgent: "test-agent",
+        config: ConfigManager.getNimConfig(),
         signal: controller.signal,
       }),
     ).rejects.toMatchObject({ name: "AbortError" });
@@ -131,6 +135,7 @@ describe("NimRequestBuilder context accounting", () => {
       supportsVision: false,
       apiKey: "test-key",
       userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
     });
 
     expect(prepared.requestBody.temperature).toBe(0.35);
@@ -160,6 +165,7 @@ describe("NimRequestBuilder context accounting", () => {
       supportsVision: false,
       apiKey: "test-key",
       userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
     });
 
     expect(prepared.requestBody.frequency_penalty).toBe(0.7);
@@ -184,6 +190,7 @@ describe("NimRequestBuilder context accounting", () => {
       supportsVision: false,
       apiKey: "test-key",
       userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
     });
 
     expect(prepared.requestBody.frequency_penalty).toBeUndefined();
@@ -211,6 +218,7 @@ describe("NimRequestBuilder context accounting", () => {
       supportsVision: false,
       apiKey: "test-key",
       userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
     });
 
     expect(prepared.requestBody.frequency_penalty).toBeUndefined();
@@ -236,6 +244,7 @@ describe("NimRequestBuilder context accounting", () => {
       supportsVision: false,
       apiKey: "test-key",
       userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
     });
 
     expect(prepared.requestBody.frequency_penalty).toBe(0);
@@ -264,6 +273,7 @@ describe("NimRequestBuilder context accounting", () => {
       supportsVision: false,
       apiKey: "test-key",
       userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
     });
 
     expect(prepared.requestBody.frequency_penalty).toBe(-1.5);
@@ -293,6 +303,7 @@ describe("NimRequestBuilder context accounting", () => {
       supportsVision: false,
       apiKey: "test-key",
       userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
     });
 
     expect(prepared.requestBody.frequency_penalty).toBeUndefined();
@@ -329,6 +340,7 @@ describe("NimRequestBuilder context accounting", () => {
       supportsVision: true,
       apiKey: "test-key",
       userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
     });
 
     expect(prepared.requestBody.frequency_penalty).toBeUndefined();

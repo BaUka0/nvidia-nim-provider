@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import { fetchModels, streamChatCompletion } from "../../src/api/client";
-import { CONTEXT_WINDOW_SAFETY_MARGIN } from "../../src/shared/constants";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
 import { LOOP_BREAKER_MARKER } from "../../src/provider/loop-breaker";
 import { CONTENT_FILTER_NOTICE, OUTPUT_TRUNCATED_NOTICE } from "../../src/provider/stream-pump";
@@ -779,11 +778,11 @@ describe("NimChatModelProvider", () => {
     );
   });
 
-  it("keeps Inkling content as the final answer when reasoning is enabled", async () => {
+  it("keeps content as the final answer when reasoning is enabled for a direct-content model", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
-      yield { choices: [{ delta: { content: "Inkling final answer" } }] };
+      yield { choices: [{ delta: { content: "Direct content final answer" } }] };
     };
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
@@ -791,7 +790,11 @@ describe("NimChatModelProvider", () => {
     const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "thinkingmachines/inkling", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeModel({
+        id: "meta/muse-glimmer-30b",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
       makeUserMessages("Hi"),
       makeChatOptions({
         modelConfiguration: { reasoningMode: "medium" },
@@ -808,7 +811,9 @@ describe("NimChatModelProvider", () => {
 
     expect(thinkingReports).toHaveLength(0);
     expect(textReports).toHaveLength(1);
-    expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "Inkling final answer" }));
+    expect(textReports[0][0]).toEqual(
+      expect.objectContaining({ value: "Direct content final answer" }),
+    );
   });
 
   it("emits think-tag content as a thinking part for kimi models", async () => {
@@ -920,7 +925,7 @@ describe("NimChatModelProvider", () => {
     expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "visible answer" }));
   });
 
-  it("isolates orphaned Stepfun reasoning without a reasoning mode toggle", async () => {
+  it("isolates orphaned reasoning without a reasoning mode toggle for a direct-content model", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -935,7 +940,7 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       makeModel({
-        id: "stepfun-ai/step-3.7-flash",
+        id: "meta/muse-glimmer-30b",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       }),
@@ -1208,7 +1213,8 @@ describe("NimChatModelProvider", () => {
     );
 
     const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
-    const expectedRemainingBudget = 70000 - 300 - CONTEXT_WINDOW_SAFETY_MARGIN;
+    // calculateSafetyMargin() floors at 4096 for a 70000-token window.
+    const expectedRemainingBudget = 70000 - 300 - 4096;
 
     expect(requestBody.max_tokens).toBe(expectedRemainingBudget);
   });
@@ -2435,7 +2441,6 @@ describe("NimChatModelProvider", () => {
     ["moonshotai/kimi-k3", true],
     ["nvidia/nemotron-3-ultra-550b-a55b", false],
     ["nvidia/nemotron-3.5-lightning-30b-a3b", false],
-    ["thinkingmachines/inkling", true],
     ["meta/muse-glimmer-30b", true],
   ] as const)("enforces the curated vision capability for %s", async (modelId, supportsVision) => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");

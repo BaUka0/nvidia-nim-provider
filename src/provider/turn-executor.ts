@@ -10,8 +10,8 @@ import {
 import { createStructuredError, NvidiaApiError, parseContextOverflowDetail } from "../api/errors";
 import { getApiKeyFingerprint } from "../api/key-resolver";
 import { estimateNimMessagesTokensByCategory, estimateToolsTokens } from "../messages/converter";
-import { getModelAdapter } from "../models/adapters";
 import { NimConfig } from "../shared/config";
+import { isCancellation } from "../shared/cancellation";
 import { DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 import { FetchAttemptBudget, httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
@@ -21,7 +21,7 @@ import { buildInvalidToolCallRetryMessage } from "../tools/parser";
 import { NimChatMessage, NimChatRequest, NimTool } from "../types";
 import { ContextLimitStore } from "./context-limit-store";
 import { injectHistoryLoopBreaker, LOOP_BREAKER_MARKER } from "./loop-breaker";
-import { buildOverflowRetryRequest, notifyOverflowRetry } from "./overflow-compactor";
+import { buildOverflowRetryRequest } from "./overflow-compactor";
 import { NimRequestBuilder } from "./request-builder";
 import { appendChatMessage, cloneNimChatRequest } from "./request-snapshot";
 import {
@@ -65,6 +65,149 @@ function isTransientStreamError(err: unknown): boolean {
     return err.kind === "network_error" || err.kind === "server_error";
   }
   return err instanceof Error && err.name === "TypeError";
+}
+
+type LoopRetryReason = "repetition_loop" | "hanging_colon" | "output_truncated";
+type RetryReason = LoopRetryReason | "invalid_tool_call" | "empty_stream";
+
+interface AttemptRetryFacts {
+  result: StreamAttemptResult;
+  toolsEnabled: boolean;
+  generationAutoContinueOnLoop: boolean;
+  autoRetryInvalidCalls: boolean;
+  hasRetriedRepetitionLoop: boolean;
+  /** 0-based attempt index; loop auto-continue is gated to the first attempt. */
+  attemptIndex: number;
+  invalidToolRetryCount: number;
+  emptyStreamRetryCount: number;
+  maxEmptyStreamRetries: number;
+  maxInvalidToolRetries: number;
+  fetchBudgetExhausted: boolean;
+  knownToolNames: ReadonlySet<string>;
+}
+
+interface AttemptRetryEvaluation {
+  isRepetitionLoop: boolean;
+  isHangingColon: boolean;
+  isTruncatedLength: boolean;
+  willRetryRepetitionLoop: boolean;
+  willRetryHangingColon: boolean;
+  willRetryTruncation: boolean;
+  willRetryOnLoop: boolean;
+  skippedUnknownTool: boolean;
+  retryMessage: string | undefined;
+  skippedToolCallNames: string[];
+  invalidToolRetryBudget: number;
+  willRetryAfterInvalidToolCall: boolean;
+  willRetryEmptyStream: boolean;
+  /**
+   * The single winning retry reason in the executor's branch order
+   * (loop variants → invalid tool call → empty stream), or undefined when
+   * the attempt is final.
+   */
+  retryReason: RetryReason | undefined;
+}
+
+/**
+ * Classify a finished stream attempt: which retry class (if any) applies.
+ * Pure — every branch and gate below mirrors the original inline predicates.
+ */
+function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEvaluation {
+  const { result } = facts;
+
+  const isRepetitionLoop = Boolean(result.repetitionTripped);
+  const isHangingColon =
+    !isRepetitionLoop &&
+    !result.sawToolCall &&
+    !result.emittedToolCall &&
+    result.reportedVisibleContent &&
+    facts.toolsEnabled &&
+    result.lastVisibleText.trimEnd().endsWith(":") &&
+    (result.lastFinishReason === "stop" ||
+      result.lastFinishReason === null ||
+      result.lastFinishReason === undefined);
+  const isTruncatedLength =
+    result.lastFinishReason === "length" && !result.sawToolCall && !result.emittedToolCall;
+
+  const hasVisibleText = Boolean(
+    result.lastVisibleText && result.lastVisibleText.trim().length > 0,
+  );
+  const loopAutoContinueEligible =
+    !facts.hasRetriedRepetitionLoop &&
+    facts.generationAutoContinueOnLoop &&
+    facts.attemptIndex === 0 &&
+    hasVisibleText;
+  const willRetryRepetitionLoop = isRepetitionLoop && loopAutoContinueEligible;
+  const willRetryHangingColon = !isRepetitionLoop && isHangingColon && loopAutoContinueEligible;
+  const willRetryTruncation =
+    !isRepetitionLoop && !isHangingColon && isTruncatedLength && loopAutoContinueEligible;
+  const willRetryOnLoop = willRetryRepetitionLoop || willRetryHangingColon || willRetryTruncation;
+
+  const retryMessage = result.sawToolCall
+    ? buildInvalidToolCallRetryMessage(result.skippedToolCalls)
+    : undefined;
+  const skippedUnknownTool =
+    facts.knownToolNames.size > 0 &&
+    result.skippedToolCalls.some(
+      (call) =>
+        call.name.length > 0 && call.name !== "tool_call" && !facts.knownToolNames.has(call.name),
+    );
+  const invalidToolRetryBudget = skippedUnknownTool ? facts.maxInvalidToolRetries : 1;
+  const willRetryAfterInvalidToolCall =
+    facts.autoRetryInvalidCalls &&
+    result.sawToolCall &&
+    !result.emittedToolCall &&
+    facts.invalidToolRetryCount < invalidToolRetryBudget &&
+    Boolean(retryMessage);
+  const willRetryEmptyStream =
+    !result.sawReasoning &&
+    !result.sawToolCall &&
+    !result.reportedVisibleContent &&
+    !result.emittedToolCall &&
+    facts.emptyStreamRetryCount < facts.maxEmptyStreamRetries &&
+    !facts.fetchBudgetExhausted;
+
+  const retryReason: RetryReason | undefined = willRetryOnLoop
+    ? willRetryRepetitionLoop
+      ? "repetition_loop"
+      : willRetryHangingColon
+        ? "hanging_colon"
+        : "output_truncated"
+    : willRetryAfterInvalidToolCall
+      ? "invalid_tool_call"
+      : willRetryEmptyStream
+        ? "empty_stream"
+        : undefined;
+
+  return {
+    isRepetitionLoop,
+    isHangingColon,
+    isTruncatedLength,
+    willRetryRepetitionLoop,
+    willRetryHangingColon,
+    willRetryTruncation,
+    willRetryOnLoop,
+    skippedUnknownTool,
+    retryMessage,
+    skippedToolCallNames: Array.from(new Set(result.skippedToolCalls.map((call) => call.name))),
+    invalidToolRetryBudget,
+    willRetryAfterInvalidToolCall,
+    willRetryEmptyStream,
+    retryReason,
+  };
+}
+
+const LOOP_BREAKER_NUDGES: Record<LoopRetryReason, string> = {
+  repetition_loop:
+    "hey you got stuck repeating the same output — continue working without repeating the preamble. Directly call the required tool or provide the final answer.",
+  hanging_colon:
+    'hey you got stuck — your previous turn ended with ":" with no tool call but a next action was expected. Continue working and take the next action.',
+  output_truncated:
+    "your previous reply was cut off at the output token limit. Continue from where you left off. Call a tool if needed or finish the answer.",
+};
+
+function buildLoopBreakerNudge(reason: LoopRetryReason): NimChatMessage {
+  return { role: "user", content: `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_NUDGES[reason]}` };
 }
 
 function errorFields(error: unknown): { errorKind?: string; errorMessage?: string } {
@@ -171,7 +314,6 @@ export class ModelTurnExecutor {
     const runtimeLimit = this.contextLimitStore.get(model.id, keyFingerprint);
     let effectiveContextWindow =
       runtimeLimit !== undefined ? Math.min(contextWindow, runtimeLimit) : contextWindow;
-    const adapter = getModelAdapter(model.id);
     let streamModel = model;
     let streamMaxOutputTokens = model.maxOutputTokens;
 
@@ -237,6 +379,7 @@ export class ModelTurnExecutor {
                 ? streamModel.maxOutputTokens
                 : DEFAULT_MAX_OUTPUT_TOKENS,
           requestedMaxTokens,
+          safetyMarginPercent: nimConfig.context.safetyMarginPercent,
         });
 
       let baselineRequestBody = injectHistoryLoopBreaker({
@@ -245,26 +388,19 @@ export class ModelTurnExecutor {
         modelId: model.id,
         applyBudget,
       });
-      let retryNudge: NimChatMessage | undefined;
-      let retryReason: "invalid_tool_call" | undefined;
       const retryReasonHistory: string[] = [];
       let requestPreparationDurationMs: number | undefined;
       let toolParsingStateInitDurationMs: number | undefined;
       let finalUsage: NimStreamUsage | undefined;
-      let transientRetryCount = 0;
-      let lastTransientError: unknown;
+      let everSawReasoning = false;
+      let lastFinishReasonOverall: string | null | undefined = undefined;
       const networkConfig = nimConfig.network;
       const fallbackConfig = nimConfig.fallback;
       const toolsConfig = nimConfig.tools;
       const MAX_NETWORK_RETRIES = httpAttemptsFromConfig(networkConfig.maxHttpRetries);
-      let emptyStreamRetryCount = 0;
       const MAX_EMPTY_STREAM_RETRIES = networkConfig.maxEmptyStreamRetries;
       const MAX_INVALID_TOOL_RETRIES = MAX_EMPTY_STREAM_RETRIES;
       const streamHttpAttempts = MAX_NETWORK_RETRIES;
-      let everSawReasoning = false;
-      let lastFinishReasonOverall: string | null | undefined = undefined;
-      let hasRetriedRepetitionLoop = false;
-      let invalidToolRetryCount = 0;
 
       const firstTokenTimeoutMs =
         typeof fallbackConfig.firstTokenTimeoutSeconds === "number" &&
@@ -310,498 +446,451 @@ export class ModelTurnExecutor {
         2,
         1 + MAX_INVALID_TOOL_RETRIES + MAX_NETWORK_RETRIES,
       );
-      let attemptCompleted = false;
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        totalAttempts += 1;
-        finalUsage = undefined;
-        const attemptStartedAtMs = Date.now();
-        if (
-          requestPreparationDurationMs === undefined &&
-          requestPreparationStartedAtMs !== undefined
-        ) {
-          requestPreparationDurationMs = attemptStartedAtMs - requestPreparationStartedAtMs;
-        }
+      // Attempt loop. Each overflow-compaction restart re-enters this labeled
+      // loop, so the per-restart budgets below (retry nudge, transient /
+      // empty-stream / invalid-tool counters, attempt index) start fresh for
+      // the compacted body — the same recovery policy as an initial attempt.
+      attemptLoop: while (true) {
+        let retryNudge: NimChatMessage | undefined;
+        // Sticky reason of the last applied retry, kept for the stream-timing
+        // debug field on the follow-up attempt.
+        let lastRetryReason: "invalid_tool_call" | undefined;
+        let transientRetryCount = 0;
+        let lastTransientError: unknown;
+        let emptyStreamRetryCount = 0;
+        let hasRetriedRepetitionLoop = false;
+        let invalidToolRetryCount = 0;
+        let attemptCompleted = false;
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          totalAttempts += 1;
+          finalUsage = undefined;
+          const attemptStartedAtMs = Date.now();
+          if (
+            requestPreparationDurationMs === undefined &&
+            requestPreparationStartedAtMs !== undefined
+          ) {
+            requestPreparationDurationMs = attemptStartedAtMs - requestPreparationStartedAtMs;
+          }
 
-        const allocated = fetchBudget.consume(streamHttpAttempts);
-        if (allocated <= 0) {
-          break;
-        }
-
-        let attemptBody = cloneNimChatRequest(baselineRequestBody);
-        if (retryNudge) {
-          attemptBody = appendChatMessage(attemptBody, retryNudge);
-          try {
-            attemptBody = applyBudget(attemptBody);
-          } catch {
-            debugLog("streamRetry", "retry nudge dropped: context budget exceeded");
-            if (
-              retryReasonHistory.at(-1) === "repetition_loop" ||
-              retryReasonHistory.at(-1) === "hanging_colon"
-            ) {
-              progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
-            }
+          const allocated = fetchBudget.consume(streamHttpAttempts);
+          if (allocated <= 0) {
             break;
           }
-        }
-        activeRequestBody = attemptBody;
 
-        let result: StreamAttemptResult;
-        let thisAttemptReportedContent = false;
-        let thisAttemptReportedVisibleContent = false;
-        try {
-          result = await runStreamAttempt({
-            apiKey,
-            requestBody: attemptBody,
-            signal: abortController.signal,
-            userAgent: this.userAgent,
-            token,
-            progress,
-            model: streamModel,
-            options,
-            messages,
-            adapter,
-            reasoningIsolationExpected,
-            maxFetchAttempts: allocated,
-            firstTokenTimeoutMs,
-            maxRepeatedLines: generationConfig.maxRepeatedLines,
-            autoContinueOnLoop: generationConfig.autoContinueOnLoop,
-            idleTimeoutMs: networkConfig.streamIdleTimeout * 1000,
+          let attemptBody = cloneNimChatRequest(baselineRequestBody);
+          if (retryNudge) {
+            attemptBody = appendChatMessage(attemptBody, retryNudge);
+            try {
+              attemptBody = applyBudget(attemptBody);
+            } catch {
+              debugLog("streamRetry", "retry nudge dropped: context budget exceeded");
+              if (
+                retryReasonHistory.at(-1) === "repetition_loop" ||
+                retryReasonHistory.at(-1) === "hanging_colon"
+              ) {
+                progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
+              }
+              break;
+            }
+          }
+          activeRequestBody = attemptBody;
+
+          let result: StreamAttemptResult;
+          let thisAttemptReportedContent = false;
+          let thisAttemptReportedVisibleContent = false;
+          try {
+            result = await runStreamAttempt({
+              apiKey,
+              requestBody: attemptBody,
+              signal: abortController.signal,
+              userAgent: this.userAgent,
+              token,
+              progress,
+              model: streamModel,
+              options,
+              messages,
+              reasoningIsolationExpected,
+              maxFetchAttempts: allocated,
+              firstTokenTimeoutMs,
+              maxRepeatedLines: generationConfig.maxRepeatedLines,
+              autoContinueOnLoop: generationConfig.autoContinueOnLoop,
+              idleTimeoutMs: networkConfig.streamIdleTimeout * 1000,
+              toolsConfig: toolsConfig,
+              showReasoningInChat: nimConfig.reasoning.showInChat,
+              hasRetriedRepetitionLoop,
+              onContentReported: () => {
+                thisAttemptReportedContent = true;
+              },
+              onVisibleContentReported: () => {
+                thisAttemptReportedVisibleContent = true;
+              },
+            });
+          } catch (streamErr) {
+            const cancelled = isCancellation(streamErr, token);
+            const isNetworkError =
+              (streamErr instanceof NvidiaApiError && streamErr.kind === "network_error") ||
+              (streamErr instanceof Error && streamErr.name === "TypeError");
+            const isServerError =
+              streamErr instanceof NvidiaApiError && streamErr.kind === "server_error";
+            const willTransientRetry =
+              !cancelled &&
+              !abortController.signal.aborted &&
+              isTransientStreamError(streamErr) &&
+              !thisAttemptReportedContent &&
+              transientRetryCount < MAX_NETWORK_RETRIES;
+
+            reportState.failingAttemptHasVisibleContent = thisAttemptReportedVisibleContent;
+
+            recordAttemptTurn({
+              outcome: cancelled ? "cancelled" : willTransientRetry ? "retry" : "error",
+              modelId: model.id,
+              body: attemptBody,
+              durationMs: Date.now() - attemptStartedAtMs,
+              retryReasonHistory,
+              error: streamErr,
+            });
+
+            if (willTransientRetry) {
+              lastTransientError = streamErr;
+              transientRetryCount += 1;
+              debugLog(
+                "streamRetry",
+                `${isServerError ? "Server" : "Network"} error during stream (retry ${transientRetryCount}/${MAX_NETWORK_RETRIES}): ${streamErr instanceof Error ? streamErr.message : String(streamErr)}`,
+              );
+              if (isNetworkError) {
+                retryNudge = {
+                  role: "user",
+                  content:
+                    "Your previous response was interrupted by a network error. Please start over and provide a complete response.",
+                };
+              }
+              continue;
+            }
+
+            if (
+              !thisAttemptReportedContent &&
+              !hasRetriedContextOverflow &&
+              streamErr instanceof NvidiaApiError &&
+              (streamErr.kind === "context_overflow" || streamErr.kind === "token_limit") &&
+              Boolean(apiKey) &&
+              Boolean(attemptBody) &&
+              nimConfig.context.autoCompactOnOverflow
+            ) {
+              const overflowApplied = await this.applyOverflowCompaction({
+                err: streamErr,
+                model: streamModel,
+                messages,
+                activeRequestBody: attemptBody,
+                supportsVision,
+                contextWindow,
+                keyFingerprint,
+                apiKey,
+                abortController,
+                fetchBudget,
+                summarizationModel: nimConfig.context.summarizationModel,
+                maxHttpRetries: nimConfig.network.maxHttpRetries,
+              });
+              hasRetriedContextOverflow = true;
+              if (overflowApplied) {
+                baselineRequestBody = overflowApplied.requestBody;
+                activeRequestBody = overflowApplied.requestBody;
+                streamMaxOutputTokens = overflowApplied.compactedMaxOutput;
+                streamModel = {
+                  ...streamModel,
+                  maxOutputTokens: overflowApplied.compactedMaxOutput,
+                };
+                if (overflowApplied.retryContextWindow > 0) {
+                  effectiveContextWindow = Math.min(
+                    contextWindow,
+                    overflowApplied.retryContextWindow,
+                  );
+                }
+                retryReasonHistory.push("context_overflow_compaction");
+                // Re-enter the labeled loop: per-restart budgets (retry nudge,
+                // transient/empty/invalid counters, attempt index) start fresh.
+                continue attemptLoop;
+              }
+
+              throw createStructuredError(
+                streamErr.kind === "token_limit" ? "token_limit" : "context_overflow",
+                [
+                  `Model: ${model.name ?? model.id}`,
+                  "History compaction did not produce a smaller request.",
+                  "Start a new chat or reduce attachments, then try again.",
+                ].join("\n"),
+                {
+                  status: streamErr.status,
+                  contextOverflow: streamErr.contextOverflow,
+                },
+              );
+            }
+
+            throw streamErr;
+          }
+
+          markReported(result);
+          finalUsage = result.lastUsage;
+          if (result.sawReasoning) {
+            everSawReasoning = true;
+          }
+          if (result.lastFinishReason !== undefined) {
+            lastFinishReasonOverall = result.lastFinishReason;
+          }
+          if (
+            toolParsingStateInitDurationMs === undefined &&
+            result.toolParsingStateInitDurationMs !== undefined
+          ) {
+            toolParsingStateInitDurationMs = result.toolParsingStateInitDurationMs;
+          }
+
+          const knownToolNames = new Set<string>();
+          for (const tool of tools ?? []) {
+            if (tool.function.name) {
+              knownToolNames.add(tool.function.name);
+            }
+          }
+          for (const tool of options.tools ?? []) {
+            if (typeof tool.name === "string" && tool.name.length > 0) {
+              knownToolNames.add(tool.name);
+            }
+          }
+
+          const evaluation = evaluateAttemptRetry({
+            result,
+            toolsEnabled,
+            generationAutoContinueOnLoop: generationConfig.autoContinueOnLoop,
+            autoRetryInvalidCalls: toolsConfig.autoRetryInvalidCalls,
             hasRetriedRepetitionLoop,
-            onContentReported: () => {
-              thisAttemptReportedContent = true;
-            },
-            onVisibleContentReported: () => {
-              thisAttemptReportedVisibleContent = true;
-            },
+            attemptIndex: attempt,
+            invalidToolRetryCount,
+            emptyStreamRetryCount,
+            maxEmptyStreamRetries: MAX_EMPTY_STREAM_RETRIES,
+            maxInvalidToolRetries: MAX_INVALID_TOOL_RETRIES,
+            fetchBudgetExhausted: fetchBudget.exhausted,
+            knownToolNames,
           });
-        } catch (streamErr) {
-          const cancelled =
-            token.isCancellationRequested ||
-            (streamErr instanceof Error && streamErr.name === "AbortError");
-          const isNetworkError =
-            (streamErr instanceof NvidiaApiError && streamErr.kind === "network_error") ||
-            (streamErr instanceof Error && streamErr.name === "TypeError");
-          const isServerError =
-            streamErr instanceof NvidiaApiError && streamErr.kind === "server_error";
-          const willTransientRetry =
-            !cancelled &&
-            !abortController.signal.aborted &&
-            isTransientStreamError(streamErr) &&
-            !thisAttemptReportedContent &&
-            transientRetryCount < MAX_NETWORK_RETRIES;
+          const {
+            isRepetitionLoop,
+            isHangingColon,
+            isTruncatedLength,
+            willRetryRepetitionLoop,
+            willRetryHangingColon,
+            willRetryTruncation,
+            willRetryOnLoop,
+            skippedUnknownTool,
+            retryMessage,
+            skippedToolCallNames,
+            willRetryAfterInvalidToolCall,
+            willRetryEmptyStream,
+            retryReason: currentRetryReason,
+          } = evaluation;
 
-          reportState.failingAttemptHasVisibleContent = thisAttemptReportedVisibleContent;
+          if (result.firstResponseAtMs !== undefined) {
+            const totalDurationMs = Date.now() - attemptStartedAtMs;
+            const generationDurationMs = Math.max(
+              0,
+              totalDurationMs - (result.firstResponseAtMs - attemptStartedAtMs),
+            );
+            const promptTokens = result.lastUsage?.prompt_tokens;
+            const completionTokens = result.lastUsage?.completion_tokens;
+            const totalTokens = result.lastUsage?.total_tokens;
+            debugLog("stream timing", {
+              attempt: attempt + 1,
+              totalAttempts,
+              ...(requestPreparationDurationMs !== undefined
+                ? { requestPreparationDurationMs }
+                : {}),
+              ...(toolParsingStateInitDurationMs !== undefined
+                ? { toolParsingStateInitDurationMs }
+                : {}),
+              ...(retryReasonHistory.length > 0
+                ? { retryReasonHistory: [...retryReasonHistory] }
+                : {}),
+              model: model.id,
+              inputTokenCount,
+              requestedMaxTokens,
+              temperature: temperatureVal,
+              toolsEnabled,
+              runtimeMetadataSource,
+              isRetryAttempt: attempt > 0,
+              willRetryAfterInvalidToolCall,
+              skippedToolCallCount: result.skippedToolCalls.length,
+              ...(skippedToolCallNames.length > 0 ? { skippedToolCallNames } : {}),
+              ...(lastRetryReason || currentRetryReason
+                ? { retryReason: lastRetryReason ?? currentRetryReason }
+                : {}),
+              firstTokenLatencyMs: result.firstResponseAtMs - attemptStartedAtMs,
+              ...(result.firstToolCallAtMs !== undefined
+                ? { firstToolCallLatencyMs: result.firstToolCallAtMs - attemptStartedAtMs }
+                : {}),
+              totalDurationMs,
+              generationDurationMs,
+              ...(promptTokens !== undefined ? { promptTokens } : {}),
+              ...(completionTokens !== undefined ? { completionTokens } : {}),
+              ...(totalTokens !== undefined ? { totalTokens } : {}),
+              ...(completionTokens !== undefined && generationDurationMs > 0
+                ? {
+                    completionTokensPerSecond: Number(
+                      (completionTokens / (generationDurationMs / 1000)).toFixed(2),
+                    ),
+                  }
+                : {}),
+              reportedContent: result.reportedContent,
+              reportedVisibleContent: result.reportedVisibleContent,
+              emittedToolCall: result.emittedToolCall,
+              sawReasoning: result.sawReasoning,
+              lastFinishReason: result.lastFinishReason,
+              streamChunkCount: result.streamChunkCount,
+              willRetryEmptyStream,
+              willRetryOnLoop,
+              isRepetitionLoop,
+              isHangingColon,
+              hasRetriedRepetitionLoop,
+              emptyStreamRetryCount,
+            });
+          }
 
+          if (result.lastUsage) {
+            debugLog("stream usage", result.lastUsage);
+          }
+
+          const willContinueAttempt = currentRetryReason !== undefined;
           recordAttemptTurn({
-            outcome: cancelled ? "cancelled" : willTransientRetry ? "retry" : "error",
+            outcome: willContinueAttempt ? "retry" : "ok",
             modelId: model.id,
             body: attemptBody,
+            result,
             durationMs: Date.now() - attemptStartedAtMs,
+            autoContinueFired: willRetryOnLoop,
             retryReasonHistory,
-            error: streamErr,
           });
 
-          if (willTransientRetry) {
-            lastTransientError = streamErr;
-            transientRetryCount += 1;
-            debugLog(
-              "streamRetry",
-              `${isServerError ? "Server" : "Network"} error during stream (retry ${transientRetryCount}/${MAX_NETWORK_RETRIES}): ${streamErr instanceof Error ? streamErr.message : String(streamErr)}`,
+          if (willRetryOnLoop) {
+            const loopReason: LoopRetryReason = willRetryRepetitionLoop
+              ? "repetition_loop"
+              : willRetryHangingColon
+                ? "hanging_colon"
+                : "output_truncated";
+            hasRetriedRepetitionLoop = true;
+            retryReasonHistory.push(loopReason);
+            retryNudge = buildLoopBreakerNudge(loopReason);
+            debugLog("repetitionGuard", {
+              action: "autoContinue",
+              trippedLine: result.trippedLine,
+              lastVisibleText: result.lastVisibleText,
+              reason: loopReason,
+            });
+            outputLog(
+              "repetitionGuard",
+              `Auto-continue after ${loopReason === "repetition_loop" ? "repetition loop" : loopReason === "hanging_colon" ? "hanging ':'" : "truncated output"} on ${model.id}: "${(result.trippedLine ?? result.lastVisibleText).slice(0, 80)}"`,
             );
-            if (isNetworkError) {
-              retryNudge = {
-                role: "user",
-                content:
-                  "Your previous response was interrupted by a network error. Please start over and provide a complete response.",
-              };
+            baselineRequestBody = appendChatMessage(baselineRequestBody, {
+              role: "assistant",
+              content: result.lastVisibleText,
+            });
+            try {
+              baselineRequestBody = applyBudget(baselineRequestBody);
+            } catch {
+              debugLog("streamRetry", "history continuation dropped: context budget exceeded");
+              progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
+              break;
             }
             continue;
           }
 
           if (
-            !thisAttemptReportedContent &&
-            !hasRetriedContextOverflow &&
-            streamErr instanceof NvidiaApiError &&
-            (streamErr.kind === "context_overflow" || streamErr.kind === "token_limit") &&
-            Boolean(apiKey) &&
-            Boolean(attemptBody) &&
-            nimConfig.context.autoCompactOnOverflow
+            result.sawToolCall &&
+            !result.emittedToolCall &&
+            willRetryAfterInvalidToolCall &&
+            retryMessage
           ) {
-            const overflowApplied = await this.applyOverflowCompaction({
-              err: streamErr,
-              model: streamModel,
-              messages,
-              activeRequestBody: attemptBody,
-              adapter,
-              supportsVision,
-              contextWindow,
-              keyFingerprint,
-              apiKey,
-              abortController,
-              fetchBudget,
-              summarizationModel: nimConfig.context.summarizationModel,
-              maxHttpRetries: nimConfig.network.maxHttpRetries,
-            });
-            hasRetriedContextOverflow = true;
-            if (overflowApplied) {
-              baselineRequestBody = overflowApplied.requestBody;
-              activeRequestBody = overflowApplied.requestBody;
-              streamMaxOutputTokens = overflowApplied.compactedMaxOutput;
-              streamModel = {
-                ...streamModel,
-                maxOutputTokens: overflowApplied.compactedMaxOutput,
-              };
-              if (overflowApplied.retryContextWindow > 0) {
-                effectiveContextWindow = Math.min(
-                  contextWindow,
-                  overflowApplied.retryContextWindow,
-                );
-              }
-              retryNudge = undefined;
-              retryReason = undefined;
-              retryReasonHistory.push("context_overflow_compaction");
-              emptyStreamRetryCount = 0;
-              transientRetryCount = 0;
-              invalidToolRetryCount = 0;
-              lastTransientError = undefined;
-              hasRetriedRepetitionLoop = false;
-              attempt = -1;
-              continue;
-            }
+            invalidToolRetryCount += 1;
+            lastRetryReason = "invalid_tool_call";
+            retryReasonHistory.push("invalid_tool_call");
+            retryNudge = { role: "user", content: retryMessage };
+            continue;
+          }
 
+          if (
+            result.sawToolCall &&
+            !result.emittedToolCall &&
+            skippedUnknownTool &&
+            toolsConfig.autoRetryInvalidCalls &&
+            retryMessage
+          ) {
+            reportState.failingAttemptHasVisibleContent = false;
             throw createStructuredError(
-              streamErr.kind === "token_limit" ? "token_limit" : "context_overflow",
+              "empty_stream",
               [
                 `Model: ${model.name ?? model.id}`,
-                "History compaction did not produce a smaller request.",
-                "Start a new chat or reduce attachments, then try again.",
-              ].join("\n"),
-              {
-                status: streamErr.status,
-                contextOverflow: streamErr.contextOverflow,
-              },
+                `The model kept emitting a tool call that could not be executed after ${invalidToolRetryCount} retry(ies).`,
+                skippedToolCallNames.length > 0
+                  ? `Skipped: ${skippedToolCallNames.join(", ")}`
+                  : null,
+                "The request will be retried on a fallback model if failover is enabled.",
+              ]
+                .filter(Boolean)
+                .join("\n"),
             );
           }
 
-          throw streamErr;
-        }
-
-        markReported(result);
-        finalUsage = result.lastUsage;
-        if (result.sawReasoning) {
-          everSawReasoning = true;
-        }
-        if (result.lastFinishReason !== undefined) {
-          lastFinishReasonOverall = result.lastFinishReason;
-        }
-        if (
-          toolParsingStateInitDurationMs === undefined &&
-          result.toolParsingStateInitDurationMs !== undefined
-        ) {
-          toolParsingStateInitDurationMs = result.toolParsingStateInitDurationMs;
-        }
-
-        const isRepetitionLoop = Boolean(result.repetitionTripped);
-        const isHangingColon =
-          !isRepetitionLoop &&
-          !result.sawToolCall &&
-          !result.emittedToolCall &&
-          result.reportedVisibleContent &&
-          toolsEnabled &&
-          result.lastVisibleText.trimEnd().endsWith(":") &&
-          (result.lastFinishReason === "stop" ||
-            result.lastFinishReason === null ||
-            result.lastFinishReason === undefined);
-        const isTruncatedLength =
-          result.lastFinishReason === "length" && !result.sawToolCall && !result.emittedToolCall;
-
-        const willRetryRepetitionLoop =
-          isRepetitionLoop &&
-          !hasRetriedRepetitionLoop &&
-          generationConfig.autoContinueOnLoop &&
-          attempt === 0 &&
-          Boolean(result.lastVisibleText && result.lastVisibleText.trim().length > 0);
-
-        const willRetryHangingColon =
-          !isRepetitionLoop &&
-          isHangingColon &&
-          !hasRetriedRepetitionLoop &&
-          generationConfig.autoContinueOnLoop &&
-          attempt === 0 &&
-          Boolean(result.lastVisibleText && result.lastVisibleText.trim().length > 0);
-
-        const willRetryTruncation =
-          !isRepetitionLoop &&
-          !isHangingColon &&
-          isTruncatedLength &&
-          !hasRetriedRepetitionLoop &&
-          generationConfig.autoContinueOnLoop &&
-          attempt === 0 &&
-          Boolean(result.lastVisibleText && result.lastVisibleText.trim().length > 0);
-
-        const willRetryOnLoop =
-          willRetryRepetitionLoop || willRetryHangingColon || willRetryTruncation;
-
-        const skippedToolCallNames = Array.from(
-          new Set(result.skippedToolCalls.map((call) => call.name)),
-        );
-        const retryMessage = result.sawToolCall
-          ? buildInvalidToolCallRetryMessage(result.skippedToolCalls)
-          : undefined;
-        const knownToolNames = new Set<string>();
-        for (const tool of tools ?? []) {
-          if (tool.function.name) {
-            knownToolNames.add(tool.function.name);
+          if (result.lastFinishReason === "content_filter") {
+            if (!result.reportedVisibleContent && !result.sawToolCall && !result.emittedToolCall) {
+              throw createStructuredError(
+                "invalid_request",
+                `NVIDIA NIM filtered the response from ${model.name ?? model.id} before any answer or tool call was produced.`,
+              );
+            }
+            progress.report(new vscode.LanguageModelTextPart(CONTENT_FILTER_NOTICE));
+            attemptCompleted = true;
+            break;
           }
-        }
-        for (const tool of options.tools ?? []) {
-          if (typeof tool.name === "string" && tool.name.length > 0) {
-            knownToolNames.add(tool.name);
-          }
-        }
-        const skippedUnknownTool =
-          knownToolNames.size > 0 &&
-          result.skippedToolCalls.some(
-            (call) =>
-              call.name.length > 0 && call.name !== "tool_call" && !knownToolNames.has(call.name),
-          );
-        const invalidToolRetryBudget = skippedUnknownTool ? MAX_INVALID_TOOL_RETRIES : 1;
-        const willRetryAfterInvalidToolCall =
-          toolsConfig.autoRetryInvalidCalls &&
-          result.sawToolCall &&
-          !result.emittedToolCall &&
-          invalidToolRetryCount < invalidToolRetryBudget &&
-          Boolean(retryMessage);
-        const willRetryEmptyStream =
-          !result.sawReasoning &&
-          !result.sawToolCall &&
-          !result.reportedVisibleContent &&
-          !result.emittedToolCall &&
-          emptyStreamRetryCount < MAX_EMPTY_STREAM_RETRIES &&
-          !fetchBudget.exhausted;
-        const currentRetryReason =
-          retryReason ??
-          (willRetryAfterInvalidToolCall
-            ? "invalid_tool_call"
-            : willRetryOnLoop
-              ? willRetryRepetitionLoop
-                ? "repetition_loop"
-                : "hanging_colon"
-              : willRetryEmptyStream
-                ? "empty_stream"
-                : undefined);
 
-        if (result.firstResponseAtMs !== undefined) {
-          const totalDurationMs = Date.now() - attemptStartedAtMs;
-          const generationDurationMs = Math.max(
-            0,
-            totalDurationMs - (result.firstResponseAtMs - attemptStartedAtMs),
-          );
-          const promptTokens = result.lastUsage?.prompt_tokens;
-          const completionTokens = result.lastUsage?.completion_tokens;
-          const totalTokens = result.lastUsage?.total_tokens;
-          debugLog("stream timing", {
+          if (isTruncatedLength && !willRetryTruncation && result.reportedVisibleContent) {
+            progress.report(new vscode.LanguageModelTextPart(OUTPUT_TRUNCATED_NOTICE));
+            attemptCompleted = true;
+            break;
+          }
+
+          debugLog("stream finished", {
             attempt: attempt + 1,
             totalAttempts,
-            ...(requestPreparationDurationMs !== undefined ? { requestPreparationDurationMs } : {}),
-            ...(toolParsingStateInitDurationMs !== undefined
-              ? { toolParsingStateInitDurationMs }
-              : {}),
-            ...(retryReasonHistory.length > 0
-              ? { retryReasonHistory: [...retryReasonHistory] }
-              : {}),
             model: model.id,
-            inputTokenCount,
-            requestedMaxTokens,
-            temperature: temperatureVal,
-            toolsEnabled,
-            runtimeMetadataSource,
-            isRetryAttempt: attempt > 0,
-            willRetryAfterInvalidToolCall,
-            skippedToolCallCount: result.skippedToolCalls.length,
-            ...(skippedToolCallNames.length > 0 ? { skippedToolCallNames } : {}),
-            ...(currentRetryReason ? { retryReason: currentRetryReason } : {}),
-            firstTokenLatencyMs: result.firstResponseAtMs - attemptStartedAtMs,
-            ...(result.firstToolCallAtMs !== undefined
-              ? { firstToolCallLatencyMs: result.firstToolCallAtMs - attemptStartedAtMs }
-              : {}),
-            totalDurationMs,
-            generationDurationMs,
-            ...(promptTokens !== undefined ? { promptTokens } : {}),
-            ...(completionTokens !== undefined ? { completionTokens } : {}),
-            ...(totalTokens !== undefined ? { totalTokens } : {}),
-            ...(completionTokens !== undefined && generationDurationMs > 0
-              ? {
-                  completionTokensPerSecond: Number(
-                    (completionTokens / (generationDurationMs / 1000)).toFixed(2),
-                  ),
-                }
-              : {}),
             reportedContent: result.reportedContent,
             reportedVisibleContent: result.reportedVisibleContent,
             emittedToolCall: result.emittedToolCall,
+            sawToolCall: result.sawToolCall,
             sawReasoning: result.sawReasoning,
             lastFinishReason: result.lastFinishReason,
             streamChunkCount: result.streamChunkCount,
+            willRetryAfterInvalidToolCall,
             willRetryEmptyStream,
             willRetryOnLoop,
             isRepetitionLoop,
             isHangingColon,
-            hasRetriedRepetitionLoop,
             emptyStreamRetryCount,
           });
-        }
 
-        if (result.lastUsage) {
-          debugLog("stream usage", result.lastUsage);
-        }
-
-        const willContinueAttempt =
-          willRetryOnLoop || willRetryAfterInvalidToolCall || willRetryEmptyStream;
-        recordAttemptTurn({
-          outcome: willContinueAttempt ? "retry" : "ok",
-          modelId: model.id,
-          body: attemptBody,
-          result,
-          durationMs: Date.now() - attemptStartedAtMs,
-          autoContinueFired: willRetryOnLoop,
-          retryReasonHistory,
-        });
-
-        if (willRetryOnLoop) {
-          hasRetriedRepetitionLoop = true;
-          retryReasonHistory.push(
-            willRetryRepetitionLoop
-              ? "repetition_loop"
-              : willRetryHangingColon
-                ? "hanging_colon"
-                : "output_truncated",
-          );
-          retryNudge = {
-            role: "user",
-            content: willRetryRepetitionLoop
-              ? `${LOOP_BREAKER_MARKER} hey you got stuck repeating the same output — continue working without repeating the preamble. Directly call the required tool or provide the final answer.`
-              : willRetryHangingColon
-                ? `${LOOP_BREAKER_MARKER} hey you got stuck — your previous turn ended with ":" with no tool call but a next action was expected. Continue working and take the next action.`
-                : `${LOOP_BREAKER_MARKER} your previous reply was cut off at the output token limit. Continue from where you left off. Call a tool if needed or finish the answer.`,
-          };
-          debugLog("repetitionGuard", {
-            action: "autoContinue",
-            trippedLine: result.trippedLine,
-            lastVisibleText: result.lastVisibleText,
-            reason: willRetryRepetitionLoop
-              ? "repetition_loop"
-              : willRetryHangingColon
-                ? "hanging_colon"
-                : "output_truncated",
-          });
-          outputLog(
-            "repetitionGuard",
-            `Auto-continue after ${willRetryRepetitionLoop ? "repetition loop" : willRetryHangingColon ? "hanging ':'" : "truncated output"} on ${model.id}: "${(result.trippedLine ?? result.lastVisibleText).slice(0, 80)}"`,
-          );
-          baselineRequestBody = appendChatMessage(baselineRequestBody, {
-            role: "assistant",
-            content: result.lastVisibleText,
-          });
-          try {
-            baselineRequestBody = applyBudget(baselineRequestBody);
-          } catch {
-            debugLog("streamRetry", "history continuation dropped: context budget exceeded");
-            progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
-            break;
-          }
-          continue;
-        }
-
-        if (
-          result.sawToolCall &&
-          !result.emittedToolCall &&
-          willRetryAfterInvalidToolCall &&
-          retryMessage
-        ) {
-          invalidToolRetryCount += 1;
-          retryReason = "invalid_tool_call";
-          retryReasonHistory.push("invalid_tool_call");
-          retryNudge = { role: "user", content: retryMessage };
-          continue;
-        }
-
-        if (
-          result.sawToolCall &&
-          !result.emittedToolCall &&
-          skippedUnknownTool &&
-          toolsConfig.autoRetryInvalidCalls &&
-          retryMessage
-        ) {
-          reportState.failingAttemptHasVisibleContent = false;
-          throw createStructuredError(
-            "empty_stream",
-            [
-              `Model: ${model.name ?? model.id}`,
-              `The model kept emitting a tool call that could not be executed after ${invalidToolRetryCount} retry(ies).`,
-              skippedToolCallNames.length > 0
-                ? `Skipped: ${skippedToolCallNames.join(", ")}`
-                : null,
-              "The request will be retried on a fallback model if failover is enabled.",
-            ]
-              .filter(Boolean)
-              .join("\n"),
-          );
-        }
-
-        if (result.lastFinishReason === "content_filter") {
-          if (!result.reportedVisibleContent && !result.sawToolCall && !result.emittedToolCall) {
-            throw createStructuredError(
-              "invalid_request",
-              `NVIDIA NIM filtered the response from ${model.name ?? model.id} before any answer or tool call was produced.`,
+          if (willRetryEmptyStream) {
+            emptyStreamRetryCount += 1;
+            retryReasonHistory.push("empty_stream");
+            retryNudge = undefined;
+            debugLog(
+              "emptyStreamRetry",
+              `Empty stream (no text/tool/reasoning surfaced); retry ${emptyStreamRetryCount}/${MAX_EMPTY_STREAM_RETRIES}. lastFinishReason=${String(result.lastFinishReason)}, chunks=${result.streamChunkCount}`,
             );
+            continue;
           }
-          progress.report(new vscode.LanguageModelTextPart(CONTENT_FILTER_NOTICE));
           attemptCompleted = true;
           break;
         }
 
-        if (isTruncatedLength && !willRetryTruncation && result.reportedVisibleContent) {
-          progress.report(new vscode.LanguageModelTextPart(OUTPUT_TRUNCATED_NOTICE));
-          attemptCompleted = true;
-          break;
+        // The for-loop exhausted its attempt ceiling without a completed
+        // attempt: surface the last transient error if one was recorded.
+        if (!attemptCompleted && lastTransientError) {
+          throw lastTransientError;
         }
-
-        debugLog("stream finished", {
-          attempt: attempt + 1,
-          totalAttempts,
-          model: model.id,
-          reportedContent: result.reportedContent,
-          reportedVisibleContent: result.reportedVisibleContent,
-          emittedToolCall: result.emittedToolCall,
-          sawToolCall: result.sawToolCall,
-          sawReasoning: result.sawReasoning,
-          lastFinishReason: result.lastFinishReason,
-          streamChunkCount: result.streamChunkCount,
-          willRetryAfterInvalidToolCall,
-          willRetryEmptyStream,
-          willRetryOnLoop,
-          isRepetitionLoop,
-          isHangingColon,
-          emptyStreamRetryCount,
-        });
-
-        if (willRetryEmptyStream) {
-          emptyStreamRetryCount += 1;
-          retryReasonHistory.push("empty_stream");
-          retryNudge = undefined;
-          debugLog(
-            "emptyStreamRetry",
-            `Empty stream (no text/tool/reasoning surfaced); retry ${emptyStreamRetryCount}/${MAX_EMPTY_STREAM_RETRIES}. lastFinishReason=${String(result.lastFinishReason)}, chunks=${result.streamChunkCount}`,
-          );
-          continue;
-        }
-        attemptCompleted = true;
-        break;
-      }
-
-      if (!attemptCompleted && lastTransientError) {
-        throw lastTransientError;
+        break attemptLoop;
       }
 
       if (!hasReportedVisibleContent && !sawToolCallOverall) {
@@ -832,8 +921,7 @@ export class ModelTurnExecutor {
 
       emitUsageAndStatus(finalUsage, activeRequestBody!);
     } catch (err) {
-      const cancelled =
-        token.isCancellationRequested || (err instanceof Error && err.name === "AbortError");
+      const cancelled = isCancellation(err, token);
       if (totalAttempts === 0) {
         recordAttemptTurn({
           outcome: cancelled ? "cancelled" : "error",
@@ -855,7 +943,6 @@ export class ModelTurnExecutor {
     model: LanguageModelChatInformation;
     messages: readonly LanguageModelChatMessage[];
     activeRequestBody: NimChatRequest;
-    adapter: ReturnType<typeof getModelAdapter>;
     supportsVision: boolean;
     contextWindow: number;
     keyFingerprint: string | undefined;
@@ -906,7 +993,6 @@ export class ModelTurnExecutor {
       const compacted = await buildOverflowRetryRequest({
         messages: input.messages,
         activeRequestBody: input.activeRequestBody,
-        adapter: input.adapter,
         supportsVision: input.supportsVision,
         retryContextWindow,
         apiKey: input.apiKey,
@@ -919,7 +1005,11 @@ export class ModelTurnExecutor {
       if (!compacted) {
         return undefined;
       }
-      notifyOverflowRetry(input.model);
+      // Surface the retry hint here, at the VS Code boundary, not inside the
+      // compaction module.
+      vscode.window.showInformationMessage(
+        `Context overflow on ${input.model.name ?? input.model.id}. Retrying with compacted history…`,
+      );
       return {
         requestBody: compacted.requestBody,
         compactedMaxOutput: compacted.compactedMaxOutput,

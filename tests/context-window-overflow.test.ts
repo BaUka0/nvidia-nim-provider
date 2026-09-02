@@ -4,7 +4,7 @@ import {
   classifyApiError,
   NvidiaApiError,
 } from "../src/api/errors";
-import { calculateSafetyMargin } from "../src/shared/constants";
+import { calculateSafetyMargin } from "../src/shared/config";
 
 describe("parseContextOverflowDetail", () => {
   it("extracts reportedMaximum and actualUsage from NVIDIA NIM error format", () => {

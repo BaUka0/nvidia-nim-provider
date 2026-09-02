@@ -32,16 +32,6 @@ describe("output-channel", () => {
     expect(mockAppendLine).toHaveBeenCalledWith("[NVIDIA NIM Debug] activate: ready");
   });
 
-  it("errorLog always writes to channel regardless of debug flag", async () => {
-    delete process.env.NVIDIA_NIM_DEBUG;
-
-    const { errorLog, getOutputChannel } = await import("../src/shared/logging");
-    getOutputChannel();
-    errorLog("request", "API key not found");
-
-    expect(mockAppendLine).toHaveBeenCalledWith("[NVIDIA NIM Error] request: API key not found");
-  });
-
   it("warnLog always writes to channel regardless of debug flag", async () => {
     delete process.env.NVIDIA_NIM_DEBUG;
 
@@ -82,16 +72,15 @@ describe("output-channel", () => {
     expect(mockAppendLine).toHaveBeenCalledWith(expect.stringContaining("Bearer [REDACTED]"));
   });
 
-  it("errorLog and warnLog still work when debug is enabled", async () => {
+  it("warnLog still works when debug is enabled", async () => {
     process.env.NVIDIA_NIM_DEBUG = "1";
 
-    const { errorLog, warnLog, getOutputChannel } = await import("../src/shared/logging");
+    const { warnLog, getOutputChannel } = await import("../src/shared/logging");
     getOutputChannel();
     mockAppendLine.mockClear();
-    errorLog("test", "error msg");
     warnLog("test", "warn msg");
 
-    expect(mockAppendLine).toHaveBeenCalledTimes(2);
+    expect(mockAppendLine).toHaveBeenCalledTimes(1);
   });
 
   it("records technical debug events in the session ring when debug output is off", async () => {

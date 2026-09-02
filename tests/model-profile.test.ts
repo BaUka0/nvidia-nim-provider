@@ -4,8 +4,6 @@ import { NimChatMessage, NimChatRequest } from "../src/types";
 describe("getModelAdapter", () => {
   it.each([
     ["kimi-k3", 0.2, 0.1, "Do not reveal chain-of-thought"],
-    ["zai-org/glm-4.5", 0.1, 0.05, "strict JSON arguments"],
-    ["z-ai/glm-5.2", 0.1, 0.05, "strict JSON arguments"],
     ["nemotron-70b", 1, 1, "Do not wrap tool arguments in markdown fences"],
   ])(
     "returns a specialized tool-enabled profile for %s",
@@ -136,50 +134,6 @@ describe("applyReasoningMode", () => {
     const adapter = getModelAdapter("moonshotai/kimi-k3");
     expect(adapter.supportsPresencePenalty).toBe(false);
     expect(adapter.supportsFrequencyPenalty).toBe(false);
-  });
-
-  it("sets chat_template_kwargs.enable_thinking to false for GLM none", () => {
-    const adapter = getModelAdapter("z-ai/glm-5.2");
-    const request: NimChatRequest = {
-      model: "z-ai/glm-5.2",
-      messages: [],
-    };
-    adapter.applyReasoningMode!(request, "none");
-    expect(request.chat_template_kwargs).toEqual({ enable_thinking: false });
-  });
-
-  it("sets chat_template_kwargs.enable_thinking and clear_thinking for GLM on", () => {
-    const adapter = getModelAdapter("z-ai/glm-5.2");
-    const request: NimChatRequest = {
-      model: "z-ai/glm-5.2",
-      messages: [],
-    };
-    adapter.applyReasoningMode!(request, "on");
-    expect(request.chat_template_kwargs).toEqual({ enable_thinking: true, clear_thinking: false });
-  });
-
-  it("exposes Inkling reasoning effort modes and sends the selected mode", () => {
-    const adapter = getModelAdapter("thinkingmachines/inkling");
-    const request: NimChatRequest = {
-      model: "thinkingmachines/inkling",
-      messages: [],
-    };
-
-    expect(adapter.supportedReasoningModes).toEqual([
-      "none",
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max",
-    ]);
-
-    adapter.applyReasoningMode!(request, "high");
-    expect(request.reasoning_effort).toBe("high");
-
-    adapter.applyReasoningMode!(request, "none");
-    expect(request.reasoning_effort).toBe("none");
   });
 
   it("exposes Muse Glimmer reasoning effort modes and sends the selected mode", () => {

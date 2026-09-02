@@ -9,8 +9,9 @@ import {
 } from "vscode";
 import { streamChatCompletion } from "../api/client";
 import { ReasoningStreamRouter } from "../messages/reasoning-router";
-import { ModelAdapter } from "../models/adapters";
 import { emitThinkingPart } from "../shared/proposed-apis";
+import { isCancellation } from "../shared/cancellation";
+import { ToolsConfig } from "../shared/config";
 import { MAX_EMBEDDED_TOOL_TEXT_CHARS } from "../shared/constants";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { NimChatRequest } from "../types";
@@ -50,10 +51,11 @@ export interface StreamAttemptInput {
   model: LanguageModelChatInformation;
   options: ProvideLanguageModelChatResponseOptions;
   messages: readonly LanguageModelChatMessage[];
-  adapter?: ModelAdapter;
   reasoningIsolationExpected: boolean;
   maxFetchAttempts: number;
   firstTokenTimeoutMs?: number;
+  toolsConfig: ToolsConfig;
+  showReasoningInChat: boolean;
   hasRetriedRepetitionLoop: boolean;
   maxRepeatedLines: number;
   autoContinueOnLoop: boolean;
@@ -74,7 +76,6 @@ export interface StreamAttemptResult {
   skippedToolCalls: SkippedToolCall[];
   repetitionTripped: boolean;
   trippedLine?: string;
-  repetitionNoticeSent: boolean;
   streamChunkCount: number;
   firstResponseAtMs?: number;
   firstToolCallAtMs?: number;
@@ -119,7 +120,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       return;
     }
     for (const fragment of pendingThinking) {
-      const thinkingResult = emitThinkingPart(input.progress, fragment);
+      const thinkingResult = emitThinkingPart(input.progress, fragment, input.showReasoningInChat);
       if (thinkingResult.didReport) {
         reportedContent = true;
         input.onContentReported?.();
@@ -206,6 +207,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     toolAggregator = new ToolCallStreamAggregator({
       options: input.options,
       messages: input.messages,
+      toolsConfig: input.toolsConfig,
       onEmitToolCall: (id, name, args) => {
         flushPendingText();
         reportPart(new vscode.LanguageModelToolCallPart(id, name, args));
@@ -229,9 +231,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       return;
     }
 
-    const parseEmbeddedToolCalls =
-      input.adapter?.parseTextEmbeddedToolCalls ?? parseTextEmbeddedToolCalls;
-    const { segments, incompleteText, extractedParams } = parseEmbeddedToolCalls(
+    const { segments, incompleteText, extractedParams } = parseTextEmbeddedToolCalls(
       pendingTextEmbeddedContent + text,
     );
     pendingTextEmbeddedContent =
@@ -322,10 +322,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
 
       const reasoningContent = (choice?.delta as { reasoning_content?: string } | undefined)
         ?.reasoning_content;
-      const rawContent = choice?.delta?.content;
-      const content = rawContent
-        ? (input.adapter?.sanitizeResponseText?.(rawContent) ?? rawContent)
-        : rawContent;
+      const content = choice?.delta?.content;
 
       const streamedToolCalls = choice ? collectChoiceToolCalls(choice) : [];
 
@@ -394,11 +391,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       toolAggregator.flushRemaining();
     }
   } catch (streamErr) {
-    if (
-      input.token.isCancellationRequested ||
-      input.signal.aborted ||
-      (streamErr instanceof Error && streamErr.name === "AbortError")
-    ) {
+    if (isCancellation(streamErr, input.token) || input.signal.aborted) {
       throw new vscode.CancellationError();
     }
     throw streamErr;
@@ -424,7 +417,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   const incompleteTextToolName = getIncompleteTextToolCallName(pendingTextEmbeddedContent);
   if (incompleteTextToolName) {
     sawToolCall = true;
-    const schema = getToolAggregator().getToolSchemas().get(incompleteTextToolName);
+    const schema = getToolAggregator().getToolSchema(incompleteTextToolName);
     skippedToolCalls.push({
       name: incompleteTextToolName,
       required: schema?.required ?? [],
@@ -451,7 +444,6 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     skippedToolCalls,
     repetitionTripped: repetitionGuard.tripped,
     trippedLine: repetitionGuard.trippedLine,
-    repetitionNoticeSent,
     streamChunkCount,
     firstResponseAtMs,
     firstToolCallAtMs,

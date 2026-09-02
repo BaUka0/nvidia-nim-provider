@@ -6,7 +6,6 @@ import {
   streamChatCompletion,
 } from "../src/api/client";
 import { classifyApiError } from "../src/api/errors";
-import { STREAM_IDLE_TIMEOUT_MS } from "../src/shared/constants";
 import { NvidiaModelSummary, NimStreamResponse } from "../src/types";
 import { makeAbortSignal, makeFetchResponse } from "./helpers/fakes";
 
@@ -804,7 +803,7 @@ describe("streamChatCompletion", () => {
         "NVIDIA NIM streaming timeout: no data received",
       );
 
-      await jest.advanceTimersByTimeAsync(STREAM_IDLE_TIMEOUT_MS);
+      await jest.advanceTimersByTimeAsync(120000);
 
       await rejection;
       expect(cancel).toHaveBeenCalledTimes(1);

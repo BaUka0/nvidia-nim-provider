@@ -1,9 +1,6 @@
-import {
-  RepetitionGuard,
-  detectCycleHint,
-  detectPhraseCycle,
-  normalizeLineForRepetition,
-} from "../src/provider/repetition-guard";
+import { RepetitionGuard, normalizeLineForRepetition } from "../src/provider/repetition-guard";
+import { detectHistoryLoop, detectToolCallHistoryLoop } from "../src/provider/loop-breaker";
+import { detectCycleHint, detectPhraseCycle } from "../src/shared/cycle-detection";
 
 const ISSUE_7_SUPER_CYCLE = [
   "Probably it's done. Let's check subfolders. We need to see if it succeeded. Let's check a sample file. We need to check if the script is still running or finished. Let's see output more. ",
@@ -214,7 +211,7 @@ describe("RepetitionGuard.detectHistoryLoop", () => {
       assistant("Let me fix the formatting issue:"),
       assistant("Let me fix the formatting issue:"),
     ];
-    expect(RepetitionGuard.detectHistoryLoop(messages)).toBe(
+    expect(detectHistoryLoop(messages)).toBe(
       normalizeLineForRepetition("Let me fix the formatting issue:"),
     );
   });
@@ -225,7 +222,7 @@ describe("RepetitionGuard.detectHistoryLoop", () => {
       assistant("Let me fix the formatting issue:"),
       assistant("Something different entirely"),
     ];
-    expect(RepetitionGuard.detectHistoryLoop(messages)).toBeUndefined();
+    expect(detectHistoryLoop(messages)).toBeUndefined();
   });
 
   it("detects unicode preambles", () => {
@@ -234,7 +231,7 @@ describe("RepetitionGuard.detectHistoryLoop", () => {
       assistant("Давайте исправим ошибку:"),
       assistant("Давайте исправим ошибку:"),
     ];
-    expect(RepetitionGuard.detectHistoryLoop(messages)).toBe(
+    expect(detectHistoryLoop(messages)).toBe(
       normalizeLineForRepetition("Давайте исправим ошибку:"),
     );
   });
@@ -245,7 +242,7 @@ describe("RepetitionGuard.detectHistoryLoop", () => {
       { role: 1, content: [{ value: "Let me fix the formatting issue:" }] },
       { role: 1, content: [{ value: "Let me fix the formatting issue:" }] },
     ];
-    expect(RepetitionGuard.detectHistoryLoop(messages)).toBeUndefined();
+    expect(detectHistoryLoop(messages)).toBeUndefined();
   });
 
   it("accepts plain string content", () => {
@@ -254,7 +251,7 @@ describe("RepetitionGuard.detectHistoryLoop", () => {
       { role: "assistant", content: "Let me fix the formatting issue:" },
       { role: "assistant", content: "Let me fix the formatting issue:" },
     ];
-    expect(RepetitionGuard.detectHistoryLoop(messages)).toBe(
+    expect(detectHistoryLoop(messages)).toBe(
       normalizeLineForRepetition("Let me fix the formatting issue:"),
     );
   });
@@ -272,7 +269,7 @@ describe("RepetitionGuard.detectToolCallHistoryLoop", () => {
       toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
       toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
     ];
-    expect(RepetitionGuard.detectToolCallHistoryLoop(messages)).toBeDefined();
+    expect(detectToolCallHistoryLoop(messages)).toBeDefined();
   });
 
   it("is insensitive to argument key order", () => {
@@ -281,7 +278,7 @@ describe("RepetitionGuard.detectToolCallHistoryLoop", () => {
       toolCall("read_file", { startLine: 1, filePath: "/a.ts" }),
       toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
     ];
-    expect(RepetitionGuard.detectToolCallHistoryLoop(messages)).toBeDefined();
+    expect(detectToolCallHistoryLoop(messages)).toBeDefined();
   });
 
   it("parses stringified arguments", () => {
@@ -290,7 +287,7 @@ describe("RepetitionGuard.detectToolCallHistoryLoop", () => {
       toolCall("read_file", '{"startLine":1,"filePath":"/a.ts"}'),
       toolCall("read_file", '{"filePath":"/a.ts","startLine":1}'),
     ];
-    expect(RepetitionGuard.detectToolCallHistoryLoop(messages)).toBeDefined();
+    expect(detectToolCallHistoryLoop(messages)).toBeDefined();
   });
 
   it("returns undefined when arguments differ", () => {
@@ -299,7 +296,7 @@ describe("RepetitionGuard.detectToolCallHistoryLoop", () => {
       toolCall("read_file", { filePath: "/a.ts", startLine: 2 }),
       toolCall("read_file", { filePath: "/a.ts", startLine: 3 }),
     ];
-    expect(RepetitionGuard.detectToolCallHistoryLoop(messages)).toBeUndefined();
+    expect(detectToolCallHistoryLoop(messages)).toBeUndefined();
   });
 
   it("returns undefined below the repeat threshold", () => {
@@ -307,6 +304,6 @@ describe("RepetitionGuard.detectToolCallHistoryLoop", () => {
       toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
       toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
     ];
-    expect(RepetitionGuard.detectToolCallHistoryLoop(messages)).toBeUndefined();
+    expect(detectToolCallHistoryLoop(messages)).toBeUndefined();
   });
 });

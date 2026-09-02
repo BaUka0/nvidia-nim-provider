@@ -6,7 +6,6 @@ import { DEBUG_ENV_VAR, PROVIDER_DISPLAY_NAME } from "./constants";
 // initializing, producing "[undefined Debug]".
 const debugPrefix = (): string => `[${PROVIDER_DISPLAY_NAME} Debug]`;
 const logPrefix = (): string => `[${PROVIDER_DISPLAY_NAME}]`;
-const errorPrefix = (): string => `[${PROVIDER_DISPLAY_NAME} Error]`;
 const warnPrefix = (): string => `[${PROVIDER_DISPLAY_NAME} Warning]`;
 
 export type DebugLogKind = "tech" | "chunk" | "messages";
@@ -48,10 +47,6 @@ export function setDeveloperLogOptions(options: Partial<DeveloperLogOptions>): v
     logUserMessages = options.logUserMessages;
   }
   debugEnabledCache = undefined;
-}
-
-export function setDeveloperDebugLogging(enabled: boolean): void {
-  setDeveloperLogOptions({ debugLogging: enabled });
 }
 
 export function getSessionEvents(): readonly SessionLogEvent[] {
@@ -118,10 +113,6 @@ export function debugEnabled(): boolean {
   const enabled = process.env[DEBUG_ENV_VAR] === "1" || developerDebugLogging;
   debugEnabledCache = enabled;
   return enabled;
-}
-
-export function invalidateDebugEnabledCache(): void {
-  debugEnabledCache = undefined;
 }
 
 const SENSITIVE_KEY_PATTERN = /^(api[_-]?key|apikey|authorization|token|secret|password)$/i;
@@ -218,22 +209,6 @@ export function outputLog(label: string, value: unknown): void {
     return;
   }
   console.log(`${logPrefix()} ${label}:`, redacted);
-}
-
-export function errorLog(label: string, value: unknown): void {
-  const redacted = redactValue(value);
-  appendSessionEvent({
-    ts: new Date().toISOString(),
-    level: "error",
-    kind: "tech",
-    label,
-    value: redacted,
-  });
-  if (outputChannel) {
-    outputChannel.appendLine(`${errorPrefix()} ${label}: ${toLogMessage(redacted)}`);
-    return;
-  }
-  console.error(`${errorPrefix()} ${label}:`, redacted);
 }
 
 export function warnLog(label: string, value: unknown): void {

@@ -1,13 +1,13 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { EXTENSION_VERSION } from "../src/shared/constants";
+import { detectCycleHint } from "../src/shared/cycle-detection";
 import { debugLog, resetSessionLogsForTests } from "../src/shared/logging";
 import {
   MAX_TURN_REPORTS,
   buildSessionLogFilename,
   buildTurnReportFilename,
   clipHeadTail,
-  detectCycleHint,
   formatSessionLogsPayload,
   formatTurnReportsPayload,
   inferReasoningModeFromRequest,

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
-import { ConfigManager, NimConfig } from "../shared/config";
-import { calculateSafetyMargin, DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
+import { NimConfig } from "../shared/config";
+import { DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
+import { calculateSafetyMargin } from "../shared/config";
 import { FetchAttemptBudget } from "../shared/fetch-attempt-budget";
 import {
   convertMessages,
@@ -10,8 +11,8 @@ import {
   estimateToolsTokens,
   LegacyPart,
 } from "../messages/converter";
+import { getModelAdapter, ModelAdapter, isReasoningIsolationExpected } from "../models/adapters";
 import { compactAndFit } from "../models/summarizer";
-import { getModelAdapter } from "../models/adapters";
 import { createStructuredError } from "../api/errors";
 import { debugLog } from "../shared/logging";
 import { NimChatRequest, NimChatMessage, NimTool } from "../types";
@@ -21,10 +22,8 @@ export interface PreparedRequest {
   reasoningIsolationExpected: boolean;
   inputTokenCount: number;
   requestedMaxTokens: number;
-  safetyMargin: number;
   temperatureVal: number;
   toolsEnabled: boolean;
-  extraSystemMessages: string[];
   tools?: NimTool[];
 }
 
@@ -35,6 +34,11 @@ export interface PreparedRequest {
  * smoother experience in long conversations.
  */
 const PREFLIGHT_COMPACT_THRESHOLD = 0.85;
+
+/** Clamp a sampling parameter into the API-allowed inclusive range. */
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 export class NimRequestBuilder {
   public static calculateMaxToolResultChars(contextWindow: number): number {
@@ -50,13 +54,45 @@ export class NimRequestBuilder {
     return 10000;
   }
 
+  /**
+   * Shared VS Code → NIM message conversion: adapter workarounds plus the
+   * profile's extra system messages. Used by request preparation and by
+   * overflow compaction so both paths build identical payloads.
+   */
+  public static convertMessagesWithProfile(input: {
+    messages: readonly vscode.LanguageModelChatMessage[];
+    adapter: ModelAdapter;
+    contextWindow: number;
+    supportsVision: boolean;
+    toolsEnabled: boolean;
+  }): NimChatMessage[] {
+    const extraSystemMessages = input.adapter.getProfile({
+      toolsEnabled: input.toolsEnabled,
+    }).extraSystemMessages;
+    let apiMessages = convertMessages(Array.from(input.messages), {
+      maxToolResultChars: this.calculateMaxToolResultChars(input.contextWindow),
+      supportsVision: input.supportsVision,
+    });
+    apiMessages = input.adapter.applyMessagesWorkaround
+      ? input.adapter.applyMessagesWorkaround(apiMessages)
+      : apiMessages;
+    if (extraSystemMessages.length > 0) {
+      apiMessages = [
+        ...extraSystemMessages.map((content): NimChatMessage => ({ role: "system", content })),
+        ...apiMessages,
+      ];
+    }
+    return apiMessages;
+  }
+
   public static calculateRequestedMaxTokens(options: {
     requestedMaxTokens: number;
     modelMaxOutputTokens: number;
     contextWindow: number;
     inputTokenCount: number;
+    safetyMarginPercent: number;
   }): number {
-    const safetyMargin = calculateSafetyMargin(options.contextWindow);
+    const safetyMargin = calculateSafetyMargin(options.contextWindow, options.safetyMarginPercent);
     const availableCompletionTokens = Math.max(
       1,
       options.contextWindow - options.inputTokenCount - safetyMargin,
@@ -77,6 +113,7 @@ export class NimRequestBuilder {
       effectiveContextWindow: number;
       modelMaxOutputTokens: number;
       requestedMaxTokens: number;
+      safetyMarginPercent: number;
     },
   ): NimChatRequest {
     const sentTools = body.tools ?? options.tools;
@@ -84,7 +121,8 @@ export class NimRequestBuilder {
       estimateNimMessagesTokens(body.messages) + (sentTools ? estimateToolsTokens(sentTools) : 0);
     const maximumInputTokens = Math.max(
       1,
-      options.effectiveContextWindow - calculateSafetyMargin(options.effectiveContextWindow),
+      options.effectiveContextWindow -
+        calculateSafetyMargin(options.effectiveContextWindow, options.safetyMarginPercent),
     );
     if (payloadInputTokenCount > maximumInputTokens) {
       throw createStructuredError(
@@ -104,6 +142,7 @@ export class NimRequestBuilder {
         modelMaxOutputTokens: options.modelMaxOutputTokens,
         contextWindow: options.effectiveContextWindow,
         inputTokenCount: payloadInputTokenCount,
+        safetyMarginPercent: options.safetyMarginPercent,
       }),
     };
   }
@@ -131,7 +170,7 @@ export class NimRequestBuilder {
     userAgent: string;
     signal?: AbortSignal;
     fetchAttemptBudget?: FetchAttemptBudget;
-    config?: NimConfig;
+    config: NimConfig;
   }): Promise<PreparedRequest> {
     const {
       model,
@@ -145,13 +184,14 @@ export class NimRequestBuilder {
       signal,
       fetchAttemptBudget,
     } = options;
-    const config = options.config ?? ConfigManager.getNimConfig();
+    const config = options.config;
 
     const rawInputTokenCount = estimateMessagesTokens(
       messages as readonly { content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
     );
     const advertisedMaxInput = model.maxInputTokens;
-    const windowBudget = contextWindow - calculateSafetyMargin(contextWindow);
+    const windowBudget =
+      contextWindow - calculateSafetyMargin(contextWindow, config.context.safetyMarginPercent);
     const effectiveMaxInputTokens = Math.max(1, Math.min(advertisedMaxInput, windowBudget));
 
     if (rawInputTokenCount > effectiveMaxInputTokens) {
@@ -174,7 +214,6 @@ export class NimRequestBuilder {
         ? Math.min(modelMaxLimit, generationConfig.maxOutputTokens)
         : modelMaxLimit;
 
-    const maxToolResultChars = this.calculateMaxToolResultChars(contextWindow);
     const toolConfig = supportsTools ? convertTools(responseOptions) : {};
     const toolsEnabled = Boolean(toolConfig.tools?.length);
     const adapter = getModelAdapter(model.id);
@@ -196,22 +235,13 @@ export class NimRequestBuilder {
           ? configTemperature
           : profileTemperature;
 
-    let apiMessages = convertMessages(messages, {
-      maxToolResultChars,
+    let apiMessages = this.convertMessagesWithProfile({
+      messages,
+      adapter,
+      contextWindow,
       supportsVision,
+      toolsEnabled,
     });
-    apiMessages = adapter.applyMessagesWorkaround
-      ? adapter.applyMessagesWorkaround(apiMessages)
-      : apiMessages;
-
-    if (requestProfile.extraSystemMessages.length > 0) {
-      apiMessages = [
-        ...requestProfile.extraSystemMessages.map(
-          (content): NimChatMessage => ({ role: "system", content }),
-        ),
-        ...apiMessages,
-      ];
-    }
 
     const toolDefinitionTokens = toolConfig.tools ? estimateToolsTokens(toolConfig.tools) : 0;
     let apiTokenCount = estimateNimMessagesTokens(apiMessages);
@@ -295,6 +325,7 @@ export class NimRequestBuilder {
       modelMaxOutputTokens: model.maxOutputTokens,
       contextWindow,
       inputTokenCount: payloadInputTokenCount,
+      safetyMarginPercent: config.context.safetyMarginPercent,
     });
 
     const requestBody: NimChatRequest = {
@@ -325,20 +356,16 @@ export class NimRequestBuilder {
       adapter.applyReasoningMode(requestBody, reasoningMode);
     }
 
-    const reasoningContentExpected =
-      Boolean(adapter.applyReasoningMode) && reasoningMode !== "none";
-    const reasoningIsolationExpected =
-      (reasoningContentExpected && adapter.isolateUntaggedReasoning !== false) ||
-      Boolean(adapter.alwaysReasons);
+    const reasoningIsolationExpected = isReasoningIsolationExpected(adapter, reasoningMode);
 
     const modelOpts = responseOptions.modelOptions as Record<string, unknown>;
     const profileTopP = requestProfile.defaultTopP;
     if (typeof modelOpts?.top_p === "number") {
-      requestBody.top_p = Math.min(1, Math.max(0, modelOpts.top_p));
+      requestBody.top_p = clamp(modelOpts.top_p, 0, 1);
     } else if (typeof generationConfig.topP === "number") {
-      requestBody.top_p = Math.min(1, Math.max(0, generationConfig.topP));
+      requestBody.top_p = clamp(generationConfig.topP, 0, 1);
     } else if (typeof profileTopP === "number") {
-      requestBody.top_p = Math.min(1, Math.max(0, profileTopP));
+      requestBody.top_p = clamp(profileTopP, 0, 1);
     }
     const profileFrequencyPenalty = requestProfile.defaultFrequencyPenalty;
     const profilePresencePenalty = requestProfile.defaultPresencePenalty;
@@ -348,33 +375,27 @@ export class NimRequestBuilder {
 
     if (supportsFrequencyPenalty) {
       if (typeof modelOpts?.frequency_penalty === "number") {
-        requestBody.frequency_penalty = Math.min(2, Math.max(-2, modelOpts.frequency_penalty));
+        requestBody.frequency_penalty = clamp(modelOpts.frequency_penalty, -2, 2);
       } else if (typeof generationConfig.frequencyPenalty === "number") {
-        requestBody.frequency_penalty = Math.min(
-          2,
-          Math.max(-2, generationConfig.frequencyPenalty),
-        );
+        requestBody.frequency_penalty = clamp(generationConfig.frequencyPenalty, -2, 2);
       } else if (typeof profileFrequencyPenalty === "number") {
-        requestBody.frequency_penalty = Math.min(2, Math.max(-2, profileFrequencyPenalty));
+        requestBody.frequency_penalty = clamp(profileFrequencyPenalty, -2, 2);
       }
     }
     if (supportsPresencePenalty) {
       if (typeof modelOpts?.presence_penalty === "number") {
-        requestBody.presence_penalty = Math.min(2, Math.max(-2, modelOpts.presence_penalty));
+        requestBody.presence_penalty = clamp(modelOpts.presence_penalty, -2, 2);
       } else if (typeof generationConfig.presencePenalty === "number") {
-        requestBody.presence_penalty = Math.min(2, Math.max(-2, generationConfig.presencePenalty));
+        requestBody.presence_penalty = clamp(generationConfig.presencePenalty, -2, 2);
       } else if (typeof profilePresencePenalty === "number") {
-        requestBody.presence_penalty = Math.min(2, Math.max(-2, profilePresencePenalty));
+        requestBody.presence_penalty = clamp(profilePresencePenalty, -2, 2);
       }
     }
     if (supportsRepetitionPenalty) {
       if (typeof modelOpts?.repetition_penalty === "number") {
-        requestBody.repetition_penalty = Math.min(2, Math.max(0.5, modelOpts.repetition_penalty));
+        requestBody.repetition_penalty = clamp(modelOpts.repetition_penalty, 0.5, 2);
       } else if (typeof generationConfig.repetitionPenalty === "number") {
-        requestBody.repetition_penalty = Math.min(
-          2,
-          Math.max(0.5, generationConfig.repetitionPenalty),
-        );
+        requestBody.repetition_penalty = clamp(generationConfig.repetitionPenalty, 0.5, 2);
       }
     }
     const stopVal = modelOpts?.stop;
@@ -399,7 +420,7 @@ export class NimRequestBuilder {
 
     debugLog("Outgoing request messages", requestBody.messages, "messages");
 
-    const safetyMargin = calculateSafetyMargin(contextWindow);
+    const safetyMargin = calculateSafetyMargin(contextWindow, config.context.safetyMarginPercent);
     const remainingBudget = Math.max(
       0,
       contextWindow - payloadInputTokenCount - requestedMaxTokens - safetyMargin,
@@ -421,10 +442,8 @@ export class NimRequestBuilder {
       reasoningIsolationExpected,
       inputTokenCount: payloadInputTokenCount,
       requestedMaxTokens,
-      safetyMargin,
       temperatureVal,
       toolsEnabled,
-      extraSystemMessages: requestProfile.extraSystemMessages,
       tools: toolConfig.tools,
     };
   }

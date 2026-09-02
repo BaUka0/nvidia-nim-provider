@@ -246,12 +246,6 @@ describe("getFallbackModel", () => {
     expect(getFallbackModel(super120.id, [kimi, lightning, super120, minimax])).toEqual(kimi);
   });
 
-  it("supports string fallback argument for backward compatibility", () => {
-    expect(
-      getFallbackModel(kimi.id, [kimi, flash, lightning], "deepseek-ai/deepseek-v4-flash-0731"),
-    ).toEqual(flash);
-  });
-
   describe("priority list fallback (requiresVision: false)", () => {
     it("walks the priority list in order before the configured single model", () => {
       expect(

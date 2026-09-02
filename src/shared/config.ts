@@ -450,3 +450,23 @@ export class ConfigManager {
     };
   }
 }
+
+/**
+ * Calculate a dynamic safety margin that scales with context window size.
+ * Small windows get a fixed 4096-token margin; large windows (≥256K) get
+ * safetyMarginPercent (default 1%) of the window to account for estimation
+ * variance and hidden prompt content. Pass `customPercent` explicitly from a
+ * per-turn config snapshot so a mid-turn settings edit cannot change the
+ * budget math; callers without a snapshot (picker/fallback presentation)
+ * may omit it.
+ */
+export function calculateSafetyMargin(contextWindow: number, customPercent?: number): number {
+  const percent =
+    customPercent !== undefined
+      ? customPercent
+      : ConfigManager.getContextConfig().safetyMarginPercent;
+  if (contextWindow >= 256_000) {
+    return Math.max(4096, Math.ceil(contextWindow * (percent / 100)));
+  }
+  return 4096;
+}

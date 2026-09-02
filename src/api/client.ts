@@ -72,6 +72,15 @@ function createAbortError(): Error {
   return error;
 }
 
+/** Shared auth/JSON headers for every NIM HTTP call. */
+function buildHeaders(apiKey: string, userAgent?: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+    ...(userAgent ? { "User-Agent": userAgent } : {}),
+  };
+}
+
 function numericHttpStatus(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value) && value >= 100 && value <= 599) {
     return Math.trunc(value);
@@ -121,6 +130,54 @@ function parseSseDataLine(data: string, model: string): NimStreamResponse | unde
 
 function isTimeoutAbortReason(reason: unknown): boolean {
   return reason instanceof Error && reason.name === "TimeoutError";
+}
+
+type StreamTimeoutKind = "first-token" | "idle";
+
+/**
+ * Single source for stream timeout errors. The idle text is also the final
+ * user-facing text, so the TimeoutError catch path rebuilds with the same
+ * factory instead of a second message template.
+ */
+function streamTimeoutError(kind: StreamTimeoutKind, idleSeconds: number): Error {
+  const err = new Error(
+    kind === "first-token"
+      ? `NVIDIA NIM first token timeout: no response received for ${idleSeconds}s`
+      : `NVIDIA NIM streaming timeout: no data received for ${idleSeconds}s`,
+  );
+  err.name = "TimeoutError";
+  return err;
+}
+
+/** Drop oversized lines and parse `data:` payloads from completed SSE lines. */
+function* parseSseLines(
+  lines: string[],
+  model: string,
+): Generator<NimStreamResponse, void, unknown> {
+  for (const line of lines) {
+    if (Buffer.byteLength(line, "utf8") > MAX_SSE_LINE_BYTES) {
+      debugLog("sse", "dropping oversized SSE line");
+      continue;
+    }
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data: ")) continue;
+    const data = trimmed.slice(6);
+    if (data === "[DONE]") continue;
+    const parsed = parseSseDataLine(data, model);
+    if (parsed) {
+      yield parsed;
+    }
+  }
+}
+
+/** Reject buffers that grew past the partial-line cap (misbehaving servers). */
+function assertSsePartialBufferWithinLimit(buffer: string, model: string): void {
+  if (Buffer.byteLength(buffer, "utf8") > MAX_SSE_PARTIAL_BUFFER_BYTES) {
+    throw classifyApiError(
+      new Error(`SSE partial-line buffer exceeded ${MAX_SSE_PARTIAL_BUFFER_BYTES} bytes`),
+      { operation: "stream", model },
+    );
+  }
 }
 
 /**
@@ -344,11 +401,7 @@ export async function fetchModelsOrThrow(
     `${BASE_URL}/models`,
     {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        ...(userAgent ? { "User-Agent": userAgent } : {}),
-      },
+      headers: buildHeaders(apiKey, userAgent),
       signal: withRequestTimeout(signal, NON_STREAM_REQUEST_TIMEOUT_MS),
     },
     retries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries,
@@ -381,11 +434,7 @@ export async function chatCompletion(
     `${BASE_URL}/chat/completions`,
     {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        ...(userAgent ? { "User-Agent": userAgent } : {}),
-      },
+      headers: buildHeaders(apiKey, userAgent),
       body: JSON.stringify({ ...requestBody, stream: false }),
       signal: withRequestTimeout(signal, NON_STREAM_REQUEST_TIMEOUT_MS),
     },
@@ -435,11 +484,7 @@ export async function* streamChatCompletion(
     `${BASE_URL}/chat/completions`,
     {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        ...(userAgent ? { "User-Agent": userAgent } : {}),
-      },
+      headers: buildHeaders(apiKey, userAgent),
       body: JSON.stringify(requestBody),
       signal,
     },
@@ -548,12 +593,7 @@ export async function* streamChatCompletion(
           typeof firstTokenTimeoutMs === "number" &&
           firstTokenTimeoutMs > 0 &&
           currentTimeoutMs === firstTokenTimeoutMs;
-        const err = new Error(
-          isFirstTokenTimeout
-            ? `NVIDIA NIM first token timeout: no response received for ${idleSec}s`
-            : `Stream idle timeout: no data for ${idleSec}s`,
-        );
-        err.name = "TimeoutError";
+        const err = streamTimeoutError(isFirstTokenTimeout ? "first-token" : "idle", idleSec);
         cancelReader(err);
         rejectOnce(err);
       }, currentTimeoutMs);
@@ -590,70 +630,26 @@ export async function* streamChatCompletion(
       lastChunkTime = Date.now();
 
       buffer += decoder.decode(value, { stream: true });
-      if (Buffer.byteLength(buffer, "utf8") > MAX_SSE_PARTIAL_BUFFER_BYTES) {
-        throw classifyApiError(
-          new Error(`SSE partial-line buffer exceeded ${MAX_SSE_PARTIAL_BUFFER_BYTES} bytes`),
-          { operation: "stream", model: requestBody.model },
-        );
-      }
+      assertSsePartialBufferWithinLimit(buffer, requestBody.model);
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
 
-      for (const line of lines) {
-        if (Buffer.byteLength(line, "utf8") > MAX_SSE_LINE_BYTES) {
-          debugLog("sse", "dropping oversized SSE line");
-          continue;
-        }
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data: ")) continue;
-        const data = trimmed.slice(6);
-        if (data === "[DONE]") continue;
-        const parsed = parseSseDataLine(data, requestBody.model);
-        if (parsed) {
-          yield parsed;
-        }
-      }
+      yield* parseSseLines(lines, requestBody.model);
     }
 
     // Flush decoder internal state and process any remaining lines
     const remaining = decoder.decode();
     buffer += remaining;
-    if (Buffer.byteLength(buffer, "utf8") > MAX_SSE_PARTIAL_BUFFER_BYTES) {
-      throw classifyApiError(
-        new Error(`SSE partial-line buffer exceeded ${MAX_SSE_PARTIAL_BUFFER_BYTES} bytes`),
-        { operation: "stream", model: requestBody.model },
-      );
-    }
-    const finalLines = buffer.split("\n");
-    for (const line of finalLines) {
-      if (Buffer.byteLength(line, "utf8") > MAX_SSE_LINE_BYTES) {
-        debugLog("sse", "dropping oversized SSE line");
-        continue;
-      }
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data: ")) continue;
-      const data = trimmed.slice(6);
-      if (data === "[DONE]") continue;
-      const parsed = parseSseDataLine(data, requestBody.model);
-      if (parsed) {
-        yield parsed;
-      }
-    }
+    assertSsePartialBufferWithinLimit(buffer, requestBody.model);
+    yield* parseSseLines(buffer.split("\n"), requestBody.model);
   } catch (error) {
     if (error instanceof Error && error.name === "TimeoutError") {
       const idleSec = Math.round((Date.now() - lastChunkTime) / 1000);
       const isFirstToken = error.message.includes("first token timeout");
-      throw classifyApiError(
-        new Error(
-          isFirstToken
-            ? `NVIDIA NIM first token timeout: no response received for ${idleSec}s`
-            : `NVIDIA NIM streaming timeout: no data received for ${idleSec}s`,
-        ),
-        {
-          operation: "stream",
-          model: requestBody.model,
-        },
-      );
+      throw classifyApiError(streamTimeoutError(isFirstToken ? "first-token" : "idle", idleSec), {
+        operation: "stream",
+        model: requestBody.model,
+      });
     }
     if (error instanceof Error && error.name === "AbortError") {
       throw error;

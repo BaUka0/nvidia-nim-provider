@@ -1,5 +1,4 @@
 import packageJson from "../../package.json";
-import { ConfigManager } from "./config";
 export { DEFAULT_MAX_OUTPUT_TOKENS } from "./token-defaults";
 
 export const PROVIDER_VENDOR = "nvidia-nim";
@@ -22,26 +21,6 @@ export const SAVE_SESSION_LOGS_COMMAND_ID = "nvidia-nim.saveSessionLogs";
 
 export const BASE_URL = "https://integrate.api.nvidia.com/v1";
 export const EXTENSION_VERSION: string = packageJson.version;
-
-/**
- * Calculate a dynamic safety margin that scales with context window size.
- * Small windows get a fixed 4096-token margin; large windows (≥256K) get
- * safetyMarginPercent (default 1%) of the window to account for estimation
- * variance and hidden prompt content.
- */
-export function calculateSafetyMargin(contextWindow: number, customPercent?: number): number {
-  const percent =
-    customPercent !== undefined
-      ? customPercent
-      : ConfigManager.getContextConfig().safetyMarginPercent;
-  if (contextWindow >= 256_000) {
-    return Math.max(4096, Math.ceil(contextWindow * (percent / 100)));
-  }
-  return 4096;
-}
-
-/** Legacy fixed safety margin kept for backward-compatible call sites. */
-export const CONTEXT_WINDOW_SAFETY_MARGIN = 4096;
 
 /**
  * Total HTTP connection-attempt budget shared by every stream of a single
@@ -95,9 +74,6 @@ export const MAX_RETRY_DELAY_MS = 30000;
 
 /** Base retry delay in milliseconds */
 export const BASE_RETRY_DELAY_MS = 1000;
-
-/** Maximum time (ms) between stream chunks before timeout */
-export const STREAM_IDLE_TIMEOUT_MS = 120000;
 
 /**
  * Bounds for the adaptive stream idle timeout. These match the declared

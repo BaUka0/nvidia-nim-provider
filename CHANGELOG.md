@@ -6,11 +6,14 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ### Fixed
 
+- **NVIDIA NIM: Save Last Turn Report now saves the last turn report.** Both save commands previously produced the same session-log file. The turn-report command now writes its own report file, and each command explains when there is nothing to save yet.
 - **Context overflow now retries with a full remaining budget.** After history is compacted, empty-stream and invalid-tool recovery still run, and the same-turn loop breaker still applies even if auto-continue is off.
 - **A failed overflow compaction still tells you to start a new chat.** The error is no longer a raw server 400 with no recovery hint.
 
 ### Changed
 
+- **Settings you change now take effect cleanly on your next message.** The extension takes one snapshot of your settings per request, so editing a setting while a response is streaming no longer changes how that in-flight reply is assembled or retried.
+- **Recovery after history compaction is more consistent.** The follow-up attempt after context is compacted now uses the same retry policy as a fresh request, with one predictable recovery budget shared by retries, compaction, and failover hops.
 - **Tool-enabled MiniMax (and similar models) now get the same visible-reply hygiene as the rest of the catalog.** They are instructed not to emit XML section wrappers or Copilot content-ref links.
 - **Context overflow retry now follows the same recovery path as a normal turn.** After the history is compacted, the reply can still recover from an empty stream or a bad tool call, and the Copilot token widget is updated.
 - **Streamlined turn execution and history compaction.** Improved reliability during long conversations: history compaction before a turn and after a context overflow share the exact same budgeting formula and compaction engine.

@@ -1,21 +1,15 @@
 import * as vscode from "vscode";
-import { fetchModels, fetchModelsOrThrow } from "../api/client";
 import {
   MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY,
   PROVIDER_DISPLAY_NAME,
   SECRET_STORAGE_KEY,
 } from "../shared/constants";
-import { normalizeNvidiaModels } from "./catalog";
 import { debugLog } from "../shared/logging";
 import { NimChatModelProvider } from "../provider/chat-provider";
 import { StatusBarManager } from "../shared/status-bar";
-import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver";
-import {
-  reportMissingCuratedModels,
-  resetModelCacheOperationQueue,
-  runSerializedModelCacheOperation,
-  writeModelCacheAtomically,
-} from "./cache";
+import { NvidiaApiKeyResolver } from "../api/key-resolver";
+import { fetchCuratedModels } from "./fetch-curated";
+import { resetModelCacheOperationQueue, runSerializedModelCacheOperation } from "./cache";
 
 export async function refreshModelsFromApi(
   context: vscode.ExtensionContext,
@@ -48,27 +42,21 @@ export async function refreshModelsFromApi(
 
     statusBar?.showRefreshing();
     try {
-      const fetchModelsRequest =
-        typeof fetchModelsOrThrow === "function" ? fetchModelsOrThrow : fetchModels;
-      const rawModels = await fetchModelsRequest(apiKey, undefined, ua);
-      if (Array.isArray(rawModels)) {
-        reportMissingCuratedModels(rawModels);
-        const normalizedModels = normalizeNvidiaModels(rawModels);
-        await writeModelCacheAtomically(
-          context.globalState,
-          rawModels,
-          normalizedModels,
-          getApiKeyFingerprint(apiKey),
-        );
+      const fetched = await fetchCuratedModels({
+        apiKey,
+        userAgent: ua,
+        globalState: context.globalState,
+      });
+      if (fetched) {
         provider?.fireModelInfoChanged({ invalidateModelCache: false });
-        statusBar?.showOk(normalizedModels.length);
+        statusBar?.showOk(fetched.normalizedModels.length);
         debugLog(
           "refreshModels",
-          `Refreshed ${normalizedModels.length} models from ${PROVIDER_DISPLAY_NAME} API.`,
+          `Refreshed ${fetched.normalizedModels.length} models from ${PROVIDER_DISPLAY_NAME} API.`,
         );
         if (options.showMessages) {
           vscode.window.showInformationMessage(
-            `Refreshed ${normalizedModels.length} ${PROVIDER_DISPLAY_NAME} models.`,
+            `Refreshed ${fetched.normalizedModels.length} ${PROVIDER_DISPLAY_NAME} models.`,
           );
         }
         return;

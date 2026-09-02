@@ -929,11 +929,16 @@ describe("activate", () => {
 
     const saveReport = registeredCommands.get("nvidia-nim.saveSessionLogs");
     expect(saveReport).toBeDefined();
-    expect(registeredCommands.get("nvidia-nim.saveLastTurnReport")).toBe(saveReport);
+    expect(registeredCommands.get("nvidia-nim.saveLastTurnReport")).toBeDefined();
     await saveReport?.();
+    const saveTurnReport = registeredCommands.get("nvidia-nim.saveLastTurnReport");
+    await saveTurnReport?.();
 
     expect(mockShowWarningMessage).toHaveBeenCalledWith(
       "NVIDIA NIM has no session logs yet. Send a chat message first, then run this command again.",
+    );
+    expect(mockShowWarningMessage).toHaveBeenCalledWith(
+      "NVIDIA NIM has no turn reports yet. Send a chat message first, then run this command again.",
     );
     expect(fs.writeFile).not.toHaveBeenCalled();
   });
@@ -969,8 +974,8 @@ describe("activate", () => {
     const { activate } = await import("../src/extension");
     activate(context as never);
 
-    const saveReport = registeredCommands.get("nvidia-nim.saveLastTurnReport");
-    await saveReport?.();
+    const saveLogs = registeredCommands.get("nvidia-nim.saveSessionLogs");
+    await saveLogs?.();
 
     expect(fs.mkdir).toHaveBeenCalledWith(path.join(os.homedir(), "Downloads"), {
       recursive: true,
@@ -990,6 +995,51 @@ describe("activate", () => {
       expect.objectContaining({
         fsPath: expect.stringMatching(/nvidia-nim-session-\d{8}-\d{6}\.json$/),
       }),
+    );
+  });
+
+  it("saves the last turn report as its own command payload", async () => {
+    const secrets = {
+      get: jest.fn(async () => undefined),
+      store: jest.fn(),
+      delete: jest.fn(),
+      onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+    };
+    const globalState = {
+      get: jest.fn((key: string, fallback?: unknown) =>
+        key === "nvidia-nim.debug" ? false : fallback,
+      ),
+      update: jest.fn(async () => undefined),
+    };
+    const context = {
+      secrets,
+      globalState,
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const { recordTurnReport, resetTurnReportsForTests } =
+      await import("../src/shared/turn-report");
+    const { resetSessionLogsForTests } = await import("../src/shared/logging");
+    resetTurnReportsForTests();
+    resetSessionLogsForTests();
+    recordTurnReport({
+      outcome: "ok",
+      modelId: "nvidia/nemotron-3-super-120b-a12b",
+      lastVisibleText: "hello",
+      recordedAt: "2026-08-29T12:00:00.000Z",
+    });
+    mockShowInformationMessage.mockResolvedValue(undefined);
+
+    const { activate } = await import("../src/extension");
+    activate(context as never);
+
+    const saveTurnReport = registeredCommands.get("nvidia-nim.saveLastTurnReport");
+    await saveTurnReport?.();
+
+    expect(fs.writeFile).toHaveBeenCalledWith(
+      expect.stringMatching(/nvidia-nim-turn-report-\d{8}-\d{6}\.json$/),
+      expect.stringContaining("nvidia/nemotron-3-super-120b-a12b"),
+      "utf8",
     );
   });
 

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { FALLBACK_MODEL_ID, FALLBACK_VISION_MODEL_ID } from "../src/models/catalog";
 import {
   ConfigManager,
   DEFAULT_CONTEXT_CONFIG,
@@ -34,8 +35,8 @@ describe("ConfigManager", () => {
       const config = ConfigManager.getFallbackConfig();
       expect(config).toEqual(DEFAULT_FALLBACK_CONFIG);
       expect(config.enabled).toBe(true);
-      expect(config.model).toBe("nvidia/nemotron-3-super-120b-a12b");
-      expect(config.visionModel).toBe("meta/muse-glimmer-30b");
+      expect(config.model).toBe(FALLBACK_MODEL_ID);
+      expect(config.visionModel).toBe(FALLBACK_VISION_MODEL_ID);
       expect(config.onRateLimit).toBe(true);
       expect(config.onModelUnavailable).toBe(true);
       expect(config.onEmptyStream).toBe(true);

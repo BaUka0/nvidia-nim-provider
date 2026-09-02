@@ -6,44 +6,27 @@ export {
 } from "./invalid-call-messages";
 
 export {
-  ToolSchemaType,
-  ToolPropertySchema,
   ToolSchema,
   getToolSchemaMap,
-  normalizeProperties,
-  normalizePropertySchema,
-  normalizeScalar,
-  normalizeValue,
   normalizeArguments,
-  valuesEqual,
-  isSchemaValueValid,
-  validateToolArguments,
   hasRequiredToolArguments,
   isToolCallInput,
 } from "./tool-schema";
 
 export { ChatRequestContext, extractChatRequestContext } from "./request-context";
 
-export { repairToolArguments, fillMissingAuxiliaryBooleans } from "./argument-repair";
+export { repairToolArguments } from "./argument-repair";
 
 export {
   buildToolCallCanonicalKey,
   isDuplicateSuppressionEnabled,
-  sortObjectKeys,
   getCompletedToolCallKeys,
 } from "./canonical-key";
 
 export {
-  findTrailingTokenPrefixStart,
-  findTrailingTokenPrefixStartAny,
-  unwrapJsonCodeFence,
-  FORBIDDEN_TOOL_IDENTIFIERS,
   isValidToolIdentifier,
-  parseEmbeddedToolParameterValue,
   stripKnownControlText,
   extractStandaloneXmlParameters,
-  findControlTextTerminatorIndex,
-  parseDeepSeekTextEmbeddedToolCallContent,
   parseTextEmbeddedToolCalls,
   getIncompleteTextToolCallName,
 } from "./embedded-parser";

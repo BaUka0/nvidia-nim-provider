@@ -16,7 +16,7 @@ jest.mock("vscode", () => ({
 describe("emitThinkingPart", () => {
   it("falls back to text when ThinkingPart is missing and showInChat is enabled", () => {
     const report = jest.fn();
-    const result = emitThinkingPart({ report }, "thought");
+    const result = emitThinkingPart({ report }, "thought", true);
     expect(result).toEqual({ didReport: true, emittedVisible: true });
     expect(report).toHaveBeenCalledWith(expect.objectContaining({ value: " thought" }));
   });

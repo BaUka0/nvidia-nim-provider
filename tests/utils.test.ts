@@ -4,7 +4,6 @@ import {
   convertMessages,
   convertTools,
   estimateMessagesTokens,
-  estimateMessagesTokensByCategory,
   estimateToolsTokens,
   estimateTokens,
 } from "../src/messages/converter";
@@ -551,119 +550,6 @@ describe("filterThinkTagsFromChunk think-block capture", () => {
       { type: "thinking", text: "logic" },
       { type: "text", text: "result" },
     ]);
-  });
-});
-
-describe("estimateMessagesTokensByCategory", () => {
-  it("classifies text parts by role into system, user, assistant", () => {
-    const messages = [
-      {
-        role: SYSTEM_ROLE,
-        content: [new vscode.LanguageModelTextPart("Be helpful")],
-      },
-      {
-        role: vscode.LanguageModelChatMessageRole.User,
-        content: [new vscode.LanguageModelTextPart("Hello there")],
-      },
-      {
-        role: vscode.LanguageModelChatMessageRole.Assistant,
-        content: [new vscode.LanguageModelTextPart("Hi! How can I help?")],
-      },
-    ];
-    const result = estimateMessagesTokensByCategory(makeChatMessages(...messages));
-    expect(result.system).toBe(estimateTokens("Be helpful"));
-    expect(result.user).toBe(estimateTokens("Hello there"));
-    expect(result.assistant).toBe(estimateTokens("Hi! How can I help?"));
-    expect(result.toolCalls).toBe(0);
-    expect(result.toolResults).toBe(0);
-    expect(result.images).toBe(0);
-  });
-
-  it("classifies unknown roles (e.g. System=3) as system via fallback", () => {
-    const messages = [
-      {
-        role: 3,
-        content: [new vscode.LanguageModelTextPart("System instructions")],
-      },
-    ];
-    const result = estimateMessagesTokensByCategory(makeChatMessages(...messages));
-    expect(result.system).toBe(estimateTokens("System instructions"));
-    expect(result.user).toBe(0);
-    expect(result.assistant).toBe(0);
-  });
-
-  it("counts tool call parts in toolCalls category", () => {
-    const args = { filePath: "/tmp/x.md", startLine: 1, endLine: 20 };
-    const messages = [
-      {
-        role: vscode.LanguageModelChatMessageRole.Assistant,
-        content: [new vscode.LanguageModelToolCallPart("call_1", "read_file", args)],
-      },
-    ];
-    const result = estimateMessagesTokensByCategory(makeChatMessages(...messages));
-    expect(result.toolCalls).toBe(
-      estimateTokens("read_file") + estimateTokens(JSON.stringify(args)),
-    );
-    expect(result.assistant).toBe(0);
-  });
-
-  it("counts tool result parts in toolResults category", () => {
-    const longContent = "a".repeat(500);
-    const messages = [
-      {
-        role: vscode.LanguageModelChatMessageRole.User,
-        content: [
-          new vscode.LanguageModelToolResultPart("call_1", [
-            new vscode.LanguageModelTextPart(longContent),
-          ]),
-        ],
-      },
-    ];
-    const result = estimateMessagesTokensByCategory(makeChatMessages(...messages));
-    expect(result.toolResults).toBe(estimateTokens(longContent));
-    expect(result.user).toBe(0);
-  });
-
-  it("counts image data parts in images category", () => {
-    const bytes = new Uint8Array(3000);
-    const messages = [
-      {
-        role: vscode.LanguageModelChatMessageRole.User,
-        content: [new vscode.LanguageModelDataPart(bytes, "image/png")],
-      },
-    ];
-    const result = estimateMessagesTokensByCategory(makeChatMessages(...messages));
-    expect(result.images).toBe(Math.max(4, Math.ceil(3000 / 750)));
-    expect(result.user).toBe(0);
-  });
-
-  it("handles mixed content in a single message", () => {
-    const text = "Read this file";
-    const args = { filePath: "/tmp/x.md" };
-    const toolResult = "File contents here with substantial content";
-    const messages = [
-      {
-        role: vscode.LanguageModelChatMessageRole.Assistant,
-        content: [
-          new vscode.LanguageModelTextPart(text),
-          new vscode.LanguageModelToolCallPart("call_1", "read_file", args),
-        ],
-      },
-      {
-        role: vscode.LanguageModelChatMessageRole.User,
-        content: [
-          new vscode.LanguageModelToolResultPart("call_0", [
-            new vscode.LanguageModelTextPart(toolResult),
-          ]),
-        ],
-      },
-    ];
-    const result = estimateMessagesTokensByCategory(makeChatMessages(...messages));
-    expect(result.assistant).toBe(estimateTokens(text));
-    expect(result.toolCalls).toBe(
-      estimateTokens("read_file") + estimateTokens(JSON.stringify(args)),
-    );
-    expect(result.toolResults).toBe(estimateTokens(toolResult));
   });
 });
 

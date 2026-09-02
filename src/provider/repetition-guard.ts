@@ -1,5 +1,3 @@
-import * as vscode from "vscode";
-
 /**
  * Detects degenerate "Let me..." style loops while an answer is streaming.
  * Lines are normalized (NFKC, lowercased, punctuation collapsed) so cosmetic
@@ -11,7 +9,6 @@ import * as vscode from "vscode";
  * accented) are caught too.
  */
 import { detectPhraseCycle, normalizeForCycle } from "../shared/cycle-detection";
-import { buildToolCallCanonicalKey, tryParseJsonValue } from "../tools/parser";
 
 export interface RepetitionGuardOptions {
   readonly maxRepeatedLines: number;
@@ -32,8 +29,6 @@ const MAX_TRACKED_LINES = 4096;
 export function normalizeLineForRepetition(line: string): string {
   return normalizeForCycle(line).slice(0, MAX_KEY_LENGTH);
 }
-
-export { detectCycleHint, detectPhraseCycle } from "../shared/cycle-detection";
 
 /**
  * A markdown fence delimiter is a line that begins with ``` or ~~~ after
@@ -161,159 +156,5 @@ export class RepetitionGuard {
     }
     this.trippedLineValue = gram;
     return true;
-  }
-
-  /**
-   * Extract the first non-empty text line from an assistant message. Content
-   * may be an array of parts ({value}/{text}) or a plain string.
-   */
-  private static extractAssistantFirstLine(content: unknown): string | undefined {
-    let fullText = "";
-    if (typeof content === "string") {
-      fullText = content;
-    } else if (Array.isArray(content)) {
-      const parts: string[] = [];
-      for (const part of content) {
-        if (part == null || typeof part !== "object") continue;
-        const p = part as Record<string, unknown>;
-        if (typeof p.value === "string") {
-          parts.push(p.value);
-        } else if (typeof p.text === "string") {
-          parts.push(p.text);
-        }
-      }
-      fullText = parts.join("\n");
-    }
-    if (!fullText) {
-      return undefined;
-    }
-    return fullText.split(/\r?\n/).find((l) => l.trim().length > 0) ?? fullText;
-  }
-
-  private static isAssistantRole(role: unknown): boolean {
-    return (
-      role === vscode.LanguageModelChatMessageRole.Assistant ||
-      role === "assistant" ||
-      (typeof role === "string" && role.toLowerCase() === "assistant")
-    );
-  }
-
-  /**
-   * Detects inter-turn preamble loops by inspecting recent assistant messages.
-   * Returns the normalized repeated preamble if a loop is detected, otherwise
-   * undefined. Looks at the last `windowSize` assistant messages and checks
-   * whether the same normalized first line appears `minRepeats` times
-   * consecutively from the end, or `threshold` times within the window.
-   */
-  static detectHistoryLoop(
-    messages: readonly { role: unknown; content: unknown }[],
-    options: { windowSize?: number; minRepeats?: number; threshold?: number } = {},
-  ): string | undefined {
-    const windowSize = options.windowSize ?? 5;
-    const minRepeats = options.minRepeats ?? 3;
-    const threshold = options.threshold ?? 3;
-
-    const assistantFirstLines: string[] = [];
-    for (const msg of messages) {
-      if (!RepetitionGuard.isAssistantRole(msg.role)) {
-        continue;
-      }
-      const firstLine = RepetitionGuard.extractAssistantFirstLine(msg.content);
-      if (firstLine !== undefined) {
-        assistantFirstLines.push(firstLine);
-      }
-    }
-
-    if (assistantFirstLines.length < minRepeats) {
-      return undefined;
-    }
-    const recent = assistantFirstLines.slice(-windowSize);
-    const lastNormalized = normalizeLineForRepetition(recent[recent.length - 1] ?? "");
-    if (lastNormalized.length < MIN_NORMALIZED_LINE_LENGTH) {
-      return undefined;
-    }
-
-    let consecutive = 1;
-    for (let i = recent.length - 2; i >= 0; i -= 1) {
-      if (normalizeLineForRepetition(recent[i]) === lastNormalized) {
-        consecutive += 1;
-      } else {
-        break;
-      }
-      if (consecutive >= minRepeats) break;
-    }
-    if (consecutive >= minRepeats) {
-      return lastNormalized;
-    }
-
-    let total = 0;
-    for (const t of recent) {
-      if (normalizeLineForRepetition(t) === lastNormalized) total += 1;
-    }
-    if (total >= threshold && total >= minRepeats) {
-      return lastNormalized;
-    }
-
-    return undefined;
-  }
-
-  /**
-   * Detects repeated identical tool calls in recent assistant history. Returns
-   * a canonical (key-order-insensitive) tool-call signature when the same call
-   * is emitted `minRepeats` times consecutively, otherwise undefined.
-   */
-  static detectToolCallHistoryLoop(
-    messages: readonly { role: unknown; content: unknown }[],
-    options: { windowSize?: number; minRepeats?: number } = {},
-  ): string | undefined {
-    const windowSize = options.windowSize ?? 6;
-    const minRepeats = options.minRepeats ?? 3;
-
-    const recentToolKeys: string[] = [];
-    for (const msg of messages) {
-      if (!RepetitionGuard.isAssistantRole(msg.role)) {
-        continue;
-      }
-      const content = msg.content;
-      if (!Array.isArray(content)) {
-        continue;
-      }
-      for (const part of content) {
-        if (part == null || typeof part !== "object") {
-          continue;
-        }
-        const p = part as Record<string, unknown>;
-        const name = typeof p.name === "string" ? p.name : undefined;
-        if (!name) {
-          continue;
-        }
-        const rawInput = p.input ?? p.arguments;
-        const parsedInput =
-          typeof rawInput === "string" ? tryParseJsonValue(rawInput) : (rawInput ?? {});
-        recentToolKeys.push(buildToolCallCanonicalKey(name, parsedInput));
-      }
-    }
-
-    if (recentToolKeys.length < minRepeats) {
-      return undefined;
-    }
-    const recent = recentToolKeys.slice(-windowSize);
-    const lastKey = recent[recent.length - 1];
-    if (!lastKey) {
-      return undefined;
-    }
-    let consecutive = 1;
-    for (let i = recent.length - 2; i >= 0; i -= 1) {
-      if (recent[i] === lastKey) {
-        consecutive += 1;
-      } else {
-        break;
-      }
-      if (consecutive >= minRepeats) break;
-    }
-    if (consecutive >= minRepeats) {
-      return lastKey;
-    }
-    return undefined;
   }
 }

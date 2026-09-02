@@ -1,6 +1,7 @@
 import { chatCompletion } from "../api/client";
 import { debugLog } from "../shared/logging";
 import { NimChatMessage } from "../types";
+import { findToolCallOwnerIndex } from "../messages/tool-call-pairing";
 import { FALLBACK_MODEL_ID } from "./catalog";
 import {
   estimateNimMessagesTokens,
@@ -206,11 +207,7 @@ export function splitMessagesForSummarization(
       if (message.role !== "tool" || !message.tool_call_id) {
         continue;
       }
-      const ownerIndex = nonSystemMessages.findIndex(
-        (candidate) =>
-          candidate.role === "assistant" &&
-          candidate.tool_calls?.some((call) => call.id === message.tool_call_id),
-      );
+      const ownerIndex = findToolCallOwnerIndex(nonSystemMessages, message.tool_call_id);
       if (ownerIndex >= 0 && ownerIndex < splitIndex) {
         splitIndex = ownerIndex;
         pairAdjusted = true;
