@@ -4,10 +4,17 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Fixed
+
+- **Context overflow now retries with a full remaining budget.** After history is compacted, empty-stream and invalid-tool recovery still run, and the same-turn loop breaker still applies even if auto-continue is off.
+- **A failed overflow compaction still tells you to start a new chat.** The error is no longer a raw server 400 with no recovery hint.
+
 ### Changed
 
 - **Tool-enabled MiniMax (and similar models) now get the same visible-reply hygiene as the rest of the catalog.** They are instructed not to emit XML section wrappers or Copilot content-ref links.
 - **Context overflow retry now follows the same recovery path as a normal turn.** After the history is compacted, the reply can still recover from an empty stream or a bad tool call, and the Copilot token widget is updated.
+- **Streamlined turn execution and history compaction.** Improved reliability during long conversations: history compaction before a turn and after a context overflow share the exact same budgeting formula and compaction engine.
+- **Enhanced tool calling and response handling.** Tool argument repair and validation have been restructured into dedicated components for cleaner error handling and duplicate prevention across multi-turn sessions.
 
 ## [0.9.7] - 2026-09-02
 

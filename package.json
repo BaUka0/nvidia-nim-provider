@@ -145,14 +145,14 @@
         "nvidia-nim.fallback.model": {
           "type": "string",
           "enum": [
-            "nvidia/nemotron-3-super-120b-a12b",
-            "nvidia/nemotron-3.5-lightning-30b-a3b",
             "deepseek-ai/deepseek-v4-flash-0731",
             "deepseek-ai/deepseek-v4-pro-0813",
-            "moonshotai/kimi-k3",
+            "meta/muse-glimmer-30b",
             "minimaxai/minimax-m3",
+            "moonshotai/kimi-k3",
+            "nvidia/nemotron-3-super-120b-a12b",
             "nvidia/nemotron-3-ultra-550b-a55b",
-            "meta/muse-glimmer-30b"
+            "nvidia/nemotron-3.5-lightning-30b-a3b"
           ],
           "default": "nvidia/nemotron-3-super-120b-a12b",
           "description": "Model to switch to when the primary model encounters a fatal error or rate limit."
@@ -172,14 +172,14 @@
           "items": {
             "type": "string",
             "enum": [
-              "nvidia/nemotron-3-super-120b-a12b",
-              "nvidia/nemotron-3.5-lightning-30b-a3b",
               "deepseek-ai/deepseek-v4-flash-0731",
               "deepseek-ai/deepseek-v4-pro-0813",
-              "moonshotai/kimi-k3",
+              "meta/muse-glimmer-30b",
               "minimaxai/minimax-m3",
+              "moonshotai/kimi-k3",
+              "nvidia/nemotron-3-super-120b-a12b",
               "nvidia/nemotron-3-ultra-550b-a55b",
-              "meta/muse-glimmer-30b"
+              "nvidia/nemotron-3.5-lightning-30b-a3b"
             ]
           },
           "default": [],
@@ -358,14 +358,14 @@
         "nvidia-nim.context.summarizationModel": {
           "type": "string",
           "enum": [
-            "nvidia/nemotron-3-super-120b-a12b",
-            "nvidia/nemotron-3.5-lightning-30b-a3b",
             "deepseek-ai/deepseek-v4-flash-0731",
             "deepseek-ai/deepseek-v4-pro-0813",
-            "moonshotai/kimi-k3",
+            "meta/muse-glimmer-30b",
             "minimaxai/minimax-m3",
+            "moonshotai/kimi-k3",
+            "nvidia/nemotron-3-super-120b-a12b",
             "nvidia/nemotron-3-ultra-550b-a55b",
-            "meta/muse-glimmer-30b"
+            "nvidia/nemotron-3.5-lightning-30b-a3b"
           ],
           "default": "nvidia/nemotron-3-super-120b-a12b",
           "description": "Dedicated lightweight model used for compacting and summarizing conversation history."
@@ -424,6 +424,8 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
+    "sync:manifest": "node scripts/sync-manifest.mjs",
+    "sync:manifest:check": "node scripts/sync-manifest.mjs --check",
     "precompile": "node scripts/clean.mjs",
     "compile": "tsc -p ./",
     "postcompile": "node scripts/copy-runtime-dependencies.mjs",

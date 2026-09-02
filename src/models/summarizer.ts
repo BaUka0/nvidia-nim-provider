@@ -8,6 +8,7 @@ import {
   truncatePreservingSurrogates,
 } from "../messages/converter";
 import { DEFAULT_NETWORK_CONFIG } from "../shared/config";
+import { COMPACTION_RECENT_FRACTION } from "../shared/constants";
 import { FetchAttemptBudget, httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
 
 export class SummarizationError extends Error {
@@ -272,5 +273,74 @@ export async function compactConversationHistory(
     messages: compacted,
     tokenCount: estimateNimMessagesTokens(compacted) + extraTokenCount,
     compacted: true,
+  };
+}
+
+export interface CompactAndFitOptions {
+  messages: NimChatMessage[];
+  effectiveMaxInputTokens: number;
+  toolDefinitionTokens?: number;
+  allowTruncation?: boolean;
+  /** Truncate to the recent-token budget when summarization did not shrink the payload. */
+  forceShrink?: boolean;
+  summarizationOptions: {
+    apiKey: string;
+    userAgent: string;
+    signal?: AbortSignal;
+    summarizationModel?: string;
+    fetchAttemptBudget?: FetchAttemptBudget;
+    maxHttpRetries?: number;
+  };
+}
+
+export interface CompactAndFitResult {
+  messages: NimChatMessage[];
+  tokenCount: number;
+  compacted: boolean;
+  truncated: boolean;
+  fits: boolean;
+}
+
+/** Shared compaction for preflight, hard-limit, and overflow retry. Recent-token budget subtracts tool tokens. */
+export async function compactAndFit(options: CompactAndFitOptions): Promise<CompactAndFitResult> {
+  const toolDefinitionTokens = options.toolDefinitionTokens ?? 0;
+  const messageTokenBudget = Math.max(1, options.effectiveMaxInputTokens - toolDefinitionTokens);
+  const recentTokenBudget = Math.floor(messageTokenBudget * COMPACTION_RECENT_FRACTION);
+
+  const compactedResult = await compactConversationHistory(options.messages, {
+    maxRecentTokens: recentTokenBudget,
+    apiKey: options.summarizationOptions.apiKey,
+    userAgent: options.summarizationOptions.userAgent,
+    signal: options.summarizationOptions.signal,
+    summarizationModel: options.summarizationOptions.summarizationModel,
+    extraTokenCount: toolDefinitionTokens,
+    fetchAttemptBudget: options.summarizationOptions.fetchAttemptBudget,
+    maxHttpRetries: options.summarizationOptions.maxHttpRetries,
+  });
+
+  let currentMessages = compactedResult.messages;
+  let currentTokenCount = compactedResult.tokenCount;
+  let truncated = false;
+
+  if (currentTokenCount > options.effectiveMaxInputTokens && options.allowTruncation) {
+    currentMessages = truncateMessagesForContext(currentMessages, messageTokenBudget);
+    currentTokenCount = estimateNimMessagesTokens(currentMessages) + toolDefinitionTokens;
+    truncated = true;
+  }
+
+  if (options.forceShrink && !compactedResult.compacted && !truncated) {
+    currentMessages = truncateMessagesForContext(currentMessages, Math.max(1, recentTokenBudget));
+    currentTokenCount = estimateNimMessagesTokens(currentMessages) + toolDefinitionTokens;
+    truncated = true;
+  }
+
+  const fits = currentTokenCount <= options.effectiveMaxInputTokens;
+
+  return {
+    messages: currentMessages,
+    tokenCount: currentTokenCount,
+    compacted: compactedResult.compacted,
+    truncated,
+    fits,
   };
 }

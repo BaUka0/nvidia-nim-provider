@@ -1,7 +1,11 @@
 import { NimChatMessage } from "../src/types";
 import { chatCompletion } from "../src/api/client";
 import { estimateNimMessagesTokens, truncateMessagesForContext } from "../src/messages/converter";
-import { splitMessagesForSummarization, summarizeOldMessages } from "../src/models/summarizer";
+import {
+  compactAndFit,
+  splitMessagesForSummarization,
+  summarizeOldMessages,
+} from "../src/models/summarizer";
 
 jest.mock("../src/api/client", () => ({
   chatCompletion: jest.fn(),
@@ -244,5 +248,108 @@ describe("summarizeOldMessages", () => {
 
     const request = completionMock.mock.calls.at(-1)?.[1];
     expect(request.model).toBe("meta/muse-glimmer-30b");
+  });
+});
+
+describe("compactAndFit", () => {
+  it("fits without truncation when summarization reduces token count below budget", async () => {
+    (chatCompletion as jest.Mock).mockResolvedValueOnce("Short summary");
+    const messages: NimChatMessage[] = [
+      { role: "system", content: "You are an assistant" },
+      { role: "user", content: "Old question that is relatively verbose" },
+      { role: "assistant", content: "Old answer that is also somewhat wordy" },
+      { role: "user", content: "Recent question" },
+    ];
+
+    const result = await compactAndFit({
+      messages,
+      effectiveMaxInputTokens: 500,
+      toolDefinitionTokens: 50,
+      allowTruncation: false,
+      summarizationOptions: {
+        apiKey: "test-key",
+        userAgent: "test-agent",
+      },
+    });
+
+    expect(result.compacted).toBe(true);
+    expect(result.truncated).toBe(false);
+    expect(result.fits).toBe(true);
+    expect(
+      result.messages.some(
+        (m) => typeof m.content === "string" && m.content.includes("Short summary"),
+      ),
+    ).toBe(true);
+  });
+
+  it("applies truncation fallback when allowTruncation is true and messages exceed budget", async () => {
+    (chatCompletion as jest.Mock).mockResolvedValueOnce("Summary of long messages");
+    const messages: NimChatMessage[] = [
+      { role: "system", content: "System instructions" },
+      { role: "user", content: "Old question" },
+      { role: "assistant", content: "Old answer" },
+      { role: "user", content: "Recent question with more detail" },
+    ];
+
+    const result = await compactAndFit({
+      messages,
+      effectiveMaxInputTokens: 5,
+      toolDefinitionTokens: 0,
+      allowTruncation: true,
+      summarizationOptions: {
+        apiKey: "test-key",
+        userAgent: "test-agent",
+      },
+    });
+
+    expect(result.compacted).toBe(true);
+    expect(result.truncated).toBe(true);
+  });
+
+  it("does not truncate when allowTruncation is false", async () => {
+    (chatCompletion as jest.Mock).mockResolvedValueOnce("Summary text");
+    const messages: NimChatMessage[] = [
+      { role: "system", content: "System instructions" },
+      { role: "user", content: "Old question" },
+      { role: "assistant", content: "Old answer" },
+      { role: "user", content: "Recent question with more detail" },
+    ];
+
+    const result = await compactAndFit({
+      messages,
+      effectiveMaxInputTokens: 5,
+      toolDefinitionTokens: 0,
+      allowTruncation: false,
+      summarizationOptions: {
+        apiKey: "test-key",
+        userAgent: "test-agent",
+      },
+    });
+
+    expect(result.truncated).toBe(false);
+    expect(result.fits).toBe(false);
+  });
+
+  it("forceShrink truncates even when the estimator already reports a fit", async () => {
+    const messages: NimChatMessage[] = [
+      { role: "system", content: "You are an assistant" },
+      { role: "user", content: "only one recent turn so summarization cannot split history" },
+    ];
+
+    const result = await compactAndFit({
+      messages,
+      effectiveMaxInputTokens: 500,
+      toolDefinitionTokens: 0,
+      allowTruncation: true,
+      forceShrink: true,
+      summarizationOptions: {
+        apiKey: "test-key",
+        userAgent: "test-agent",
+      },
+    });
+
+    expect(result.compacted).toBe(false);
+    expect(result.truncated).toBe(true);
+    expect(result.fits).toBe(true);
   });
 });

@@ -1,10 +1,6 @@
 import * as vscode from "vscode";
 import { ConfigManager, NimConfig } from "../shared/config";
-import {
-  calculateSafetyMargin,
-  COMPACTION_RECENT_FRACTION,
-  DEFAULT_MAX_OUTPUT_TOKENS,
-} from "../shared/constants";
+import { calculateSafetyMargin, DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 import { FetchAttemptBudget } from "../shared/fetch-attempt-budget";
 import {
   convertMessages,
@@ -12,10 +8,9 @@ import {
   estimateMessagesTokens,
   estimateNimMessagesTokens,
   estimateToolsTokens,
-  truncateMessagesForContext,
   LegacyPart,
 } from "../messages/converter";
-import { compactConversationHistory } from "../models/summarizer";
+import { compactAndFit } from "../models/summarizer";
 import { getModelAdapter } from "../models/adapters";
 import { createStructuredError } from "../api/errors";
 import { debugLog } from "../shared/logging";
@@ -221,32 +216,14 @@ export class NimRequestBuilder {
     const toolDefinitionTokens = toolConfig.tools ? estimateToolsTokens(toolConfig.tools) : 0;
     let apiTokenCount = estimateNimMessagesTokens(apiMessages);
     let payloadInputTokenCount = apiTokenCount + toolDefinitionTokens;
-    const messageTokenBudget = Math.max(1, effectiveMaxInputTokens - toolDefinitionTokens);
-    const recentTokenBudget = Math.floor(messageTokenBudget * COMPACTION_RECENT_FRACTION);
 
-    /**
-     * Summarise older turns and replace them with a compact summary message.
-     * Returns the new messages array and updated payloadInputTokenCount.
-     */
-    const compactMessages = async (
-      currentMessages: NimChatMessage[],
-      label: string,
-    ): Promise<{ messages: NimChatMessage[]; tokenCount: number }> => {
-      const compacted = await compactConversationHistory(currentMessages, {
-        maxRecentTokens: recentTokenBudget,
-        apiKey,
-        userAgent,
-        signal,
-        summarizationModel: config.context.summarizationModel,
-        extraTokenCount: toolDefinitionTokens,
-        fetchAttemptBudget,
-        maxHttpRetries: config.network.maxHttpRetries,
-      });
-      debugLog(
-        "contextCompression",
-        `${label}: ${compacted.tokenCount} tokens (was ${payloadInputTokenCount}).`,
-      );
-      return { messages: compacted.messages, tokenCount: compacted.tokenCount };
+    const summarizerOptions = {
+      apiKey,
+      userAgent,
+      signal,
+      summarizationModel: config.context.summarizationModel,
+      fetchAttemptBudget,
+      maxHttpRetries: config.network.maxHttpRetries,
     };
 
     // --- Preflight compaction: proactive compression before hard limit ---
@@ -261,9 +238,19 @@ export class NimRequestBuilder {
         "contextCompression",
         `Preflight: ${payloadInputTokenCount} tokens >= ${compactThreshold} threshold (${(PREFLIGHT_COMPACT_THRESHOLD * 100).toFixed(0)}%). Compacting proactively...`,
       );
-      const result = await compactMessages(apiMessages, "Preflight compaction");
+      const result = await compactAndFit({
+        messages: apiMessages,
+        effectiveMaxInputTokens,
+        toolDefinitionTokens,
+        allowTruncation: false,
+        summarizationOptions: summarizerOptions,
+      });
       apiMessages = result.messages;
       payloadInputTokenCount = result.tokenCount;
+      debugLog(
+        "contextCompression",
+        `Preflight compaction: ${result.tokenCount} tokens (was ${apiTokenCount + toolDefinitionTokens}).`,
+      );
     }
 
     // --- Hard limit: reactive compression when over budget ---
@@ -272,24 +259,25 @@ export class NimRequestBuilder {
         "contextCompression",
         `Prepared payload ${payloadInputTokenCount} tokens > ${effectiveMaxInputTokens} max. Compressing...`,
       );
-      const result = await compactMessages(apiMessages, "Hard-limit compaction");
+      const result = await compactAndFit({
+        messages: apiMessages,
+        effectiveMaxInputTokens,
+        toolDefinitionTokens,
+        allowTruncation: true,
+        summarizationOptions: summarizerOptions,
+      });
       apiMessages = result.messages;
       payloadInputTokenCount = result.tokenCount;
+      debugLog(
+        "contextCompression",
+        `Hard-limit compaction: ${result.tokenCount} tokens. Truncated: ${result.truncated}`,
+      );
 
-      if (payloadInputTokenCount > effectiveMaxInputTokens) {
-        apiMessages = truncateMessagesForContext(apiMessages, messageTokenBudget);
-        const finalMessageTokenCount = estimateNimMessagesTokens(apiMessages);
-        payloadInputTokenCount = finalMessageTokenCount + toolDefinitionTokens;
-        debugLog(
-          "contextCompression",
-          `After truncation fallback: ${payloadInputTokenCount} tokens.`,
+      if (!result.fits) {
+        throw createStructuredError(
+          "token_limit",
+          `Even after compression and truncation: ${payloadInputTokenCount} tokens, max: ${effectiveMaxInputTokens}`,
         );
-        if (payloadInputTokenCount > effectiveMaxInputTokens) {
-          throw createStructuredError(
-            "token_limit",
-            `Even after compression and truncation: ${payloadInputTokenCount} tokens, max: ${effectiveMaxInputTokens}`,
-          );
-        }
       }
     }
 

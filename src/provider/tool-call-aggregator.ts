@@ -17,7 +17,10 @@ import {
 } from "../tools/parser";
 import { debugLog } from "../shared/logging";
 import { MAX_TOOL_ARGUMENT_CHARS } from "../shared/constants";
-import { NATIVE_TOOL_CALL_ID_PREFIX } from "../shared/tool-call-ids";
+import {
+  NATIVE_TOOL_CALL_ID_PREFIX,
+  TEXT_EMBEDDED_TOOL_CALL_ID_PREFIX,
+} from "../shared/tool-call-ids";
 import { NimToolCall } from "../types";
 
 export interface ToolCallStreamAggregatorOptions {
@@ -89,6 +92,42 @@ export class ToolCallStreamAggregator {
 
   public getEmittedTextToolCallKeys(): Set<string> {
     return this.emittedTextToolCallKeys;
+  }
+
+  public tryEmitText(
+    name: string,
+    args: unknown,
+    idPrefix: string = TEXT_EMBEDDED_TOOL_CALL_ID_PREFIX,
+  ): boolean {
+    this.sawToolCall = true;
+    const schema = this.toolSchemas.get(name);
+    const repairedArgs = repairToolArguments(name, args, this.requestContext, schema);
+    const canonicalKey = buildToolCallCanonicalKey(name, repairedArgs);
+    if (isDuplicateSuppressionEnabled(name) && this.emittedTextToolCallKeys.has(canonicalKey)) {
+      this.onSkipToolCall(name, [], "duplicate");
+      debugLog("Skipped duplicate text tool call", { name });
+      return false;
+    }
+
+    if (isToolCallInput(repairedArgs) && hasRequiredToolArguments(repairedArgs, schema)) {
+      debugLog("xml_tool_fallback", { name });
+      const id = `${idPrefix}${randomUUID()}`;
+      this.onEmitToolCall(id, name, repairedArgs);
+      this.emittedToolCall = true;
+      this.emittedTextToolCallKeys.add(canonicalKey);
+      return true;
+    }
+
+    this.onSkipToolCall(name, schema?.required ?? []);
+    debugLog("Skipped invalid text tool call", { name, args });
+    return false;
+  }
+
+  public recordInvalidToolCall(name: string): void {
+    this.sawToolCall = true;
+    const schema = this.toolSchemas.get(name);
+    this.onSkipToolCall(name, schema?.required ?? []);
+    debugLog("Skipped invalid text tool call", { name });
   }
 
   public handleToolCalls(deltas: readonly NimToolCall[]): void {

@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import * as vscode from "vscode";
 import {
   CancellationToken,
@@ -14,16 +12,11 @@ import { ReasoningStreamRouter } from "../messages/reasoning-router";
 import { ModelAdapter } from "../models/adapters";
 import { emitThinkingPart } from "../shared/proposed-apis";
 import { MAX_EMBEDDED_TOOL_TEXT_CHARS } from "../shared/constants";
-import { TEXT_EMBEDDED_TOOL_CALL_ID_PREFIX } from "../shared/tool-call-ids";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { NimChatRequest } from "../types";
 import {
-  buildToolCallCanonicalKey,
   getIncompleteTextToolCallName,
-  hasRequiredToolArguments,
-  isDuplicateSuppressionEnabled,
   parseTextEmbeddedToolCalls,
-  repairToolArguments,
   SkippedToolCall,
 } from "../tools/parser";
 import { collectChoiceToolCalls } from "../tools/stream-tool-calls";
@@ -266,60 +259,12 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
 
       if (segment.type === "invalidToolCall") {
         sawToolCall = true;
-        const schema = getToolAggregator().getToolSchemas().get(segment.name);
-        skippedToolCalls.push({
-          name: segment.name,
-          required: schema?.required ?? [],
-        });
-        debugLog("Skipped invalid text tool call", { name: segment.name });
+        getToolAggregator().recordInvalidToolCall(segment.name);
         continue;
       }
 
-      const toolCall = segment.toolCall;
       sawToolCall = true;
-      const schema = getToolAggregator().getToolSchemas().get(toolCall.name);
-      const repairedArgs = repairToolArguments(
-        toolCall.name,
-        toolCall.args,
-        getToolAggregator().getRequestContext(),
-        schema,
-      );
-      const canonicalKey = buildToolCallCanonicalKey(toolCall.name, repairedArgs);
-      if (
-        isDuplicateSuppressionEnabled(toolCall.name) &&
-        getToolAggregator().getEmittedTextToolCallKeys().has(canonicalKey)
-      ) {
-        skippedToolCalls.push({
-          name: toolCall.name,
-          required: [],
-          reason: "duplicate",
-        });
-        debugLog("Skipped duplicate text tool call", { name: toolCall.name });
-        continue;
-      }
-
-      if (hasRequiredToolArguments(repairedArgs, schema)) {
-        debugLog("xml_tool_fallback", { name: toolCall.name });
-        flushPendingText();
-        reportPart(
-          new vscode.LanguageModelToolCallPart(
-            `${TEXT_EMBEDDED_TOOL_CALL_ID_PREFIX}${randomUUID()}`,
-            toolCall.name,
-            repairedArgs as Record<string, unknown>,
-          ),
-        );
-        emittedToolCall = true;
-        if (firstToolCallAtMs === undefined) {
-          firstToolCallAtMs = Date.now();
-        }
-        getToolAggregator().getEmittedTextToolCallKeys().add(canonicalKey);
-      } else {
-        skippedToolCalls.push({
-          name: toolCall.name,
-          required: schema?.required ?? [],
-        });
-        debugLog("Skipped invalid text tool call", toolCall);
-      }
+      getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args);
     }
   };
 
