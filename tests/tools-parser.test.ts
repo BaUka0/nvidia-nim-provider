@@ -413,6 +413,55 @@ describe("tool argument parsing and validation", () => {
     ]);
   });
 
+  it("does not reuse a completed slot for index-less native tool calls", () => {
+    const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+    const aggregator = new ToolCallStreamAggregator({
+      options: makeChatOptions({
+        tools: [
+          {
+            name: "read_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "integer" },
+                endLine: { type: "integer" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      }),
+      messages: [],
+      toolsConfig: ConfigManager.getToolsConfig(),
+      onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
+      onSkipToolCall: () => undefined,
+    });
+
+    aggregator.handleToolCalls([
+      {
+        id: "call_a",
+        type: "function",
+        function: {
+          name: "read_file",
+          arguments: '{"filePath":"/tmp/a.ts","startLine":1,"endLine":20}',
+        },
+      },
+    ]);
+    aggregator.handleToolCalls([
+      {
+        id: "call_b",
+        type: "function",
+        function: {
+          name: "read_file",
+          arguments: '{"filePath":"/tmp/b.ts","startLine":1,"endLine":20}',
+        },
+      },
+    ]);
+
+    expect(emitted.map((call) => call.args.filePath)).toEqual(["/tmp/a.ts", "/tmp/b.ts"]);
+  });
+
   it("assembles a native tool name split across stream deltas", () => {
     const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
     const skipped: Array<{ name: string; required: string[] }> = [];

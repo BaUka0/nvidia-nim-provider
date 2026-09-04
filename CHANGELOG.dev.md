@@ -4,6 +4,23 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Fixed
+
+- **Final retryable HTTP body (`src/api/client.ts`).** `fetchWithRetry` no longer `discardResponseBody`s the last 429/502/503/504/529; it throws `classifyResponseError(response)` so `Details:` and overflow heuristics see the payload.
+- **Stream timeout kind (`src/api/client.ts`).** `StreamTimeoutError.timeoutKind` replaces `error.message.includes("first token timeout")`.
+- **Summarizer text parts (`src/models/summarizer.ts`).** `{ type: "text", text }` maps to `part.text`; images stay omitted. Vision histories no longer compact as JSON.stringify blobs.
+- **Empty curated cache (`src/models/discovery.ts`).** `hasNormalizedModelsCache` and the in-memory fingerprint map require `length > 0`. `[].every(...)` is no longer a warm hit.
+- **Index-less native tool calls (`src/provider/tool-call-aggregator.ts`).** Monotonic anonymous index instead of `toolCallBuffers.size`; early-emit and flush share `tryCompleteToolCall`.
+- **Overflow snapshot (`src/provider/overflow-compactor.ts`, `turn-executor.ts`).** `safetyMarginPercent` is required on compaction. `calculateSafetyMargin` no longer live-reads config when omitted (defaults to `DEFAULT_CONTEXT_CONFIG.safetyMarginPercent`). Failover `buildFallbackModelInfo` takes the hop snapshot. Overflow toast moved to `chat-provider` via `onOverflowCompaction`.
+
+### Changed
+
+- **Retry policy module (`src/provider/attempt-retry.ts`).** `evaluateAttemptRetry` is the single classifier; `executeTurn` switches on `retryReason`. Overflow restarts a `while` session (no labeled `continue`). Loop nudges live in `loop-breaker.ts`. `turn-executor.ts` is back under 1k lines.
+- **Catalog is the number source (`src/models/catalog.ts`).** `normalizeNvidiaModel` reads display/limits/tools/vision from `MODEL_LIST` only. Residual `pickerStatus` field and discovery "Unavailable" subtitle removed.
+- **Adapter contract (`src/models/adapters/base.ts`).** `getCapabilityContract().reasoningRouting` uses `isReasoningIsolationExpected`. `ensureChatTemplateKwargs` shared by DeepSeek/MiniMax/Super/Lightning. Ultra extends `ReasoningEffortAdapter`. Stream pump honors `toolCallProtocol !== "native-only"`.
+- **Request builder (`src/provider/request-builder.ts`).** One compact step (preflight vs hard-limit via `allowTruncation`). Sampling via `assignClamped`. Unsupported reasoning mode `outputLog`s before coercing to `"none"`.
+- **Layering.** `refreshModelsFromApi` takes `onModelsRefreshed` instead of `NimChatModelProvider`. Shared `createAbortError` in `cancellation.ts`. Embedded parser trailing-prefix uses `tag-scan` (case-sensitive). `createStructuredError(kind: ApiErrorKind)`. `NimContentPart` is a discriminated union. Non-object tool schemas omit `parameters`.
+
 ## [0.10.0] - 2026-09-04
 
 ### Fixed

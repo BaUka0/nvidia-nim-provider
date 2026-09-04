@@ -166,7 +166,7 @@ async function initializeStoredApiKey(
     context,
     ua,
     { showMessages: false, apiKey },
-    _provider,
+    () => _provider?.fireModelInfoChanged({ invalidateModelCache: false }),
     statusBar,
     keyResolver,
   );
@@ -231,7 +231,7 @@ function registerCommands(
         context,
         ua,
         { showMessages: true },
-        _provider,
+        () => _provider?.fireModelInfoChanged({ invalidateModelCache: false }),
         statusBar,
         keyResolver,
       );

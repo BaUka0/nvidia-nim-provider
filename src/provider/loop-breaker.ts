@@ -154,6 +154,27 @@ export function detectToolCallHistoryLoop(
  */
 export const LOOP_BREAKER_MARKER = "[NIM_LOOP_BREAKER]";
 
+export type LoopBreakerNudgeReason =
+  | "repetition_loop"
+  | "hanging_colon"
+  | "output_truncated"
+  | "content_filter";
+
+const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
+  repetition_loop:
+    "hey you got stuck repeating the same output — continue working without repeating the preamble. Directly call the required tool or provide the final answer.",
+  hanging_colon:
+    'hey you got stuck — your previous turn ended with ":" with no tool call but a next action was expected. Continue working and take the next action.',
+  output_truncated:
+    "your previous reply was cut off at the output token limit. Continue from where you left off. Call a tool if needed or finish the answer.",
+  content_filter:
+    "your previous reply was stopped by the safety filter. Continue the answer without the blocked content. Call a tool if needed or finish the answer. Do not mention the filter.",
+};
+
+export function buildLoopBreakerNudge(reason: LoopBreakerNudgeReason): NimChatMessage {
+  return { role: "user", content: `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_NUDGES[reason]}` };
+}
+
 /** Return the textual content of a message part, if any. */
 function partTextValue(part: unknown): string | undefined {
   if (typeof part === "string") {

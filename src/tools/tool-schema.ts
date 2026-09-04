@@ -240,8 +240,13 @@ export function validateToolArguments(args: unknown, schema: ToolSchema | undefi
   return true;
 }
 
-export function hasRequiredToolArguments(args: unknown, schema: ToolSchema | undefined): boolean {
+export function isValidToolArguments(args: unknown, schema: ToolSchema | undefined): boolean {
   return validateToolArguments(args, schema);
+}
+
+/** @deprecated Use {@link isValidToolArguments}; kept as the historical name. */
+export function hasRequiredToolArguments(args: unknown, schema: ToolSchema | undefined): boolean {
+  return isValidToolArguments(args, schema);
 }
 
 /** Required keys that are absent or empty after repair. Used for model retry text. */

@@ -1,11 +1,9 @@
 export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 export type JsonObject = { [k: string]: Json };
 
-export interface NimContentPart {
-  type: "text" | "image_url";
-  text?: string;
-  image_url?: { url: string };
-}
+export type NimContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
 
 export interface NimChatMessage {
   role: "system" | "user" | "assistant" | "tool";

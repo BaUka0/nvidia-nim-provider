@@ -1,5 +1,4 @@
 import type { NvidiaModelSummary } from "../types";
-import { DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/token-defaults";
 
 export interface NormalizedNvidiaModel {
   id: string;
@@ -21,8 +20,6 @@ export interface NvidiaModelCatalogEntry {
   maxOutputTokens: number;
   supportsTools: boolean;
   supportsVision: boolean;
-  /** Surfaced in the Copilot model picker as a subtitle/tooltip. */
-  pickerStatus?: "unavailable";
   /** Adapter registry key. Family regex is only used for uncatalogued IDs. */
   adapter: CatalogAdapterId;
 }
@@ -217,29 +214,12 @@ export function isNormalizedNvidiaModel(value: unknown): value is NormalizedNvid
 
 function normalizeNvidiaModel(model: NvidiaModelSummary): NormalizedNvidiaModel {
   const override = MODEL_LIST[model.id];
-
   return {
     id: model.id,
-    displayName: override.displayName ?? model.name ?? deriveDisplayName(model.id),
-    contextWindow:
-      getPositiveNumber(override.contextWindow) ??
-      getPositiveNumber(model.metadata?.context_window) ??
-      DEFAULT_CONTEXT_WINDOW,
-    maxOutputTokens:
-      getPositiveNumber(override.maxOutputTokens) ??
-      getPositiveNumber(model.metadata?.max_output_tokens) ??
-      getPositiveNumber(model.metadata?.max_tokens) ??
-      DEFAULT_MAX_OUTPUT_TOKENS,
+    displayName: override.displayName,
+    contextWindow: override.contextWindow,
+    maxOutputTokens: override.maxOutputTokens,
     supportsTools: override.supportsTools,
     supportsVision: override.supportsVision,
   };
-}
-
-function deriveDisplayName(modelId: string): string {
-  const lastSegment = modelId.split("/").at(-1);
-  return lastSegment && lastSegment.length > 0 ? lastSegment : modelId;
-}
-
-function getPositiveNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }

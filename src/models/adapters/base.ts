@@ -49,6 +49,13 @@ export function assignReasoningEffort(
   request.reasoning_effort = supportedModes.includes(mode) ? mode : "none";
 }
 
+export function ensureChatTemplateKwargs(
+  request: import("../../types").NimChatRequest,
+): Record<string, unknown> {
+  request.chat_template_kwargs = request.chat_template_kwargs ?? {};
+  return request.chat_template_kwargs;
+}
+
 /** Shared visible-reply hygiene. Prefer this over growing the stream sanitizer. */
 export const VISIBLE_REPLY_HYGIENE_MESSAGE =
   "Visible replies must be markdown only. Do not emit XML section wrappers such as <steps>, <suggested_fix>, <next_steps>, <analysis>, or <plan>. Do not emit _vscodecontentref_ URLs or markdown links to them; write plain file names.";
@@ -89,7 +96,7 @@ export abstract class BaseModelAdapter implements ModelAdapter {
       reasoningModes: this.supportedReasoningModes ?? [],
       reasoningParameterFormat: this.reasoningParameterFormat,
       toolCallProtocol: this.toolCallProtocol,
-      reasoningRouting: this.isolateUntaggedReasoning === false ? "direct-content" : "isolated",
+      reasoningRouting: isReasoningIsolationExpected(this, "high") ? "isolated" : "direct-content",
     };
   }
 

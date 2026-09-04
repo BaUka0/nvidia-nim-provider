@@ -1,3 +1,4 @@
+import { ensureChatTemplateKwargs } from "./base";
 import { NemotronFamilyAdapter } from "./nemotron";
 
 export const LIGHTNING_MAX_OUTPUT_TOKENS = 32768;
@@ -28,9 +29,9 @@ export class NemotronLightningAdapter extends NemotronFamilyAdapter {
   readonly reasoningParameterFormat = "chat_template_kwargs" as const;
 
   applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
-    request.chat_template_kwargs = request.chat_template_kwargs || {};
+    const kwargs = ensureChatTemplateKwargs(request);
     const reasoningBudget = lightningReasoningBudget(mode, request.max_tokens);
-    request.chat_template_kwargs.enable_thinking = reasoningBudget > 0;
-    request.chat_template_kwargs.reasoning_budget = reasoningBudget;
+    kwargs.enable_thinking = reasoningBudget > 0;
+    kwargs.reasoning_budget = reasoningBudget;
   }
 }

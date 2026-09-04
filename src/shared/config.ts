@@ -1,10 +1,8 @@
 import * as vscode from "vscode";
 import { FALLBACK_MODEL_ID, FALLBACK_VISION_MODEL_ID, MODEL_LIST } from "../models/catalog";
+import { warnLog } from "./logging";
 
 function warnUnknownConfig(message: string): void {
-  // Lazy require so this module does not import logging at load time.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { warnLog } = require("./logging") as typeof import("./logging");
   warnLog("config", message);
 }
 
@@ -460,13 +458,12 @@ export class ConfigManager {
  * budget math; callers without a snapshot (picker/fallback presentation)
  * may omit it.
  */
-export function calculateSafetyMargin(contextWindow: number, customPercent?: number): number {
-  const percent =
-    customPercent !== undefined
-      ? customPercent
-      : ConfigManager.getContextConfig().safetyMarginPercent;
+export function calculateSafetyMargin(
+  contextWindow: number,
+  safetyMarginPercent: number = DEFAULT_CONTEXT_CONFIG.safetyMarginPercent,
+): number {
   if (contextWindow >= 256_000) {
-    return Math.max(4096, Math.ceil(contextWindow * (percent / 100)));
+    return Math.max(4096, Math.ceil(contextWindow * (safetyMarginPercent / 100)));
   }
   return 4096;
 }

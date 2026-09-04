@@ -50,7 +50,7 @@ function payloadRequiredFields(schema: Record<string, unknown> | undefined): str
 function toModelFacingSchema(inputSchema: unknown): JsonObject | undefined {
   const schema = asObjectRecord(inputSchema);
   if (!schema) {
-    return inputSchema as JsonObject | undefined;
+    return undefined;
   }
 
   const required = payloadRequiredFields(schema);

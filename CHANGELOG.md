@@ -4,6 +4,18 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Fixed
+
+- **Rate-limit and overload errors now keep NVIDIA's response text.** After the last retry, Copilot Chat can show the service's own message instead of a generic HTTP status.
+- **Long chats with images summarize the actual text.** Compaction no longer feeds the summarizer a JSON blob of each text part.
+- **An empty model list is no longer treated as a finished cache.** If a refresh comes back with no curated models, the next request fetches again instead of leaving the picker blank.
+- **Two tool calls in one stream are not dropped when the API omits `index`.** Each call gets its own slot instead of colliding on slot 0.
+- **Unsupported reasoning modes log a warning.** Reasoning still turns off for that request, but the Output channel records which mode was rejected and what the model supports.
+
+### Changed
+
+- **Turn retries are classified once, then applied.** Overflow compaction reuses the same recovery budget as a fresh request and no longer pops a toast from inside the retry engine; the notice still appears from the chat layer.
+
 ## [0.10.0] - 2026-09-04
 
 ### Fixed

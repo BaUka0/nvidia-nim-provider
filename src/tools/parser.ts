@@ -10,6 +10,7 @@ export {
   getToolSchemaMap,
   normalizeArguments,
   hasRequiredToolArguments,
+  isValidToolArguments,
   missingRequiredToolArguments,
   isToolCallInput,
 } from "./tool-schema";

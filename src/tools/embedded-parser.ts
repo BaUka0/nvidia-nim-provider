@@ -1,4 +1,5 @@
 import { parseJsonOrRepair } from "../shared/json-repair";
+import { findTrailingPartialStart, findTrailingPartialStartAny } from "../messages/tag-scan";
 import { parseToolArgumentsStrict } from "./json-args";
 import type { ParsedTextSegment, ParsedTextToolCallResult } from "./parser";
 import {
@@ -9,28 +10,13 @@ import {
   scanXmlToolConstruct,
 } from "./xml-tool-scanner";
 
+/** Case-sensitive trailing prefix — tool control tokens are exact. */
 export function findTrailingTokenPrefixStart(text: string, token: string): number {
-  const maxPrefixLength = Math.min(text.length, token.length - 1);
-  for (let prefixLength = maxPrefixLength; prefixLength > 0; prefixLength -= 1) {
-    if (text.endsWith(token.slice(0, prefixLength))) {
-      return text.length - prefixLength;
-    }
-  }
-
-  return -1;
+  return findTrailingPartialStart(text, token, true);
 }
 
 export function findTrailingTokenPrefixStartAny(text: string, tokens: readonly string[]): number {
-  let bestMatch = -1;
-
-  for (const token of tokens) {
-    const matchIndex = findTrailingTokenPrefixStart(text, token);
-    if (matchIndex !== -1 && (bestMatch === -1 || matchIndex < bestMatch)) {
-      bestMatch = matchIndex;
-    }
-  }
-
-  return bestMatch;
+  return findTrailingPartialStartAny(text, tokens, true);
 }
 
 export function unwrapJsonCodeFence(text: string): string {

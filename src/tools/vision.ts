@@ -10,6 +10,7 @@ import {
 import { MODEL_LIST, isNormalizedNvidiaModel, NormalizedNvidiaModel } from "../models/catalog";
 import { NvidiaApiKeyResolver } from "../api/key-resolver";
 import { ConfigManager } from "../shared/config";
+import { createAbortError } from "../shared/cancellation";
 import { httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
 
 /**
@@ -229,12 +230,6 @@ export function registerNimTools(
 ): vscode.Disposable {
   const analyzeImageTool = new NimAnalyzeImageTool(secrets, modelStorage, keyResolver);
   return vscode.Disposable.from(vscode.lm.registerTool(NimAnalyzeImageTool.id, analyzeImageTool));
-}
-
-function createAbortError(): Error {
-  const error = new Error("The operation was aborted");
-  error.name = "AbortError";
-  return error;
 }
 
 function createVisionCancellationError(): Error {

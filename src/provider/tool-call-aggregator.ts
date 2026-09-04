@@ -47,6 +47,8 @@ export class ToolCallStreamAggregator {
 
   private toolCallBuffers = new Map<number, { id?: string; name?: string; args: string }>();
   private completedToolCallIndices = new Set<number>();
+  private anonymousToolCallIndex: number | undefined;
+  private nextAnonymousToolCallIndex = 0;
 
   private sawToolCall = false;
   private emittedToolCall = false;
@@ -149,10 +151,7 @@ export class ToolCallStreamAggregator {
   public handleToolCalls(deltas: readonly NimToolCall[]): void {
     this.sawToolCall = true;
     for (const tc of deltas) {
-      const idx =
-        typeof (tc as { index?: number }).index === "number"
-          ? (tc as { index: number }).index
-          : this.toolCallBuffers.size;
+      const idx = this.resolveToolCallIndex(tc.index);
       if (this.completedToolCallIndices.has(idx)) {
         continue;
       }
@@ -188,43 +187,97 @@ export class ToolCallStreamAggregator {
       if (typeof func?.arguments === "string") {
         if (buf.args.length + func.arguments.length > MAX_TOOL_ARGUMENT_CHARS) {
           debugLog("Skipped oversized tool argument buffer", { name: buf.name });
-          this.completedToolCallIndices.add(idx);
-          this.toolCallBuffers.delete(idx);
+          this.markToolCallIndexComplete(idx);
           this.onSkipToolCall(buf.name ?? "unknown_tool", [], "missing_payload");
           continue;
         }
         buf.args += func.arguments;
       }
       this.toolCallBuffers.set(idx, buf);
-
-      if (buf.args.trim().length === 0) {
-        continue;
-      }
-
-      // Only emit early when the current buffer is strict JSON and already
-      // satisfies its schema. Incomplete JSON and syntactically valid but
-      // incomplete required arguments stay buffered until the stream ends.
-      try {
-        const schema = this.toolSchemas.get(buf.name ?? "");
-        const args = repairToolArguments(
-          buf.name ?? "",
-          parseToolArgumentsStrict(buf.args),
-          this.requestContext,
-          schema,
-          this.toolsConfig,
-        );
-        if (buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
-          const id =
-            buf.id && buf.id.length > 0 ? buf.id : `${NATIVE_TOOL_CALL_ID_PREFIX}${randomUUID()}`;
-          this.emitValidatedToolCall(buf.name, args, schema, id);
-          this.completedToolCallIndices.add(idx);
-          this.toolCallBuffers.delete(idx);
-        }
-      } catch {
-        // JSON is incomplete or fails schema validation; flushRemaining() will
-        // repair and validate the complete buffer at stream end.
-      }
+      this.tryCompleteToolCall(idx, buf, true);
     }
+  }
+
+  private resolveToolCallIndex(streamIndex: number | undefined): number {
+    if (typeof streamIndex === "number") {
+      return streamIndex;
+    }
+    if (
+      this.anonymousToolCallIndex === undefined ||
+      this.completedToolCallIndices.has(this.anonymousToolCallIndex)
+    ) {
+      while (this.completedToolCallIndices.has(this.nextAnonymousToolCallIndex)) {
+        this.nextAnonymousToolCallIndex += 1;
+      }
+      this.anonymousToolCallIndex = this.nextAnonymousToolCallIndex;
+      this.nextAnonymousToolCallIndex += 1;
+    }
+    return this.anonymousToolCallIndex;
+  }
+
+  private markToolCallIndexComplete(idx: number): void {
+    this.completedToolCallIndices.add(idx);
+    this.toolCallBuffers.delete(idx);
+    if (this.anonymousToolCallIndex === idx) {
+      this.anonymousToolCallIndex = undefined;
+    }
+  }
+
+  private tryCompleteToolCall(
+    idx: number,
+    buf: { id?: string; name?: string; args: string },
+    requireStrictJson: boolean,
+  ): boolean {
+    if (requireStrictJson && buf.args.trim().length === 0) {
+      return false;
+    }
+    try {
+      const schema = this.toolSchemas.get(buf.name ?? "");
+      const parsed = requireStrictJson
+        ? parseToolArgumentsStrict(buf.args)
+        : buf.args
+          ? parseToolArguments(buf.args)
+          : {};
+      const args = repairToolArguments(
+        buf.name ?? "",
+        parsed,
+        this.requestContext,
+        schema,
+        this.toolsConfig,
+      );
+      if (buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
+        const id =
+          buf.id && buf.id.length > 0 ? buf.id : `${NATIVE_TOOL_CALL_ID_PREFIX}${randomUUID()}`;
+        this.emitValidatedToolCall(buf.name, args, schema, id);
+        this.markToolCallIndexComplete(idx);
+        return true;
+      }
+      if (!requireStrictJson && (buf.name || buf.id || buf.args)) {
+        this.onSkipToolCall(buf.name ?? "unknown_tool", missingRequiredToolArguments(args, schema));
+        debugLog("Skipped invalid tool call at stream end", {
+          id: buf.id,
+          name: buf.name,
+          args,
+        });
+        this.markToolCallIndexComplete(idx);
+      }
+    } catch {
+      if (requireStrictJson) {
+        return false;
+      }
+      if (buf.name || buf.id || buf.args) {
+        this.onSkipToolCall(
+          buf.name ?? "unknown_tool",
+          missingRequiredToolArguments(undefined, this.toolSchemas.get(buf.name ?? "")),
+        );
+      }
+      debugLog("Skipped truncated tool call at stream end", {
+        id: buf.id,
+        name: buf.name,
+      });
+      this.markToolCallIndexComplete(idx);
+    }
+    return false;
   }
 
   private hasToolNameCandidate(name: string): boolean {
@@ -241,46 +294,7 @@ export class ToolCallStreamAggregator {
       if (this.completedToolCallIndices.has(idx)) {
         continue;
       }
-      try {
-        const schema = this.toolSchemas.get(buf.name ?? "");
-        const args = repairToolArguments(
-          buf.name ?? "",
-          buf.args ? parseToolArguments(buf.args) : {},
-          this.requestContext,
-          schema,
-          this.toolsConfig,
-        );
-        if (buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
-          const id =
-            buf.id && buf.id.length > 0 ? buf.id : `${NATIVE_TOOL_CALL_ID_PREFIX}${randomUUID()}`;
-          this.emitValidatedToolCall(buf.name, args, schema, id);
-        } else if (buf.name || buf.id || buf.args) {
-          this.onSkipToolCall(
-            buf.name ?? "unknown_tool",
-            missingRequiredToolArguments(args, schema),
-          );
-          debugLog("Skipped invalid tool call at stream end", {
-            id: buf.id,
-            name: buf.name,
-            args,
-          });
-        }
-        this.completedToolCallIndices.add(idx);
-        this.toolCallBuffers.delete(idx);
-      } catch {
-        if (buf.name || buf.id || buf.args) {
-          this.onSkipToolCall(
-            buf.name ?? "unknown_tool",
-            missingRequiredToolArguments(undefined, this.toolSchemas.get(buf.name ?? "")),
-          );
-        }
-        debugLog("Skipped truncated tool call at stream end", {
-          id: buf.id,
-          name: buf.name,
-        });
-        this.completedToolCallIndices.add(idx);
-        this.toolCallBuffers.delete(idx);
-      }
+      this.tryCompleteToolCall(idx, buf, false);
     }
   }
 }

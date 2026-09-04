@@ -41,11 +41,7 @@ import {
   fallbackCapacityLabel,
   isFallbackEligibleError,
 } from "./fallback-orchestrator";
-import {
-  ChatRuntimeMetadataSource,
-  ModelTurnExecutor,
-  ModelTurnReportState,
-} from "./turn-executor";
+import { ChatRuntimeInfo, ModelTurnExecutor, ModelTurnReportState } from "./turn-executor";
 import { isCancellation } from "../shared/cancellation";
 
 const MAX_RUNTIME_INFO_CACHE_SIZE = 64;
@@ -153,15 +149,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
   private readonly discoveryService: NvidiaModelDiscoveryService;
   private readonly apiKeyResolver: NvidiaApiKeyResolver;
   private readonly turnExecutor: ModelTurnExecutor;
-  private readonly runtimeInfoCache = new BoundedMap<
-    string,
-    {
-      supportsTools: boolean;
-      supportsVision: boolean;
-      contextWindow: number;
-      runtimeMetadataSource: ChatRuntimeMetadataSource;
-    }
-  >(MAX_RUNTIME_INFO_CACHE_SIZE);
+  private readonly runtimeInfoCache = new BoundedMap<string, ChatRuntimeInfo>(
+    MAX_RUNTIME_INFO_CACHE_SIZE,
+  );
   private readonly contextLimitStore = new ContextLimitStore();
   private readonly _onDidChangeLanguageModelChatInformation = new EventEmitter<void>();
   /** Cleared at the start of each VS Code resolution cycle (groupless call). */
@@ -202,15 +192,19 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     this._onDidChangeLanguageModelChatInformation.fire();
   }
 
+  private setRuntimeInfoCache(modelId: string, runtimeInfo: ChatRuntimeInfo): ChatRuntimeInfo {
+    this.runtimeInfoCache.set(modelId, runtimeInfo);
+    return runtimeInfo;
+  }
+
+  private fallbackContextWindow(model: LanguageModelChatInformation): number {
+    return model.maxInputTokens + Math.min(model.maxOutputTokens, DEFAULT_MAX_OUTPUT_TOKENS);
+  }
+
   private async resolveChatModelRuntimeInfo(
     model: LanguageModelChatInformation,
     apiKey?: string,
-  ): Promise<{
-    supportsTools: boolean;
-    supportsVision: boolean;
-    contextWindow: number;
-    runtimeMetadataSource: ChatRuntimeMetadataSource;
-  }> {
+  ): Promise<ChatRuntimeInfo> {
     const cachedRuntimeInfo = this.runtimeInfoCache.get(model.id);
     if (cachedRuntimeInfo) {
       return cachedRuntimeInfo;
@@ -220,14 +214,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       .getNormalizedModels()
       .find((entry) => entry.id === model.id);
     if (cachedModel) {
-      const runtimeInfo = {
+      return this.setRuntimeInfoCache(model.id, {
         supportsTools: cachedModel.supportsTools,
         supportsVision: cachedModel.supportsVision,
         contextWindow: cachedModel.contextWindow,
-        runtimeMetadataSource: "cache" as const,
-      };
-      this.setRuntimeInfoCache(model.id, runtimeInfo);
-      return runtimeInfo;
+        runtimeMetadataSource: "cache",
+      });
     }
 
     const providerModelInfo = model as LanguageModelChatInformation & {
@@ -238,66 +230,36 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       providerModelInfo.detail === PROVIDER_DISPLAY_NAME ||
       providerModelInfo.family === PROVIDER_VENDOR
     ) {
-      const currentModels = await this.discoveryService.getAvailableModels(apiKey);
-      const currentModel = currentModels.find((entry) => entry.id === model.id);
-      if (currentModel) {
-        const runtimeInfo = {
-          supportsTools: currentModel.supportsTools,
-          supportsVision: currentModel.supportsVision,
-          contextWindow: currentModel.contextWindow,
-          runtimeMetadataSource: "fetched-model" as const,
-        };
-        this.setRuntimeInfoCache(model.id, runtimeInfo);
-        return runtimeInfo;
-      }
-
-      return {
-        supportsTools: false,
-        supportsVision: false,
-        contextWindow:
-          model.maxInputTokens + Math.min(model.maxOutputTokens, DEFAULT_MAX_OUTPUT_TOKENS),
-        runtimeMetadataSource: "fetched-model" as const,
-      };
+      const currentModel = (await this.discoveryService.getAvailableModels(apiKey)).find(
+        (entry) => entry.id === model.id,
+      );
+      return this.setRuntimeInfoCache(model.id, {
+        supportsTools: currentModel?.supportsTools ?? false,
+        supportsVision: currentModel?.supportsVision ?? false,
+        contextWindow: currentModel?.contextWindow ?? this.fallbackContextWindow(model),
+        runtimeMetadataSource: "fetched-model",
+      });
     }
 
     const capabilities = (model as SelectedModelRuntimeCapabilities).capabilities;
     if (capabilities) {
-      const runtimeInfo = {
+      return this.setRuntimeInfoCache(model.id, {
         supportsTools: Boolean(capabilities.toolCalling),
         supportsVision: capabilities.imageInput === true,
-        contextWindow:
-          model.maxInputTokens + Math.min(model.maxOutputTokens, DEFAULT_MAX_OUTPUT_TOKENS),
-        runtimeMetadataSource: "selected-model" as const,
-      };
-      this.setRuntimeInfoCache(model.id, runtimeInfo);
-      return runtimeInfo;
+        contextWindow: this.fallbackContextWindow(model),
+        runtimeMetadataSource: "selected-model",
+      });
     }
 
     const fetchedModel = (await this.discoveryService.getAvailableModels(apiKey)).find(
       (entry) => entry.id === model.id,
     );
-    const runtimeInfo = {
+    return this.setRuntimeInfoCache(model.id, {
       supportsTools: fetchedModel?.supportsTools ?? false,
       supportsVision: fetchedModel?.supportsVision ?? false,
-      contextWindow:
-        fetchedModel?.contextWindow ??
-        model.maxInputTokens + Math.min(model.maxOutputTokens, DEFAULT_MAX_OUTPUT_TOKENS),
-      runtimeMetadataSource: "fetched-model" as const,
-    };
-    this.setRuntimeInfoCache(model.id, runtimeInfo);
-    return runtimeInfo;
-  }
-
-  private setRuntimeInfoCache(
-    modelId: string,
-    runtimeInfo: {
-      supportsTools: boolean;
-      supportsVision: boolean;
-      contextWindow: number;
-      runtimeMetadataSource: ChatRuntimeMetadataSource;
-    },
-  ): void {
-    this.runtimeInfoCache.set(modelId, runtimeInfo);
+      contextWindow: fetchedModel?.contextWindow ?? this.fallbackContextWindow(model),
+      runtimeMetadataSource: "fetched-model",
+    });
   }
 
   async provideLanguageModelChatInformation(
@@ -445,6 +407,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             apiKey,
             runtimeInfo,
             nimConfig,
+            onOverflowCompaction: (modelLabel) => {
+              vscode.window.showInformationMessage(
+                `Context overflow on ${modelLabel}. Retrying with compacted history…`,
+              );
+            },
           });
           return;
         } catch (err) {
@@ -509,7 +476,11 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
           chainState.depth = priorDepth + 1;
           chainState.triedModelIds = [...chainState.triedModelIds, currentModel.id];
-          currentModel = buildFallbackModelInfo(currentModel, fallbackModel);
+          currentModel = buildFallbackModelInfo(
+            currentModel,
+            fallbackModel,
+            nimConfig.context.safetyMarginPercent,
+          );
           if (modelApiKey) {
             this.apiKeyResolver.registerModelKey(currentModel, modelApiKey);
           }

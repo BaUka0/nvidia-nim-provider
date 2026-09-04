@@ -7,7 +7,7 @@ import {
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
 } from "../shared/constants";
-import { calculateSafetyMargin } from "../shared/config";
+import { ConfigManager, calculateSafetyMargin } from "../shared/config";
 import { fetchCuratedModels } from "./fetch-curated";
 import { MODEL_LIST, isNormalizedNvidiaModel, NormalizedNvidiaModel } from "./catalog";
 import { outputLog } from "../shared/logging";
@@ -75,7 +75,11 @@ export class NvidiaModelDiscoveryService {
 
   private hasNormalizedModelsCache(): boolean {
     const storedModels = this.globalState?.get<unknown>(MODELS_STATE_KEY);
-    return Array.isArray(storedModels) && storedModels.every(isCachedCuratedModel);
+    return (
+      Array.isArray(storedModels) &&
+      storedModels.length > 0 &&
+      storedModels.every(isCachedCuratedModel)
+    );
   }
 
   public async getAvailableModels(
@@ -87,7 +91,7 @@ export class NvidiaModelDiscoveryService {
       currentKeyFingerprint !== undefined
         ? this.modelsByFingerprint.get(currentKeyFingerprint)
         : undefined;
-    if (memoryCached && !this.cacheInvalidated) {
+    if (memoryCached && memoryCached.length > 0 && !this.cacheInvalidated) {
       return memoryCached.filter(isCachedCuratedModel);
     }
     const cachedModels = this.getNormalizedModels().filter(isCachedCuratedModel);
@@ -171,14 +175,8 @@ export class NvidiaModelDiscoveryService {
       const adapter = getModelAdapter(model.id);
       let configurationSchema: NvidiaConfigurationSchema | undefined;
 
-      if (adapter.applyReasoningMode) {
-        const enumValues = adapter.supportedReasoningModes ?? [
-          "none",
-          "on",
-          "medium",
-          "high",
-          "max",
-        ];
+      if (adapter.applyReasoningMode && (adapter.supportedReasoningModes?.length ?? 0) > 0) {
+        const enumValues = adapter.supportedReasoningModes ?? [];
         const enumItemLabels = enumValues.map((v) =>
           v === "none" ? "None" : v.charAt(0).toUpperCase() + v.slice(1),
         );
@@ -198,27 +196,29 @@ export class NvidiaModelDiscoveryService {
         };
       }
 
-      const pickerName = model.displayName ?? model.id;
-      const unavailable = MODEL_LIST[model.id]?.pickerStatus === "unavailable";
+      const pickerName = model.displayName;
       info.push({
         id: model.id,
         name: pickerName,
-        detail: unavailable ? "Unavailable" : PROVIDER_DISPLAY_NAME,
-        tooltip: unavailable
-          ? `${pickerName}. NVIDIA NIM is currently overloaded or not serving this model. Choose another model or retry later.`
-          : `${PROVIDER_DISPLAY_NAME} ${pickerName}`,
+        detail: PROVIDER_DISPLAY_NAME,
+        tooltip: `${PROVIDER_DISPLAY_NAME} ${pickerName}`,
         family: PROVIDER_VENDOR,
         version: "1.0.0",
         maxInputTokens: Math.max(
           1,
-          model.contextWindow - model.maxOutputTokens - calculateSafetyMargin(model.contextWindow),
+          model.contextWindow -
+            model.maxOutputTokens -
+            calculateSafetyMargin(
+              model.contextWindow,
+              ConfigManager.getContextConfig().safetyMarginPercent,
+            ),
         ),
         maxOutputTokens: model.maxOutputTokens,
         contextWindow: model.contextWindow,
         isUserSelectable: true,
         capabilities: {
           toolCalling: model.supportsTools ? 128 : false,
-          imageInput: model.supportsVision ?? false,
+          imageInput: model.supportsVision,
         },
         ...(configurationSchema ? { configurationSchema } : {}),
       });

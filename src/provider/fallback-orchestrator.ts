@@ -5,6 +5,10 @@ import { calculateSafetyMargin, FallbackConfig } from "../shared/config";
 import { DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 import { NormalizedNvidiaModel } from "../models/catalog";
 
+/**
+ * Failover policy helpers. The hop loop stays in `chat-provider.ts` because
+ * it owns API-key resolution and VS Code UI; this module stays UI-free.
+ */
 export function isFallbackEligibleError(
   err: unknown,
   fallbackConfig: FallbackConfig,
@@ -56,6 +60,7 @@ export function fallbackCapacityLabel(err: NvidiaApiError): string {
 export function buildFallbackModelInfo(
   source: LanguageModelChatInformation,
   fallbackModel: NormalizedNvidiaModel,
+  safetyMarginPercent?: number,
 ): LanguageModelChatInformation {
   const fallbackCapabilities: vscode.LanguageModelChatCapabilities = {
     toolCalling: fallbackModel.supportsTools ? 128 : false,
@@ -69,7 +74,7 @@ export function buildFallbackModelInfo(
       1,
       fallbackModel.contextWindow -
         Math.min(fallbackModel.maxOutputTokens, DEFAULT_MAX_OUTPUT_TOKENS) -
-        calculateSafetyMargin(fallbackModel.contextWindow),
+        calculateSafetyMargin(fallbackModel.contextWindow, safetyMarginPercent),
     ),
     maxOutputTokens: fallbackModel.maxOutputTokens,
     capabilities: fallbackCapabilities,

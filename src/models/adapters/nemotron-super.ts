@@ -1,3 +1,4 @@
+import { ensureChatTemplateKwargs } from "./base";
 import { NemotronFamilyAdapter } from "./nemotron";
 
 export class NemotronSuperAdapter extends NemotronFamilyAdapter {
@@ -7,17 +8,16 @@ export class NemotronSuperAdapter extends NemotronFamilyAdapter {
   readonly reasoningParameterFormat = "chat_template_kwargs" as const;
 
   applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
-    request.chat_template_kwargs = request.chat_template_kwargs || {};
+    const kwargs = ensureChatTemplateKwargs(request);
     if (mode === "low") {
-      request.chat_template_kwargs.enable_thinking = true;
-      request.chat_template_kwargs.low_effort = true;
+      kwargs.enable_thinking = true;
+      kwargs.low_effort = true;
     } else if (mode === "high") {
-      request.chat_template_kwargs.enable_thinking = true;
-      delete request.chat_template_kwargs.low_effort;
+      kwargs.enable_thinking = true;
+      delete kwargs.low_effort;
     } else {
-      // mode === "none" or fallback
-      request.chat_template_kwargs.enable_thinking = false;
-      delete request.chat_template_kwargs.low_effort;
+      kwargs.enable_thinking = false;
+      delete kwargs.low_effort;
     }
   }
 }

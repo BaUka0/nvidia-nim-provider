@@ -1,4 +1,4 @@
-import { BaseModelAdapter } from "./base";
+import { BaseModelAdapter, ensureChatTemplateKwargs } from "./base";
 
 export class DeepSeekAdapter extends BaseModelAdapter {
   readonly idPattern = /(^|[\/_-])deepseek([\/_-]|$)/i;
@@ -14,12 +14,12 @@ export class DeepSeekAdapter extends BaseModelAdapter {
   readonly toolCallProtocol = "native-and-text" as const;
 
   applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {
-    request.chat_template_kwargs = request.chat_template_kwargs || {};
+    const kwargs = ensureChatTemplateKwargs(request);
     if (mode === "none") {
-      request.chat_template_kwargs.thinking = false;
+      kwargs.thinking = false;
     } else {
-      request.chat_template_kwargs.thinking = true;
-      request.chat_template_kwargs.reasoning_effort = mode;
+      kwargs.thinking = true;
+      kwargs.reasoning_effort = mode;
     }
   }
 }

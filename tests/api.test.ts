@@ -136,7 +136,30 @@ describe("fetchWithRetry", () => {
       code: "RATE_LIMITED",
       status: 429,
     });
-    expect(body.cancel).toHaveBeenCalledTimes(2);
+    expect(body.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("includes the final retryable response body in the classified error", async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        text: async () => "rate limit exceeded: retry after 30s",
+        body: { cancel: jest.fn().mockResolvedValue(undefined) },
+      }),
+    );
+
+    const error = await fetchWithRetry("https://example.test", { method: "GET" }, 1).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toMatchObject({
+      name: "NvidiaApiError",
+      code: "RATE_LIMITED",
+      status: 429,
+    });
+    expect((error as Error).message).toContain("rate limit exceeded: retry after 30s");
   });
 
   it("classifies a final network failure with an actionable message", async () => {

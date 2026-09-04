@@ -51,6 +51,8 @@ export interface StreamAttemptInput {
   maxRepeatedLines: number;
   autoContinueOnLoop: boolean;
   idleTimeoutMs?: number;
+  /** When false, skip DSML/XML embedded tool recovery (native-only adapters). */
+  parseEmbeddedToolText?: boolean;
   onContentReported?: () => void;
   onVisibleContentReported?: () => void;
 }
@@ -209,6 +211,10 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     if (!text) {
       return;
     }
+    if (input.parseEmbeddedToolText === false) {
+      pendingText += text;
+      return;
+    }
 
     const { segments, incompleteText, extractedParams } = parseTextEmbeddedToolCalls(
       pendingTextEmbeddedContent + text,
@@ -299,8 +305,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
         lastUsage = chunk.usage;
       }
 
-      const reasoningContent = (choice?.delta as { reasoning_content?: string } | undefined)
-        ?.reasoning_content;
+      const reasoningContent = choice?.delta?.reasoning_content;
       const content = choice?.delta?.content;
 
       const streamedToolCalls = choice ? collectChoiceToolCalls(choice) : [];
@@ -331,9 +336,6 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
 
       if (content) {
         router.handleContent(content);
-        if (!input.reasoningIsolationExpected || router.isAnswerStarted()) {
-          flushPendingText();
-        }
       }
 
       if (streamedToolCalls.length > 0) {

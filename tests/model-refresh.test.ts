@@ -76,7 +76,7 @@ describe("model cache key ownership and refresh", () => {
       context as never,
       "test-ua",
       { showMessages: false },
-      provider as never,
+      () => provider.fireModelInfoChanged({ invalidateModelCache: false }),
       undefined,
       resolver,
     );
@@ -125,6 +125,37 @@ describe("model cache key ownership and refresh", () => {
     expect(models).toEqual([]);
     expect(fetchModelsOrThrow).toHaveBeenCalledWith("new-key", undefined, "test-ua");
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", []);
+  });
+
+  it("does not treat an empty curated cache as a hit", async () => {
+    const store = new Map<string, unknown>([
+      [MODELS_STATE_KEY, []],
+      [MODELS_CACHE_VERSION_STATE_KEY, MODELS_CACHE_VERSION],
+      [MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY, getApiKeyFingerprint("same-key")],
+    ]);
+    const globalState = {
+      get: jest.fn((key: string) => store.get(key)),
+      update: jest.fn(async (key: string, value: unknown) => {
+        store.set(key, value);
+      }),
+    };
+    const secrets = { get: jest.fn(async () => undefined) };
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
+      {
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        name: "DeepSeek V4 Flash 0731",
+      },
+    ]);
+    const discovery = new NvidiaModelDiscoveryService(
+      secrets as never,
+      "test-ua",
+      globalState as never,
+    );
+
+    const models = await discovery.getAvailableModels("same-key", { refreshStaleCache: true });
+
+    expect(fetchModelsOrThrow).toHaveBeenCalledTimes(1);
+    expect(models.map((model) => model.id)).toEqual(["deepseek-ai/deepseek-v4-flash-0731"]);
   });
 
   it("refreshes a legacy cache that has no key fingerprint before serving it", async () => {
@@ -292,7 +323,7 @@ describe("model cache key ownership and refresh", () => {
       context as never,
       "manual-ua",
       { showMessages: false, apiKey: "manual-key" },
-      provider as never,
+      () => provider.fireModelInfoChanged({ invalidateModelCache: false }),
     );
     await new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -324,12 +355,10 @@ describe("model cache key ownership and refresh", () => {
     };
     (fetchModelsOrThrow as jest.Mock).mockResolvedValue([{ id: "deepseek-ai/deepseek-v4-flash" }]);
 
-    await refreshModelsFromApi(
-      context as never,
-      "test-ua",
-      { showMessages: false, apiKey: "test-key" },
-      null,
-    );
+    await refreshModelsFromApi(context as never, "test-ua", {
+      showMessages: false,
+      apiKey: "test-key",
+    });
 
     expect(outputLog).toHaveBeenCalledWith(
       "models",

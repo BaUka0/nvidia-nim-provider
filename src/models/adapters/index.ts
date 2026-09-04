@@ -51,7 +51,7 @@ const ADAPTERS_BY_ID: Record<CatalogAdapterId, ModelAdapter> = {
   "muse-glimmer": museGlimmerAdapter,
 };
 
-/** Family regex fallback for uncatalogued successor IDs. More-specific patterns first. */
+/** Family regex for uncatalogued successor IDs only. Curated IDs never reach this list. */
 const FAMILY_ADAPTERS: ModelAdapter[] = [
   deepseekAdapter,
   kimiAdapter,

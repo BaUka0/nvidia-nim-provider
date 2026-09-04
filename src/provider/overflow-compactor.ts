@@ -20,8 +20,7 @@ export interface OverflowCompactionInput {
   fetchAttemptBudget?: FetchAttemptBudget;
   summarizationModel?: string;
   maxHttpRetries?: number;
-  /** Per-turn config snapshot value; falls back to a live read when omitted. */
-  safetyMarginPercent?: number;
+  safetyMarginPercent: number;
 }
 
 export interface OverflowCompactionResult {

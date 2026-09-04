@@ -5,7 +5,6 @@ import {
   SECRET_STORAGE_KEY,
 } from "../shared/constants";
 import { debugLog } from "../shared/logging";
-import { NimChatModelProvider } from "../provider/chat-provider";
 import { StatusBarManager } from "../shared/status-bar";
 import { NvidiaApiKeyResolver } from "../api/key-resolver";
 import { fetchCuratedModels } from "./fetch-curated";
@@ -15,7 +14,7 @@ export async function refreshModelsFromApi(
   context: vscode.ExtensionContext,
   ua: string,
   options: { showMessages: boolean; apiKey?: string },
-  provider: NimChatModelProvider | null,
+  onModelsRefreshed?: () => void,
   statusBar?: StatusBarManager,
   keyResolver?: NvidiaApiKeyResolver,
 ): Promise<void> {
@@ -48,7 +47,7 @@ export async function refreshModelsFromApi(
         globalState: context.globalState,
       });
       if (fetched) {
-        provider?.fireModelInfoChanged({ invalidateModelCache: false });
+        onModelsRefreshed?.();
         statusBar?.showOk(fetched.normalizedModels.length);
         debugLog(
           "refreshModels",

@@ -12,6 +12,7 @@ import {
   LegacyPart,
 } from "../messages/converter";
 import { getModelAdapter, ModelAdapter, isReasoningIsolationExpected } from "../models/adapters";
+import { outputLog } from "../shared/logging";
 import { compactAndFit } from "../models/summarizer";
 import { createStructuredError } from "../api/errors";
 import { debugLog } from "../shared/logging";
@@ -38,6 +39,28 @@ const PREFLIGHT_COMPACT_THRESHOLD = 0.85;
 /** Clamp a sampling parameter into the API-allowed inclusive range. */
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function firstFiniteNumber(values: readonly unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function assignClamped(
+  body: NimChatRequest,
+  key: "top_p" | "frequency_penalty" | "presence_penalty" | "repetition_penalty",
+  sources: readonly unknown[],
+  min: number,
+  max: number,
+): void {
+  const value = firstFiniteNumber(sources);
+  if (value !== undefined) {
+    body[key] = clamp(value, min, max);
+  }
 }
 
 export class NimRequestBuilder {
@@ -226,14 +249,12 @@ export class NimRequestBuilder {
       toolsEnabled && requestProfile.toolTemperature !== undefined
         ? requestProfile.toolTemperature
         : requestProfile.defaultTemperature;
-    const configTemperature = generationConfig.temperature;
-    const clampTemperature = (value: number): number => Math.min(2, Math.max(0, value));
-    const temperatureVal =
-      typeof userTemperature === "number" && Number.isFinite(userTemperature)
-        ? clampTemperature(userTemperature)
-        : typeof configTemperature === "number"
-          ? configTemperature
-          : profileTemperature;
+    const temperatureVal = clamp(
+      firstFiniteNumber([userTemperature, generationConfig.temperature, profileTemperature]) ??
+        profileTemperature,
+      0,
+      2,
+    );
 
     let apiMessages = this.convertMessagesWithProfile({
       messages,
@@ -256,54 +277,29 @@ export class NimRequestBuilder {
       maxHttpRetries: config.network.maxHttpRetries,
     };
 
-    // --- Preflight compaction: proactive compression before hard limit ---
-    // When the payload exceeds the threshold (default 85%), compact older
-    // turns preemptively to avoid a server-side 400 rejection.
     const compactThreshold = Math.floor(effectiveMaxInputTokens * PREFLIGHT_COMPACT_THRESHOLD);
-    if (
-      payloadInputTokenCount > compactThreshold &&
-      payloadInputTokenCount <= effectiveMaxInputTokens
-    ) {
+    if (payloadInputTokenCount > compactThreshold) {
+      const overHardLimit = payloadInputTokenCount > effectiveMaxInputTokens;
       debugLog(
         "contextCompression",
-        `Preflight: ${payloadInputTokenCount} tokens >= ${compactThreshold} threshold (${(PREFLIGHT_COMPACT_THRESHOLD * 100).toFixed(0)}%). Compacting proactively...`,
+        overHardLimit
+          ? `Prepared payload ${payloadInputTokenCount} tokens > ${effectiveMaxInputTokens} max. Compressing...`
+          : `Preflight: ${payloadInputTokenCount} tokens >= ${compactThreshold} threshold (${(PREFLIGHT_COMPACT_THRESHOLD * 100).toFixed(0)}%). Compacting proactively...`,
       );
       const result = await compactAndFit({
         messages: apiMessages,
         effectiveMaxInputTokens,
         toolDefinitionTokens,
-        allowTruncation: false,
+        allowTruncation: overHardLimit,
         summarizationOptions: summarizerOptions,
       });
       apiMessages = result.messages;
       payloadInputTokenCount = result.tokenCount;
       debugLog(
         "contextCompression",
-        `Preflight compaction: ${result.tokenCount} tokens (was ${apiTokenCount + toolDefinitionTokens}).`,
+        `${overHardLimit ? "Hard-limit" : "Preflight"} compaction: ${result.tokenCount} tokens. Truncated: ${result.truncated}`,
       );
-    }
-
-    // --- Hard limit: reactive compression when over budget ---
-    if (payloadInputTokenCount > effectiveMaxInputTokens) {
-      debugLog(
-        "contextCompression",
-        `Prepared payload ${payloadInputTokenCount} tokens > ${effectiveMaxInputTokens} max. Compressing...`,
-      );
-      const result = await compactAndFit({
-        messages: apiMessages,
-        effectiveMaxInputTokens,
-        toolDefinitionTokens,
-        allowTruncation: true,
-        summarizationOptions: summarizerOptions,
-      });
-      apiMessages = result.messages;
-      payloadInputTokenCount = result.tokenCount;
-      debugLog(
-        "contextCompression",
-        `Hard-limit compaction: ${result.tokenCount} tokens. Truncated: ${result.truncated}`,
-      );
-
-      if (!result.fits) {
+      if (overHardLimit && !result.fits) {
         throw createStructuredError(
           "token_limit",
           `Even after compression and truncation: ${payloadInputTokenCount} tokens, max: ${effectiveMaxInputTokens}`,
@@ -348,6 +344,10 @@ export class NimRequestBuilder {
     reasoningMode ??= "none";
 
     if (modes && modes.length > 0 && !modes.includes(reasoningMode)) {
+      outputLog(
+        "reasoning",
+        `Requested reasoning mode "${reasoningMode}" is not supported by ${model.id} (supported: ${modes.join(", ")}). Sending none.`,
+      );
       reasoningMode = "none";
     }
 
@@ -358,44 +358,47 @@ export class NimRequestBuilder {
     const reasoningIsolationExpected = isReasoningIsolationExpected(adapter, reasoningMode);
 
     const modelOpts = responseOptions.modelOptions as Record<string, unknown>;
-    const profileTopP = requestProfile.defaultTopP;
-    if (typeof modelOpts?.top_p === "number") {
-      requestBody.top_p = clamp(modelOpts.top_p, 0, 1);
-    } else if (typeof generationConfig.topP === "number") {
-      requestBody.top_p = clamp(generationConfig.topP, 0, 1);
-    } else if (typeof profileTopP === "number") {
-      requestBody.top_p = clamp(profileTopP, 0, 1);
+    assignClamped(
+      requestBody,
+      "top_p",
+      [modelOpts?.top_p, generationConfig.topP, requestProfile.defaultTopP],
+      0,
+      1,
+    );
+    if (adapter.supportsFrequencyPenalty !== false) {
+      assignClamped(
+        requestBody,
+        "frequency_penalty",
+        [
+          modelOpts?.frequency_penalty,
+          generationConfig.frequencyPenalty,
+          requestProfile.defaultFrequencyPenalty,
+        ],
+        -2,
+        2,
+      );
     }
-    const profileFrequencyPenalty = requestProfile.defaultFrequencyPenalty;
-    const profilePresencePenalty = requestProfile.defaultPresencePenalty;
-    const supportsFrequencyPenalty = adapter.supportsFrequencyPenalty !== false;
-    const supportsPresencePenalty = adapter.supportsPresencePenalty !== false;
-    const supportsRepetitionPenalty = adapter.supportsRepetitionPenalty !== false;
-
-    if (supportsFrequencyPenalty) {
-      if (typeof modelOpts?.frequency_penalty === "number") {
-        requestBody.frequency_penalty = clamp(modelOpts.frequency_penalty, -2, 2);
-      } else if (typeof generationConfig.frequencyPenalty === "number") {
-        requestBody.frequency_penalty = clamp(generationConfig.frequencyPenalty, -2, 2);
-      } else if (typeof profileFrequencyPenalty === "number") {
-        requestBody.frequency_penalty = clamp(profileFrequencyPenalty, -2, 2);
-      }
+    if (adapter.supportsPresencePenalty !== false) {
+      assignClamped(
+        requestBody,
+        "presence_penalty",
+        [
+          modelOpts?.presence_penalty,
+          generationConfig.presencePenalty,
+          requestProfile.defaultPresencePenalty,
+        ],
+        -2,
+        2,
+      );
     }
-    if (supportsPresencePenalty) {
-      if (typeof modelOpts?.presence_penalty === "number") {
-        requestBody.presence_penalty = clamp(modelOpts.presence_penalty, -2, 2);
-      } else if (typeof generationConfig.presencePenalty === "number") {
-        requestBody.presence_penalty = clamp(generationConfig.presencePenalty, -2, 2);
-      } else if (typeof profilePresencePenalty === "number") {
-        requestBody.presence_penalty = clamp(profilePresencePenalty, -2, 2);
-      }
-    }
-    if (supportsRepetitionPenalty) {
-      if (typeof modelOpts?.repetition_penalty === "number") {
-        requestBody.repetition_penalty = clamp(modelOpts.repetition_penalty, 0.5, 2);
-      } else if (typeof generationConfig.repetitionPenalty === "number") {
-        requestBody.repetition_penalty = clamp(generationConfig.repetitionPenalty, 0.5, 2);
-      }
+    if (adapter.supportsRepetitionPenalty !== false) {
+      assignClamped(
+        requestBody,
+        "repetition_penalty",
+        [modelOpts?.repetition_penalty, generationConfig.repetitionPenalty],
+        0.5,
+        2,
+      );
     }
     const stopVal = modelOpts?.stop;
     if (typeof stopVal === "string" && stopVal.length > 0 && stopVal.length <= 256) {

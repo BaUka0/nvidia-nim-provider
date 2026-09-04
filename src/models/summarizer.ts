@@ -60,6 +60,9 @@ function messagesToText(messages: NimChatMessage[]): string {
               if (part.type === "image_url") {
                 return "[image omitted from summary]";
               }
+              if (part.type === "text" && typeof part.text === "string") {
+                return part.text;
+              }
               return JSON.stringify(part);
             })
             .join(" ");

@@ -159,6 +159,33 @@ describe("summarizeOldMessages", () => {
     expect(userMessage?.content).toEqual(expect.stringContaining("[tool_call_id]: call_1"));
   });
 
+  it("summarizes text content parts as plain text instead of JSON", async () => {
+    const completionMock = chatCompletion as jest.Mock;
+    completionMock.mockResolvedValueOnce("Summary");
+
+    await summarizeOldMessages(
+      [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Please review src/app.ts" },
+            { type: "image_url", image_url: { url: "data:image/png;base64,abcd" } },
+          ],
+        },
+      ],
+      "test-key",
+      "test-agent",
+    );
+
+    const request = completionMock.mock.calls.at(-1)?.[1];
+    const userMessage = request?.messages.find(
+      (message: NimChatMessage) => message.role === "user",
+    );
+    expect(userMessage?.content).toEqual(expect.stringContaining("Please review src/app.ts"));
+    expect(userMessage?.content).toEqual(expect.stringContaining("[image omitted from summary]"));
+    expect(userMessage?.content).not.toEqual(expect.stringContaining('"type":"text"'));
+  });
+
   it("keeps the summarization payload within its character budget", async () => {
     const completionMock = chatCompletion as jest.Mock;
     completionMock.mockResolvedValueOnce("Summary");

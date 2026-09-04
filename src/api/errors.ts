@@ -202,12 +202,11 @@ export class NvidiaApiError extends Error {
 }
 
 export function createStructuredError(
-  key: string,
+  kind: ApiErrorKind,
   detail?: string,
   context: ApiErrorContext = {},
 ): NvidiaApiError {
-  const kind = (key in ERROR_MESSAGES ? key : "unknown") as ApiErrorKind;
-  const message = formatStructuredError(key, detail);
+  const message = formatStructuredError(kind, detail);
   return new NvidiaApiError(kind, message, context);
 }
 

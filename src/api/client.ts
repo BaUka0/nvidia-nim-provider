@@ -1,4 +1,5 @@
 import { DEFAULT_NETWORK_CONFIG } from "../shared/config";
+import { createAbortError } from "../shared/cancellation";
 import {
   BASE_RETRY_DELAY_MS,
   BASE_URL,
@@ -18,15 +19,6 @@ import {
   NimStreamResponse,
 } from "../types";
 import { classifyApiError, isRetryableApiStatus, NvidiaApiError } from "./errors";
-
-/**
- * Determine whether an HTTP status code is safe to retry.
- * Retries on 429 (rate limit), 529 (overloaded), 502, 503, 504 (server errors).
- * Never retries on 400, 401, 403, 404, 410, 422 (client errors).
- */
-function isRetryableHttpError(status: number): boolean {
-  return isRetryableApiStatus(status);
-}
 
 /**
  * Read Retry-After header value (seconds or HTTP-date) if present.
@@ -64,12 +56,6 @@ function calculateRetryDelay(attempt: number, retryAfter?: number): number {
   const cappedDelay = Math.min(exponentialDelay, MAX_RETRY_DELAY_MS);
   // Full jitter: random delay between 0 and cappedDelay
   return Math.round(Math.random() * cappedDelay);
-}
-
-function createAbortError(): Error {
-  const error = new Error("The operation was aborted");
-  error.name = "AbortError";
-  return error;
 }
 
 /** Shared auth/JSON headers for every NIM HTTP call. */
@@ -134,19 +120,22 @@ function isTimeoutAbortReason(reason: unknown): boolean {
 
 type StreamTimeoutKind = "first-token" | "idle";
 
-/**
- * Single source for stream timeout errors. The idle text is also the final
- * user-facing text, so the TimeoutError catch path rebuilds with the same
- * factory instead of a second message template.
- */
-function streamTimeoutError(kind: StreamTimeoutKind, idleSeconds: number): Error {
-  const err = new Error(
-    kind === "first-token"
-      ? `NVIDIA NIM first token timeout: no response received for ${idleSeconds}s`
-      : `NVIDIA NIM streaming timeout: no data received for ${idleSeconds}s`,
-  );
-  err.name = "TimeoutError";
-  return err;
+class StreamTimeoutError extends Error {
+  readonly timeoutKind: StreamTimeoutKind;
+
+  constructor(kind: StreamTimeoutKind, idleSeconds: number) {
+    super(
+      kind === "first-token"
+        ? `NVIDIA NIM first token timeout: no response received for ${idleSeconds}s`
+        : `NVIDIA NIM streaming timeout: no data received for ${idleSeconds}s`,
+    );
+    this.name = "TimeoutError";
+    this.timeoutKind = kind;
+  }
+}
+
+function streamTimeoutError(kind: StreamTimeoutKind, idleSeconds: number): StreamTimeoutError {
+  return new StreamTimeoutError(kind, idleSeconds);
 }
 
 /** Drop oversized lines and parse `data:` payloads from completed SSE lines. */
@@ -292,12 +281,12 @@ export async function fetchWithRetry(
     throwIfAborted(signal);
     try {
       const response = await fetch(url, init);
-      if (response.ok || !isRetryableHttpError(response.status)) {
+      if (response.ok || !isRetryableApiStatus(response.status)) {
         return response;
       }
-      lastError = new Error(`HTTP ${response.status} ${response.statusText}`);
-      await discardResponseBody(response);
       if (i < maxRetries - 1) {
+        lastError = new Error(`HTTP ${response.status} ${response.statusText}`);
+        await discardResponseBody(response);
         const retryAfter = getRetryAfterMs(response);
         const delay = calculateRetryDelay(i, retryAfter);
         debugLog(
@@ -306,7 +295,7 @@ export async function fetchWithRetry(
         );
         await waitForRetry(delay, signal);
       } else {
-        throw classifyApiError(lastError, { status: response.status, ...classificationContext });
+        throw await classifyResponseError(response, classificationContext);
       }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -628,8 +617,11 @@ export async function* streamChatCompletion(
   } catch (error) {
     if (error instanceof Error && error.name === "TimeoutError") {
       const idleSec = Math.round((Date.now() - lastChunkTime) / 1000);
-      const isFirstToken = error.message.includes("first token timeout");
-      throw classifyApiError(streamTimeoutError(isFirstToken ? "first-token" : "idle", idleSec), {
+      const kind =
+        error instanceof StreamTimeoutError
+          ? error.timeoutKind
+          : ("idle" satisfies StreamTimeoutKind);
+      throw classifyApiError(streamTimeoutError(kind, idleSec), {
         operation: "stream",
         model: requestBody.model,
       });
