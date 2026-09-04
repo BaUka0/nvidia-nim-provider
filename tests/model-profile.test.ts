@@ -3,7 +3,7 @@ import { NimChatMessage, NimChatRequest } from "../src/types";
 
 describe("getModelAdapter", () => {
   it.each([
-    ["kimi-k3", 0.2, 0.1, "Do not reveal chain-of-thought"],
+    ["kimi-k3", 1, 1, "Do not reveal chain-of-thought"],
     ["nemotron-70b", 1, 1, "Do not wrap tool arguments in markdown fences"],
   ])(
     "returns a specialized tool-enabled profile for %s",
@@ -18,8 +18,8 @@ describe("getModelAdapter", () => {
 
       expect(profile.defaultTemperature).toBe(expectedDefaultTemperature);
       expect(profile.toolTemperature).toBe(expectedToolTemperature);
+      expect(profile.defaultTopP).toBe(0.95);
       if (modelId.includes("nemotron")) {
-        expect(profile.defaultTopP).toBe(0.95);
         expect(profile.defaultFrequencyPenalty).toBeUndefined();
         expect(profile.defaultPresencePenalty).toBeUndefined();
         expect(profile.extraSystemMessages[0]).toContain(
@@ -36,7 +36,7 @@ describe("getModelAdapter", () => {
     const adapter = getModelAdapter("kimi-k2.6");
     const profile = adapter.getProfile({ toolsEnabled: false });
 
-    expect(profile.defaultTemperature).toBe(0.2);
+    expect(profile.defaultTemperature).toBe(1);
     expect(profile.extraSystemMessages).toEqual([]);
   });
 
@@ -44,7 +44,7 @@ describe("getModelAdapter", () => {
     const adapter = getModelAdapter("unknown-model");
     const profile = adapter.getProfile({ toolsEnabled: true });
 
-    expect(profile.defaultTemperature).toBe(0.7);
+    expect(profile.defaultTemperature).toBe(1);
     expect(profile.extraSystemMessages[0]).toContain(
       "You are an expert AI programming assistant. Provide correct, concise, production-ready code.",
     );
@@ -57,7 +57,7 @@ describe("getModelAdapter", () => {
     const adapter = getModelAdapter("unknown-model");
     const profile = adapter.getProfile({ toolsEnabled: false });
 
-    expect(profile.defaultTemperature).toBe(0.7);
+    expect(profile.defaultTemperature).toBe(1);
     expect(profile.extraSystemMessages).toEqual([]);
   });
 });

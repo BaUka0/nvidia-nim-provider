@@ -12,6 +12,7 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 - **Empty curated cache (`src/models/discovery.ts`).** `hasNormalizedModelsCache` and the in-memory fingerprint map require `length > 0`. `[].every(...)` is no longer a warm hit.
 - **Index-less native tool calls (`src/provider/tool-call-aggregator.ts`).** Monotonic anonymous index instead of `toolCallBuffers.size`; early-emit and flush share `tryCompleteToolCall`.
 - **Overflow snapshot (`src/provider/overflow-compactor.ts`, `turn-executor.ts`).** `safetyMarginPercent` is required on compaction. `calculateSafetyMargin` no longer live-reads config when omitted (defaults to `DEFAULT_CONTEXT_CONFIG.safetyMarginPercent`). Failover `buildFallbackModelInfo` takes the hop snapshot. Overflow toast moved to `chat-provider` via `onOverflowCompaction`.
+- **Model adapter default temperature and top_p (`src/models/adapters/base.ts`, `deepseek.ts`, `kimi.ts`, `minimax.ts`, `muse-glimmer.ts`, `nemotron.ts`, `index.ts`).** `DEFAULT_TEMPERATURE` set to `1.0` (was `0.7`), `DEFAULT_TOP_P` set to `0.95`. `BaseModelAdapter` centralizes standard defaults (`defaultTemperature: 1.0`, `toolTemperature: 1.0`, `defaultTopP: 0.95`), dropping redundant subclass overrides across DeepSeek, Kimi, MiniMax, Nemotron, Muse Glimmer, and DefaultAdapter. Aligns request parameters with official build.nvidia.com model cards and eliminates greedy decoding deadlocks on tool preambles. Addresses #7.
 
 ### Changed
 

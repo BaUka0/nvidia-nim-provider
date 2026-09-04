@@ -39,7 +39,8 @@ export interface ModelAdapter {
   getCapabilityContract(): ModelAdapterCapabilityContract;
 }
 
-export const DEFAULT_TEMPERATURE = 0.7;
+export const DEFAULT_TEMPERATURE = 1.0;
+export const DEFAULT_TOP_P = 0.95;
 
 export function assignReasoningEffort(
   request: import("../../types").NimChatRequest,
@@ -79,9 +80,9 @@ export function isReasoningIsolationExpected(
 
 export abstract class BaseModelAdapter implements ModelAdapter {
   abstract readonly idPattern: RegExp;
-  abstract readonly defaultTemperature: number;
-  readonly toolTemperature?: number;
-  readonly defaultTopP?: number;
+  readonly defaultTemperature: number = DEFAULT_TEMPERATURE;
+  readonly toolTemperature?: number = DEFAULT_TEMPERATURE;
+  readonly defaultTopP?: number = DEFAULT_TOP_P;
   readonly toolSystemMessage?: string;
   readonly supportedReasoningModes?: string[];
   readonly isolateUntaggedReasoning?: boolean;
@@ -127,9 +128,9 @@ export abstract class BaseModelAdapter implements ModelAdapter {
 export class ReasoningEffortAdapter extends BaseModelAdapter {
   constructor(
     readonly idPattern: RegExp,
-    readonly defaultTemperature: number,
     readonly supportedReasoningModes: string[],
     readonly isolateUntaggedReasoning?: boolean,
+    readonly defaultTemperature: number = DEFAULT_TEMPERATURE,
   ) {
     super();
   }

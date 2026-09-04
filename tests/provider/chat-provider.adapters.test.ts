@@ -934,7 +934,8 @@ describe("NimChatModelProvider", () => {
 
     const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
 
-    expect(requestBody.temperature).toBe(0);
+    expect(requestBody.temperature).toBe(1);
+    expect(requestBody.top_p).toBe(0.95);
     expect(requestBody.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1001,7 +1002,7 @@ describe("NimChatModelProvider", () => {
   });
 
   it.each([
-    ["moonshotai/kimi-k3", 0.1, "Do not reveal chain-of-thought"],
+    ["moonshotai/kimi-k3", 1, "Do not reveal chain-of-thought"],
     ["nvidia/nemotron-3-ultra-550b-a55b", 1, "Do not wrap tool arguments in markdown fences"],
   ])(
     "applies the provider request profile for %s when tools are enabled",

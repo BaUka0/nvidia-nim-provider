@@ -2,7 +2,6 @@ import { BaseModelAdapter, ensureChatTemplateKwargs } from "./base";
 
 export class MinimaxAdapter extends BaseModelAdapter {
   readonly idPattern = /(^|[\/_-])minimax([\/_-]|$)/i;
-  readonly defaultTemperature = 0.7;
 
   readonly supportedReasoningModes = ["none", "on", "adaptive"];
   readonly reasoningParameterFormat = "chat_template_kwargs" as const;

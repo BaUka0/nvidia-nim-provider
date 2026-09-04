@@ -2,7 +2,6 @@ import { NimChatMessage } from "../../types";
 import { ReasoningEffortAdapter } from "./base";
 
 export class KimiAdapter extends ReasoningEffortAdapter {
-  readonly toolTemperature = 0.1;
   readonly supportsPresencePenalty = false;
   readonly supportsFrequencyPenalty = false;
   readonly toolSystemMessage =
@@ -12,7 +11,7 @@ export class KimiAdapter extends ReasoningEffortAdapter {
   readonly toolCallProtocol = "native-and-text" as const;
 
   constructor() {
-    super(/(^|[\/_-])kimi([\/_-]|$)/i, 0.2, ["none", "low", "high", "max"]);
+    super(/(^|[\/_-])kimi([\/_-]|$)/i, ["none", "low", "high", "max"]);
   }
 
   applyMessagesWorkaround(messages: NimChatMessage[]): NimChatMessage[] {

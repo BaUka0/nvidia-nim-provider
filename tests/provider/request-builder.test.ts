@@ -308,6 +308,38 @@ describe("NimRequestBuilder context accounting", () => {
 
     expect(prepared.requestBody.frequency_penalty).toBeUndefined();
     expect(prepared.requestBody.presence_penalty).toBeUndefined();
+    expect(prepared.requestBody.temperature).toBe(1);
+    expect(prepared.requestBody.top_p).toBe(0.95);
+  });
+
+  it("defaults DeepSeek requests to temperature 1.0 and top_p 0.95 when unconfigured", async () => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn((_key: string, defaultValue: unknown) => defaultValue),
+    });
+
+    const deepseekModel = makeModel({
+      id: "deepseek-ai/deepseek-v4-flash-0731",
+      name: "DeepSeek V4 Flash",
+      maxInputTokens: 100000,
+      maxOutputTokens: 65536,
+    });
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: deepseekModel,
+      messages: makeChatMessages({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Hello")],
+      }),
+      options: makeChatOptions(),
+      contextWindow: 128000,
+      supportsTools: true,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
+    });
+
+    expect(prepared.requestBody.temperature).toBe(1);
     expect(prepared.requestBody.top_p).toBe(0.95);
   });
 
