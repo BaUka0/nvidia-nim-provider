@@ -4,6 +4,8 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-05
+
 ### Fixed
 
 - **Final retryable HTTP body (`src/api/client.ts`).** `fetchWithRetry` no longer `discardResponseBody`s the last 429/502/503/504/529; it throws `classifyResponseError(response)` so `Details:` and overflow heuristics see the payload.

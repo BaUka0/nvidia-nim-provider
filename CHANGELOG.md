@@ -4,6 +4,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-05
+
 ### Fixed
 
 - **Rate-limit and overload errors now keep NVIDIA's response text.** After the last retry, Copilot Chat can show the service's own message instead of a generic HTTP status.
