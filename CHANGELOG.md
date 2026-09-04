@@ -4,6 +4,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-04
+
 ### Fixed
 
 - **File-read tool calls no longer fail for missing line numbers.** If the model names a file but omits `startLine` / `endLine`, the extension fills a default range and sends the call to Copilot. Calls that are still invalid (for example missing `filePath`) are retried with the model, not printed as a rejection in chat.

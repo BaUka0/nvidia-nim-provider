@@ -4,6 +4,8 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-04
+
 ### Fixed
 
 - **Recoverable errors no longer land in chat (`src/provider/stream-pump.ts`, `src/provider/turn-executor.ts`, `src/provider/fallback-orchestrator.ts`).** Dropped `REPETITION_STOP_NOTICE` / `OUTPUT_TRUNCATED_NOTICE` / `CONTENT_FILTER_NOTICE` from `progress.report`. Repetition / hanging-colon / truncation / partial `content_filter` (no tool call) auto-continue only when `generation.autoContinueOnLoop` is on; when it is off the stream stops without a transcript notice. Known invalid tool calls share `maxInvalidToolRetries` with unknown tools and throw `empty_stream` with `operation: "invalid_tool_call"` after that budget (failover label **Invalid tool call**). The same throw runs if the invalid-tool retry nudge cannot fit the context budget. `autoContinueOnLoop` description no longer promises a `Stopped early` chat notice.
