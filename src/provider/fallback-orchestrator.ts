@@ -33,7 +33,7 @@ export function fallbackCapacityLabel(err: NvidiaApiError): string {
     return "Model unavailable";
   }
   if (err.kind === "empty_stream") {
-    return "Empty response";
+    return err.operation === "invalid_tool_call" ? "Invalid tool call" : "Empty response";
   }
   if (err.kind === "timeout") {
     return "Timeout";

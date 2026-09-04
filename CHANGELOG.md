@@ -6,6 +6,9 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ### Fixed
 
+- **File-read tool calls no longer fail for missing line numbers.** If the model names a file but omits `startLine` / `endLine`, the extension fills a default range and sends the call to Copilot. Calls that are still invalid (for example missing `filePath`) are retried with the model, not printed as a rejection in chat.
+- **Recoverable stream failures stay with the model.** A repetition loop, a truncated reply, or a safety filter after some text (with no tool call) now nudges the model instead of printing a diagnostic notice in chat. A bad tool call that cannot be repaired is retried, then handed to the backup model as an invalid-tool failover, instead of ending the turn silently.
+- **An unsupported reasoning mode no longer silently upgrades itself.** If the requested mode is not in the model's supported list, reasoning is turned off for that request instead of switching to the first available effort level.
 - **NVIDIA NIM: Save Last Turn Report now saves the last turn report.** Both save commands previously produced the same session-log file. The turn-report command now writes its own report file, and each command explains when there is nothing to save yet.
 - **Context overflow now retries with a full remaining budget.** After history is compacted, empty-stream and invalid-tool recovery still run, and the same-turn loop breaker still applies even if auto-continue is off.
 - **A failed overflow compaction still tells you to start a new chat.** The error is no longer a raw server 400 with no recovery hint.

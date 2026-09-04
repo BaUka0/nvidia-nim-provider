@@ -8,6 +8,7 @@ import {
   isDuplicateSuppressionEnabled,
   isToolCallInput,
   hasRequiredToolArguments,
+  missingRequiredToolArguments,
   parseToolArguments,
   parseToolArgumentsStrict,
   repairToolArguments,
@@ -108,7 +109,7 @@ export class ToolCallStreamAggregator {
       return this.emitValidatedToolCall(name, repairedArgs, schema, id);
     }
 
-    this.onSkipToolCall(name, schema?.required ?? []);
+    this.onSkipToolCall(name, missingRequiredToolArguments(repairedArgs, schema));
     debugLog("Skipped invalid text tool call", { name, args });
     return false;
   }
@@ -141,7 +142,7 @@ export class ToolCallStreamAggregator {
   public recordInvalidToolCall(name: string): void {
     this.sawToolCall = true;
     const schema = this.toolSchemas.get(name);
-    this.onSkipToolCall(name, schema?.required ?? []);
+    this.onSkipToolCall(name, missingRequiredToolArguments(undefined, schema));
     debugLog("Skipped invalid text tool call", { name });
   }
 
@@ -210,6 +211,7 @@ export class ToolCallStreamAggregator {
           parseToolArgumentsStrict(buf.args),
           this.requestContext,
           schema,
+          this.toolsConfig,
         );
         if (buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
           const id =
@@ -246,13 +248,17 @@ export class ToolCallStreamAggregator {
           buf.args ? parseToolArguments(buf.args) : {},
           this.requestContext,
           schema,
+          this.toolsConfig,
         );
         if (buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
           const id =
             buf.id && buf.id.length > 0 ? buf.id : `${NATIVE_TOOL_CALL_ID_PREFIX}${randomUUID()}`;
           this.emitValidatedToolCall(buf.name, args, schema, id);
         } else if (buf.name || buf.id || buf.args) {
-          this.onSkipToolCall(buf.name ?? "unknown_tool", schema?.required ?? []);
+          this.onSkipToolCall(
+            buf.name ?? "unknown_tool",
+            missingRequiredToolArguments(args, schema),
+          );
           debugLog("Skipped invalid tool call at stream end", {
             id: buf.id,
             name: buf.name,
@@ -265,7 +271,7 @@ export class ToolCallStreamAggregator {
         if (buf.name || buf.id || buf.args) {
           this.onSkipToolCall(
             buf.name ?? "unknown_tool",
-            this.toolSchemas.get(buf.name ?? "")?.required ?? [],
+            missingRequiredToolArguments(undefined, this.toolSchemas.get(buf.name ?? "")),
           );
         }
         debugLog("Skipped truncated tool call at stream end", {

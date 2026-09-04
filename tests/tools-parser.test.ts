@@ -8,6 +8,7 @@ import {
   getIncompleteTextToolCallName,
   getToolSchemaMap,
   hasRequiredToolArguments,
+  missingRequiredToolArguments,
   isDuplicateSuppressionEnabled,
   parseTextEmbeddedToolCalls,
   parseToolArguments,
@@ -89,6 +90,174 @@ describe("tool argument parsing and validation", () => {
 
     expect(repaired).toEqual({ filePath: "/tmp/a.ts", startLine: 1, mode: "full" });
     expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
+  });
+
+  it("auto-fills Copilot read_file line range when startLine/endLine are properties but not required", () => {
+    const schema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "read_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "integer" },
+                endLine: { type: "integer" },
+              },
+              required: ["filePath"],
+            },
+          },
+        ],
+      }),
+    ).get("read_file");
+
+    const repaired = repairToolArguments(
+      "read_file",
+      { filePath: "/tmp/example.md" },
+      undefined,
+      schema,
+    );
+
+    expect(repaired).toEqual({
+      filePath: "/tmp/example.md",
+      startLine: 1,
+      endLine: 200,
+    });
+    expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
+  });
+
+  it("auto-fills MCP StartLine/EndLine keys declared by the schema", () => {
+    const schema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "read_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                TargetFile: { type: "string" },
+                StartLine: { type: "integer" },
+                EndLine: { type: "integer" },
+              },
+              required: ["TargetFile", "StartLine", "EndLine"],
+            },
+          },
+        ],
+      }),
+    ).get("read_file");
+
+    const repaired = repairToolArguments(
+      "read_file",
+      { TargetFile: "/tmp/example.md" },
+      undefined,
+      schema,
+    );
+
+    expect(repaired).toEqual({
+      TargetFile: "/tmp/example.md",
+      StartLine: 1,
+      EndLine: 200,
+    });
+    expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
+  });
+
+  it("does not overwrite a string start cursor on a generic read tool", () => {
+    const schema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "read_resource",
+            inputSchema: {
+              type: "object",
+              properties: {
+                uri: { type: "string" },
+                start: { type: "string" },
+                end: { type: "string" },
+              },
+              required: ["uri"],
+            },
+          },
+        ],
+      }),
+    ).get("read_resource");
+
+    const repaired = repairToolArguments(
+      "read_resource",
+      { uri: "file:///tmp/x", start: "cursor-a" },
+      undefined,
+      schema,
+    );
+
+    expect(repaired).toEqual({ uri: "file:///tmp/x", start: "cursor-a" });
+  });
+
+  it("reports only still-missing payload fields after read_file line defaults", () => {
+    const schema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "read_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "integer" },
+                endLine: { type: "integer" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      }),
+    ).get("read_file");
+    const repaired = repairToolArguments("read_file", {}, undefined, schema);
+
+    expect(repaired).toEqual({ startLine: 1, endLine: 200 });
+    expect(missingRequiredToolArguments(repaired, schema)).toEqual(["filePath"]);
+
+    const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+    const skipped: Array<{ name: string; required: string[] }> = [];
+    const aggregator = new ToolCallStreamAggregator({
+      options: makeChatOptions({
+        tools: [
+          {
+            name: "read_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "integer" },
+                endLine: { type: "integer" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      }),
+      messages: [],
+      toolsConfig: ConfigManager.getToolsConfig(),
+      onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
+      onSkipToolCall: (name, required) => skipped.push({ name, required }),
+    });
+
+    aggregator.handleToolCalls([
+      {
+        index: 0,
+        id: "call_empty",
+        type: "function",
+        function: { name: "read_file", arguments: "{}" },
+      },
+    ]);
+    aggregator.flushRemaining();
+
+    expect(emitted).toEqual([]);
+    expect(skipped).toEqual([{ name: "read_file", required: ["filePath"] }]);
+    const retry = buildInvalidToolCallRetryMessage(
+      skipped.map((call) => ({ ...call, reason: "invalid" as const })),
+    );
+    expect(retry).toContain("filePath");
+    expect(retry).not.toContain("startLine");
   });
 
   it("preserves a schema-declared string field named arguments", () => {

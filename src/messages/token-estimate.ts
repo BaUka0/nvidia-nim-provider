@@ -9,6 +9,10 @@ import {
   getToolResultTexts,
 } from "./parts";
 
+/** Never charge fewer than 4 tokens for an image; ~750 bytes per token after that. */
+export const IMAGE_TOKEN_FLOOR = 4;
+export const IMAGE_BYTES_PER_TOKEN = 750;
+
 export function estimateTokens(text: string): number {
   const cjkPattern =
     /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3000-\u303f\uff00-\uffef\uac00-\ud7af\u3040-\u309f\u30a0-\u30ff]/g;
@@ -56,10 +60,9 @@ export function estimatePartTokens(part: vscode.LanguageModelInputPart | LegacyP
     return estimateTokens(tv);
   }
 
-  // Image / binary data part: size-aware heuristic (~750 bytes per token).
   const img = extractImageData(part);
   if (img) {
-    return Math.max(4, Math.ceil(img.data.length / 750));
+    return Math.max(IMAGE_TOKEN_FLOOR, Math.ceil(img.data.length / IMAGE_BYTES_PER_TOKEN));
   }
 
   // Unknown part: rough placeholder so it still contributes to the breakdown.
@@ -131,10 +134,10 @@ function estimateImageUrlTokens(url: string): number {
       const payload = url.slice(separatorIndex + 1).replace(/\s/g, "");
       const isBase64 = url.slice(0, separatorIndex).toLowerCase().includes(";base64");
       const byteEstimate = isBase64 ? Math.ceil((payload.length * 3) / 4) : payload.length;
-      return Math.max(4, Math.ceil(byteEstimate / 750));
+      return Math.max(IMAGE_TOKEN_FLOOR, Math.ceil(byteEstimate / IMAGE_BYTES_PER_TOKEN));
     }
   }
-  return Math.max(4, estimateTokens(url));
+  return Math.max(IMAGE_TOKEN_FLOOR, estimateTokens(url));
 }
 
 /**

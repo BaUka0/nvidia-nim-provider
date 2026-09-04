@@ -333,7 +333,7 @@
         "nvidia-nim.generation.autoContinueOnLoop": {
           "type": "boolean",
           "default": true,
-          "description": "When the repetition guard trips or the model hangs on a trailing ':', automatically nudge it with 'hey you got stuck, continue working' and keep the turn going instead of ending with a notice. Disable to keep the old 'Stopped early' behavior."
+          "description": "When the repetition guard trips, the model hangs on a trailing ':', output hits the token limit, or a safety filter stops a partial reply, automatically nudge the model to continue working. Disable to stop that turn without printing a notice in chat."
         },
         "nvidia-nim.tools.autoRepairArguments": {
           "type": "boolean",

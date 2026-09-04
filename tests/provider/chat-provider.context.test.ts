@@ -15,7 +15,7 @@ import {
 
 jest.mock("../../src/api/client", () => ({
   chatCompletion: jest.fn(),
-  fetchModels: jest.fn(),
+  fetchModelsOrThrow: jest.fn(),
   streamChatCompletion: jest.fn(),
 }));
 
@@ -132,38 +132,40 @@ describe("NimChatModelProvider", () => {
     const progress = { report: jest.fn() };
     const token = makeToken();
 
-    await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
-      makeMessages({
-        role: 1,
-        content: [
-          {
-            value:
-              "<editorContext>\nThe user's current file is /tmp/example.md. The current selection is from line 158 to line 158.\n</editorContext>\n<userRequest>ツールを使ってファイルを読み込んでみてください</userRequest>",
-          },
-        ],
-      }),
-      makeChatOptions({
-        modelOptions: {},
-        tools: [
-          {
-            name: "read_file",
-            description: "Read a file from disk",
-            inputSchema: {
-              type: "object",
-              properties: {
-                filePath: { type: "string" },
-                startLine: { type: "number" },
-                endLine: { type: "number" },
-              },
-              required: ["filePath", "startLine", "endLine"],
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+        makeMessages({
+          role: 1,
+          content: [
+            {
+              value:
+                "<editorContext>\nThe user's current file is /tmp/example.md. The current selection is from line 158 to line 158.\n</editorContext>\n<userRequest>ツールを使ってファイルを読み込んでみてください</userRequest>",
             },
-          },
-        ],
-      }),
-      progress,
-      token,
-    );
+          ],
+        }),
+        makeChatOptions({
+          modelOptions: {},
+          tools: [
+            {
+              name: "read_file",
+              description: "Read a file from disk",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  filePath: { type: "string" },
+                  startLine: { type: "number" },
+                  endLine: { type: "number" },
+                },
+                required: ["filePath", "startLine", "endLine"],
+              },
+            },
+          ],
+        }),
+        progress,
+        token,
+      ),
+    ).rejects.toThrow(/could not be executed/);
 
     const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(0);
@@ -298,7 +300,11 @@ describe("NimChatModelProvider", () => {
 
     const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(1);
-    expect(toolCallReports[0][0].input).toEqual({ filePath: "/tmp/example.md" });
+    expect(toolCallReports[0][0].input).toEqual({
+      filePath: "/tmp/example.md",
+      startLine: 1,
+      endLine: 200,
+    });
   });
 
   it("does not invent read_file filePath from editor context when the model omits it", async () => {
@@ -327,36 +333,38 @@ describe("NimChatModelProvider", () => {
     const progress = { report: jest.fn() };
     const token = makeToken();
 
-    await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
-      makeMessages({
-        role: 1,
-        content: [
-          {
-            value:
-              "<context>\nCwd: /tmp/workspace\n</context>\n<editorContext>\nThe user's current file is /tmp/example.md. \n</editorContext>\n<userRequest>Read the open file</userRequest>",
-          },
-        ],
-      }),
-      makeChatOptions({
-        modelOptions: {},
-        tools: [
-          {
-            name: "read_file",
-            description: "Read a file from disk",
-            inputSchema: {
-              type: "object",
-              properties: {
-                filePath: { type: "string" },
-              },
-              required: ["filePath"],
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+        makeMessages({
+          role: 1,
+          content: [
+            {
+              value:
+                "<context>\nCwd: /tmp/workspace\n</context>\n<editorContext>\nThe user's current file is /tmp/example.md. \n</editorContext>\n<userRequest>Read the open file</userRequest>",
             },
-          },
-        ],
-      }),
-      progress,
-      token,
-    );
+          ],
+        }),
+        makeChatOptions({
+          modelOptions: {},
+          tools: [
+            {
+              name: "read_file",
+              description: "Read a file from disk",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  filePath: { type: "string" },
+                },
+                required: ["filePath"],
+              },
+            },
+          ],
+        }),
+        progress,
+        token,
+      ),
+    ).rejects.toThrow(/could not be executed/);
 
     const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
     expect(toolCallReports).toHaveLength(0);

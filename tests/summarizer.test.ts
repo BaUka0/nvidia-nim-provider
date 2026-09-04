@@ -9,7 +9,7 @@ import {
 
 jest.mock("../src/api/client", () => ({
   chatCompletion: jest.fn(),
-  fetchModels: jest.fn(),
+  fetchModelsOrThrow: jest.fn(),
   streamChatCompletion: jest.fn(),
   fetchWithRetry: jest.fn(),
 }));

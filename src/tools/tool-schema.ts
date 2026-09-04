@@ -244,6 +244,27 @@ export function hasRequiredToolArguments(args: unknown, schema: ToolSchema | und
   return validateToolArguments(args, schema);
 }
 
+/** Required keys that are absent or empty after repair. Used for model retry text. */
+export function missingRequiredToolArguments(
+  args: unknown,
+  schema: ToolSchema | undefined,
+): string[] {
+  const required = schema?.required ?? [];
+  if (required.length === 0) {
+    return [];
+  }
+  if (typeof args !== "object" || args === null || Array.isArray(args)) {
+    return [...required];
+  }
+  const record = args as Record<string, unknown>;
+  return required.filter((key) => {
+    const value = record[key];
+    return (
+      value === undefined || value === null || (typeof value === "string" && value.trim() === "")
+    );
+  });
+}
+
 export function isToolCallInput(args: unknown): args is Record<string, unknown> {
   return typeof args === "object" && args !== null && !Array.isArray(args);
 }

@@ -7,6 +7,119 @@ import { ChatRequestContext } from "./request-context";
 import { isEditTool, isReadTool, isTerminalTool } from "./tool-kinds";
 import { normalizeArguments, ToolSchema } from "./tool-schema";
 
+const LINE_START_ALIASES = [
+  "startLine",
+  "start",
+  "fromLine",
+  "from_line",
+  "start_line",
+  "StartLine",
+  "start_offset",
+  "startOffset",
+] as const;
+
+const LINE_END_ALIASES = [
+  "endLine",
+  "end",
+  "toLine",
+  "to_line",
+  "end_line",
+  "EndLine",
+  "end_offset",
+  "endOffset",
+] as const;
+
+/** Line-range keys Copilot/MCP file readers declare. Generic `start`/`end` stay aliases only. */
+const LINE_RANGE_START_FILL = [
+  "startLine",
+  "fromLine",
+  "from_line",
+  "start_line",
+  "StartLine",
+  "start_offset",
+  "startOffset",
+] as const;
+
+const LINE_RANGE_END_FILL = [
+  "endLine",
+  "toLine",
+  "to_line",
+  "end_line",
+  "EndLine",
+  "end_offset",
+  "endOffset",
+] as const;
+
+function coerceLineNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return Math.trunc(parsed);
+    }
+  }
+  return undefined;
+}
+
+function isNumericLineField(schema: ToolSchema | undefined, key: string): boolean {
+  const property = schema?.properties?.[key];
+  if (!property || property.type === undefined) {
+    return true;
+  }
+  return property.type === "number" || property.type === "integer";
+}
+
+function schemaKeysMatching(schema: ToolSchema | undefined, aliases: readonly string[]): string[] {
+  const aliasSet = new Set(aliases.map((alias) => alias.toLowerCase()));
+  const keys = new Set<string>([
+    ...(schema?.required ?? []),
+    ...Object.keys(schema?.properties ?? {}),
+  ]);
+  return [...keys].filter(
+    (key) => aliasSet.has(key.toLowerCase()) && isNumericLineField(schema, key),
+  );
+}
+
+function fillReadToolLineRanges(
+  repaired: Record<string, unknown>,
+  schema: ToolSchema | undefined,
+): void {
+  const startKeys = schemaKeysMatching(schema, LINE_RANGE_START_FILL);
+  const endKeys = schemaKeysMatching(schema, LINE_RANGE_END_FILL);
+  if (startKeys.length === 0 && endKeys.length === 0) {
+    return;
+  }
+
+  for (const key of startKeys) {
+    const coerced = coerceLineNumber(repaired[key]);
+    repaired[key] = coerced !== undefined ? coerced : 1;
+  }
+
+  const start =
+    startKeys.map((key) => coerceLineNumber(repaired[key])).find((value) => value !== undefined) ??
+    1;
+
+  for (const key of endKeys) {
+    const coerced = coerceLineNumber(repaired[key]);
+    repaired[key] = coerced !== undefined ? coerced : start + MAX_REPAIRED_LINE_SPAN - 1;
+  }
+
+  for (const startKey of startKeys) {
+    const startValue = repaired[startKey];
+    if (typeof startValue !== "number") {
+      continue;
+    }
+    for (const endKey of endKeys) {
+      const endValue = repaired[endKey];
+      if (typeof endValue === "number" && endValue - startValue + 1 > MAX_REPAIRED_LINE_SPAN) {
+        repaired[endKey] = startValue + MAX_REPAIRED_LINE_SPAN - 1;
+      }
+    }
+  }
+}
+
 export function fillMissingAuxiliaryBooleans(
   repaired: Record<string, unknown>,
   schema: ToolSchema | undefined,
@@ -113,17 +226,8 @@ export function repairToolArguments(
       "CodeContent",
       "ReplacementContent",
     ],
-    [
-      "startLine",
-      "start",
-      "fromLine",
-      "from_line",
-      "start_line",
-      "StartLine",
-      "start_offset",
-      "startOffset",
-    ],
-    ["endLine", "end", "toLine", "to_line", "end_line", "EndLine", "end_offset", "endOffset"],
+    LINE_START_ALIASES,
+    LINE_END_ALIASES,
     [
       "path",
       "directory",
@@ -239,10 +343,7 @@ export function repairToolArguments(
       currentFilePath.replace(/\\/g, "/") === context.filePath.replace(/\\/g, "/")),
   );
 
-  const clampLineSpan = (
-    startKey: "startLine" | "StartLine",
-    endKey: "endLine" | "EndLine",
-  ): void => {
+  const clampLineSpan = (startKey: string, endKey: string): void => {
     const start = repaired[startKey];
     const end = repaired[endKey];
     if (
@@ -256,22 +357,9 @@ export function repairToolArguments(
 
   if (isReadTool(toolName)) {
     // Do not invent filePath from regex-extracted chat context (prompt-injection).
-    if (needsNumberField(repaired.startLine, "startLine")) {
-      repaired.startLine = 1;
-    }
-    if (needsNumberField(repaired.StartLine, "StartLine")) {
-      repaired.StartLine = 1;
-    }
-    if (needsNumberField(repaired.endLine, "endLine")) {
-      const start = typeof repaired.startLine === "number" ? repaired.startLine : 1;
-      repaired.endLine = start + MAX_REPAIRED_LINE_SPAN - 1;
-    }
-    if (needsNumberField(repaired.EndLine, "EndLine")) {
-      const start = typeof repaired.StartLine === "number" ? repaired.StartLine : 1;
-      repaired.EndLine = start + MAX_REPAIRED_LINE_SPAN - 1;
-    }
-    clampLineSpan("startLine", "endLine");
-    clampLineSpan("StartLine", "EndLine");
+    // Copilot's read_file often lists startLine/endLine in properties without
+    // marking them required, then rejects the call at execution time.
+    fillReadToolLineRanges(repaired, schema);
     if (needsStringField(repaired.mode, "mode")) {
       repaired.mode = schema?.enumValues?.mode?.[0] ?? "full";
     }

@@ -1,4 +1,4 @@
-import { fetchModels } from "../src/api/client";
+import { fetchModelsOrThrow } from "../src/api/client";
 import { NimChatModelProvider } from "../src/provider/chat-provider";
 import packageJson from "../package.json";
 import * as fs from "node:fs/promises";
@@ -26,7 +26,7 @@ const mockExecuteCommand = jest.fn();
 const mockRegisterLanguageModelChatProvider = jest.fn(() => ({ dispose: jest.fn() }));
 
 jest.mock("../src/api/client", () => ({
-  fetchModels: jest.fn(),
+  fetchModelsOrThrow: jest.fn(),
 }));
 
 jest.mock("node:fs/promises", () => ({
@@ -266,7 +266,7 @@ describe("activate", () => {
     mockExecuteCommand.mockRejectedValueOnce(
       new Error("Language model group with name NVIDIA NIM already exists for vendor nvidia-nim"),
     );
-    (fetchModels as jest.Mock).mockResolvedValue(null);
+    (fetchModelsOrThrow as jest.Mock).mockRejectedValue(new Error("network down"));
     const secrets = {
       get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),
       store: jest.fn(),
@@ -337,7 +337,7 @@ describe("activate", () => {
         capabilities: { chat: false },
       },
     ];
-    (fetchModels as jest.Mock).mockResolvedValue(rawModels);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue(rawModels);
 
     const secrets = {
       get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),
@@ -363,7 +363,7 @@ describe("activate", () => {
 
     const providerInstance = (NimChatModelProvider as jest.Mock).mock.results[0]?.value;
     const { version } = packageJson;
-    expect(fetchModels).toHaveBeenCalledWith(
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith(
       "test-key",
       undefined,
       `nvidia-nim-provider/${version} VSCode/1.104.0`,
@@ -397,7 +397,7 @@ describe("activate", () => {
         capabilities: { chat: false },
       },
     ];
-    (fetchModels as jest.Mock).mockResolvedValue(rawModels);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue(rawModels);
 
     const secrets = {
       get: jest.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce("test-key"),
@@ -445,7 +445,7 @@ describe("activate", () => {
   });
 
   it("clears raw and normalized model caches when the refresh command returns an empty model list", async () => {
-    (fetchModels as jest.Mock).mockResolvedValue([]);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([]);
 
     const secrets = {
       get: jest.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce("test-key"),
@@ -480,7 +480,7 @@ describe("activate", () => {
   });
 
   it("keeps existing caches untouched when refresh fails after a previous successful cache", async () => {
-    (fetchModels as jest.Mock).mockRejectedValue(new Error("network down"));
+    (fetchModelsOrThrow as jest.Mock).mockRejectedValue(new Error("network down"));
 
     const secrets = {
       get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),
@@ -541,7 +541,7 @@ describe("activate", () => {
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
     ];
-    (fetchModels as jest.Mock).mockResolvedValue(rawModels);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue(rawModels);
 
     const previousRawModels = [{ id: "cached-model", name: "Cached Model" }];
     const update = jest
@@ -629,7 +629,7 @@ describe("activate", () => {
       },
     ];
     const firstModelsWrite = createDeferred<void>();
-    (fetchModels as jest.Mock)
+    (fetchModelsOrThrow as jest.Mock)
       .mockResolvedValueOnce(firstRawModels)
       .mockResolvedValueOnce(secondRawModels);
 
@@ -675,12 +675,12 @@ describe("activate", () => {
     const refreshPromise = refresh?.();
     await flushAsyncWork();
 
-    expect(fetchModels).toHaveBeenCalledTimes(1);
+    expect(fetchModelsOrThrow).toHaveBeenCalledTimes(1);
 
     firstModelsWrite.resolve();
     await refreshPromise;
 
-    expect(fetchModels).toHaveBeenCalledTimes(2);
+    expect(fetchModelsOrThrow).toHaveBeenCalledTimes(2);
     expect(mockShowInformationMessage).toHaveBeenCalledWith("Refreshed 1 NVIDIA NIM models.");
   });
 
@@ -693,7 +693,7 @@ describe("activate", () => {
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
     ];
-    (fetchModels as jest.Mock).mockResolvedValue(rawModels);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue(rawModels);
 
     const normalizedWriteError = new Error("persist normalized failed");
     const rollbackWriteError = new Error("rollback failed");
@@ -762,7 +762,7 @@ describe("activate", () => {
     activate(context as never);
     await flushAsyncWork();
 
-    expect(fetchModels).not.toHaveBeenCalled();
+    expect(fetchModelsOrThrow).not.toHaveBeenCalled();
     expect(globalState.update).not.toHaveBeenCalledWith("nvidia-nim.models", expect.anything());
   });
 

@@ -1,4 +1,5 @@
 import { ORPHANED_CLOSE_TAGS } from "../shared/think-tags";
+import { findEarliestIndex, findTrailingPartialStartAny, splitOnTag } from "./tag-scan";
 import { filterThinkTagsFromChunk, flushThinkTagFilter, ThinkTagFilterState } from "./think-filter";
 
 function countCodeFenceParity(text: string): 0 | 1 {
@@ -12,29 +13,12 @@ function countCodeFenceParity(text: string): 0 | 1 {
 }
 
 function findOrphanedCloseTag(text: string): { index: number; tag: string } | undefined {
-  let bestIndex = -1;
-  let bestTag: string | undefined;
-  for (const tag of ORPHANED_CLOSE_TAGS) {
-    const idx = text.toLowerCase().indexOf(tag.toLowerCase());
-    if (idx !== -1 && (bestIndex === -1 || idx < bestIndex)) {
-      bestIndex = idx;
-      bestTag = tag;
-    }
-  }
-  return bestTag !== undefined ? { index: bestIndex, tag: bestTag } : undefined;
+  const match = findEarliestIndex(text, ORPHANED_CLOSE_TAGS);
+  return match ? { index: match.index, tag: match.token } : undefined;
 }
 
 function findPartialCloseTagEnd(text: string): number {
-  let bestMatch = -1;
-  for (const tag of ORPHANED_CLOSE_TAGS) {
-    const maxLen = Math.min(text.length, tag.length - 1);
-    for (let len = maxLen; len > 0; len -= 1) {
-      if (text.toLowerCase().endsWith(tag.slice(0, len).toLowerCase())) {
-        bestMatch = Math.max(bestMatch, text.length - len);
-      }
-    }
-  }
-  return bestMatch;
+  return findTrailingPartialStartAny(text, ORPHANED_CLOSE_TAGS);
 }
 
 export interface ReasoningStreamRouterOptions {
@@ -110,8 +94,11 @@ export class ReasoningStreamRouter {
       } else if (!this.reasoningIsolationExpected) {
         const closeMatch = findOrphanedCloseTag(segment.text);
         if (closeMatch) {
-          const before = segment.text.slice(0, closeMatch.index);
-          const after = segment.text.slice(closeMatch.index + closeMatch.tag.length);
+          const { before, after } = splitOnTag(
+            segment.text,
+            closeMatch.index,
+            closeMatch.tag.length,
+          );
           if (before) {
             this.emitReasoning(before);
           }
@@ -174,8 +161,7 @@ export class ReasoningStreamRouter {
   private emitAnswerOrSplitCloseTag(text: string): void {
     const closeMatch = findOrphanedCloseTag(text);
     if (closeMatch) {
-      const before = text.slice(0, closeMatch.index);
-      const after = text.slice(closeMatch.index + closeMatch.tag.length);
+      const { before, after } = splitOnTag(text, closeMatch.index, closeMatch.tag.length);
       if (before) {
         this.emitReasoning(before);
       }
@@ -193,8 +179,11 @@ export class ReasoningStreamRouter {
     this.contentBuffer += text;
     const closeMatch = findOrphanedCloseTag(this.contentBuffer);
     if (closeMatch) {
-      const before = this.contentBuffer.slice(0, closeMatch.index);
-      const after = this.contentBuffer.slice(closeMatch.index + closeMatch.tag.length);
+      const { before, after } = splitOnTag(
+        this.contentBuffer,
+        closeMatch.index,
+        closeMatch.tag.length,
+      );
       if (before) {
         this.emitReasoning(before);
         this.flushReasoning(true);
@@ -223,8 +212,11 @@ export class ReasoningStreamRouter {
     if (checkOrphanedClose) {
       const closeMatch = findOrphanedCloseTag(this.reasoningBuffer);
       if (closeMatch) {
-        const before = this.reasoningBuffer.slice(0, closeMatch.index);
-        const after = this.reasoningBuffer.slice(closeMatch.index + closeMatch.tag.length);
+        const { before, after } = splitOnTag(
+          this.reasoningBuffer,
+          closeMatch.index,
+          closeMatch.tag.length,
+        );
         this.reasoningBuffer = before;
         this.flushReasoning(true);
         this.seenReasoningContent = true;

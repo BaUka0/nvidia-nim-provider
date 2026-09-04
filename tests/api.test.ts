@@ -1,6 +1,5 @@
 import {
   chatCompletion,
-  fetchModels,
   fetchModelsOrThrow,
   fetchWithRetry,
   streamChatCompletion,
@@ -218,7 +217,7 @@ describe("chatCompletion", () => {
   });
 });
 
-describe("fetchModels", () => {
+describe("fetchModelsOrThrow", () => {
   afterEach(() => {
     jest.restoreAllMocks();
   });
@@ -231,9 +230,9 @@ describe("fetchModels", () => {
       }),
     );
 
-    const result = await fetchModels("test-key");
+    const result = await fetchModelsOrThrow("test-key");
     expect(result).toEqual(rawModelSummaries);
-    expect(result?.[0]).toEqual(
+    expect(result[0]).toEqual(
       expect.objectContaining({
         id: "meta/llama-4-maverick-17b-128e-instruct",
         capabilities: expect.objectContaining({ vision: true, tool_calling: true }),
@@ -248,7 +247,7 @@ describe("fetchModels", () => {
     );
   });
 
-  it("returns null on failure", async () => {
+  it("throws structured auth error on failure", async () => {
     global.fetch = jest.fn().mockResolvedValue(
       makeFetchResponse({
         ok: false,
@@ -258,8 +257,11 @@ describe("fetchModels", () => {
       }),
     );
 
-    const result = await fetchModels("bad-key");
-    expect(result).toBeNull();
+    await expect(fetchModelsOrThrow("bad-key")).rejects.toMatchObject({
+      name: "NvidiaApiError",
+      code: "AUTH_FAILED",
+      operation: "models",
+    });
   });
 
   it("retries on network failure and succeeds", async () => {
@@ -273,16 +275,15 @@ describe("fetchModels", () => {
         }),
       );
 
-    const result = await fetchModels("test-key");
+    const result = await fetchModelsOrThrow("test-key");
     expect(result).toEqual(rawModelSummaries);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("retries up to 3 times then returns null", async () => {
+  it("retries up to 3 times then throws", async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error("Network error"));
 
-    const result = await fetchModels("test-key");
-    expect(result).toBeNull();
+    await expect(fetchModelsOrThrow("test-key")).rejects.toThrow();
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
@@ -304,7 +305,7 @@ describe("fetchModels", () => {
         }),
       );
 
-    const result = await fetchModels("test-key");
+    const result = await fetchModelsOrThrow("test-key");
     expect(result).toEqual(rawModelSummaries);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
@@ -327,7 +328,7 @@ describe("fetchModels", () => {
         }),
       );
 
-    const result = await fetchModels("test-key");
+    const result = await fetchModelsOrThrow("test-key");
     expect(result).toEqual(rawModelSummaries);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
@@ -351,7 +352,7 @@ describe("fetchModels", () => {
         }),
       );
 
-    const result = await fetchModels("test-key");
+    const result = await fetchModelsOrThrow("test-key");
     expect(result).toEqual(rawModelSummaries);
     expect(fetch).toHaveBeenCalledTimes(2);
   }, 10000);
@@ -374,12 +375,12 @@ describe("fetchModels", () => {
         }),
       );
 
-    const result = await fetchModels("test-key");
+    const result = await fetchModelsOrThrow("test-key");
     expect(result).toEqual(rawModelSummaries);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("does not retry on 401 and returns null immediately", async () => {
+  it("does not retry on 401 and throws immediately", async () => {
     global.fetch = jest.fn().mockResolvedValue(
       makeFetchResponse({
         ok: false,
@@ -389,8 +390,11 @@ describe("fetchModels", () => {
       }),
     );
 
-    const result = await fetchModels("bad-key");
-    expect(result).toBeNull();
+    await expect(fetchModelsOrThrow("bad-key")).rejects.toMatchObject({
+      name: "NvidiaApiError",
+      code: "AUTH_FAILED",
+      operation: "models",
+    });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 

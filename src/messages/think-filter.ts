@@ -1,4 +1,9 @@
 import { THINK_TAG_PAIRS } from "../shared/think-tags";
+import {
+  findEarliestIndex,
+  findTrailingPartialStart,
+  findTrailingPartialStartAny,
+} from "./tag-scan";
 
 export interface ThinkTagFilterState {
   insideThinkBlock: boolean;
@@ -10,54 +15,6 @@ export interface ThinkTagFilterState {
 export type ThinkFilterSegment =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string };
-
-function findTrailingCaseInsensitivePrefixStart(text: string, token: string): number {
-  const normalizedText = text.toLowerCase();
-  const normalizedToken = token.toLowerCase();
-  const maxPrefixLength = Math.min(normalizedText.length, normalizedToken.length - 1);
-
-  for (let prefixLength = maxPrefixLength; prefixLength > 0; prefixLength -= 1) {
-    if (normalizedText.endsWith(normalizedToken.slice(0, prefixLength))) {
-      return normalizedText.length - prefixLength;
-    }
-  }
-
-  return -1;
-}
-
-function findTrailingCaseInsensitivePrefixStartAny(
-  text: string,
-  tokens: readonly string[],
-): number {
-  let bestMatch = -1;
-
-  for (const token of tokens) {
-    const matchIndex = findTrailingCaseInsensitivePrefixStart(text, token);
-    if (matchIndex !== -1 && (bestMatch === -1 || matchIndex < bestMatch)) {
-      bestMatch = matchIndex;
-    }
-  }
-
-  return bestMatch;
-}
-
-function findEarliestCaseInsensitiveIndex(
-  text: string,
-  tokens: readonly string[],
-): { index: number; token: string } | undefined {
-  let bestIndex = -1;
-  let bestToken: string | undefined;
-
-  for (const token of tokens) {
-    const idx = text.toLowerCase().indexOf(token.toLowerCase());
-    if (idx !== -1 && (bestIndex === -1 || idx < bestIndex)) {
-      bestIndex = idx;
-      bestToken = token;
-    }
-  }
-
-  return bestToken !== undefined ? { index: bestIndex, token: bestToken } : undefined;
-}
 
 /**
  * Split a streamed chunk into ordered text/thinking segments, capturing the
@@ -79,9 +36,9 @@ export function filterThinkTagsFromChunk(
   while (remaining.length > 0) {
     if (state.insideThinkBlock) {
       const closeTag = state.closeTag ?? THINK_TAG_PAIRS[0].close;
-      const closeIndex = remaining.toLowerCase().indexOf(closeTag.toLowerCase());
+      const closeIndex = findEarliestIndex(remaining, [closeTag])?.index ?? -1;
       if (closeIndex === -1) {
-        const partialCloseIndex = findTrailingCaseInsensitivePrefixStart(remaining, closeTag);
+        const partialCloseIndex = findTrailingPartialStart(remaining, closeTag);
         if (partialCloseIndex === -1) {
           if (remaining.length > 0) {
             segments.push({ type: "thinking", text: remaining });
@@ -105,9 +62,9 @@ export function filterThinkTagsFromChunk(
       continue;
     }
 
-    const openMatch = findEarliestCaseInsensitiveIndex(remaining, openTags);
+    const openMatch = findEarliestIndex(remaining, openTags);
     if (openMatch === undefined) {
-      const partialOpenIndex = findTrailingCaseInsensitivePrefixStartAny(remaining, openTags);
+      const partialOpenIndex = findTrailingPartialStartAny(remaining, openTags);
       if (partialOpenIndex === -1) {
         if (remaining.length > 0) {
           segments.push({ type: "text", text: remaining });

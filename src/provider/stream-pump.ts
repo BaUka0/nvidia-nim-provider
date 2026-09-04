@@ -24,15 +24,6 @@ import { collectChoiceToolCalls } from "../tools/stream-tool-calls";
 import { RepetitionGuard } from "./repetition-guard";
 import { ToolCallStreamAggregator } from "./tool-call-aggregator";
 
-export const REPETITION_STOP_NOTICE =
-  "\n\n_[NVIDIA NIM] Stopped early: the model kept repeating the same output (degenerate loop detected). Try a different model, or raise/disable `nvidia-nim.generation.maxRepeatedLines`._";
-
-export const OUTPUT_TRUNCATED_NOTICE =
-  "\n\n_[NVIDIA NIM] Output stopped at the model's token limit. Raise `nvidia-nim.generation.maxOutputTokens`, continue the turn, or switch models._";
-
-export const CONTENT_FILTER_NOTICE =
-  "\n\n_[NVIDIA NIM] The model stopped because NVIDIA NIM filtered the response._";
-
 const MAX_TRACKED_VISIBLE_CHARS = 8192;
 
 export type NimStreamUsage = {
@@ -101,7 +92,6 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   let firstToolCallAtMs: number | undefined;
   let lastUsage: NimStreamUsage | undefined;
   let lastVisibleText = "";
-  let repetitionNoticeSent = false;
   let toolParsingStateInitDurationMs: number | undefined;
 
   const repetitionGuard = new RepetitionGuard({
@@ -140,15 +130,11 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     ) {
       flushBufferedThinking();
     }
-    if (
-      part instanceof vscode.LanguageModelTextPart &&
-      repetitionNoticeSent &&
-      repetitionGuard.tripped
-    ) {
+    if (part instanceof vscode.LanguageModelTextPart && repetitionGuard.tripped) {
       return;
     }
     let crossedThreshold = false;
-    if (part instanceof vscode.LanguageModelTextPart && !repetitionGuard.tripped) {
+    if (part instanceof vscode.LanguageModelTextPart) {
       crossedThreshold = repetitionGuard.add(part.value);
     }
     if (part instanceof vscode.LanguageModelTextPart && part.value.length > 0) {
@@ -167,21 +153,14 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       reportedVisibleContent = true;
       input.onVisibleContentReported?.();
     }
-    if (crossedThreshold && !repetitionNoticeSent) {
-      const autoContinue = input.autoContinueOnLoop;
-      if (autoContinue && !input.hasRetriedRepetitionLoop) {
-        debugLog("repetitionGuard", {
-          model: input.model.id,
-          trippedLine: repetitionGuard.trippedLine,
-          action: "autoContinueSuppressedNotice",
-        });
-      } else {
-        repetitionNoticeSent = true;
-        input.progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
-        debugLog("repetitionGuard", {
-          model: input.model.id,
-          trippedLine: repetitionGuard.trippedLine,
-        });
+    if (crossedThreshold) {
+      const willAutoContinue = input.autoContinueOnLoop && !input.hasRetriedRepetitionLoop;
+      debugLog("repetitionGuard", {
+        model: input.model.id,
+        trippedLine: repetitionGuard.trippedLine,
+        action: willAutoContinue ? "autoContinue" : "stopWithoutChatNotice",
+      });
+      if (!willAutoContinue) {
         outputLog(
           "repetitionGuard",
           `Stopped degenerate repeat loop on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
@@ -370,16 +349,13 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     }
 
     if (!repetitionGuard.tripped && repetitionGuard.flush()) {
-      const autoContinue = input.autoContinueOnLoop;
-      if (autoContinue && !input.hasRetriedRepetitionLoop) {
-        debugLog("repetitionGuard", {
-          model: input.model.id,
-          trippedLine: repetitionGuard.trippedLine,
-          action: "flushTrippedAutoContinue",
-        });
-      } else {
-        repetitionNoticeSent = true;
-        input.progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
+      const willAutoContinue = input.autoContinueOnLoop && !input.hasRetriedRepetitionLoop;
+      debugLog("repetitionGuard", {
+        model: input.model.id,
+        trippedLine: repetitionGuard.trippedLine,
+        action: willAutoContinue ? "flushTrippedAutoContinue" : "flushTrippedStopWithoutChatNotice",
+      });
+      if (!willAutoContinue) {
         outputLog(
           "repetitionGuard",
           `Stopped degenerate repeat loop on ${input.model.id}: "${repetitionGuard.trippedLine}"`,

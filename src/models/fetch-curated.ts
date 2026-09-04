@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { fetchModels, fetchModelsOrThrow } from "../api/client";
+import { fetchModelsOrThrow } from "../api/client";
 import { getApiKeyFingerprint } from "../api/key-resolver";
 import { NormalizedNvidiaModel, normalizeNvidiaModels } from "./catalog";
 import { reportMissingCuratedModels, writeModelCacheAtomically } from "./cache";
@@ -21,12 +21,7 @@ export async function fetchCuratedModels(input: {
   userAgent: string;
   globalState?: vscode.Memento;
 }): Promise<FetchedCuratedModels | undefined> {
-  // Keep compatibility with test/extension hosts that only expose the
-  // nullable legacy fetchModels function while production uses the
-  // structured-error variant.
-  const fetchModelsRequest =
-    typeof fetchModelsOrThrow === "function" ? fetchModelsOrThrow : fetchModels;
-  const rawModels = await fetchModelsRequest(input.apiKey, undefined, input.userAgent);
+  const rawModels = await fetchModelsOrThrow(input.apiKey, undefined, input.userAgent);
   if (!Array.isArray(rawModels)) {
     return undefined;
   }

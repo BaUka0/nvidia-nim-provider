@@ -8,6 +8,12 @@ import {
   estimateTokens,
 } from "../src/messages/converter";
 import { filterThinkTagsFromChunk, flushThinkTagFilter } from "../src/messages/think-filter";
+import {
+  findEarliestIndex,
+  findTrailingPartialStart,
+  findTrailingPartialStartAny,
+  splitOnTag,
+} from "../src/messages/tag-scan";
 import { makeChatMessages, makeChatOptions, SYSTEM_ROLE } from "./helpers/fakes";
 
 describe("convertMessages", () => {
@@ -436,6 +442,29 @@ describe("convertMessages with tools", () => {
       maxToolResultChars: 100,
     });
     expect(result[0].content).toBe(shortContent);
+  });
+});
+
+describe("tag-scan shared helpers", () => {
+  it("finds the earliest tag case-insensitively", () => {
+    expect(findEarliestIndex("a </THINK> b </think>", ["</think>", "</thought>"])).toEqual({
+      index: 2,
+      token: "</think>",
+    });
+    expect(findEarliestIndex("no tags here", ["</think>"])).toBeUndefined();
+  });
+
+  it("detects trailing partial tag prefixes", () => {
+    expect(findTrailingPartialStart("reasoning </thi", "</think>")).toBe(10);
+    expect(findTrailingPartialStart("clean text", "</think>")).toBe(-1);
+    expect(findTrailingPartialStartAny("reasoning </tho", ["</think>", "</thought>"])).toBe(10);
+  });
+
+  it("splits text around a tag", () => {
+    expect(splitOnTag("before</think>after", 6, "</think>".length)).toEqual({
+      before: "before",
+      after: "after",
+    });
   });
 });
 

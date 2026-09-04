@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { estimateTokens } from "../../src/messages/converter";
+import { IMAGE_BYTES_PER_TOKEN, IMAGE_TOKEN_FLOOR } from "../../src/messages/token-estimate";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
 import {
   asRequestMessage,
@@ -92,7 +93,7 @@ describe("NimChatModelProvider.provideTokenCount", () => {
       msg(1, [new vscode.LanguageModelDataPart(bytes, "image/png")]),
       token,
     );
-    expect(result).toBe(Math.max(4, Math.ceil(3000 / 750)));
+    expect(result).toBe(Math.max(IMAGE_TOKEN_FLOOR, Math.ceil(3000 / IMAGE_BYTES_PER_TOKEN)));
     expect(result).toBeGreaterThan(2);
   });
 

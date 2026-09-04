@@ -1,8 +1,7 @@
 import * as vscode from "vscode";
-import { fetchModels, streamChatCompletion } from "../../src/api/client";
+import { fetchModelsOrThrow, streamChatCompletion } from "../../src/api/client";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
 import { LOOP_BREAKER_MARKER } from "../../src/provider/loop-breaker";
-import { CONTENT_FILTER_NOTICE, OUTPUT_TRUNCATED_NOTICE } from "../../src/provider/stream-pump";
 import { ApiErrorKind, NvidiaApiError } from "../../src/api/errors";
 import { getApiKeyFingerprint } from "../../src/api/key-resolver";
 import {
@@ -25,7 +24,7 @@ import { getTurnReports, resetTurnReportsForTests } from "../../src/shared/turn-
 import { setDeveloperLogOptions } from "../../src/shared/logging";
 
 jest.mock("../../src/api/client", () => ({
-  fetchModels: jest.fn(),
+  fetchModelsOrThrow: jest.fn(),
   streamChatCompletion: jest.fn(),
 }));
 
@@ -332,7 +331,7 @@ describe("NimChatModelProvider", () => {
       }),
       makeUserMessages("Hi"),
       makeChatOptions({
-        modelConfiguration: { reasoningMode: "on" },
+        modelConfiguration: { reasoningMode: "high" },
         modelOptions: {},
       }),
       progress,
@@ -378,7 +377,7 @@ describe("NimChatModelProvider", () => {
       }),
       makeUserMessages("Hi"),
       makeChatOptions({
-        modelConfiguration: { reasoningMode: "on" },
+        modelConfiguration: { reasoningMode: "high" },
         modelOptions: {},
       }),
       progress,
@@ -414,7 +413,7 @@ describe("NimChatModelProvider", () => {
       }),
       makeUserMessages("Hi"),
       makeChatOptions({
-        modelConfiguration: { reasoningMode: "on" },
+        modelConfiguration: { reasoningMode: "high" },
         modelOptions: {},
       }),
       progress,
@@ -500,7 +499,7 @@ describe("NimChatModelProvider", () => {
       }),
       makeUserMessages("Hi"),
       makeChatOptions({
-        modelConfiguration: { reasoningMode: "on" },
+        modelConfiguration: { reasoningMode: "high" },
         modelOptions: {},
       }),
       progress,
@@ -670,7 +669,7 @@ describe("NimChatModelProvider", () => {
         }),
         makeUserMessages("Hi"),
         makeChatOptions({
-          modelConfiguration: { reasoningMode: "on" },
+          modelConfiguration: { reasoningMode: "high" },
           modelOptions: {},
         }),
         progress,
@@ -695,7 +694,7 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
       get: jest.fn((key: string, defaultValue: unknown) =>
-        key === "reasoningMode" ? "on" : defaultValue,
+        key === "reasoningMode" ? "high" : defaultValue,
       ),
     });
 
@@ -775,6 +774,50 @@ describe("NimChatModelProvider", () => {
     expect(textReports).toHaveLength(1);
     expect(textReports[0][0]).toEqual(
       expect.objectContaining({ value: "Answer from non-reasoning model" }),
+    );
+  });
+
+  it("disables reasoning when the requested mode is unsupported instead of remapping it", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "Direct answer without reasoning" } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    const token = makeToken();
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions({
+        modelConfiguration: { reasoningMode: "on" },
+        modelOptions: {},
+      }),
+      progress,
+      token,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledWith(
+      "test-key",
+      expect.objectContaining({
+        chat_template_kwargs: expect.objectContaining({ thinking: false }),
+      }),
+      expect.any(AbortSignal),
+      "test-ua",
+      expect.objectContaining({ maxOutputTokens: 65536 }),
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c) => c[0] instanceof vscode.LanguageModelTextPart,
+    );
+    expect(textReports).toHaveLength(1);
+    expect(textReports[0][0]).toEqual(
+      expect.objectContaining({ value: "Direct answer without reasoning" }),
     );
   });
 
@@ -1009,7 +1052,7 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
-    expect(fetchModels).not.toHaveBeenCalled();
+    expect(fetchModelsOrThrow).not.toHaveBeenCalled();
     const requestBody = (streamChatCompletion as jest.Mock).mock.calls[0][1];
     expect(requestBody.tools).toEqual(
       expect.arrayContaining([
@@ -1504,7 +1547,7 @@ describe("NimChatModelProvider", () => {
         token,
       );
 
-      expect(fetchModels).not.toHaveBeenCalled();
+      expect(fetchModelsOrThrow).not.toHaveBeenCalled();
       expect(consoleSpy).toHaveBeenCalledWith(
         "[NVIDIA NIM Debug] stream timing:",
         expect.objectContaining({
@@ -1948,7 +1991,7 @@ describe("NimChatModelProvider", () => {
     );
   });
 
-  it("notifies when finish_reason is length and auto-continue is disabled", async () => {
+  it("stops without a chat notice when finish_reason is length and auto-continue is disabled", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((key: string, defaultValue: unknown) =>
@@ -1974,8 +2017,9 @@ describe("NimChatModelProvider", () => {
     );
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(1);
-    expect(progress.report).toHaveBeenCalledWith(
-      expect.objectContaining({ value: OUTPUT_TRUNCATED_NOTICE }),
+    expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Cut off" }));
+    expect(progress.report).not.toHaveBeenCalledWith(
+      expect.objectContaining({ value: expect.stringContaining("token limit") }),
     );
   });
 
@@ -2002,8 +2046,48 @@ describe("NimChatModelProvider", () => {
     ).rejects.toThrow(/INVALID_REQUEST|filtered/);
   });
 
-  it("notifies when content_filter stops a stream after visible text", async () => {
+  it("nudges the model when content_filter stops a stream after visible text", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const filteredStream = async function* () {
+      yield { choices: [{ delta: { content: "Hello" }, finish_reason: "content_filter" }] };
+    };
+    const continueStream = async function* () {
+      yield { choices: [{ delta: { content: " world" } }] };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => filteredStream())
+      .mockImplementationOnce(() => continueStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(JSON.stringify(retryBody.messages)).toContain("safety filter");
+    expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: " world" }));
+    expect(progress.report).not.toHaveBeenCalledWith(
+      expect.objectContaining({ value: expect.stringContaining("filtered the response") }),
+    );
+  });
+
+  it("does not auto-continue a content_filter finish when auto-continue is disabled", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) =>
+        key === "generation.autoContinueOnLoop" ? false : defaultValue,
+      ),
+    }));
     const filteredStream = async function* () {
       yield { choices: [{ delta: { content: "Hello" }, finish_reason: "content_filter" }] };
     };
@@ -2023,9 +2107,64 @@ describe("NimChatModelProvider", () => {
     );
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(1);
-    expect(progress.report).toHaveBeenCalledWith(
-      expect.objectContaining({ value: CONTENT_FILTER_NOTICE }),
+    expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Hello" }));
+    expect(progress.report).not.toHaveBeenCalledWith(
+      expect.objectContaining({ value: expect.stringContaining("filtered the response") }),
     );
+  });
+
+  it("does not loop-retry content_filter after a tool call in the same turn", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const filteredToolStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              content: "Calling the tool.",
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "read_file", arguments: '{"filePath":"/tmp/a.ts"}' },
+                },
+              ],
+            },
+            finish_reason: "content_filter",
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(filteredToolStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: false },
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions({
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file",
+            inputSchema: {
+              type: "object",
+              properties: { filePath: { type: "string" } },
+              required: ["filePath"],
+            },
+          },
+        ],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ name: "read_file" }));
   });
 
   it.each([
@@ -3139,6 +3278,9 @@ describe("NimChatModelProvider", () => {
 
     const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
     expect(fallbackRequest.model).toBe("nvidia/nemotron-3-super-120b-a12b");
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: expect.stringContaining("Invalid tool call") }),
+    );
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Fallback listing" }),
     );

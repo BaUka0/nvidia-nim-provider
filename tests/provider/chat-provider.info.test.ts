@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { fetchModels, streamChatCompletion } from "../../src/api/client";
+import { fetchModelsOrThrow, streamChatCompletion } from "../../src/api/client";
 import { getApiKeyFingerprint } from "../../src/api/key-resolver";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
 import { MODELS_CACHE_VERSION } from "../../src/shared/constants";
@@ -14,7 +14,7 @@ import {
 } from "../helpers/fakes";
 
 jest.mock("../../src/api/client", () => ({
-  fetchModels: jest.fn(),
+  fetchModelsOrThrow: jest.fn(),
   streamChatCompletion: jest.fn(),
 }));
 
@@ -63,14 +63,14 @@ describe("NimChatModelProvider", () => {
     const token = makeToken();
     const infos = await provider.provideLanguageModelChatInformation(makePrepareOptions(), token);
     expect(infos).toEqual([]);
-    expect(fetchModels).not.toHaveBeenCalled();
+    expect(fetchModelsOrThrow).not.toHaveBeenCalled();
   });
 
   it("provideLanguageModelChatInformation fetches models on demand when cache is empty and a provider group API key exists", async () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
     (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
-    (fetchModels as jest.Mock).mockResolvedValue([
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       {
         id: "deepseek-ai/deepseek-v4-flash-0731",
         object: "model",
@@ -87,7 +87,7 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
-    expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
         id: "deepseek-ai/deepseek-v4-flash-0731",
@@ -112,7 +112,7 @@ describe("NimChatModelProvider", () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
     (secrets.get as jest.Mock).mockResolvedValue(undefined);
-    (fetchModels as jest.Mock).mockResolvedValue([
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       {
         id: "deepseek-ai/deepseek-v4-flash-0731",
         object: "model",
@@ -129,7 +129,7 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
-    expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
     expect(secrets.get).not.toHaveBeenCalledWith("nvidia-nim.apiKey");
     expect(infos).toEqual([
       expect.objectContaining({
@@ -164,7 +164,7 @@ describe("NimChatModelProvider", () => {
     const infos = await provider.provideLanguageModelChatInformation(makePrepareOptions(), token);
 
     expect(infos).toEqual([]);
-    expect(fetchModels).not.toHaveBeenCalled();
+    expect(fetchModelsOrThrow).not.toHaveBeenCalled();
   });
 
   it("treats an undefined configuration property as groupless resolution", async () => {
@@ -198,14 +198,14 @@ describe("NimChatModelProvider", () => {
     );
 
     expect(infos).toEqual([]);
-    expect(fetchModels).not.toHaveBeenCalled();
+    expect(fetchModelsOrThrow).not.toHaveBeenCalled();
   });
 
   it("uses the legacy API key fallback for a configuration-only provider group missing an api key", async () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
     (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
-    (fetchModels as jest.Mock).mockResolvedValue([
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       {
         id: "deepseek-ai/deepseek-v4-flash-0731",
         object: "model",
@@ -219,7 +219,7 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
-    expect(fetchModels).toHaveBeenCalledWith("legacy-key", undefined, "test-ua");
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith("legacy-key", undefined, "test-ua");
     expect(infos).toEqual([
       expect.objectContaining({
         id: "deepseek-ai/deepseek-v4-flash-0731",
@@ -271,7 +271,7 @@ describe("NimChatModelProvider", () => {
         isUserSelectable: true,
       }),
     );
-    expect(fetchModels).not.toHaveBeenCalled();
+    expect(fetchModelsOrThrow).not.toHaveBeenCalled();
   });
 
   it("keeps duplicate configured provider group models resolvable but hides them from the picker", async () => {
@@ -367,7 +367,7 @@ describe("NimChatModelProvider", () => {
   it("keeps cloned models from duplicate provider groups bound to their own API keys", async () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
-    (fetchModels as jest.Mock).mockResolvedValue([
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       { id: "deepseek-ai/deepseek-v4-flash-0731", object: "model" },
     ]);
     (streamChatCompletion as jest.Mock).mockImplementation(() =>
@@ -475,7 +475,7 @@ describe("NimChatModelProvider", () => {
       return undefined;
     });
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
-    (fetchModels as jest.Mock).mockResolvedValue([
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       {
         id: "deepseek-ai/deepseek-v4-flash-0731",
         object: "model",
@@ -492,7 +492,7 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
-    expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
     expect(infos[0]).toEqual(
       expect.objectContaining({
         id: "deepseek-ai/deepseek-v4-flash-0731",
@@ -520,7 +520,7 @@ describe("NimChatModelProvider", () => {
       }
       return undefined;
     });
-    (fetchModels as jest.Mock).mockResolvedValue(null);
+    (fetchModelsOrThrow as jest.Mock).mockRejectedValue(new Error("network down"));
     const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
@@ -531,7 +531,7 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
-    expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
     expect(infos).toEqual([]);
   });
 
@@ -574,7 +574,7 @@ describe("NimChatModelProvider", () => {
     expect(infos[0].family).toBe("nvidia-nim");
     expect(infos[0]).toEqual(expect.objectContaining({ isUserSelectable: true }));
     expect(globalState.get).toHaveBeenCalledWith("nvidia-nim.models");
-    expect(fetchModels).not.toHaveBeenCalled();
+    expect(fetchModelsOrThrow).not.toHaveBeenCalled();
   });
 
   it("lists Lightning as a normal selectable model in the Copilot picker", async () => {
@@ -614,7 +614,7 @@ describe("NimChatModelProvider", () => {
       }),
     ]);
     expect(infos[0].tooltip).toBe("NVIDIA NIM Nemotron 3.5 Lightning 30B");
-    expect(fetchModels).not.toHaveBeenCalled();
+    expect(fetchModelsOrThrow).not.toHaveBeenCalled();
   });
 
   it("does not refetch a fresh cache on repeated provider-group resolution", async () => {
@@ -649,7 +649,7 @@ describe("NimChatModelProvider", () => {
       provider.provideLanguageModelChatInformation(options, token),
     ).resolves.toHaveLength(1);
 
-    expect(fetchModels).not.toHaveBeenCalled();
+    expect(fetchModelsOrThrow).not.toHaveBeenCalled();
   });
 
   it("migrates an older cache version during provider-group resolution", async () => {
@@ -672,7 +672,7 @@ describe("NimChatModelProvider", () => {
       return undefined;
     });
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
-    (fetchModels as jest.Mock).mockResolvedValue([
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       { id: "deepseek-ai/deepseek-v4-flash-0731", object: "model" },
     ]);
     const token = makeToken();
@@ -687,7 +687,7 @@ describe("NimChatModelProvider", () => {
     );
 
     expect(infos).toEqual([expect.objectContaining({ id: "deepseek-ai/deepseek-v4-flash-0731" })]);
-    expect(fetchModels).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
   });
 
   it("provideLanguageModelChatInformation returns no models when the cache is not normalized", async () => {
@@ -778,7 +778,7 @@ describe("NimChatModelProvider", () => {
       }
       return undefined;
     });
-    (fetchModels as jest.Mock).mockResolvedValue([
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       { id: "nvidia/nemotron-3.5-lightning-30b-a3b", object: "model" },
     ]);
     const token = makeToken();
@@ -803,7 +803,7 @@ describe("NimChatModelProvider", () => {
     expect(firstInfos[0].id).toBe("deepseek-ai/deepseek-v4-flash-0731");
     expect(secondInfos[0].id).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
     expect(secondInfos[0]).toEqual(expect.objectContaining({ isUserSelectable: true }));
-    expect(fetchModels).toHaveBeenCalledWith("key-b", undefined, "test-ua");
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith("key-b", undefined, "test-ua");
   });
 
   it("invalidates the model cache when model information changes", async () => {
@@ -829,7 +829,7 @@ describe("NimChatModelProvider", () => {
       }
       return undefined;
     });
-    (fetchModels as jest.Mock).mockResolvedValue([
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       { id: "nvidia/nemotron-3.5-lightning-30b-a3b", object: "model" },
     ]);
     const token = makeToken();
@@ -854,7 +854,7 @@ describe("NimChatModelProvider", () => {
 
     expect(before[0].id).toBe("deepseek-ai/deepseek-v4-flash-0731");
     expect(after[0].id).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
-    expect(fetchModels).toHaveBeenCalledWith("key-a", undefined, "test-ua");
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith("key-a", undefined, "test-ua");
   });
 
   it("bounds the runtime model-info cache and evicts the least-recently-used entry", () => {
@@ -921,7 +921,7 @@ describe("NimChatModelProvider", () => {
       }
       return undefined;
     });
-    (fetchModels as jest.Mock).mockResolvedValue([
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       { id: "deepseek-ai/deepseek-v4-flash-0731", object: "model" },
     ]);
     const cacheHarness = asRuntimeInfoCache(provider);

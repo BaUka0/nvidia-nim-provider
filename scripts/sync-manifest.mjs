@@ -15,19 +15,31 @@ async function loadCatalog() {
   }
 
   const modelEntries = [...modelListMatch[1].matchAll(/"([^"]+)":\s*\{([\s\S]*?)\n\s*\},/g)];
+  if (modelEntries.length === 0) {
+    throw new Error("Parsed zero model entries from MODEL_LIST; catalog format changed?");
+  }
   const modelList = {};
   for (const [, id, block] of modelEntries) {
     const supportsVision = /supportsVision:\s*true/.test(block);
+    if (!/adapter:\s*"[^"]+"/.test(block)) {
+      throw new Error(`Model entry "${id}" has no adapter field; catalog format changed?`);
+    }
     modelList[id] = { supportsVision };
   }
 
   const fbMatch = src.match(/export const FALLBACK_MODEL_ID\s*=\s*"([^"]+)";/);
   const fbVisionMatch = src.match(/export const FALLBACK_VISION_MODEL_ID\s*=\s*"([^"]+)";/);
+  if (!fbMatch || !fbVisionMatch) {
+    throw new Error("Could not locate FALLBACK_MODEL_ID in src/models/catalog.ts");
+  }
+  if (!modelList[fbMatch[1]] || !modelList[fbVisionMatch[1]]) {
+    throw new Error("Fallback model id is not in MODEL_LIST; catalog and defaults diverged.");
+  }
 
   return {
     modelList,
-    fallbackModelId: fbMatch ? fbMatch[1] : undefined,
-    fallbackVisionModelId: fbVisionMatch ? fbVisionMatch[1] : undefined,
+    fallbackModelId: fbMatch[1],
+    fallbackVisionModelId: fbVisionMatch[1],
   };
 }
 

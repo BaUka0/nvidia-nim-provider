@@ -12,7 +12,7 @@ import {
 } from "../helpers/fakes";
 
 jest.mock("../../src/api/client", () => ({
-  fetchModels: jest.fn(),
+  fetchModelsOrThrow: jest.fn(),
   streamChatCompletion: jest.fn(),
 }));
 
@@ -409,23 +409,23 @@ describe("NimChatModelProvider", () => {
       yield { choices: [{ delta: { reasoning_content: "I will call a tool." } }] };
       yield { choices: [{ delta: { tool_calls: [] }, finish_reason: "tool_calls" }] };
     };
-    (streamChatCompletion as jest.Mock)
-      .mockImplementationOnce(() => emptyToolFinish())
-      .mockImplementationOnce(() => emptyToolFinish());
+    (streamChatCompletion as jest.Mock).mockImplementation(() => emptyToolFinish());
 
     const progress = { report: jest.fn() };
-    await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
-      makeUserMessages("Hi"),
-      makeChatOptions({
-        modelOptions: {},
-        tools: [{ name: "get_weather", description: "Get weather", inputSchema: {} }],
-      }),
-      progress,
-      makeToken(),
-    );
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+        makeUserMessages("Hi"),
+        makeChatOptions({
+          modelOptions: {},
+          tools: [{ name: "get_weather", description: "Get weather", inputSchema: {} }],
+        }),
+        progress,
+        makeToken(),
+      ),
+    ).rejects.toThrow(/could not be executed/);
 
-    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    expect((streamChatCompletion as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
     const retryRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
     expect(retryRequest.messages.at(-1)).toEqual(
       expect.objectContaining({
@@ -634,39 +634,51 @@ describe("NimChatModelProvider", () => {
         ],
       };
     };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+    (streamChatCompletion as jest.Mock).mockImplementation(
+      (_key: string, body: { model: string }) => {
+        if (body.model === "kimi-k2.6") {
+          return mockStream();
+        }
+        return (async function* () {
+          yield { choices: [{ delta: { content: "Recovered on fallback." } }] };
+        })();
+      },
+    );
 
     const progress = { report: jest.fn() };
     const token = makeToken();
 
-    await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
-      makeUserMessages("Read the file"),
-      makeChatOptions({
-        modelOptions: {},
-        tools: [
-          {
-            name: "read_file",
-            description: "Read a file from disk",
-            inputSchema: {
-              type: "object",
-              properties: { filePath: { type: "string" } },
-              required: ["filePath"],
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+        makeUserMessages("Read the file"),
+        makeChatOptions({
+          modelOptions: {},
+          tools: [
+            {
+              name: "read_file",
+              description: "Read a file from disk",
+              inputSchema: {
+                type: "object",
+                properties: { filePath: { type: "string" } },
+                required: ["filePath"],
+              },
             },
-          },
-        ],
-      }),
-      progress,
-      token,
-    );
+          ],
+        }),
+        progress,
+        token,
+      ),
+    ).rejects.toThrow(/could not be executed/);
 
     const toolCallReports = progress.report.mock.calls.filter(
       (c: unknown[]) => (c[0] as { callId?: string })?.callId,
     );
     expect(toolCallReports).toHaveLength(0);
+    expect((streamChatCompletion as jest.Mock).mock.calls.length).toBeGreaterThan(1);
   });
 
-  it("returns a text fallback when all tool calls are skipped as invalid", async () => {
+  it("emits read_file with default line range when Copilot lists startLine/endLine as optional", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -679,7 +691,7 @@ describe("NimChatModelProvider", () => {
                   index: 0,
                   id: "call_1",
                   type: "function",
-                  function: { name: "read_file", arguments: "{}" },
+                  function: { name: "read_file", arguments: '{"filePath":"/tmp/example.md"}' },
                 },
               ],
             },
@@ -703,7 +715,11 @@ describe("NimChatModelProvider", () => {
             description: "Read a file from disk",
             inputSchema: {
               type: "object",
-              properties: { filePath: { type: "string" } },
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "number" },
+                endLine: { type: "number" },
+              },
               required: ["filePath"],
             },
           },
@@ -712,6 +728,84 @@ describe("NimChatModelProvider", () => {
       progress,
       token,
     );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    const textReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { value?: string })?.value,
+    );
+    expect(toolCallReports).toHaveLength(1);
+    expect(toolCallReports[0][0].input).toEqual({
+      filePath: "/tmp/example.md",
+      startLine: 1,
+      endLine: 200,
+    });
+    expect(
+      textReports.every(
+        (c: unknown[]) => !String((c[0] as { value?: string }).value).includes("was rejected"),
+      ),
+    ).toBe(true);
+  });
+
+  it("retries then throws when read_file stays missing filePath", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "read_file", arguments: "{}" },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock).mockImplementation(
+      (_key: string, body: { model: string }) => {
+        if (body.model === "kimi-k2.6") {
+          return mockStream();
+        }
+        return (async function* () {
+          yield { choices: [{ delta: { content: "Recovered on fallback." } }] };
+        })();
+      },
+    );
+
+    const progress = { report: jest.fn() };
+    const token = makeToken();
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+        makeUserMessages("Read the file"),
+        makeChatOptions({
+          modelOptions: {},
+          tools: [
+            {
+              name: "read_file",
+              description: "Read a file from disk",
+              inputSchema: {
+                type: "object",
+                properties: { filePath: { type: "string" } },
+                required: ["filePath"],
+              },
+            },
+          ],
+        }),
+        progress,
+        token,
+      ),
+    ).rejects.toThrow(/could not be executed/);
 
     expect((streamChatCompletion as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
     expect((streamChatCompletion as jest.Mock).mock.calls[1][1].messages.at(-1).content).toContain(
@@ -814,10 +908,11 @@ describe("NimChatModelProvider", () => {
       expect.arrayContaining([
         expect.objectContaining({
           role: "user",
-          content: expect.stringContaining("filePath, startLine, endLine"),
+          content: expect.stringContaining("filePath"),
         }),
       ]),
     );
+    expect(retryRequest.messages.at(-1).content).not.toContain("startLine, endLine");
 
     const toolCallReports = progress.report.mock.calls.filter(
       (c: unknown[]) => (c[0] as { callId?: string })?.callId,
@@ -941,7 +1036,8 @@ describe("NimChatModelProvider", () => {
         content: expect.stringContaining("read_file"),
       }),
     );
-    expect(retryMessage.content).toContain("filePath, startLine, endLine");
+    expect(retryMessage.content).toContain("filePath");
+    expect(retryMessage.content).not.toContain("startLine, endLine");
     expect(retryMessage.content).not.toContain("list_dir with invalid arguments");
 
     const toolCallReports = progress.report.mock.calls.filter(
@@ -961,7 +1057,7 @@ describe("NimChatModelProvider", () => {
     expect(textReports).toHaveLength(0);
   });
 
-  it("prefers required-argument fallback text when multiple invalid tool calls are skipped twice", async () => {
+  it("retries then throws when multiple invalid tool calls keep failing", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const invalidStream = async function* () {
@@ -994,47 +1090,56 @@ describe("NimChatModelProvider", () => {
       };
     };
 
-    (streamChatCompletion as jest.Mock)
-      .mockImplementationOnce(() => invalidStream())
-      .mockImplementationOnce(() => invalidStream());
+    (streamChatCompletion as jest.Mock).mockImplementation(
+      (_key: string, body: { model: string }) => {
+        if (body.model === "kimi-k2.6") {
+          return invalidStream();
+        }
+        return (async function* () {
+          yield { choices: [{ delta: { content: "Recovered on fallback." } }] };
+        })();
+      },
+    );
 
     const progress = { report: jest.fn() };
     const token = makeToken();
 
-    await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
-      makeUserMessages("Read the file"),
-      makeChatOptions({
-        modelOptions: {},
-        tools: [
-          {
-            name: "list_dir",
-            description: "List directory entries",
-            inputSchema: {
-              type: "object",
-              properties: { path: { type: "string" } },
-            },
-          },
-          {
-            name: "read_file",
-            description: "Read a file from disk",
-            inputSchema: {
-              type: "object",
-              properties: {
-                filePath: { type: "string" },
-                startLine: { type: "number" },
-                endLine: { type: "number" },
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+        makeUserMessages("Read the file"),
+        makeChatOptions({
+          modelOptions: {},
+          tools: [
+            {
+              name: "list_dir",
+              description: "List directory entries",
+              inputSchema: {
+                type: "object",
+                properties: { path: { type: "string" } },
               },
-              required: ["filePath", "startLine", "endLine"],
             },
-          },
-        ],
-      }),
-      progress,
-      token,
-    );
+            {
+              name: "read_file",
+              description: "Read a file from disk",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  filePath: { type: "string" },
+                  startLine: { type: "number" },
+                  endLine: { type: "number" },
+                },
+                required: ["filePath", "startLine", "endLine"],
+              },
+            },
+          ],
+        }),
+        progress,
+        token,
+      ),
+    ).rejects.toThrow(/could not be executed/);
 
-    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    expect((streamChatCompletion as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
 
     const toolCallReports = progress.report.mock.calls.filter(
       (c: unknown[]) => (c[0] as { callId?: string })?.callId,
@@ -1050,7 +1155,7 @@ describe("NimChatModelProvider", () => {
     );
   });
 
-  it("returns a text fallback when invalid tool calls are preceded by whitespace content", async () => {
+  it("retries then throws when invalid read_file is preceded by whitespace", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -1072,37 +1177,52 @@ describe("NimChatModelProvider", () => {
         ],
       };
     };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+    (streamChatCompletion as jest.Mock).mockImplementation(
+      (_key: string, body: { model: string }) => {
+        if (body.model === "kimi-k2.6") {
+          return mockStream();
+        }
+        return (async function* () {
+          yield { choices: [{ delta: { content: "Recovered on fallback." } }] };
+        })();
+      },
+    );
 
     const progress = { report: jest.fn() };
     const token = makeToken();
 
-    await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
-      makeUserMessages("Read the file"),
-      makeChatOptions({
-        modelOptions: {},
-        tools: [
-          {
-            name: "read_file",
-            description: "Read a file from disk",
-            inputSchema: {
-              type: "object",
-              properties: { filePath: { type: "string" } },
-              required: ["filePath"],
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+        makeUserMessages("Read the file"),
+        makeChatOptions({
+          modelOptions: {},
+          tools: [
+            {
+              name: "read_file",
+              description: "Read a file from disk",
+              inputSchema: {
+                type: "object",
+                properties: { filePath: { type: "string" } },
+                required: ["filePath"],
+              },
             },
-          },
-        ],
-      }),
-      progress,
-      token,
-    );
+          ],
+        }),
+        progress,
+        token,
+      ),
+    ).rejects.toThrow(/could not be executed/);
 
     const textReports = progress.report.mock.calls.filter(
       (c: unknown[]) => (c[0] as { value?: string })?.value,
     );
-    expect(textReports).toHaveLength(1);
     expect(textReports[0][0].value).toBe(" ");
+    expect(
+      textReports.every(
+        (c: unknown[]) => !String((c[0] as { value?: string }).value).includes("was rejected"),
+      ),
+    ).toBe(true);
     expect((streamChatCompletion as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 });

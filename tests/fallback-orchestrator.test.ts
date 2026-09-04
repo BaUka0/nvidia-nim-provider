@@ -77,5 +77,13 @@ describe("fallbackCapacityLabel", () => {
     expect(fallbackCapacityLabel(new NvidiaApiError("rate_limited", "429", { status: 429 }))).toBe(
       "Rate limited",
     );
+    expect(
+      fallbackCapacityLabel(
+        new NvidiaApiError("empty_stream", "no content", { operation: "invalid_tool_call" }),
+      ),
+    ).toBe("Invalid tool call");
+    expect(fallbackCapacityLabel(new NvidiaApiError("empty_stream", "no content"))).toBe(
+      "Empty response",
+    );
   });
 });

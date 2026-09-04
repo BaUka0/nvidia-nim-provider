@@ -1,4 +1,4 @@
-import { fetchModels } from "../src/api/client";
+import { fetchModelsOrThrow } from "../src/api/client";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../src/api/key-resolver";
 import { MODEL_LIST } from "../src/models/catalog";
 import { NvidiaModelDiscoveryService } from "../src/models/discovery";
@@ -13,7 +13,7 @@ import {
 import { outputLog } from "../src/shared/logging";
 
 jest.mock("../src/api/client", () => ({
-  fetchModels: jest.fn(),
+  fetchModelsOrThrow: jest.fn(),
 }));
 
 jest.mock("../src/shared/logging", () => ({
@@ -59,7 +59,7 @@ describe("model cache key ownership and refresh", () => {
     const secrets = { get: jest.fn(async () => undefined) };
     const resolver = new NvidiaApiKeyResolver(secrets);
     resolver.rememberRuntimeKey("provider-group-key");
-    (fetchModels as jest.Mock).mockResolvedValue([
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       { id: "deepseek-ai/deepseek-v4-flash-0731", object: "model" },
     ]);
     const globalState = {
@@ -81,7 +81,7 @@ describe("model cache key ownership and refresh", () => {
       resolver,
     );
 
-    expect(fetchModels).toHaveBeenCalledWith("provider-group-key", undefined, "test-ua");
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith("provider-group-key", undefined, "test-ua");
     expect(globalState.update).toHaveBeenCalledWith(
       "nvidia-nim.modelsCacheKeyFingerprint",
       expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -113,7 +113,7 @@ describe("model cache key ownership and refresh", () => {
       update: jest.fn(async () => undefined),
     };
     const secrets = { get: jest.fn(async () => undefined) };
-    (fetchModels as jest.Mock).mockResolvedValue([]);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([]);
     const discovery = new NvidiaModelDiscoveryService(
       secrets as never,
       "test-ua",
@@ -123,7 +123,7 @@ describe("model cache key ownership and refresh", () => {
     const models = await discovery.getAvailableModels("new-key", { refreshStaleCache: true });
 
     expect(models).toEqual([]);
-    expect(fetchModels).toHaveBeenCalledWith("new-key", undefined, "test-ua");
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith("new-key", undefined, "test-ua");
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", []);
   });
 
@@ -147,7 +147,7 @@ describe("model cache key ownership and refresh", () => {
       update: jest.fn(async () => undefined),
     };
     const secrets = { get: jest.fn(async () => undefined) };
-    (fetchModels as jest.Mock).mockResolvedValue([]);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([]);
     const discovery = new NvidiaModelDiscoveryService(
       secrets as never,
       "test-ua",
@@ -155,7 +155,7 @@ describe("model cache key ownership and refresh", () => {
     );
 
     await expect(discovery.getAvailableModels("new-key")).resolves.toEqual([]);
-    expect(fetchModels).toHaveBeenCalledWith("new-key", undefined, "test-ua");
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith("new-key", undefined, "test-ua");
   });
 
   it("refreshes a cache written by an older cache version", async () => {
@@ -175,7 +175,7 @@ describe("model cache key ownership and refresh", () => {
       [MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY]: getApiKeyFingerprint("test-key"),
     });
     const secrets = { get: jest.fn(async () => undefined) };
-    (fetchModels as jest.Mock).mockResolvedValue([{ id: "minimaxai/minimax-m3" }]);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([{ id: "minimaxai/minimax-m3" }]);
     const discovery = new NvidiaModelDiscoveryService(
       secrets as never,
       "test-ua",
@@ -186,7 +186,7 @@ describe("model cache key ownership and refresh", () => {
       expect.objectContaining({ id: "minimaxai/minimax-m3" }),
     ]);
 
-    expect(fetchModels).toHaveBeenCalledWith("test-key", undefined, "test-ua");
+    expect(fetchModelsOrThrow).toHaveBeenCalledWith("test-key", undefined, "test-ua");
     expect(globalState.values.get(MODELS_CACHE_VERSION_STATE_KEY)).toBe(MODELS_CACHE_VERSION);
   });
 
@@ -194,7 +194,7 @@ describe("model cache key ownership and refresh", () => {
     const rawModels = [{ id: "deepseek-ai/deepseek-v4-flash-0731" }];
     const globalState = createMutableGlobalState();
     const secrets = { get: jest.fn(async () => undefined) };
-    (fetchModels as jest.Mock).mockResolvedValue(rawModels);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue(rawModels);
     const discovery = new NvidiaModelDiscoveryService(
       secrets as never,
       "test-ua",
@@ -282,7 +282,7 @@ describe("model cache key ownership and refresh", () => {
     );
     const provider = { fireModelInfoChanged: jest.fn() };
     const context = { secrets, globalState };
-    (fetchModels as jest.Mock)
+    (fetchModelsOrThrow as jest.Mock)
       .mockResolvedValueOnce(discoveryRawModels)
       .mockResolvedValueOnce(manualRawModels);
 
@@ -296,13 +296,13 @@ describe("model cache key ownership and refresh", () => {
     );
     await new Promise<void>((resolve) => setImmediate(resolve));
 
-    expect(fetchModels).toHaveBeenCalledTimes(1);
+    expect(fetchModelsOrThrow).toHaveBeenCalledTimes(1);
     failDiscoveryWrite.resolve();
 
     await expect(discoveryRefresh).resolves.toBeUndefined();
     await manualRefresh;
 
-    expect(fetchModels).toHaveBeenNthCalledWith(2, "manual-key", undefined, "manual-ua");
+    expect(fetchModelsOrThrow).toHaveBeenNthCalledWith(2, "manual-key", undefined, "manual-ua");
     expect(globalState.values.get(RAW_MODELS_STATE_KEY)).toEqual(manualRawModels);
     expect(globalState.values.get(MODELS_STATE_KEY)).toEqual([
       expect.objectContaining({ id: "minimaxai/minimax-m3" }),
@@ -322,7 +322,7 @@ describe("model cache key ownership and refresh", () => {
       secrets: { get: jest.fn(async () => undefined) },
       globalState,
     };
-    (fetchModels as jest.Mock).mockResolvedValue([{ id: "deepseek-ai/deepseek-v4-flash" }]);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([{ id: "deepseek-ai/deepseek-v4-flash" }]);
 
     await refreshModelsFromApi(
       context as never,

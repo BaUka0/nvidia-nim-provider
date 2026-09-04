@@ -334,22 +334,6 @@ export async function fetchWithRetry(
   );
 }
 
-export async function fetchModels(
-  apiKey: string,
-  signal?: AbortSignal,
-  userAgent?: string,
-): Promise<NvidiaModelSummary[] | null> {
-  try {
-    return await fetchModelsOrThrow(apiKey, signal, userAgent);
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw error;
-    }
-    debugLog("fetchModels", classifyApiError(error, { operation: "models" }));
-    return null;
-  }
-}
-
 /**
  * Overall deadline for non-streaming requests (model list, single-shot
  * completions, summarization). Streaming responses are governed by the
@@ -388,8 +372,7 @@ function withRequestTimeout(signal: AbortSignal | undefined, timeoutMs: number):
 
 /**
  * Fetch the model list while preserving structured API failures for callers
- * such as manual refresh. `fetchModels` remains the nullable compatibility
- * wrapper used by older integrations.
+ * such as manual refresh.
  */
 export async function fetchModelsOrThrow(
   apiKey: string,

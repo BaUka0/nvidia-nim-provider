@@ -24,14 +24,7 @@ import { injectHistoryLoopBreaker, LOOP_BREAKER_MARKER } from "./loop-breaker";
 import { buildOverflowRetryRequest } from "./overflow-compactor";
 import { NimRequestBuilder } from "./request-builder";
 import { appendChatMessage, cloneNimChatRequest } from "./request-snapshot";
-import {
-  CONTENT_FILTER_NOTICE,
-  NimStreamUsage,
-  OUTPUT_TRUNCATED_NOTICE,
-  REPETITION_STOP_NOTICE,
-  runStreamAttempt,
-  StreamAttemptResult,
-} from "./stream-pump";
+import { NimStreamUsage, runStreamAttempt, StreamAttemptResult } from "./stream-pump";
 
 export interface ModelTurnReportState {
   hasReportedContent: boolean;
@@ -67,7 +60,7 @@ function isTransientStreamError(err: unknown): boolean {
   return err instanceof Error && err.name === "TypeError";
 }
 
-type LoopRetryReason = "repetition_loop" | "hanging_colon" | "output_truncated";
+type LoopRetryReason = "repetition_loop" | "hanging_colon" | "output_truncated" | "content_filter";
 type RetryReason = LoopRetryReason | "invalid_tool_call" | "empty_stream";
 
 interface AttemptRetryFacts {
@@ -93,6 +86,7 @@ interface AttemptRetryEvaluation {
   willRetryRepetitionLoop: boolean;
   willRetryHangingColon: boolean;
   willRetryTruncation: boolean;
+  willRetryContentFilter: boolean;
   willRetryOnLoop: boolean;
   skippedUnknownTool: boolean;
   retryMessage: string | undefined;
@@ -141,7 +135,22 @@ function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEvaluation 
   const willRetryHangingColon = !isRepetitionLoop && isHangingColon && loopAutoContinueEligible;
   const willRetryTruncation =
     !isRepetitionLoop && !isHangingColon && isTruncatedLength && loopAutoContinueEligible;
-  const willRetryOnLoop = willRetryRepetitionLoop || willRetryHangingColon || willRetryTruncation;
+  const isContentFilterPartial =
+    result.lastFinishReason === "content_filter" &&
+    !result.sawToolCall &&
+    !result.emittedToolCall &&
+    hasVisibleText;
+  const willRetryContentFilter =
+    !isRepetitionLoop &&
+    !isHangingColon &&
+    !isTruncatedLength &&
+    isContentFilterPartial &&
+    loopAutoContinueEligible;
+  const willRetryOnLoop =
+    willRetryRepetitionLoop ||
+    willRetryHangingColon ||
+    willRetryTruncation ||
+    willRetryContentFilter;
 
   const retryMessage = result.sawToolCall
     ? buildInvalidToolCallRetryMessage(result.skippedToolCalls)
@@ -152,7 +161,7 @@ function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEvaluation 
       (call) =>
         call.name.length > 0 && call.name !== "tool_call" && !facts.knownToolNames.has(call.name),
     );
-  const invalidToolRetryBudget = skippedUnknownTool ? facts.maxInvalidToolRetries : 1;
+  const invalidToolRetryBudget = facts.maxInvalidToolRetries;
   const willRetryAfterInvalidToolCall =
     facts.autoRetryInvalidCalls &&
     result.sawToolCall &&
@@ -172,7 +181,9 @@ function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEvaluation 
       ? "repetition_loop"
       : willRetryHangingColon
         ? "hanging_colon"
-        : "output_truncated"
+        : willRetryTruncation
+          ? "output_truncated"
+          : "content_filter"
     : willRetryAfterInvalidToolCall
       ? "invalid_tool_call"
       : willRetryEmptyStream
@@ -186,6 +197,7 @@ function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEvaluation 
     willRetryRepetitionLoop,
     willRetryHangingColon,
     willRetryTruncation,
+    willRetryContentFilter,
     willRetryOnLoop,
     skippedUnknownTool,
     retryMessage,
@@ -204,10 +216,33 @@ const LOOP_BREAKER_NUDGES: Record<LoopRetryReason, string> = {
     'hey you got stuck — your previous turn ended with ":" with no tool call but a next action was expected. Continue working and take the next action.',
   output_truncated:
     "your previous reply was cut off at the output token limit. Continue from where you left off. Call a tool if needed or finish the answer.",
+  content_filter:
+    "your previous reply was stopped by the safety filter. Continue the answer without the blocked content. Call a tool if needed or finish the answer. Do not mention the filter.",
 };
 
 function buildLoopBreakerNudge(reason: LoopRetryReason): NimChatMessage {
   return { role: "user", content: `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_NUDGES[reason]}` };
+}
+
+const INVALID_TOOL_EXHAUSTION_OPERATION = "invalid_tool_call";
+
+function createInvalidToolExhaustionError(
+  modelLabel: string,
+  retryCount: number,
+  skippedNames: readonly string[],
+): NvidiaApiError {
+  return createStructuredError(
+    "empty_stream",
+    [
+      `Model: ${modelLabel}`,
+      `The model kept emitting a tool call that could not be executed after ${retryCount} retry(ies).`,
+      skippedNames.length > 0 ? `Skipped: ${skippedNames.join(", ")}` : null,
+      "The request will be retried on a fallback model if failover is enabled.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    { operation: INVALID_TOOL_EXHAUSTION_OPERATION },
+  );
 }
 
 function errorFields(error: unknown): { errorKind?: string; errorMessage?: string } {
@@ -455,6 +490,7 @@ export class ModelTurnExecutor {
         // Sticky reason of the last applied retry, kept for the stream-timing
         // debug field on the follow-up attempt.
         let lastRetryReason: "invalid_tool_call" | undefined;
+        let lastInvalidToolSkipNames: string[] = [];
         let transientRetryCount = 0;
         let lastTransientError: unknown;
         let emptyStreamRetryCount = 0;
@@ -484,11 +520,13 @@ export class ModelTurnExecutor {
               attemptBody = applyBudget(attemptBody);
             } catch {
               debugLog("streamRetry", "retry nudge dropped: context budget exceeded");
-              if (
-                retryReasonHistory.at(-1) === "repetition_loop" ||
-                retryReasonHistory.at(-1) === "hanging_colon"
-              ) {
-                progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
+              if (lastRetryReason === "invalid_tool_call") {
+                reportState.failingAttemptHasVisibleContent = false;
+                throw createInvalidToolExhaustionError(
+                  model.name ?? model.id,
+                  invalidToolRetryCount,
+                  lastInvalidToolSkipNames,
+                );
               }
               break;
             }
@@ -676,6 +714,7 @@ export class ModelTurnExecutor {
             willRetryRepetitionLoop,
             willRetryHangingColon,
             willRetryTruncation,
+            willRetryContentFilter,
             willRetryOnLoop,
             skippedUnknownTool,
             retryMessage,
@@ -743,6 +782,8 @@ export class ModelTurnExecutor {
               streamChunkCount: result.streamChunkCount,
               willRetryEmptyStream,
               willRetryOnLoop,
+              willRetryContentFilter,
+              skippedUnknownTool,
               isRepetitionLoop,
               isHangingColon,
               hasRetriedRepetitionLoop,
@@ -770,7 +811,9 @@ export class ModelTurnExecutor {
               ? "repetition_loop"
               : willRetryHangingColon
                 ? "hanging_colon"
-                : "output_truncated";
+                : willRetryTruncation
+                  ? "output_truncated"
+                  : "content_filter";
             hasRetriedRepetitionLoop = true;
             retryReasonHistory.push(loopReason);
             retryNudge = buildLoopBreakerNudge(loopReason);
@@ -782,7 +825,7 @@ export class ModelTurnExecutor {
             });
             outputLog(
               "repetitionGuard",
-              `Auto-continue after ${loopReason === "repetition_loop" ? "repetition loop" : loopReason === "hanging_colon" ? "hanging ':'" : "truncated output"} on ${model.id}: "${(result.trippedLine ?? result.lastVisibleText).slice(0, 80)}"`,
+              `Auto-continue after ${loopReason === "repetition_loop" ? "repetition loop" : loopReason === "hanging_colon" ? "hanging ':'" : loopReason === "content_filter" ? "content filter" : "truncated output"} on ${model.id}: "${(result.trippedLine ?? result.lastVisibleText).slice(0, 80)}"`,
             );
             baselineRequestBody = appendChatMessage(baselineRequestBody, {
               role: "assistant",
@@ -792,7 +835,6 @@ export class ModelTurnExecutor {
               baselineRequestBody = applyBudget(baselineRequestBody);
             } catch {
               debugLog("streamRetry", "history continuation dropped: context budget exceeded");
-              progress.report(new vscode.LanguageModelTextPart(REPETITION_STOP_NOTICE));
               break;
             }
             continue;
@@ -806,6 +848,7 @@ export class ModelTurnExecutor {
           ) {
             invalidToolRetryCount += 1;
             lastRetryReason = "invalid_tool_call";
+            lastInvalidToolSkipNames = skippedToolCallNames;
             retryReasonHistory.push("invalid_tool_call");
             retryNudge = { role: "user", content: retryMessage };
             continue;
@@ -814,23 +857,14 @@ export class ModelTurnExecutor {
           if (
             result.sawToolCall &&
             !result.emittedToolCall &&
-            skippedUnknownTool &&
             toolsConfig.autoRetryInvalidCalls &&
             retryMessage
           ) {
             reportState.failingAttemptHasVisibleContent = false;
-            throw createStructuredError(
-              "empty_stream",
-              [
-                `Model: ${model.name ?? model.id}`,
-                `The model kept emitting a tool call that could not be executed after ${invalidToolRetryCount} retry(ies).`,
-                skippedToolCallNames.length > 0
-                  ? `Skipped: ${skippedToolCallNames.join(", ")}`
-                  : null,
-                "The request will be retried on a fallback model if failover is enabled.",
-              ]
-                .filter(Boolean)
-                .join("\n"),
+            throw createInvalidToolExhaustionError(
+              model.name ?? model.id,
+              invalidToolRetryCount,
+              skippedToolCallNames,
             );
           }
 
@@ -841,13 +875,6 @@ export class ModelTurnExecutor {
                 `NVIDIA NIM filtered the response from ${model.name ?? model.id} before any answer or tool call was produced.`,
               );
             }
-            progress.report(new vscode.LanguageModelTextPart(CONTENT_FILTER_NOTICE));
-            attemptCompleted = true;
-            break;
-          }
-
-          if (isTruncatedLength && !willRetryTruncation && result.reportedVisibleContent) {
-            progress.report(new vscode.LanguageModelTextPart(OUTPUT_TRUNCATED_NOTICE));
             attemptCompleted = true;
             break;
           }
@@ -868,6 +895,7 @@ export class ModelTurnExecutor {
             willRetryOnLoop,
             isRepetitionLoop,
             isHangingColon,
+            isTruncatedLength,
             emptyStreamRetryCount,
           });
 
