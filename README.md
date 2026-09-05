@@ -50,16 +50,16 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 
 | Model | Intelligence Index | Context Window | Reasoning Modes | Tools | Vision | Notes |
 | :--- | :---: | :---: | :--- | :---: | :---: | :--- |
-| **Kimi K3** | **60** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Long-context multimodal work, repo-scale jobs |
-| **DeepSeek V4 Pro 0813** | **53** | 1M | `None`, `High`, `Max` | Yes | No | High-capacity reasoning, codebase generation |
-| **DeepSeek V4 Flash 0731** | **52** | 1M | `None`, `High`, `Max` | Yes | No | Algorithm design, architecture, complex refactors |
-| **MiniMax M3** | **45** | 1M | `None`, `On`, `Adaptive` | Yes | Yes | Multimodal coding, full-stack tasks |
-| **Nemotron 3 Ultra 550B** | **38** | 1M | `None`, `Medium`, `High` | Yes | No | Heavy multi-step reasoning, technical docs |
-| **Muse Glimmer** | **35** | 131K | `None` to `XHigh` | Yes | Yes | Visual UX/UI work; default vision fallback |
-| **Nemotron 3 Super 120B** | **26** | 1M | `None`, `Low`, `High` | Yes | No | Workhorse for everyday coding; default text fallback |
-| **Nemotron 3.5 Lightning 30B** | **24** | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Fast agentic turns; compact 30B/3B-active MoE |
+| **Kimi K3** | **50** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Long-context multimodal work, repo-scale jobs |
+| **DeepSeek V4 Pro 0813** | **42** | 1M | `None`, `High`, `Max` | Yes | No | High-capacity reasoning, codebase generation |
+| **DeepSeek V4 Flash 0731** | **41** | 1M | `None`, `High`, `Max` | Yes | No | Algorithm design, architecture, complex refactors |
+| **MiniMax M3** | **36** | 1M | `None`, `On`, `Adaptive` | Yes | Yes | Multimodal coding, full-stack tasks |
+| **Nemotron 3 Ultra 550B** | **30** | 1M | `None`, `Medium`, `High` | Yes | No | Heavy multi-step reasoning, technical docs |
+| **Muse Glimmer** | **24** | 131K | `None` to `XHigh` | Yes | Yes | Visual UX/UI work; default vision fallback |
+| **Nemotron 3 Super 120B** | **19** | 1M | `None`, `Low`, `High` | Yes | No | Workhorse for everyday coding; default text fallback |
+| **Nemotron 3.5 Lightning 30B** | **16** | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Fast agentic turns; compact 30B/3B-active MoE |
 
-Intelligence Index values are from the Artificial Analysis Intelligence Index (verified; see `CHANGELOG.md` 0.9.2).
+Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.2 verified; see `CHANGELOG.md`).
 
 ---
 

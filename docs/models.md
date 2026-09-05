@@ -8,16 +8,16 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 
 | Model | Picker Name | Intelligence Index | Context Limit | Max Output | Reasoning Modes | Vision | Notes |
 | :--- | :--- | :---: | :---: | :---: | :--- | :---: | :--- |
-| **Kimi K3** | `Kimi K3` | **60** | 1,048,576 | 65,536 | `None`, `Low`, `High`, `Max` | Yes | Long-context reasoning, multimodal docs, agentic research |
-| **DeepSeek V4 Pro 0813** | `DeepSeek V4 Pro 0813` | **53** | 1,048,576 | 131,072 | `None`, `High`, `Max` | No | High-capacity reasoning, large code generation, deep problem solving |
-| **DeepSeek V4 Flash 0731** | `DeepSeek V4 Flash 0731` | **52** | 1,048,576 | 131,072 | `None`, `High`, `Max` | No | Hard algorithmic work, complex refactors, deep math |
-| **MiniMax M3** | `MiniMax M3` | **45** | 1,000,000 | 100,000 | `None`, `On`, `Adaptive` | Yes | Multimodal coding, screenshot debugging, full-stack UI |
-| **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **38** | 1,000,000 | 65,536 | `None`, `Medium`, `High` | No | Heavy multi-file reasoning, system design, enterprise docs |
-| **Muse Glimmer** | `Muse Glimmer` | **35** | 131,072 | 32,768 | `None` to `XHigh` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
-| **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **26** | 1,000,000 | 65,536 | `None`, `Low`, `High` | No | Workhorse for everyday coding; default text fallback and summarizer |
-| **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **24** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; compact 30B/3B-active MoE |
+| **Kimi K3** | `Kimi K3` | **50** | 1,048,576 | 65,536 | `None`, `Low`, `High`, `Max` | Yes | Long-context reasoning, multimodal docs, agentic research |
+| **DeepSeek V4 Pro 0813** | `DeepSeek V4 Pro 0813` | **42** | 1,048,576 | 131,072 | `None`, `High`, `Max` | No | High-capacity reasoning, large code generation, deep problem solving |
+| **DeepSeek V4 Flash 0731** | `DeepSeek V4 Flash 0731` | **41** | 1,048,576 | 131,072 | `None`, `High`, `Max` | No | Hard algorithmic work, complex refactors, deep math |
+| **MiniMax M3** | `MiniMax M3` | **36** | 1,000,000 | 100,000 | `None`, `On`, `Adaptive` | Yes | Multimodal coding, screenshot debugging, full-stack UI |
+| **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **30** | 1,000,000 | 65,536 | `None`, `Medium`, `High` | No | Heavy multi-file reasoning, system design, enterprise docs |
+| **Muse Glimmer** | `Muse Glimmer` | **24** | 131,072 | 32,768 | `None` to `XHigh` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
+| **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **19** | 1,000,000 | 65,536 | `None`, `Low`, `High` | No | Workhorse for everyday coding; default text fallback and summarizer |
+| **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **16** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; compact 30B/3B-active MoE |
 
-Intelligence Index values are from the Artificial Analysis Intelligence Index (verified; see `CHANGELOG.md` 0.9.2).
+Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.2 verified; see `CHANGELOG.md`).
 
 ---
 

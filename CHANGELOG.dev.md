@@ -4,6 +4,10 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Changed
+
+- **Artificial Analysis Intelligence Index v4.2 Updates (`README.md`, `docs/models.md`).** Updated benchmark capability scores to reflect the recalibrated Artificial Analysis Intelligence Index v4.2 composite across all curated models (Kimi K3: 50, DeepSeek V4 Pro 0813: 42, DeepSeek V4 Flash 0731: 41, MiniMax M3: 36, Nemotron 3 Ultra 550B: 30, Muse Glimmer: 24, Nemotron 3 Super 120B: 19, Nemotron 3.5 Lightning 30B: 16).
+
 ## [0.10.1] - 2026-09-05
 
 ### Fixed

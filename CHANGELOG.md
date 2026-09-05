@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Changed
+
+- Updated Artificial Analysis Intelligence Index scores across documentation to v4.2 benchmarks (Kimi K3 at 50 down to Nemotron 3.5 Lightning at 16).
+
 ## [0.10.1] - 2026-09-05
 
 ### Fixed
