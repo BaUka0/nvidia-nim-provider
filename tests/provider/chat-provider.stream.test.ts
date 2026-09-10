@@ -209,7 +209,7 @@ describe("NimChatModelProvider", () => {
     const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "minimaxai/minimax-m3", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeModel({ id: "moonshotai/kimi-k3", maxInputTokens: 100000, maxOutputTokens: 65536 }),
       makeUserMessages("Hi"),
       makeChatOptions(),
       progress,
@@ -889,85 +889,6 @@ describe("NimChatModelProvider", () => {
     expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "visible answer" }));
   });
 
-  it("strips mm:think tags from content when reasoning_content is present", async () => {
-    (secrets.get as jest.Mock).mockResolvedValue("test-key");
-
-    const mockStream = async function* () {
-      yield { choices: [{ delta: { reasoning_content: "Initial reasoning" } }] };
-      yield {
-        choices: [
-          {
-            delta: {
-              content: "Response before <mm:think>mid reasoning</mm:think> response after",
-            },
-          },
-        ],
-      };
-    };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
-
-    const progress = { report: jest.fn() };
-    const token = makeToken();
-
-    await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "minimaxai/minimax-m3", maxInputTokens: 100000, maxOutputTokens: 65536 }),
-      makeUserMessages("Hi"),
-      makeChatOptions(),
-      progress,
-      token,
-    );
-
-    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
-    const textReports = progress.report.mock.calls.filter(
-      (c) => c[0] instanceof vscode.LanguageModelTextPart,
-    );
-
-    expect(thinkingReports).toHaveLength(1);
-    expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "Initial reasoning" }));
-    const textContent = textReports.map((r) => r[0].value).join("");
-    expect(textContent).toBe("Response before  response after");
-    expect(textContent).not.toContain("mid reasoning");
-    expect(textContent).not.toContain("<mm:think>");
-  });
-
-  it("captures mm:think tags as thinking when reasoning_content is absent", async () => {
-    (secrets.get as jest.Mock).mockResolvedValue("test-key");
-
-    const mockStream = async function* () {
-      yield {
-        choices: [
-          {
-            delta: {
-              content: "<mm:think>reasoning here</mm:think>visible answer",
-            },
-          },
-        ],
-      };
-    };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
-
-    const progress = { report: jest.fn() };
-    const token = makeToken();
-
-    await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "minimaxai/minimax-m3", maxInputTokens: 100000, maxOutputTokens: 65536 }),
-      makeUserMessages("Hi"),
-      makeChatOptions(),
-      progress,
-      token,
-    );
-
-    const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
-    const textReports = progress.report.mock.calls.filter(
-      (c) => c[0] instanceof vscode.LanguageModelTextPart,
-    );
-
-    expect(thinkingReports).toHaveLength(1);
-    expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "reasoning here" }));
-    expect(textReports).toHaveLength(1);
-    expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "visible answer" }));
-  });
-
   it("isolates orphaned reasoning without a reasoning mode toggle for a direct-content model", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
@@ -1152,10 +1073,10 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (globalState.get as jest.Mock).mockReturnValue([
       {
-        id: "minimaxai/minimax-m3",
-        displayName: "MiniMax M3",
-        contextWindow: 1048576,
-        maxOutputTokens: 100000,
+        id: "meta/muse-glimmer-30b",
+        displayName: "Muse Glimmer",
+        contextWindow: 131072,
+        maxOutputTokens: 32768,
         supportsTools: true,
         supportsVision: true,
       },
@@ -1170,7 +1091,7 @@ describe("NimChatModelProvider", () => {
     const token = makeToken();
 
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "minimaxai/minimax-m3", maxInputTokens: 100000, maxOutputTokens: 100000 }),
+      makeModel({ id: "meta/muse-glimmer-30b", maxInputTokens: 100000, maxOutputTokens: 32768 }),
       makeMessages({
         role: 1,
         content: [
@@ -1184,7 +1105,7 @@ describe("NimChatModelProvider", () => {
     );
 
     const requestBody = (streamChatCompletion as jest.Mock).mock.calls[0][1];
-    expect(requestBody.model).toBe("minimaxai/minimax-m3");
+    expect(requestBody.model).toBe("meta/muse-glimmer-30b");
     expect(requestBody.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -2576,7 +2497,6 @@ describe("NimChatModelProvider", () => {
 
   it.each([
     ["deepseek-ai/deepseek-v4-flash-0731", false],
-    ["minimaxai/minimax-m3", true],
     ["moonshotai/kimi-k3", true],
     ["nvidia/nemotron-3-ultra-550b-a55b", false],
     ["nvidia/nemotron-3.5-lightning-30b-a3b", false],
@@ -3720,7 +3640,7 @@ describe("NimChatModelProvider", () => {
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((key: string, defaultValue: unknown) =>
         key === "fallback.priorityList"
-          ? ["nvidia/nemotron-3-ultra-550b-a55b", "minimaxai/minimax-m3"]
+          ? ["nvidia/nemotron-3-ultra-550b-a55b", "meta/muse-glimmer-30b"]
           : defaultValue,
       ),
     }));
@@ -3744,10 +3664,10 @@ describe("NimChatModelProvider", () => {
             supportsVision: false,
           },
           {
-            id: "minimaxai/minimax-m3",
-            displayName: "MiniMax M3",
-            contextWindow: 1000000,
-            maxOutputTokens: 100000,
+            id: "meta/muse-glimmer-30b",
+            displayName: "Muse Glimmer",
+            contextWindow: 131072,
+            maxOutputTokens: 32768,
             supportsTools: true,
             supportsVision: true,
           },
@@ -3802,13 +3722,13 @@ describe("NimChatModelProvider", () => {
     expect(requestedModels).toEqual([
       "moonshotai/kimi-k3",
       "nvidia/nemotron-3-ultra-550b-a55b",
-      "minimaxai/minimax-m3",
+      "meta/muse-glimmer-30b",
     ]);
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       "Rate limited on Kimi K3. Falling back to Nemotron 3 Ultra 550B.",
     );
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      "Rate limited on Nemotron 3 Ultra 550B. Falling back to MiniMax M3.",
+      "Rate limited on Nemotron 3 Ultra 550B. Falling back to Muse Glimmer.",
     );
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Priority chain response" }),

@@ -53,7 +53,6 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | **Kimi K3** | **44** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Long-context multimodal work, repo-scale jobs |
 | **DeepSeek V4 Pro 0813** | **36** | 1M | `None`, `High`, `Max` | Yes | No | High-capacity reasoning, codebase generation |
 | **DeepSeek V4 Flash 0731** | **35** | 1M | `None`, `High`, `Max` | Yes | No | Algorithm design, architecture, complex refactors |
-| **MiniMax M3** | **30** | 1M | `None`, `On`, `Adaptive` | Yes | Yes | Multimodal coding, full-stack tasks |
 | **Nemotron 3 Ultra 550B** | **23** | 1M | `None`, `Medium`, `High` | Yes | No | Heavy multi-step reasoning, technical docs |
 | **Muse Glimmer** | **18** | 131K | `None` to `XHigh` | Yes | Yes | Visual UX/UI work; default vision fallback |
 | **Nemotron 3 Super 120B** | **14** | 1M | `None`, `Low`, `High` | Yes | No | Workhorse for everyday coding; default text fallback |

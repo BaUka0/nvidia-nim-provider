@@ -4,6 +4,10 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Removed
+
+- **MiniMax M3 (`src/models/catalog.ts`, `src/models/adapters/`, `package.json`).** Removed after NVIDIA removed the model from the NIM catalog, including its adapter, probe entry, settings enums, and active documentation. Vision fallback remains Muse Glimmer, with Kimi K3 as the other curated vision model.
+
 ### Changed
 
 - **Artificial Analysis Intelligence Index v4.3 Updates (`README.md`, `docs/models.md`).** Updated benchmark capability scores to reflect the recalibrated Artificial Analysis Intelligence Index v4.3 composite across all curated models (Kimi K3: 44, DeepSeek V4 Pro 0813: 36, DeepSeek V4 Flash 0731: 35, MiniMax M3: 30, Nemotron 3 Ultra 550B: 23, Muse Glimmer: 18, Nemotron 3 Super 120B: 14, Nemotron 3.5 Lightning 30B: 14).

@@ -50,7 +50,7 @@ The key is encrypted inside the OS-native credential vault via VS Code `SecretSt
 ## Step 4: Select a Model and Start Chatting
 
 1. In Copilot Chat, open the model selector dropdown.
-2. Pick a model under the **NVIDIA NIM** group (e.g. DeepSeek V4 Pro 0813, Nemotron 3 Super 120B, MiniMax M3).
+2. Pick a model under the **NVIDIA NIM** group (e.g. DeepSeek V4 Pro 0813, Nemotron 3 Super 120B, or Muse Glimmer).
 3. Send a message.
 
 ---

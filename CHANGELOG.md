@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Removed
+
+- Removed MiniMax M3 from the model picker and automatic fallback choices because NVIDIA removed it from the NIM model catalog.
+
 ### Changed
 
 - Updated Artificial Analysis Intelligence Index scores across documentation to v4.3 benchmarks (Kimi K3 at 44 down to Nemotron 3.5 Lightning at 14).

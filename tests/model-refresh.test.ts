@@ -206,7 +206,7 @@ describe("model cache key ownership and refresh", () => {
       [MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY]: getApiKeyFingerprint("test-key"),
     });
     const secrets = { get: jest.fn(async () => undefined) };
-    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([{ id: "minimaxai/minimax-m3" }]);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([{ id: "moonshotai/kimi-k3" }]);
     const discovery = new NvidiaModelDiscoveryService(
       secrets as never,
       "test-ua",
@@ -214,7 +214,7 @@ describe("model cache key ownership and refresh", () => {
     );
 
     await expect(discovery.getAvailableModels("test-key")).resolves.toEqual([
-      expect.objectContaining({ id: "minimaxai/minimax-m3" }),
+      expect.objectContaining({ id: "moonshotai/kimi-k3" }),
     ]);
 
     expect(fetchModelsOrThrow).toHaveBeenCalledWith("test-key", undefined, "test-ua");
@@ -280,7 +280,7 @@ describe("model cache key ownership and refresh", () => {
       },
     ];
     const discoveryRawModels = [{ id: "nvidia/nemotron-3.5-lightning-30b-a3b" }];
-    const manualRawModels = [{ id: "minimaxai/minimax-m3" }];
+    const manualRawModels = [{ id: "moonshotai/kimi-k3" }];
     const discoveryWriteBlocked = createDeferred();
     const failDiscoveryWrite = createDeferred();
     let shouldFailDiscoveryWrite = true;
@@ -336,7 +336,7 @@ describe("model cache key ownership and refresh", () => {
     expect(fetchModelsOrThrow).toHaveBeenNthCalledWith(2, "manual-key", undefined, "manual-ua");
     expect(globalState.values.get(RAW_MODELS_STATE_KEY)).toEqual(manualRawModels);
     expect(globalState.values.get(MODELS_STATE_KEY)).toEqual([
-      expect.objectContaining({ id: "minimaxai/minimax-m3" }),
+      expect.objectContaining({ id: "moonshotai/kimi-k3" }),
     ]);
     expect(globalState.values.get(MODELS_CACHE_VERSION_STATE_KEY)).toBe(MODELS_CACHE_VERSION);
     expect(globalState.values.get(MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY)).toBe(

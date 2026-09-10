@@ -74,30 +74,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "think",
   },
   {
-    modelId: "minimaxai/minimax-m3",
-    reasoningModes: ["none", "on", "adaptive"],
-    reasoningCases: [
-      {
-        mode: "none",
-        expectedFields: { chat_template_kwargs: { thinking_mode: "disabled" } },
-      },
-      {
-        mode: "on",
-        expectedFields: { chat_template_kwargs: { thinking_mode: "enabled" } },
-      },
-      {
-        mode: "adaptive",
-        expectedFields: { chat_template_kwargs: { thinking_mode: "adaptive" } },
-      },
-    ],
-    reasoningParameterFormat: "chat_template_kwargs",
-    toolCallProtocol: "native-and-text",
-    reasoningRouting: "isolated",
-    contentOnlyMode: "none",
-    contentOnlyRouting: "text",
-    thinkTag: "mm:think",
-  },
-  {
     modelId: "moonshotai/kimi-k3",
     reasoningModes: ["none", "low", "high", "max"],
     reasoningCases: [

@@ -212,14 +212,6 @@ describe("getFallbackModel", () => {
     supportsTools: true,
     supportsVision: true,
   };
-  const minimax = {
-    id: "minimaxai/minimax-m3",
-    displayName: "MiniMax M3",
-    contextWindow: 1000000,
-    maxOutputTokens: 100000,
-    supportsTools: true,
-    supportsVision: true,
-  };
   const glimmer = {
     id: FALLBACK_VISION_MODEL_ID,
     displayName: "Muse Glimmer",
@@ -239,17 +231,17 @@ describe("getFallbackModel", () => {
 
   it("selects Nemotron 3 Super 120B as the default text fallback", () => {
     expect(FALLBACK_MODEL_ID).toBe("nvidia/nemotron-3-super-120b-a12b");
-    expect(getFallbackModel(kimi.id, [kimi, lightning, super120, minimax])).toEqual(super120);
+    expect(getFallbackModel(kimi.id, [kimi, lightning, super120])).toEqual(super120);
   });
 
   it("last-resorts to another available model when the current model is already the text fallback", () => {
-    expect(getFallbackModel(super120.id, [kimi, lightning, super120, minimax])).toEqual(kimi);
+    expect(getFallbackModel(super120.id, [kimi, lightning, super120])).toEqual(kimi);
   });
 
   describe("priority list fallback (requiresVision: false)", () => {
     it("walks the priority list in order before the configured single model", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, flash, lightning, super120, minimax], {
+        getFallbackModel(kimi.id, [kimi, flash, lightning, super120], {
           configuredFallbackModelId: FALLBACK_MODEL_ID,
           priorityList: ["deepseek-ai/deepseek-v4-flash-0731", "meta/muse-glimmer-30b"],
         }),
@@ -293,7 +285,7 @@ describe("getFallbackModel", () => {
     it("returns undefined when the whole chain is exhausted", () => {
       expect(
         getFallbackModel(kimi.id, [kimi], {
-          priorityList: [FALLBACK_MODEL_ID, "minimaxai/minimax-m3"],
+          priorityList: [FALLBACK_MODEL_ID],
         }),
       ).toBeUndefined();
     });
@@ -303,7 +295,7 @@ describe("getFallbackModel", () => {
     it("selects Muse Glimmer by default when requiresVision is true", () => {
       expect(FALLBACK_VISION_MODEL_ID).toBe("meta/muse-glimmer-30b");
       expect(
-        getFallbackModel(kimi.id, [kimi, lightning, minimax, glimmer], {
+        getFallbackModel(kimi.id, [kimi, lightning, glimmer], {
           requiresVision: true,
         }),
       ).toEqual(glimmer);
@@ -311,7 +303,7 @@ describe("getFallbackModel", () => {
 
     it("uses configured fallback.model if it already supports vision", () => {
       expect(
-        getFallbackModel(lightning.id, [kimi, lightning, minimax, glimmer], {
+        getFallbackModel(lightning.id, [kimi, lightning, glimmer], {
           configuredFallbackModelId: "moonshotai/kimi-k3",
           requiresVision: true,
         }),
@@ -320,7 +312,7 @@ describe("getFallbackModel", () => {
 
     it("uses configured visionModel when fallback.model is text-only", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, lightning, minimax, glimmer], {
+        getFallbackModel(kimi.id, [kimi, lightning, glimmer], {
           configuredFallbackModelId: "nvidia/nemotron-3.5-lightning-30b-a3b",
           configuredVisionFallbackModelId: "meta/muse-glimmer-30b",
           requiresVision: true,
@@ -330,10 +322,10 @@ describe("getFallbackModel", () => {
 
     it("selects alternative vision model when the failing model is the vision fallback model", () => {
       expect(
-        getFallbackModel(glimmer.id, [minimax, lightning, glimmer], {
+        getFallbackModel(glimmer.id, [kimi, lightning, glimmer], {
           requiresVision: true,
         }),
-      ).toEqual(minimax);
+      ).toEqual(kimi);
     });
 
     it("returns undefined if no vision models are available in the catalog", () => {

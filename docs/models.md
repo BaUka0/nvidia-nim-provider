@@ -11,7 +11,6 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 | **Kimi K3** | `Kimi K3` | **44** | 1,048,576 | 65,536 | `None`, `Low`, `High`, `Max` | Yes | Long-context reasoning, multimodal docs, agentic research |
 | **DeepSeek V4 Pro 0813** | `DeepSeek V4 Pro 0813` | **36** | 1,048,576 | 131,072 | `None`, `High`, `Max` | No | High-capacity reasoning, large code generation, deep problem solving |
 | **DeepSeek V4 Flash 0731** | `DeepSeek V4 Flash 0731` | **35** | 1,048,576 | 131,072 | `None`, `High`, `Max` | No | Hard algorithmic work, complex refactors, deep math |
-| **MiniMax M3** | `MiniMax M3` | **30** | 1,000,000 | 100,000 | `None`, `On`, `Adaptive` | Yes | Multimodal coding, screenshot debugging, full-stack UI |
 | **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **23** | 1,000,000 | 65,536 | `None`, `Medium`, `High` | No | Heavy multi-file reasoning, system design, enterprise docs |
 | **Muse Glimmer** | `Muse Glimmer` | **18** | 131,072 | 32,768 | `None` to `XHigh` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
 | **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **14** | 1,000,000 | 65,536 | `None`, `Low`, `High` | No | Workhorse for everyday coding; default text fallback and summarizer |
@@ -29,7 +28,6 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 
 **DeepSeek V4 Flash 0731.** Strong on algorithms, debugging, schema design, SQL, and refactors. Reasoning: `None`, `High`, `Max`.
 
-**MiniMax M3.** 1M context plus native vision. Paste a UI screenshot to generate React/Tailwind/Vue, inspect an architecture diagram, read a PDF chart, or fix a visual bug. When this model fails on a vision request, the failover default is `Muse Glimmer`; MiniMax stays in the picker.
 
 ---
 

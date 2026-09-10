@@ -27,7 +27,6 @@ export interface NvidiaModelCatalogEntry {
 export type CatalogAdapterId =
   | "deepseek"
   | "kimi"
-  | "minimax"
   | "nemotron"
   | "nemotron-super"
   | "nemotron-lightning"
@@ -49,14 +48,6 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: false,
     adapter: "deepseek",
-  },
-  "minimaxai/minimax-m3": {
-    displayName: "MiniMax M3",
-    contextWindow: 1000000,
-    maxOutputTokens: 100000,
-    supportsTools: true,
-    supportsVision: true,
-    adapter: "minimax",
   },
   "moonshotai/kimi-k3": {
     displayName: "Kimi K3",

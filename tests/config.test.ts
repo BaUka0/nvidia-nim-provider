@@ -92,10 +92,10 @@ describe("ConfigManager", () => {
         "",
         42,
         null,
-        "minimaxai/minimax-m3",
+        "meta/muse-glimmer-30b",
       ];
       const config = ConfigManager.getFallbackConfig();
-      expect(config.priorityList).toEqual(["moonshotai/kimi-k3", "minimaxai/minimax-m3"]);
+      expect(config.priorityList).toEqual(["moonshotai/kimi-k3", "meta/muse-glimmer-30b"]);
 
       mockStore["fallback.priorityList"] = "not-an-array";
       expect(ConfigManager.getFallbackConfig().priorityList).toEqual([]);

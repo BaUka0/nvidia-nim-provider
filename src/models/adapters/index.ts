@@ -6,7 +6,6 @@ import { KimiAdapter } from "./kimi";
 import { NemotronAdapter } from "./nemotron";
 import { NemotronLightningAdapter } from "./nemotron-lightning";
 import { NemotronSuperAdapter } from "./nemotron-super";
-import { MinimaxAdapter } from "./minimax";
 import { MuseGlimmerAdapter } from "./muse-glimmer";
 
 export {
@@ -31,13 +30,11 @@ const kimiAdapter = new KimiAdapter();
 const nemotronLightningAdapter = new NemotronLightningAdapter();
 const nemotronSuperAdapter = new NemotronSuperAdapter();
 const nemotronAdapter = new NemotronAdapter();
-const minimaxAdapter = new MinimaxAdapter();
 const museGlimmerAdapter = new MuseGlimmerAdapter();
 
 const ADAPTERS_BY_ID: Record<CatalogAdapterId, ModelAdapter> = {
   deepseek: deepseekAdapter,
   kimi: kimiAdapter,
-  minimax: minimaxAdapter,
   nemotron: nemotronAdapter,
   "nemotron-super": nemotronSuperAdapter,
   "nemotron-lightning": nemotronLightningAdapter,
@@ -51,7 +48,6 @@ const FAMILY_ADAPTERS: ModelAdapter[] = [
   nemotronLightningAdapter,
   nemotronSuperAdapter,
   nemotronAdapter,
-  minimaxAdapter,
   museGlimmerAdapter,
 ];
 

@@ -37,13 +37,13 @@ If the request is text-only, failover uses `nvidia-nim.fallback.model` (default 
 
 Set `nvidia-nim.fallback.priorityList` to an ordered list of model IDs to try before the single text/vision fallbacks. On each failover step, the next healthy candidate is picked; unknown, unavailable, and already-tried models are skipped.
 
-**Example:** `["moonshotai/kimi-k3", "minimaxai/minimax-m3"]` tries Kimi K3 first, then MiniMax M3, and only then the regular fallbacks. If every candidate fails, the error message lists the full tried chain (`Tried chain: kimi-k3 -> minimax-m3`) with the last underlying error.
+**Example:** `["moonshotai/kimi-k3", "meta/muse-glimmer-30b"]` tries Kimi K3 first, then Muse Glimmer, and only then the regular fallbacks. If every candidate fails, the error message lists the full tried chain with the last underlying error.
 
 ---
 
 ## Collision Protection
 
-If you are already on the backup model (e.g. `Muse Glimmer`) and *it* hits a rate limit, the extension detects the conflict and routes to the next healthy vision-capable model in the catalog (such as `Kimi K3` or `MiniMax M3`).
+If you are already on the backup model (e.g. `Muse Glimmer`) and *it* hits a rate limit, the extension detects the conflict and routes to the next healthy vision-capable model in the catalog (such as `Kimi K3`).
 
 ---
 
