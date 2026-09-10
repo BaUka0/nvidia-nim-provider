@@ -69,6 +69,8 @@ export interface StreamAttemptResult {
   skippedToolCalls: SkippedToolCall[];
   repetitionTripped: boolean;
   trippedLine?: string;
+  toolCallLoopTripped: boolean;
+  toolCallLoopKey?: string;
   streamChunkCount: number;
   firstResponseAtMs?: number;
   firstToolCallAtMs?: number;
@@ -94,6 +96,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   let firstToolCallAtMs: number | undefined;
   let lastUsage: NimStreamUsage | undefined;
   let lastVisibleText = "";
+  let toolCallLoopKey: string | undefined;
   let toolParsingStateInitDurationMs: number | undefined;
 
   const repetitionGuard = new RepetitionGuard({
@@ -251,6 +254,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       sawToolCall = true;
       getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args);
     }
+    toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
   };
 
   const processAnswerText = (text: string): void => {
@@ -342,9 +346,10 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
         markFirstResponse();
         sawToolCall = true;
         getToolAggregator().handleToolCalls(streamedToolCalls);
+        toolCallLoopKey ??= getToolAggregator().getToolCallLoop()?.key;
       }
 
-      if (repetitionGuard.tripped) {
+      if (repetitionGuard.tripped || toolCallLoopKey) {
         debugLog("repetitionGuard", "stopping stream consumption");
         break;
       }
@@ -367,6 +372,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
 
     if (toolAggregator) {
       toolAggregator.flushRemaining();
+      toolCallLoopKey ??= toolAggregator.getToolCallLoop()?.key;
     }
   } catch (streamErr) {
     if (isCancellation(streamErr, input.token) || input.signal.aborted) {
@@ -422,6 +428,8 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     skippedToolCalls,
     repetitionTripped: repetitionGuard.tripped,
     trippedLine: repetitionGuard.trippedLine,
+    toolCallLoopTripped: toolCallLoopKey !== undefined,
+    ...(toolCallLoopKey ? { toolCallLoopKey } : {}),
     streamChunkCount,
     firstResponseAtMs,
     firstToolCallAtMs,

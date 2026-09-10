@@ -8,6 +8,10 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 - **Artificial Analysis Intelligence Index v4.3 Updates (`README.md`, `docs/models.md`).** Updated benchmark capability scores to reflect the recalibrated Artificial Analysis Intelligence Index v4.3 composite across all curated models (Kimi K3: 44, DeepSeek V4 Pro 0813: 36, DeepSeek V4 Flash 0731: 35, MiniMax M3: 30, Nemotron 3 Ultra 550B: 23, Muse Glimmer: 18, Nemotron 3 Super 120B: 14, Nemotron 3.5 Lightning 30B: 14).
 
+### Fixed
+
+- **Tool-loop hard stops (`src/provider/tool-call-aggregator.ts`, `src/provider/stream-pump.ts`, `src/provider/loop-breaker.ts`, `src/provider/turn-executor.ts`).** Repeated canonical tool calls are capped within one stream; four repeated historical tool calls or preambles stop before another request after the one-shot breaker nudge and surface as structured `empty_stream` errors. A fallback is blocked when the failing stream already emitted tool calls; a history loop is terminal for the current transcript.
+
 ## [0.10.1] - 2026-09-05
 
 ### Fixed

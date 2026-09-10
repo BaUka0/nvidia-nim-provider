@@ -13,6 +13,7 @@ function result(overrides: Partial<StreamAttemptResult> = {}): StreamAttemptResu
     lastVisibleText: "",
     skippedToolCalls: [],
     repetitionTripped: false,
+    toolCallLoopTripped: false,
     streamChunkCount: 1,
     ...overrides,
   };

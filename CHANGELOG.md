@@ -8,6 +8,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 - Updated Artificial Analysis Intelligence Index scores across documentation to v4.3 benchmarks (Kimi K3 at 44 down to Nemotron 3.5 Lightning at 14).
 
+### Fixed
+
+- Repeated identical tool calls now stop after a breaker nudge instead of continuing indefinitely in Agent Mode.
+
 ## [0.10.1] - 2026-09-05
 
 ### Fixed

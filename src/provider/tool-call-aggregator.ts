@@ -25,6 +25,9 @@ import {
 import { NimToolCall } from "../types";
 import { ToolsConfig } from "../shared/config";
 
+/** Stop a model that emits the same validated tool call repeatedly in one stream. */
+const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;
+
 export interface ToolCallStreamAggregatorOptions {
   options: vscode.ProvideLanguageModelChatResponseOptions;
   messages: readonly vscode.LanguageModelChatMessage[];
@@ -52,6 +55,10 @@ export class ToolCallStreamAggregator {
 
   private sawToolCall = false;
   private emittedToolCall = false;
+  private consecutiveToolCallKey: string | undefined;
+  private consecutiveToolCallCount = 0;
+  private toolCallLoopKey: string | undefined;
+  private toolCallLoopCount = 0;
 
   constructor(options: ToolCallStreamAggregatorOptions) {
     this.toolSchemas = getToolSchemaMap(options.options);
@@ -69,6 +76,13 @@ export class ToolCallStreamAggregator {
 
   public getSawToolCall(): boolean {
     return this.sawToolCall;
+  }
+
+  public getToolCallLoop(): { key: string; count: number } | undefined {
+    if (!this.toolCallLoopKey) {
+      return undefined;
+    }
+    return { key: this.toolCallLoopKey, count: this.toolCallLoopCount };
   }
 
   public getToolSchema(name: string): ToolSchema | undefined {
@@ -95,6 +109,9 @@ export class ToolCallStreamAggregator {
     args: unknown,
     idPrefix: string = TEXT_EMBEDDED_TOOL_CALL_ID_PREFIX,
   ): boolean {
+    if (this.toolCallLoopKey) {
+      return false;
+    }
     this.sawToolCall = true;
     const schema = this.toolSchemas.get(name);
     const repairedArgs = repairToolArguments(
@@ -127,6 +144,22 @@ export class ToolCallStreamAggregator {
     id: string,
   ): boolean {
     const canonicalKey = buildToolCallCanonicalKey(name, args);
+    if (canonicalKey === this.consecutiveToolCallKey) {
+      this.consecutiveToolCallCount += 1;
+    } else {
+      this.consecutiveToolCallKey = canonicalKey;
+      this.consecutiveToolCallCount = 1;
+    }
+    if (this.consecutiveToolCallCount >= MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS) {
+      this.toolCallLoopKey = canonicalKey;
+      this.toolCallLoopCount = this.consecutiveToolCallCount;
+      debugLog("repetitionGuard", {
+        action: "toolCallLoop",
+        name,
+        count: this.consecutiveToolCallCount,
+      });
+      return false;
+    }
     if (
       isDuplicateSuppressionEnabled(name, this.toolsConfig) &&
       this.emittedTextToolCallKeys.has(canonicalKey)
@@ -149,6 +182,9 @@ export class ToolCallStreamAggregator {
   }
 
   public handleToolCalls(deltas: readonly NimToolCall[]): void {
+    if (this.toolCallLoopKey) {
+      return;
+    }
     this.sawToolCall = true;
     for (const tc of deltas) {
       const idx = this.resolveToolCallIndex(tc.index);
@@ -195,6 +231,9 @@ export class ToolCallStreamAggregator {
       }
       this.toolCallBuffers.set(idx, buf);
       this.tryCompleteToolCall(idx, buf, true);
+      if (this.toolCallLoopKey) {
+        break;
+      }
     }
   }
 
@@ -290,6 +329,9 @@ export class ToolCallStreamAggregator {
   }
 
   public flushRemaining(): void {
+    if (this.toolCallLoopKey) {
+      return;
+    }
     for (const [idx, buf] of Array.from(this.toolCallBuffers.entries())) {
       if (this.completedToolCallIndices.has(idx)) {
         continue;

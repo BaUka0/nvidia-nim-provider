@@ -690,6 +690,61 @@ describe("tool argument parsing and validation", () => {
     expect(emitted).toEqual([{ id: "term:1", name: "run_in_terminal", args: terminalArgs }]);
   });
 
+  it("stops a native tool call that repeats three times in one stream", () => {
+    const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+    const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
+    const terminalArgs = {
+      command: "npm run compile",
+      explanation: "Compile again",
+      goal: "Compile again",
+      mode: "sync",
+    };
+    const aggregator = new ToolCallStreamAggregator({
+      options: makeChatOptions({
+        tools: [
+          {
+            name: "run_in_terminal",
+            inputSchema: {
+              type: "object",
+              properties: {
+                command: { type: "string" },
+                explanation: { type: "string" },
+                goal: { type: "string" },
+                mode: { type: "string", enum: ["sync", "terminal"] },
+              },
+              required: ["command", "explanation", "goal", "mode"],
+            },
+          },
+        ],
+      }),
+      messages: [],
+      toolsConfig: ConfigManager.getToolsConfig(),
+      onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
+      onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
+    });
+
+    for (let index = 0; index < 3; index += 1) {
+      aggregator.handleToolCalls([
+        {
+          index,
+          id: `term:${index}`,
+          type: "function",
+          function: {
+            name: "run_in_terminal",
+            arguments: JSON.stringify(terminalArgs),
+          },
+        },
+      ]);
+    }
+
+    expect(emitted).toHaveLength(2);
+    expect(skipped).toEqual([]);
+    expect(aggregator.getToolCallLoop()).toEqual({
+      key: expect.stringContaining('run_in_terminal:{"command":"npm run compile"'),
+      count: 3,
+    });
+  });
+
   it("defaults missing grep isRegexp to false so the call is not rejected", () => {
     const grepSchema = getToolSchemaMap(
       makeChatOptions({

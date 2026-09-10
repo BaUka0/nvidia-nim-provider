@@ -55,6 +55,17 @@ describe("isFallbackEligibleError", () => {
       ),
     ).toBe(true);
   });
+
+  it("does not fail over a history loop that is already stopped before a request", () => {
+    expect(
+      isFallbackEligibleError(
+        new NvidiaApiError("empty_stream", "loop", { operation: "history_loop" }),
+        config,
+        0,
+        false,
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("fallbackCapacityLabel", () => {
@@ -82,6 +93,16 @@ describe("fallbackCapacityLabel", () => {
         new NvidiaApiError("empty_stream", "no content", { operation: "invalid_tool_call" }),
       ),
     ).toBe("Invalid tool call");
+    expect(
+      fallbackCapacityLabel(
+        new NvidiaApiError("empty_stream", "loop", { operation: "tool_call_loop" }),
+      ),
+    ).toBe("Loop detected");
+    expect(
+      fallbackCapacityLabel(
+        new NvidiaApiError("empty_stream", "loop", { operation: "history_loop" }),
+      ),
+    ).toBe("Loop detected");
     expect(fallbackCapacityLabel(new NvidiaApiError("empty_stream", "no content"))).toBe(
       "Empty response",
     );

@@ -19,6 +19,11 @@ export function isFallbackEligibleError(
   if (!fallbackConfig.enabled || priorDepth >= maxChainLength || failingAttemptHasVisibleContent) {
     return false;
   }
+  if (err instanceof NvidiaApiError && err.operation === "history_loop") {
+    // The history itself is already looping; retrying the same transcript on
+    // another model would repeat the guard without adding useful progress.
+    return false;
+  }
   return (
     err instanceof NvidiaApiError &&
     ((err.kind === "rate_limited" && fallbackConfig.onRateLimit) ||
@@ -37,7 +42,13 @@ export function fallbackCapacityLabel(err: NvidiaApiError): string {
     return "Model unavailable";
   }
   if (err.kind === "empty_stream") {
-    return err.operation === "invalid_tool_call" ? "Invalid tool call" : "Empty response";
+    if (err.operation === "invalid_tool_call") {
+      return "Invalid tool call";
+    }
+    if (err.operation === "tool_call_loop" || err.operation === "history_loop") {
+      return "Loop detected";
+    }
+    return "Empty response";
   }
   if (err.kind === "timeout") {
     return "Timeout";

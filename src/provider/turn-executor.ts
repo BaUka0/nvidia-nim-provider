@@ -65,6 +65,7 @@ function isTransientStreamError(err: unknown): boolean {
 }
 
 const INVALID_TOOL_EXHAUSTION_OPERATION = "invalid_tool_call";
+const TOOL_CALL_LOOP_OPERATION = "tool_call_loop";
 
 function createInvalidToolExhaustionError(
   modelLabel: string,
@@ -82,6 +83,24 @@ function createInvalidToolExhaustionError(
       .filter(Boolean)
       .join("\n"),
     { operation: INVALID_TOOL_EXHAUSTION_OPERATION },
+  );
+}
+
+function createToolCallLoopError(
+  modelLabel: string,
+  repeatedToolCall: string | undefined,
+): NvidiaApiError {
+  return createStructuredError(
+    "empty_stream",
+    [
+      `Model: ${modelLabel}`,
+      "The model repeated the same validated tool call three times in one response stream.",
+      repeatedToolCall ? `Repeated call: ${repeatedToolCall.slice(0, 160)}` : null,
+      "The loop was stopped; the request will be retried on a fallback model if failover is enabled.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    { operation: TOOL_CALL_LOOP_OPERATION },
   );
 }
 
@@ -517,6 +536,25 @@ export class ModelTurnExecutor {
           }
 
           markReported(result);
+          if (result.toolCallLoopTripped) {
+            const loopError = createToolCallLoopError(
+              model.name ?? model.id,
+              result.toolCallLoopKey,
+            );
+            // Do not send a fallback after tool calls have already been reported:
+            // the host may have executed those calls and repeating them is unsafe.
+            reportState.failingAttemptHasVisibleContent = result.reportedVisibleContent;
+            recordAttemptTurn({
+              outcome: "error",
+              modelId: model.id,
+              body: attemptBody,
+              result,
+              durationMs: Date.now() - attemptStartedAtMs,
+              retryReasonHistory,
+              error: loopError,
+            });
+            throw loopError;
+          }
           finalUsage = result.lastUsage;
           if (result.sawReasoning) {
             everSawReasoning = true;

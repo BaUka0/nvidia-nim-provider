@@ -1,4 +1,4 @@
-import { NvidiaApiError } from "../api/errors";
+import { createStructuredError, NvidiaApiError } from "../api/errors";
 import { NimChatMessage, NimChatRequest } from "../types";
 import { debugLog, outputLog } from "../shared/logging";
 import { LanguageModelChatMessageRole } from "vscode";
@@ -7,6 +7,8 @@ import { buildToolCallCanonicalKey, tryParseJsonValue } from "../tools/parser";
 import { cloneNimChatRequest } from "./request-snapshot";
 
 const MIN_NORMALIZED_LINE_LENGTH = 10;
+const HISTORY_LOOP_STOP_REPEATS = 4;
+const HISTORY_LOOP_OPERATION = "history_loop";
 
 /** True for VS Code assistant roles (enum) and plain "assistant" strings. */
 function isAssistantRole(role: unknown): boolean {
@@ -242,6 +244,30 @@ export function injectHistoryLoopBreaker(options: {
   modelId: string;
   applyBudget: (body: NimChatRequest) => NimChatRequest;
 }): NimChatRequest {
+  const hardPreambleLoop = detectHistoryLoop(options.historyMessages, {
+    minRepeats: HISTORY_LOOP_STOP_REPEATS,
+  });
+  const hardToolLoop = detectToolCallHistoryLoop(options.historyMessages, {
+    minRepeats: HISTORY_LOOP_STOP_REPEATS,
+  });
+  if (hardPreambleLoop || hardToolLoop) {
+    const repeatedDetails = [
+      hardPreambleLoop ? `Repeated preamble: "${hardPreambleLoop.slice(0, 120)}"` : undefined,
+      hardToolLoop ? `Repeated tool call: ${hardToolLoop.slice(0, 160)}` : undefined,
+    ].filter((detail): detail is string => Boolean(detail));
+    const loopError = createStructuredError(
+      "empty_stream",
+      [
+        `The model repeated the same response pattern across ${HISTORY_LOOP_STOP_REPEATS} consecutive turns.`,
+        ...repeatedDetails,
+        "The loop was stopped before another model request was sent.",
+      ].join("\n"),
+      { operation: HISTORY_LOOP_OPERATION },
+    );
+    debugLog("repetitionGuard", { action: "historyLoopStop", operation: HISTORY_LOOP_OPERATION });
+    throw loopError;
+  }
+
   const breakerContent = buildHistoryLoopBreakerContent(options.historyMessages);
   if (!breakerContent) {
     return options.requestBody;

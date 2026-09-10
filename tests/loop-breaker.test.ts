@@ -39,4 +39,41 @@ describe("injectHistoryLoopBreaker", () => {
     });
     expect(result.messages).toHaveLength(1);
   });
+
+  it("stops after four repeated preambles instead of sending another request", () => {
+    const history = Array.from({ length: 4 }, () => ({
+      role: 2,
+      content: [{ value: "Let me fix the formatting issue:" }],
+    }));
+
+    expect(() =>
+      injectHistoryLoopBreaker({
+        requestBody,
+        historyMessages: history,
+        modelId: "test-model",
+        applyBudget: (body) => body,
+      }),
+    ).toThrow(/loop was stopped/i);
+  });
+
+  it("stops after four repeated tool calls instead of sending another request", () => {
+    const history = Array.from({ length: 4 }, () => ({
+      role: 2,
+      content: [
+        {
+          name: "run_in_terminal",
+          input: { command: "npm run compile", mode: "sync" },
+        },
+      ],
+    }));
+
+    expect(() =>
+      injectHistoryLoopBreaker({
+        requestBody,
+        historyMessages: history,
+        modelId: "test-model",
+        applyBudget: (body) => body,
+      }),
+    ).toThrow(/loop was stopped/i);
+  });
 });
