@@ -4,6 +4,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-09-11
+
 ### Removed
 
 - Removed MiniMax M3 from the model picker and automatic fallback choices because NVIDIA removed it from the NIM model catalog.

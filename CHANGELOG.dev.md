@@ -4,6 +4,8 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-09-11
+
 ### Removed
 
 - **MiniMax M3 (`src/models/catalog.ts`, `src/models/adapters/`, `package.json`).** Removed after NVIDIA removed the model from the NIM catalog, including its adapter, probe entry, settings enums, and active documentation. Vision fallback remains Muse Glimmer, with Kimi K3 as the other curated vision model.
