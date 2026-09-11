@@ -4,6 +4,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-09-12
+
 ### Added
 
 - How many times the extension nudges a stuck reply in one turn is now a setting: `nvidia-nim.generation.maxLoopContinues` (default 2, Settings UI and `settings.json`). How many identical tool calls in one reply are allowed before extras are dropped is `nvidia-nim.tools.maxConsecutiveIdenticalCalls` (default 3).

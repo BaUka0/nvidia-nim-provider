@@ -4,6 +4,8 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-09-12
+
 ### Added
 
 - **Loop budgets are settings (`src/shared/config.ts`, `package.json`).** `nvidia-nim.generation.maxLoopContinues` (default 2, clamp 0–8) replaces the hardcoded same-turn auto-continue budget. `nvidia-nim.tools.maxConsecutiveIdenticalCalls` (default 3, clamp 0–20, 0 disables) replaces the in-stream identical tool-call cap. History-loop window/minRepeats stay internal.
