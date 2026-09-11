@@ -2,13 +2,13 @@
  * Detects degenerate "Let me..." style loops while an answer is streaming.
  * Lines are normalized (NFKC, lowercased, punctuation collapsed) so cosmetic
  * variations of the same sentence accumulate toward the repetition limit.
- * Run-on paragraphs without newlines are caught by a trailing 6-word-gram
- * window (the Super 120B #7 cycle). Markdown code fences are tracked and
- * ignored to avoid false positives on repetitive code generation.
+ * Run-on paragraphs and planning loops split across newlines are caught by a
+ * trailing 6-word-gram window (the Super 120B #7 cycle). Markdown code fences
+ * are tracked and ignored to avoid false positives on repetitive code generation.
  * Normalization is Unicode-aware so non-English loops (Cyrillic, CJK,
  * accented) are caught too.
  */
-import { detectPhraseCycle, normalizeForCycle } from "../shared/cycle-detection";
+import { CYCLE_SCAN_CHARS, detectPhraseCycle, normalizeForCycle } from "../shared/cycle-detection";
 
 export interface RepetitionGuardOptions {
   readonly maxRepeatedLines: number;
@@ -46,6 +46,10 @@ export class RepetitionGuard {
   private fenceSkippedLines = 0;
   /** Buffers a partial line split across streamed chunks. */
   private pendingLine = "";
+  /** Trailing visible text outside code fences; same window as `cycleHint`. */
+  private visibleWindow = "";
+  /** Last line folded into `visibleWindow`; consecutive duplicates are skipped. */
+  private lastVisibleKey = "";
 
   constructor(private readonly options: RepetitionGuardOptions) {}
 
@@ -64,9 +68,9 @@ export class RepetitionGuard {
   /**
    * Feeds streamed answer text into the counter. Returns true exactly when
    * this call crossed the configured repetition limit. Text may be split at
-   * arbitrary points; completed lines are counted on newline, and unterminated
-   * `pendingLine` is scanned for repeating 6-word grams so run-on paragraphs
-   * still trip mid-stream.
+   * arbitrary points; completed lines are counted on newline, and a trailing
+   * visible window (completed lines plus `pendingLine`) is scanned for
+   * repeating 6-word grams so planning loops with newlines still trip.
    */
   add(text: string): boolean {
     const threshold = this.threshold;
@@ -119,34 +123,52 @@ export class RepetitionGuard {
         return false;
       }
     }
+    this.appendVisible(rawLine);
     const key = normalizeLineForRepetition(rawLine);
-    if (key.length < MIN_NORMALIZED_LINE_LENGTH) {
-      return this.tripFromPhrase(rawLine);
+    if (key.length >= MIN_NORMALIZED_LINE_LENGTH) {
+      if (this.lineCounts.size >= MAX_TRACKED_LINES && !this.lineCounts.has(key)) {
+        // Predictable memory bound: reset counts rather than grow without limit.
+        this.lineCounts.clear();
+      }
+      const count = (this.lineCounts.get(key) ?? 0) + 1;
+      this.lineCounts.set(key, count);
+      if (count >= threshold) {
+        this.trippedLineValue = key;
+        return true;
+      }
     }
-    if (this.lineCounts.size >= MAX_TRACKED_LINES && !this.lineCounts.has(key)) {
-      // Predictable memory bound: reset counts rather than grow without limit.
-      this.lineCounts.clear();
+    return this.scanVisibleCycle();
+  }
+
+  private appendVisible(rawLine: string): void {
+    const key = normalizeLineForRepetition(rawLine);
+    // Identical consecutive lines are owned by `maxRepeatedLines`. Folding
+    // them into the phrase window would trip a 6-word line at 3 copies.
+    if (key.length > 0 && key === this.lastVisibleKey) {
+      return;
     }
-    const count = (this.lineCounts.get(key) ?? 0) + 1;
-    this.lineCounts.set(key, count);
-    if (count >= threshold) {
-      this.trippedLineValue = key;
-      return true;
+    this.lastVisibleKey = key;
+    this.visibleWindow += `${rawLine}\n`;
+    if (this.visibleWindow.length > CYCLE_SCAN_CHARS) {
+      this.visibleWindow = this.visibleWindow.slice(-CYCLE_SCAN_CHARS);
     }
-    // A single huge line can itself be a run-on paragraph cycle (#7 on flush).
-    return this.tripFromPhrase(rawLine);
   }
 
   /**
-   * Scan unterminated `pendingLine` so a run-on paragraph can trip before a
-   * newline (or stream end) arrives. Completed identical lines stay on the
-   * line-frequency counter so `maxRepeatedLines` is not silently lowered.
+   * Scan completed visible text plus unterminated `pendingLine` so a planning
+   * loop with newlines (or a run-on paragraph) can trip before stream end.
+   * Completed identical lines stay on the line-frequency counter so
+   * `maxRepeatedLines` is not silently lowered.
    */
   private scanPendingCycle(): boolean {
+    return this.scanVisibleCycle();
+  }
+
+  private scanVisibleCycle(): boolean {
     if (this.inCodeFence || this.trippedLineValue !== undefined) {
       return false;
     }
-    return this.tripFromPhrase(this.pendingLine);
+    return this.tripFromPhrase(this.visibleWindow + this.pendingLine);
   }
 
   private tripFromPhrase(text: string): boolean {

@@ -1,5 +1,5 @@
 /** Trailing window scanned for repeating 6-word grams (issue #7 paragraphs). */
-const CYCLE_SCAN_CHARS = 4000;
+export const CYCLE_SCAN_CHARS = 4000;
 const CYCLE_GRAM_WORDS = 6;
 const CYCLE_MIN_GRAM_CHARS = 20;
 const CYCLE_MIN_REPEATS = 3;
@@ -14,8 +14,8 @@ export function normalizeForCycle(text: string): string {
 
 /**
  * Returns the first 6-word gram that appears `CYCLE_MIN_REPEATS` times in a
- * trailing window of `text`. Used by the live guard and by turn-report
- * `cycleHint`. Does not stop a stream by itself.
+ * trailing window of `text`. Used by the live guard (including answers with
+ * newlines) and by turn-report `cycleHint`.
  */
 export function detectPhraseCycle(text: string): string | undefined {
   if (!text) {

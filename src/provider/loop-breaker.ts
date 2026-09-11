@@ -1,4 +1,4 @@
-import { createStructuredError, NvidiaApiError } from "../api/errors";
+import { NvidiaApiError } from "../api/errors";
 import { NimChatMessage, NimChatRequest } from "../types";
 import { debugLog, outputLog } from "../shared/logging";
 import { LanguageModelChatMessageRole } from "vscode";
@@ -7,8 +7,6 @@ import { buildToolCallCanonicalKey, tryParseJsonValue } from "../tools/parser";
 import { cloneNimChatRequest } from "./request-snapshot";
 
 const MIN_NORMALIZED_LINE_LENGTH = 10;
-const HISTORY_LOOP_STOP_REPEATS = 4;
-const HISTORY_LOOP_OPERATION = "history_loop";
 
 /** True for VS Code assistant roles (enum) and plain "assistant" strings. */
 function isAssistantRole(role: unknown): boolean {
@@ -155,9 +153,11 @@ export function detectToolCallHistoryLoop(
  * false-positive on natural text and miss previously injected breakers).
  */
 export const LOOP_BREAKER_MARKER = "[NIM_LOOP_BREAKER]";
+export const LOOP_BREAKER_ESCALATION_MARKER = "[NIM_LOOP_BREAKER_GO]";
 
 export type LoopBreakerNudgeReason =
   | "repetition_loop"
+  | "tool_call_loop"
   | "hanging_colon"
   | "output_truncated"
   | "content_filter";
@@ -165,6 +165,8 @@ export type LoopBreakerNudgeReason =
 const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
   repetition_loop:
     "hey you got stuck repeating the same output — continue working without repeating the preamble. Directly call the required tool or provide the final answer.",
+  tool_call_loop:
+    "hey you got stuck calling the same tool with the same arguments — continue working. Vary the arguments, call a different tool, or provide the final answer. Do not repeat the previous tool call.",
   hanging_colon:
     'hey you got stuck — your previous turn ended with ":" with no tool call but a next action was expected. Continue working and take the next action.',
   output_truncated:
@@ -172,6 +174,9 @@ const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
   content_filter:
     "your previous reply was stopped by the safety filter. Continue the answer without the blocked content. Call a tool if needed or finish the answer. Do not mention the filter.",
 };
+
+const HISTORY_LOOP_ESCALATION_NUDGE =
+  "hey you got stuck again after a previous correction — continue working. Change the tool or arguments, or give the final answer. Do not repeat the previous preamble or tool call.";
 
 export function buildLoopBreakerNudge(reason: LoopBreakerNudgeReason): NimChatMessage {
   return { role: "user", content: `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_NUDGES[reason]}` };
@@ -190,25 +195,41 @@ function partTextValue(part: unknown): string | undefined {
   return undefined;
 }
 
-/** True when a loop-breaker message is already present in the request or history. */
-export function hasLoopBreaker(
+function messagesContainMarker(
   requestMessages: readonly { role: string; content: unknown }[],
   historyMessages: readonly { content: readonly unknown[] }[],
+  marker: string,
 ): boolean {
   for (const m of requestMessages) {
-    if (typeof m.content === "string" && m.content.includes(LOOP_BREAKER_MARKER)) {
+    if (typeof m.content === "string" && m.content.includes(marker)) {
       return true;
     }
   }
   for (const m of historyMessages) {
     for (const part of m.content) {
       const text = partTextValue(part);
-      if (text && text.includes(LOOP_BREAKER_MARKER)) {
+      if (text && text.includes(marker)) {
         return true;
       }
     }
   }
   return false;
+}
+
+/** True when a loop-breaker message is already present in the request or history. */
+export function hasLoopBreaker(
+  requestMessages: readonly { role: string; content: unknown }[],
+  historyMessages: readonly { content: readonly unknown[] }[],
+): boolean {
+  return messagesContainMarker(requestMessages, historyMessages, LOOP_BREAKER_MARKER);
+}
+
+/** True when the stronger follow-up breaker has already been injected. */
+export function hasEscalatedLoopBreaker(
+  requestMessages: readonly { role: string; content: unknown }[],
+  historyMessages: readonly { content: readonly unknown[] }[],
+): boolean {
+  return messagesContainMarker(requestMessages, historyMessages, LOOP_BREAKER_ESCALATION_MARKER);
 }
 
 export function buildHistoryLoopBreakerContent(
@@ -234,9 +255,11 @@ export function buildHistoryLoopBreakerContent(
 }
 
 /**
- * Inject a one-shot loop-breaker user turn when recent history is repeating.
- * Returns the original body when no loop is detected, the breaker is already
- * present, or the extra turn would exceed the token budget.
+ * Inject a loop-breaker user turn when recent history is repeating.
+ * First detection injects the standard nudge; a still-looping transcript
+ * with a breaker already present gets one escalation. Returns the original
+ * body when no loop is detected, the escalation is already present, or the
+ * extra turn would exceed the token budget. Never aborts the Copilot turn.
  */
 export function injectHistoryLoopBreaker(options: {
   requestBody: NimChatRequest;
@@ -244,41 +267,25 @@ export function injectHistoryLoopBreaker(options: {
   modelId: string;
   applyBudget: (body: NimChatRequest) => NimChatRequest;
 }): NimChatRequest {
-  const hardPreambleLoop = detectHistoryLoop(options.historyMessages, {
-    minRepeats: HISTORY_LOOP_STOP_REPEATS,
-  });
-  const hardToolLoop = detectToolCallHistoryLoop(options.historyMessages, {
-    minRepeats: HISTORY_LOOP_STOP_REPEATS,
-  });
-  if (hardPreambleLoop || hardToolLoop) {
-    const repeatedDetails = [
-      hardPreambleLoop ? `Repeated preamble: "${hardPreambleLoop.slice(0, 120)}"` : undefined,
-      hardToolLoop ? `Repeated tool call: ${hardToolLoop.slice(0, 160)}` : undefined,
-    ].filter((detail): detail is string => Boolean(detail));
-    const loopError = createStructuredError(
-      "empty_stream",
-      [
-        `The model repeated the same response pattern across ${HISTORY_LOOP_STOP_REPEATS} consecutive turns.`,
-        ...repeatedDetails,
-        "The loop was stopped before another model request was sent.",
-      ].join("\n"),
-      { operation: HISTORY_LOOP_OPERATION },
-    );
-    debugLog("repetitionGuard", { action: "historyLoopStop", operation: HISTORY_LOOP_OPERATION });
-    throw loopError;
-  }
-
-  const breakerContent = buildHistoryLoopBreakerContent(options.historyMessages);
-  if (!breakerContent) {
+  const loopContent = buildHistoryLoopBreakerContent(options.historyMessages);
+  if (!loopContent) {
     return options.requestBody;
   }
 
-  if (hasLoopBreaker(options.requestBody.messages, options.historyMessages)) {
+  if (hasEscalatedLoopBreaker(options.requestBody.messages, options.historyMessages)) {
     return options.requestBody;
   }
 
-  debugLog("repetitionGuard", { action: "injectBreaker" });
-  outputLog("repetitionGuard", `Detected inter-turn loop on ${options.modelId}, injecting breaker`);
+  const escalate = hasLoopBreaker(options.requestBody.messages, options.historyMessages);
+  const breakerContent = escalate
+    ? `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_ESCALATION_MARKER} ${HISTORY_LOOP_ESCALATION_NUDGE}`
+    : loopContent;
+
+  debugLog("repetitionGuard", { action: escalate ? "injectBreakerEscalation" : "injectBreaker" });
+  outputLog(
+    "repetitionGuard",
+    `Detected inter-turn loop on ${options.modelId}, injecting ${escalate ? "escalation breaker" : "breaker"}`,
+  );
 
   // Injected as a user turn (not a trailing system message) because some
   // OpenAI-compatible backends reject or down-weight trailing system turns.

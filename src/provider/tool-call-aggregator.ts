@@ -25,9 +25,6 @@ import {
 import { NimToolCall } from "../types";
 import { ToolsConfig } from "../shared/config";
 
-/** Stop a model that emits the same validated tool call repeatedly in one stream. */
-const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;
-
 export interface ToolCallStreamAggregatorOptions {
   options: vscode.ProvideLanguageModelChatResponseOptions;
   messages: readonly vscode.LanguageModelChatMessage[];
@@ -150,7 +147,8 @@ export class ToolCallStreamAggregator {
       this.consecutiveToolCallKey = canonicalKey;
       this.consecutiveToolCallCount = 1;
     }
-    if (this.consecutiveToolCallCount >= MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS) {
+    const identicalCallCap = this.toolsConfig.maxConsecutiveIdenticalCalls;
+    if (identicalCallCap > 0 && this.consecutiveToolCallCount >= identicalCallCap) {
       this.toolCallLoopKey = canonicalKey;
       this.toolCallLoopCount = this.consecutiveToolCallCount;
       debugLog("repetitionGuard", {

@@ -4,6 +4,16 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Added
+
+- **Loop budgets are settings (`src/shared/config.ts`, `package.json`).** `nvidia-nim.generation.maxLoopContinues` (default 2, clamp 0–8) replaces the hardcoded same-turn auto-continue budget. `nvidia-nim.tools.maxConsecutiveIdenticalCalls` (default 3, clamp 0–20, 0 disables) replaces the in-stream identical tool-call cap. History-loop window/minRepeats stay internal.
+
+### Fixed
+
+- **Phrase-cycle guard scans a trailing visible window (`src/provider/repetition-guard.ts`, `src/shared/cycle-detection.ts`).** Live detection previously ran `detectPhraseCycle` only on `pendingLine` or a single completed line, so Super 120B planning loops with newlines (`cycleHint: true`, `repetitionTripped: false`) finished as `stop` with no auto-continue. Completed non-fence lines now feed the same `CYCLE_SCAN_CHARS` window as turn-report `cycleHint`. Addresses the 2026-09-12 Super 120B session.
+
+- **Loop stop no longer aborts the Copilot turn (`src/provider/loop-breaker.ts`, `src/provider/turn-executor.ts`, `src/provider/fallback-orchestrator.ts`, `src/provider/attempt-retry.ts`).** v0.10.2 threw `empty_stream` (`history_loop` / `tool_call_loop`) and failsover on in-stream repeated tool calls, which killed Agent Mode instead of continuing. The in-stream identical-call cap remains; if tools already went out the attempt completes so Copilot can run them. If nothing was emitted, `tool_call_loop` auto-continues with a breaker nudge. Same-turn loop auto-continue uses `generation.maxLoopContinues` and is no longer gated to attempt 0, so a hanging colon after an empty-stream retry still nudges. Inter-turn loops inject a breaker, then one `[NIM_LOOP_BREAKER_GO]` escalation if still looping; they never abort. `tool_call_loop` is not fallback-eligible. Addresses the v0.10.2 reopen of #7.
+
 ## [0.10.2] - 2026-09-11
 
 ### Removed

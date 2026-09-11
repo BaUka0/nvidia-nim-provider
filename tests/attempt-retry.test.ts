@@ -1,5 +1,6 @@
 import { evaluateAttemptRetry } from "../src/provider/attempt-retry";
 import { StreamAttemptResult } from "../src/provider/stream-pump";
+import { DEFAULT_GENERATION_CONFIG } from "../src/shared/config";
 
 function result(overrides: Partial<StreamAttemptResult> = {}): StreamAttemptResult {
   return {
@@ -23,8 +24,8 @@ const baseFacts = {
   toolsEnabled: true,
   generationAutoContinueOnLoop: true,
   autoRetryInvalidCalls: true,
-  hasRetriedRepetitionLoop: false,
-  attemptIndex: 0,
+  loopContinueCount: 0,
+  maxLoopContinues: DEFAULT_GENERATION_CONFIG.maxLoopContinues,
   invalidToolRetryCount: 0,
   emptyStreamRetryCount: 0,
   maxEmptyStreamRetries: 2,
@@ -59,6 +60,72 @@ describe("evaluateAttemptRetry", () => {
       ...baseFacts,
       emptyStreamRetryCount: 2,
       result: result({ lastFinishReason: null }),
+    });
+    expect(evaluation.retryReason).toBeUndefined();
+  });
+
+  it("does not retry after an in-stream tool-call loop that already emitted calls", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        toolCallLoopTripped: true,
+        toolCallLoopKey: 'run_in_terminal:{"command":"npm run compile"}',
+        sawToolCall: true,
+        emittedToolCall: true,
+        reportedContent: true,
+      }),
+    });
+    expect(evaluation.retryReason).toBeUndefined();
+  });
+
+  it("nudges after an in-stream tool-call loop that emitted nothing", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        toolCallLoopTripped: true,
+        toolCallLoopKey: 'read_file:{"filePath":"/tmp/a.ts"}',
+        sawToolCall: true,
+        emittedToolCall: false,
+      }),
+    });
+    expect(evaluation.retryReason).toBe("tool_call_loop");
+  });
+
+  it("still auto-continues a hanging colon after an earlier empty-stream retry", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      emptyStreamRetryCount: 1,
+      result: result({
+        reportedVisibleContent: true,
+        lastVisibleText: "Next I will call:",
+        lastFinishReason: "stop",
+      }),
+    });
+    expect(evaluation.retryReason).toBe("hanging_colon");
+  });
+
+  it("auto-continues a second loop within the same-turn budget", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      loopContinueCount: 1,
+      result: result({
+        repetitionTripped: true,
+        reportedVisibleContent: true,
+        lastVisibleText: "Let me fix the formatting issue:",
+      }),
+    });
+    expect(evaluation.retryReason).toBe("repetition_loop");
+  });
+
+  it("stops auto-continuing after the same-turn loop budget is spent", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      loopContinueCount: DEFAULT_GENERATION_CONFIG.maxLoopContinues,
+      result: result({
+        repetitionTripped: true,
+        reportedVisibleContent: true,
+        lastVisibleText: "Let me fix the formatting issue:",
+      }),
     });
     expect(evaluation.retryReason).toBeUndefined();
   });

@@ -1878,6 +1878,47 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("auto-continues a hanging colon after an empty-stream retry", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const emptyStream = async function* () {
+      yield { choices: [{ delta: {}, finish_reason: null }] };
+    };
+    const hangingStream = async function* () {
+      yield {
+        choices: [{ delta: { content: "Let me inspect the file:" }, finish_reason: "stop" }],
+      };
+    };
+    const continueStream = async function* () {
+      yield { choices: [{ delta: { content: "Calling the tool next." } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => emptyStream())
+      .mockImplementationOnce(() => hangingStream())
+      .mockImplementationOnce(() => continueStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: false },
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions({ tools: [readFileTool] }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(3);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[2][1];
+    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Calling the tool next." }),
+    );
+  });
+
   it("auto-continues once when finish_reason is length", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     const truncatedStream = async function* () {

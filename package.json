@@ -330,7 +330,14 @@
         "nvidia-nim.generation.autoContinueOnLoop": {
           "type": "boolean",
           "default": true,
-          "description": "When the repetition guard trips, the model hangs on a trailing ':', output hits the token limit, or a safety filter stops a partial reply, automatically nudge the model to continue working. Disable to stop that turn without printing a notice in chat."
+          "description": "When the repetition guard trips, the model hangs on a trailing ':', output hits the token limit, a safety filter stops a partial reply, or the same tool call repeats without progress, automatically nudge the model to keep working. Disable to stop that turn without printing a notice in chat."
+        },
+        "nvidia-nim.generation.maxLoopContinues": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 8,
+          "description": "How many times in one turn to nudge the model after a loop, hanging colon, truncated reply, or repeated tool call. 0 disables auto-continue even if nvidia-nim.generation.autoContinueOnLoop is on."
         },
         "nvidia-nim.tools.autoRepairArguments": {
           "type": "boolean",
@@ -346,6 +353,13 @@
           "type": "boolean",
           "default": true,
           "description": "Suppress duplicate consecutive identical read-only tool calls."
+        },
+        "nvidia-nim.tools.maxConsecutiveIdenticalCalls": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 20,
+          "description": "Drop extra copies of the same validated tool call in one reply after this many identical calls. Already-emitted calls still run. 0 disables the cap."
         },
         "nvidia-nim.context.autoCompactOnOverflow": {
           "type": "boolean",

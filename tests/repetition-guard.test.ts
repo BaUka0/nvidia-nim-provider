@@ -181,6 +181,24 @@ describe("RepetitionGuard.add", () => {
     expect(guard.tripped).toBe(true);
   });
 
+  it("trips a Super 120B cycle that is split across unique lines", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 4 });
+    const withNewlines = ISSUE_7_SUPER_CYCLE.replace(/\. /g, ".\n").repeat(3);
+    expect(guard.add(withNewlines)).toBe(true);
+    expect(guard.tripped).toBe(true);
+    expect(guard.trippedLine).toBeDefined();
+  });
+
+  it("trips a planning loop with newlines and no identical lines", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 4 });
+    const beat =
+      "We'll re-read the entire file around the first 80 lines.\nBetter get the raw region again from the start of the namespace.\n";
+    expect(guard.add(beat)).toBe(false);
+    expect(guard.add(beat)).toBe(false);
+    expect(guard.add(beat)).toBe(true);
+    expect(guard.tripped).toBe(true);
+  });
+
   it("still ignores Super 120B text inside a code fence", () => {
     const guard = new RepetitionGuard({ maxRepeatedLines: 4 });
     guard.add("```\n");

@@ -28,9 +28,9 @@ Models often emit slightly malformed JSON (missing braces, unescaped quotes insi
 
 ## Loop Prevention
 
-Autonomous agents can get stuck re-reading the same file. The extension tracks read-only operations and suppresses identical consecutive calls. Write operations and terminal execution (e.g. re-running a failed build) are never blocked.
+Autonomous agents can get stuck re-reading the same file. The extension tracks read-only operations and suppresses identical consecutive calls. Write operations and terminal execution (e.g. re-running a failed build) are never blocked. If the same validated tool call is emitted `nvidia-nim.tools.maxConsecutiveIdenticalCalls` times in one reply (default `3`), extra copies are dropped; tools that already went out still run so the agent can keep working.
 
-Additionally, repetition guards monitor generation lines and run-on paragraphs. If a line repeats `maxRepeatedLines` times (default `4`), or the same paragraph keeps cycling with no line breaks, the turn halts or auto-nudges the model to continue productive work.
+Repetition guards monitor generation lines and run-on paragraphs. If a line repeats `maxRepeatedLines` times (default `4`), or the same 6-word phrase keeps cycling in the recent answer (with or without line breaks), the extension cuts the looping text and nudges the model to continue (`nvidia-nim.generation.maxLoopContinues`, default `2` times in the same turn). Across turns, a stuck preamble or repeated tool call gets a breaker, then one stronger follow-up if it is still looping. The turn is not aborted and does not hop to the backup model for a loop.
 
 ---
 

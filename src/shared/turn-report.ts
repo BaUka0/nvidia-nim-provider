@@ -280,6 +280,7 @@ export function formatSessionLogsPayload(): string | undefined {
       logTimingBreakdowns: developer.logTimingBreakdowns,
       maxRepeatedLines: generation.maxRepeatedLines,
       autoContinueOnLoop: generation.autoContinueOnLoop,
+      maxLoopContinues: generation.maxLoopContinues,
       fallbackEnabled: fallback.enabled,
       fallbackModel: fallback.model,
       fallbackVisionModel: fallback.visionModel,

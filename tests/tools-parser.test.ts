@@ -745,6 +745,56 @@ describe("tool argument parsing and validation", () => {
     });
   });
 
+  it("does not cap identical tool calls when maxConsecutiveIdenticalCalls is 0", () => {
+    const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+    const terminalArgs = {
+      command: "npm run compile",
+      explanation: "Compile again",
+      goal: "Compile again",
+      mode: "sync",
+    };
+    const aggregator = new ToolCallStreamAggregator({
+      options: makeChatOptions({
+        tools: [
+          {
+            name: "run_in_terminal",
+            inputSchema: {
+              type: "object",
+              properties: {
+                command: { type: "string" },
+                explanation: { type: "string" },
+                goal: { type: "string" },
+                mode: { type: "string", enum: ["sync", "terminal"] },
+              },
+              required: ["command", "explanation", "goal", "mode"],
+            },
+          },
+        ],
+      }),
+      messages: [],
+      toolsConfig: { ...ConfigManager.getToolsConfig(), maxConsecutiveIdenticalCalls: 0 },
+      onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
+      onSkipToolCall: () => undefined,
+    });
+
+    for (let index = 0; index < 5; index += 1) {
+      aggregator.handleToolCalls([
+        {
+          index,
+          id: `term:${index}`,
+          type: "function",
+          function: {
+            name: "run_in_terminal",
+            arguments: JSON.stringify(terminalArgs),
+          },
+        },
+      ]);
+    }
+
+    expect(emitted).toHaveLength(5);
+    expect(aggregator.getToolCallLoop()).toBeUndefined();
+  });
+
   it("defaults missing grep isRegexp to false so the call is not rejected", () => {
     const grepSchema = getToolSchemaMap(
       makeChatOptions({

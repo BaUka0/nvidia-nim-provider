@@ -57,12 +57,14 @@ export interface GenerationConfig {
   readonly repetitionPenalty: number | null;
   readonly maxRepeatedLines: number;
   readonly autoContinueOnLoop: boolean;
+  readonly maxLoopContinues: number;
 }
 
 export interface ToolsConfig {
   readonly autoRepairArguments: boolean;
   readonly autoRetryInvalidCalls: boolean;
   readonly suppressDuplicateReads: boolean;
+  readonly maxConsecutiveIdenticalCalls: number;
 }
 
 export interface ContextConfig {
@@ -127,12 +129,14 @@ export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
   repetitionPenalty: null,
   maxRepeatedLines: 4,
   autoContinueOnLoop: true,
+  maxLoopContinues: 2,
 };
 
 export const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
   autoRepairArguments: true,
   autoRetryInvalidCalls: true,
   suppressDuplicateReads: true,
+  maxConsecutiveIdenticalCalls: 3,
 };
 
 export const DEFAULT_CONTEXT_CONFIG: ContextConfig = {
@@ -335,6 +339,15 @@ export class ConfigManager {
       DEFAULT_GENERATION_CONFIG.autoContinueOnLoop,
     );
 
+    const rawMaxLoopContinues = config.get<number>(
+      "generation.maxLoopContinues",
+      DEFAULT_GENERATION_CONFIG.maxLoopContinues,
+    );
+    const maxLoopContinues =
+      typeof rawMaxLoopContinues === "number" && Number.isFinite(rawMaxLoopContinues)
+        ? Math.max(0, Math.min(8, Math.round(rawMaxLoopContinues)))
+        : DEFAULT_GENERATION_CONFIG.maxLoopContinues;
+
     return {
       temperature,
       topP,
@@ -344,6 +357,7 @@ export class ConfigManager {
       repetitionPenalty,
       maxRepeatedLines,
       autoContinueOnLoop: autoContinueOnLoop ?? DEFAULT_GENERATION_CONFIG.autoContinueOnLoop,
+      maxLoopContinues,
     };
   }
 
@@ -362,10 +376,21 @@ export class ConfigManager {
       DEFAULT_TOOLS_CONFIG.suppressDuplicateReads,
     );
 
+    const rawMaxConsecutiveIdenticalCalls = config.get<number>(
+      "tools.maxConsecutiveIdenticalCalls",
+      DEFAULT_TOOLS_CONFIG.maxConsecutiveIdenticalCalls,
+    );
+    const maxConsecutiveIdenticalCalls =
+      typeof rawMaxConsecutiveIdenticalCalls === "number" &&
+      Number.isFinite(rawMaxConsecutiveIdenticalCalls)
+        ? Math.max(0, Math.min(20, Math.round(rawMaxConsecutiveIdenticalCalls)))
+        : DEFAULT_TOOLS_CONFIG.maxConsecutiveIdenticalCalls;
+
     return {
       autoRepairArguments,
       autoRetryInvalidCalls,
       suppressDuplicateReads,
+      maxConsecutiveIdenticalCalls,
     };
   }
 

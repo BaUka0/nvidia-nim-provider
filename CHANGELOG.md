@@ -4,6 +4,16 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Added
+
+- How many times the extension nudges a stuck reply in one turn is now a setting: `nvidia-nim.generation.maxLoopContinues` (default 2, Settings UI and `settings.json`). How many identical tool calls in one reply are allowed before extras are dropped is `nvidia-nim.tools.maxConsecutiveIdenticalCalls` (default 3).
+
+### Fixed
+
+- Repeated tool calls no longer abort the chat or hop to the backup model. Extra identical calls in one reply are still dropped, and the tools that already went out still run so the agent can keep working.
+- If the model gets stuck in a loop, hangs on a trailing colon, or repeats the same tool, the extension nudges it to keep going (up to twice in the same turn) instead of stopping or switching models. A second warning is sent if the first one did not break an inter-turn loop.
+- Looping planning text with line breaks is now stopped the same way as a run-on paragraph. A Super 120B-style "we'll re-read the file" cycle no longer finishes as a normal answer.
+
 ## [0.10.2] - 2026-09-11
 
 ### Removed

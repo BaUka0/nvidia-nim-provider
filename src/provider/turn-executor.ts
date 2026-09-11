@@ -65,7 +65,6 @@ function isTransientStreamError(err: unknown): boolean {
 }
 
 const INVALID_TOOL_EXHAUSTION_OPERATION = "invalid_tool_call";
-const TOOL_CALL_LOOP_OPERATION = "tool_call_loop";
 
 function createInvalidToolExhaustionError(
   modelLabel: string,
@@ -83,24 +82,6 @@ function createInvalidToolExhaustionError(
       .filter(Boolean)
       .join("\n"),
     { operation: INVALID_TOOL_EXHAUSTION_OPERATION },
-  );
-}
-
-function createToolCallLoopError(
-  modelLabel: string,
-  repeatedToolCall: string | undefined,
-): NvidiaApiError {
-  return createStructuredError(
-    "empty_stream",
-    [
-      `Model: ${modelLabel}`,
-      "The model repeated the same validated tool call three times in one response stream.",
-      repeatedToolCall ? `Repeated call: ${repeatedToolCall.slice(0, 160)}` : null,
-      "The loop was stopped; the request will be retried on a fallback model if failover is enabled.",
-    ]
-      .filter(Boolean)
-      .join("\n"),
-    { operation: TOOL_CALL_LOOP_OPERATION },
   );
 }
 
@@ -295,9 +276,14 @@ export class ModelTurnExecutor {
       const MAX_NETWORK_RETRIES = httpAttemptsFromConfig(networkConfig.maxHttpRetries);
       const MAX_EMPTY_STREAM_RETRIES = networkConfig.maxEmptyStreamRetries;
       const MAX_INVALID_TOOL_RETRIES = MAX_EMPTY_STREAM_RETRIES;
+      const MAX_LOOP_CONTINUES = generationConfig.maxLoopContinues;
       const streamHttpAttempts = MAX_NETWORK_RETRIES;
       const attemptSafetyCap =
-        1 + MAX_EMPTY_STREAM_RETRIES + MAX_NETWORK_RETRIES + MAX_INVALID_TOOL_RETRIES + 2;
+        1 +
+        MAX_EMPTY_STREAM_RETRIES +
+        MAX_NETWORK_RETRIES +
+        MAX_INVALID_TOOL_RETRIES +
+        MAX_LOOP_CONTINUES;
 
       const firstTokenTimeoutMs =
         typeof fallbackConfig.firstTokenTimeoutSeconds === "number" &&
@@ -360,7 +346,7 @@ export class ModelTurnExecutor {
         let transientRetryCount = 0;
         let lastTransientError: unknown;
         let emptyStreamRetryCount = 0;
-        let hasRetriedRepetitionLoop = false;
+        let loopContinueCount = 0;
         let invalidToolRetryCount = 0;
         let attemptCompleted = false;
 
@@ -422,7 +408,7 @@ export class ModelTurnExecutor {
               idleTimeoutMs: networkConfig.streamIdleTimeout * 1000,
               toolsConfig: toolsConfig,
               showReasoningInChat: nimConfig.reasoning.showInChat,
-              hasRetriedRepetitionLoop,
+              hasRetriedRepetitionLoop: loopContinueCount >= MAX_LOOP_CONTINUES,
               parseEmbeddedToolText,
               onContentReported: () => {
                 thisAttemptReportedContent = true;
@@ -536,24 +522,18 @@ export class ModelTurnExecutor {
           }
 
           markReported(result);
-          if (result.toolCallLoopTripped) {
-            const loopError = createToolCallLoopError(
-              model.name ?? model.id,
-              result.toolCallLoopKey,
-            );
-            // Do not send a fallback after tool calls have already been reported:
-            // the host may have executed those calls and repeating them is unsafe.
-            reportState.failingAttemptHasVisibleContent = result.reportedVisibleContent;
-            recordAttemptTurn({
-              outcome: "error",
-              modelId: model.id,
-              body: attemptBody,
-              result,
-              durationMs: Date.now() - attemptStartedAtMs,
-              retryReasonHistory,
-              error: loopError,
+          if (result.toolCallLoopTripped && result.emittedToolCall) {
+            // Extra identical calls were already dropped in the aggregator.
+            // Finish this attempt so Copilot can run the ones that went out.
+            debugLog("repetitionGuard", {
+              action: "toolCallLoopStop",
+              key: result.toolCallLoopKey,
+              emittedToolCall: result.emittedToolCall,
             });
-            throw loopError;
+            outputLog(
+              "repetitionGuard",
+              `Stopped repeating tool call on ${model.id}; keeping already-emitted calls so the turn can continue.`,
+            );
           }
           finalUsage = result.lastUsage;
           if (result.sawReasoning) {
@@ -574,8 +554,8 @@ export class ModelTurnExecutor {
             toolsEnabled,
             generationAutoContinueOnLoop: generationConfig.autoContinueOnLoop,
             autoRetryInvalidCalls: toolsConfig.autoRetryInvalidCalls,
-            hasRetriedRepetitionLoop,
-            attemptIndex: attempt,
+            loopContinueCount,
+            maxLoopContinues: MAX_LOOP_CONTINUES,
             invalidToolRetryCount,
             emptyStreamRetryCount,
             maxEmptyStreamRetries: MAX_EMPTY_STREAM_RETRIES,
@@ -647,7 +627,7 @@ export class ModelTurnExecutor {
               skippedUnknownTool: evaluation.skippedUnknownTool,
               isRepetitionLoop: evaluation.isRepetitionLoop,
               isHangingColon: evaluation.isHangingColon,
-              hasRetriedRepetitionLoop,
+              loopContinueCount,
               emptyStreamRetryCount,
             });
           }
@@ -667,7 +647,7 @@ export class ModelTurnExecutor {
           });
 
           if (isLoopRetryReason(retryReason)) {
-            hasRetriedRepetitionLoop = true;
+            loopContinueCount += 1;
             retryReasonHistory.push(retryReason);
             retryNudge = buildLoopBreakerNudge(retryReason);
             debugLog("repetitionGuard", {
@@ -675,20 +655,33 @@ export class ModelTurnExecutor {
               trippedLine: result.trippedLine,
               lastVisibleText: result.lastVisibleText,
               reason: retryReason,
+              loopContinueCount,
             });
+            const loopLabel =
+              retryReason === "repetition_loop"
+                ? "repetition loop"
+                : retryReason === "tool_call_loop"
+                  ? "repeated tool call"
+                  : retryReason === "hanging_colon"
+                    ? "hanging ':'"
+                    : retryReason === "content_filter"
+                      ? "content filter"
+                      : "truncated output";
             outputLog(
               "repetitionGuard",
-              `Auto-continue after ${retryReason === "repetition_loop" ? "repetition loop" : retryReason === "hanging_colon" ? "hanging ':'" : retryReason === "content_filter" ? "content filter" : "truncated output"} on ${model.id}: "${(result.trippedLine ?? result.lastVisibleText).slice(0, 80)}"`,
+              `Auto-continue after ${loopLabel} on ${model.id}: "${(result.trippedLine ?? result.toolCallLoopKey ?? result.lastVisibleText).slice(0, 80)}"`,
             );
-            baselineRequestBody = appendChatMessage(baselineRequestBody, {
-              role: "assistant",
-              content: result.lastVisibleText,
-            });
-            try {
-              baselineRequestBody = applyBudget(baselineRequestBody);
-            } catch {
-              debugLog("streamRetry", "history continuation dropped: context budget exceeded");
-              break;
+            if (result.lastVisibleText.trim().length > 0) {
+              baselineRequestBody = appendChatMessage(baselineRequestBody, {
+                role: "assistant",
+                content: result.lastVisibleText,
+              });
+              try {
+                baselineRequestBody = applyBudget(baselineRequestBody);
+              } catch {
+                debugLog("streamRetry", "history continuation dropped: context budget exceeded");
+                break;
+              }
             }
             continue;
           }

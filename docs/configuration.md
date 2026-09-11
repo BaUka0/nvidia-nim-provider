@@ -102,6 +102,7 @@ Settings for file edits, terminal commands, and agent workflows.
 | `nvidia-nim.tools.autoRepairArguments` | `true` | Automatically fixes minor formatting and syntax mistakes in tool commands emitted by AI models. |
 | `nvidia-nim.tools.autoRetryInvalidCalls` | `true` | Prompts the model to fix and retry its action if a command format is invalid, rather than crashing. |
 | `nvidia-nim.tools.suppressDuplicateReads` | `true` | Prevents the AI agent from repeatedly reading the exact same file in a row. |
+| `nvidia-nim.tools.maxConsecutiveIdenticalCalls` | `3` | Drops extra copies of the same tool call in one reply after this many identical calls. Already-emitted calls still run. `0` disables the cap. |
 
 ---
 
@@ -130,7 +131,8 @@ Optional sampling parameters sent with each request.
 | `nvidia-nim.generation.presencePenalty` | `null` | `-2`–`2` | Encourages the model to introduce new topics. `null` omits the parameter. |
 | `nvidia-nim.generation.repetitionPenalty` | `null` | `0.5`–`2` | Specific penalty against repetitive phrasing. Values above `1.0` reduce repetition. |
 | `nvidia-nim.generation.maxRepeatedLines` | `4` | `0`–`50` | Stops the response early if the model gets stuck repeating the same sentence or a paragraph with no line breaks. `0` disables loop detection. |
-| `nvidia-nim.generation.autoContinueOnLoop` | `true` | — | Automatically prompts the model to continue working if it pauses mid-sentence or gets caught in a loop. |
+| `nvidia-nim.generation.autoContinueOnLoop` | `true` | — | Automatically prompts the model to keep working if it pauses mid-sentence, hits the token limit, or gets caught in a text or tool loop. |
+| `nvidia-nim.generation.maxLoopContinues` | `2` | `0`–`8` | How many times in one turn to nudge after a loop, hanging colon, truncated reply, or repeated tool call. `0` disables auto-continue even if `autoContinueOnLoop` is on. |
 
 ---
 

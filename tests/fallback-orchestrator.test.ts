@@ -66,6 +66,17 @@ describe("isFallbackEligibleError", () => {
       ),
     ).toBe(false);
   });
+
+  it("does not fail over an in-stream tool-call loop", () => {
+    expect(
+      isFallbackEligibleError(
+        new NvidiaApiError("empty_stream", "loop", { operation: "tool_call_loop" }),
+        config,
+        0,
+        false,
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("fallbackCapacityLabel", () => {

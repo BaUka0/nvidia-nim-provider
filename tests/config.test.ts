@@ -198,6 +198,8 @@ describe("ConfigManager", () => {
       expect(config.presencePenalty).toBeNull();
       expect(config.repetitionPenalty).toBeNull();
       expect(config.maxRepeatedLines).toBe(4);
+      expect(config.autoContinueOnLoop).toBe(true);
+      expect(config.maxLoopContinues).toBe(2);
     });
 
     it("clamps temperature and topP", () => {
@@ -260,6 +262,20 @@ describe("ConfigManager", () => {
       mockStore["generation.maxRepeatedLines"] = Number.NaN;
       expect(ConfigManager.getGenerationConfig().maxRepeatedLines).toBe(4);
     });
+
+    it("clamps generation.maxLoopContinues into the 0..8 range", () => {
+      mockStore["generation.maxLoopContinues"] = -1;
+      expect(ConfigManager.getGenerationConfig().maxLoopContinues).toBe(0);
+
+      mockStore["generation.maxLoopContinues"] = 20;
+      expect(ConfigManager.getGenerationConfig().maxLoopContinues).toBe(8);
+
+      mockStore["generation.maxLoopContinues"] = 3;
+      expect(ConfigManager.getGenerationConfig().maxLoopContinues).toBe(3);
+
+      mockStore["generation.maxLoopContinues"] = Number.NaN;
+      expect(ConfigManager.getGenerationConfig().maxLoopContinues).toBe(2);
+    });
   });
 
   describe("getToolsConfig", () => {
@@ -269,16 +285,30 @@ describe("ConfigManager", () => {
       expect(config.autoRepairArguments).toBe(true);
       expect(config.autoRetryInvalidCalls).toBe(true);
       expect(config.suppressDuplicateReads).toBe(true);
+      expect(config.maxConsecutiveIdenticalCalls).toBe(3);
     });
 
     it("reads custom flags", () => {
       mockStore["tools.autoRepairArguments"] = false;
       mockStore["tools.autoRetryInvalidCalls"] = false;
       mockStore["tools.suppressDuplicateReads"] = false;
+      mockStore["tools.maxConsecutiveIdenticalCalls"] = 5;
       const config = ConfigManager.getToolsConfig();
       expect(config.autoRepairArguments).toBe(false);
       expect(config.autoRetryInvalidCalls).toBe(false);
       expect(config.suppressDuplicateReads).toBe(false);
+      expect(config.maxConsecutiveIdenticalCalls).toBe(5);
+    });
+
+    it("clamps tools.maxConsecutiveIdenticalCalls into the 0..20 range", () => {
+      mockStore["tools.maxConsecutiveIdenticalCalls"] = -2;
+      expect(ConfigManager.getToolsConfig().maxConsecutiveIdenticalCalls).toBe(0);
+
+      mockStore["tools.maxConsecutiveIdenticalCalls"] = 50;
+      expect(ConfigManager.getToolsConfig().maxConsecutiveIdenticalCalls).toBe(20);
+
+      mockStore["tools.maxConsecutiveIdenticalCalls"] = Number.NaN;
+      expect(ConfigManager.getToolsConfig().maxConsecutiveIdenticalCalls).toBe(3);
     });
   });
 

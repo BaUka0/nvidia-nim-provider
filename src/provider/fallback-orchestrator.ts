@@ -19,9 +19,12 @@ export function isFallbackEligibleError(
   if (!fallbackConfig.enabled || priorDepth >= maxChainLength || failingAttemptHasVisibleContent) {
     return false;
   }
-  if (err instanceof NvidiaApiError && err.operation === "history_loop") {
-    // The history itself is already looping; retrying the same transcript on
-    // another model would repeat the guard without adding useful progress.
+  if (
+    err instanceof NvidiaApiError &&
+    (err.operation === "history_loop" || err.operation === "tool_call_loop")
+  ) {
+    // A loop is a stuck transcript, not a dead model. Hopping would abort the
+    // Copilot agent turn; the loop breaker / in-stream cap should keep working.
     return false;
   }
   return (

@@ -3,6 +3,7 @@ import { buildInvalidToolCallRetryMessage } from "../tools/parser";
 
 export type LoopRetryReason =
   | "repetition_loop"
+  | "tool_call_loop"
   | "hanging_colon"
   | "output_truncated"
   | "content_filter";
@@ -10,6 +11,7 @@ export type RetryReason = LoopRetryReason | "invalid_tool_call" | "empty_stream"
 
 export const LOOP_RETRY_REASONS: ReadonlySet<RetryReason> = new Set([
   "repetition_loop",
+  "tool_call_loop",
   "hanging_colon",
   "output_truncated",
   "content_filter",
@@ -24,9 +26,8 @@ export interface AttemptRetryFacts {
   toolsEnabled: boolean;
   generationAutoContinueOnLoop: boolean;
   autoRetryInvalidCalls: boolean;
-  hasRetriedRepetitionLoop: boolean;
-  /** 0-based attempt index; loop auto-continue is gated to the first attempt. */
-  attemptIndex: number;
+  loopContinueCount: number;
+  maxLoopContinues: number;
   invalidToolRetryCount: number;
   emptyStreamRetryCount: number;
   maxEmptyStreamRetries: number;
@@ -75,14 +76,21 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     result.lastVisibleText && result.lastVisibleText.trim().length > 0,
   );
   const loopAutoContinueEligible =
-    !facts.hasRetriedRepetitionLoop &&
-    facts.generationAutoContinueOnLoop &&
-    facts.attemptIndex === 0 &&
-    hasVisibleText;
-  const willRetryRepetitionLoop = isRepetitionLoop && loopAutoContinueEligible;
-  const willRetryHangingColon = !isRepetitionLoop && isHangingColon && loopAutoContinueEligible;
+    facts.generationAutoContinueOnLoop && facts.loopContinueCount < facts.maxLoopContinues;
+  const willRetryRepetitionLoop = isRepetitionLoop && loopAutoContinueEligible && hasVisibleText;
+  const willRetryToolCallLoop =
+    !willRetryRepetitionLoop &&
+    Boolean(result.toolCallLoopTripped) &&
+    !result.emittedToolCall &&
+    loopAutoContinueEligible;
+  const willRetryHangingColon =
+    !isRepetitionLoop && !willRetryToolCallLoop && isHangingColon && loopAutoContinueEligible;
   const willRetryTruncation =
-    !isRepetitionLoop && !isHangingColon && isTruncatedLength && loopAutoContinueEligible;
+    !isRepetitionLoop &&
+    !willRetryToolCallLoop &&
+    !isHangingColon &&
+    isTruncatedLength &&
+    loopAutoContinueEligible;
   const isContentFilterPartial =
     result.lastFinishReason === "content_filter" &&
     !result.sawToolCall &&
@@ -90,12 +98,14 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     hasVisibleText;
   const willRetryContentFilter =
     !isRepetitionLoop &&
+    !willRetryToolCallLoop &&
     !isHangingColon &&
     !isTruncatedLength &&
     isContentFilterPartial &&
     loopAutoContinueEligible;
   const willRetryOnLoop =
     willRetryRepetitionLoop ||
+    willRetryToolCallLoop ||
     willRetryHangingColon ||
     willRetryTruncation ||
     willRetryContentFilter;
@@ -126,11 +136,13 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
   const retryReason: RetryReason | undefined = willRetryOnLoop
     ? willRetryRepetitionLoop
       ? "repetition_loop"
-      : willRetryHangingColon
-        ? "hanging_colon"
-        : willRetryTruncation
-          ? "output_truncated"
-          : "content_filter"
+      : willRetryToolCallLoop
+        ? "tool_call_loop"
+        : willRetryHangingColon
+          ? "hanging_colon"
+          : willRetryTruncation
+            ? "output_truncated"
+            : "content_filter"
     : willRetryAfterInvalidToolCall
       ? "invalid_tool_call"
       : willRetryEmptyStream
