@@ -132,6 +132,9 @@ describe("applyReasoningMode", () => {
 
     adapter.applyReasoningMode!(request, "none");
     expect(request.reasoning_effort).toBe("low");
+
+    expect(adapter.supportsPresencePenalty).toBe(false);
+    expect(adapter.supportsFrequencyPenalty).toBe(false);
   });
 
   it("maps Lightning reasoning modes to OpenRouter-style reasoning_budget percentages", () => {

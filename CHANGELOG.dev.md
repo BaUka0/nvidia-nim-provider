@@ -6,7 +6,7 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ### Added
 
-- **GLM 5.3 Flash adapter and catalog entry (`src/models/catalog.ts`, `src/models/adapters/glm.ts`, `src/models/adapters/index.ts`, `package.json`, `scripts/nim-models-probe.mjs`).** Added `z-ai/glm-5.3-flash` with 1,048,576 token context window, 131,072 max output tokens, vision support, and native-and-text tool call protocol. Implemented `GlmAdapter` supporting `reasoning_effort` modes `["low", "high", "max"]` where `low` (and fallback `none`) routes zero-thinking output and `isContentOnlyMode` unblocks immediate text streaming. Updated fallback and summarization model enums in `package.json`.
+- **GLM 5.3 Flash adapter and catalog entry (`src/models/catalog.ts`, `src/models/adapters/glm.ts`, `src/models/adapters/index.ts`, `package.json`, `scripts/nim-models-probe.mjs`).** Added `z-ai/glm-5.3-flash` with 1,048,576 token context window, 131,072 max output tokens, vision support, and native-and-text tool call protocol. Implemented `GlmAdapter` supporting `reasoning_effort` modes `["low", "high", "max"]` where `low` (and fallback `none`) routes zero-thinking output and `isContentOnlyMode` unblocks immediate text streaming. Disabled frequency and presence penalty forwarding (`supportsFrequencyPenalty = false`, `supportsPresencePenalty = false`) to eliminate associative drift. Updated fallback and summarization model enums in `package.json`.
 
 ## [0.10.3] - 2026-09-12
 
