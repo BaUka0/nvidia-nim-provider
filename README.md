@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Install](https://img.shields.io/badge/Install-Marketplace-007ACC?style=flat&logo=visual-studio-code&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
-[![Version](https://img.shields.io/badge/Version-0.10.3-76B900?logo=nvidia&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
+[![Version](https://img.shields.io/badge/Version-0.11.0-76B900?logo=nvidia&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
 [![Documentation](https://img.shields.io/badge/Docs-Configuration_Guide-green?style=flat&logo=markdown&logoColor=white)](docs/README.md)
 [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-Chat_Native-181717?style=flat&logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -18,7 +18,7 @@ Direct access to NVIDIA NIM reasoning models inside GitHub Copilot Chat. No prox
 
 </div>
 
-NVIDIA provides free API on [build.nvidia.com](https://build.nvidia.com/models). You can run DeepSeek V4, Nemotron, and Kimi directly inside Copilot without any monthly provider subscription.
+NVIDIA provides free API on [build.nvidia.com](https://build.nvidia.com/models). You can run DeepSeek V4, Nemotron, GLM, and Kimi directly inside Copilot without any monthly provider subscription.
 
 ---
 
@@ -53,6 +53,7 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | **Kimi K3** | **44** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Long-context multimodal work, repo-scale jobs |
 | **DeepSeek V4 Pro 0813** | **36** | 1M | `None`, `High`, `Max` | Yes | No | High-capacity reasoning, codebase generation |
 | **DeepSeek V4 Flash 0731** | **35** | 1M | `None`, `High`, `Max` | Yes | No | Algorithm design, architecture, complex refactors |
+| **GLM 5.3 Flash** | — | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
 | **Nemotron 3 Ultra 550B** | **23** | 1M | `None`, `Medium`, `High` | Yes | No | Heavy multi-step reasoning, technical docs |
 | **Muse Glimmer** | **18** | 131K | `None` to `XHigh` | Yes | Yes | Visual UX/UI work; default vision fallback |
 | **Nemotron 3 Super 120B** | **14** | 1M | `None`, `Low`, `High` | Yes | No | Workhorse for everyday coding; default text fallback |

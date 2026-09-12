@@ -4,6 +4,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-12
+
 ### Added
 
 - Added GLM 5.3 Flash (`z-ai/glm-5.3-flash`) to the model picker and fallback options. Features a 1,048,576 token context window, vision support, native tool calling, and selectable reasoning effort modes (`Low`, `High`, `Max`) where `Low` produces instant answers without a reasoning delay. Repetition and frequency penalties are ignored to prevent associative drift on long responses.
