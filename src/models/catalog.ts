@@ -30,7 +30,8 @@ export type CatalogAdapterId =
   | "nemotron"
   | "nemotron-super"
   | "nemotron-lightning"
-  | "muse-glimmer";
+  | "muse-glimmer"
+  | "glm";
 
 export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
   "deepseek-ai/deepseek-v4-flash-0731": {
@@ -88,6 +89,14 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: true,
     adapter: "muse-glimmer",
+  },
+  "z-ai/glm-5.3-flash": {
+    displayName: "GLM 5.3 Flash",
+    contextWindow: 1048576,
+    maxOutputTokens: 131072,
+    supportsTools: true,
+    supportsVision: true,
+    adapter: "glm",
   },
 };
 

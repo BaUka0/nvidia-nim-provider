@@ -341,14 +341,15 @@ export class NimRequestBuilder {
     if (reasoningMode === undefined && modes && modes.length > 0) {
       reasoningMode = reasoningConfig.mode;
     }
-    reasoningMode ??= "none";
+    const defaultMode = modes?.includes("none") ? "none" : (modes?.[0] ?? "none");
+    reasoningMode ??= defaultMode;
 
     if (modes && modes.length > 0 && !modes.includes(reasoningMode)) {
       outputLog(
         "reasoning",
-        `Requested reasoning mode "${reasoningMode}" is not supported by ${model.id} (supported: ${modes.join(", ")}). Sending none.`,
+        `Requested reasoning mode "${reasoningMode}" is not supported by ${model.id} (supported: ${modes.join(", ")}). Sending ${defaultMode}.`,
       );
-      reasoningMode = "none";
+      reasoningMode = defaultMode;
     }
 
     if (adapter.applyReasoningMode) {

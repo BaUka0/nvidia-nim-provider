@@ -109,6 +109,25 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
+  it("normalizes z-ai/glm-5.3-flash with its curated 1M / 128K limits", () => {
+    const raw: NvidiaModelSummary[] = [
+      {
+        id: "z-ai/glm-5.3-flash",
+      },
+    ];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([
+      {
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
+        contextWindow: 1048576,
+        maxOutputTokens: 131072,
+        supportsTools: true,
+        supportsVision: true,
+      },
+    ]);
+  });
+
   it("uses the curated max output limit instead of an API-supplied override", () => {
     // Curated limits are stable across API metadata changes.
     const raw: NvidiaModelSummary[] = [

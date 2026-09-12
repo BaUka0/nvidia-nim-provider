@@ -111,6 +111,29 @@ describe("applyReasoningMode", () => {
     expect(request.reasoning_effort).toBe("none");
   });
 
+  it("exposes GLM reasoning effort modes and maps selected modes", () => {
+    const adapter = getModelAdapter("z-ai/glm-5.3-flash");
+    const request: NimChatRequest = {
+      model: "z-ai/glm-5.3-flash",
+      messages: [],
+    };
+
+    expect(adapter.supportedReasoningModes).toEqual(["low", "high", "max"]);
+    expect(adapter.getProfile({ toolsEnabled: true }).defaultTemperature).toBe(1);
+
+    adapter.applyReasoningMode!(request, "high");
+    expect(request.reasoning_effort).toBe("high");
+
+    adapter.applyReasoningMode!(request, "max");
+    expect(request.reasoning_effort).toBe("max");
+
+    adapter.applyReasoningMode!(request, "low");
+    expect(request.reasoning_effort).toBe("low");
+
+    adapter.applyReasoningMode!(request, "none");
+    expect(request.reasoning_effort).toBe("low");
+  });
+
   it("maps Lightning reasoning modes to OpenRouter-style reasoning_budget percentages", () => {
     const adapter = getModelAdapter("nvidia/nemotron-3.5-lightning-30b-a3b");
     const request: NimChatRequest = {

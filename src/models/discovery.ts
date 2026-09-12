@@ -190,7 +190,7 @@ export class NvidiaModelDiscoveryService {
               enum: enumValues,
               enumItemLabels: enumItemLabels,
               group: "navigation",
-              default: "none",
+              default: enumValues.includes("none") ? "none" : (enumValues[0] ?? "none"),
             },
           },
         };

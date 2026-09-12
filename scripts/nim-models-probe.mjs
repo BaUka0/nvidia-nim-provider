@@ -7,6 +7,7 @@ const CURATED_MODEL_IDS = new Set([
   "nvidia/nemotron-3-super-120b-a12b",
   "nvidia/nemotron-3-ultra-550b-a55b",
   "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "z-ai/glm-5.3-flash",
 ]);
 
 const baseUrl = (process.env.NVIDIA_NIM_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");

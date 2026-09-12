@@ -28,6 +28,7 @@ export interface ModelAdapter {
   getProfile(options: { toolsEnabled?: boolean }): NvidiaModelRequestProfile;
   applyMessagesWorkaround?(messages: NimChatMessage[]): NimChatMessage[];
   applyReasoningMode?(request: import("../../types").NimChatRequest, mode: string): void;
+  isContentOnlyMode?(mode: string): boolean;
   readonly supportedReasoningModes?: string[];
   readonly reasoningParameterFormat?: ReasoningParameterFormat;
   readonly toolCallProtocol?: ToolCallProtocol;
@@ -68,14 +69,19 @@ export const VISIBLE_REPLY_HYGIENE_MESSAGE =
  * must arrive as isolated thinking parts rather than inline text.
  */
 export function isReasoningIsolationExpected(
-  adapter: Pick<ModelAdapter, "applyReasoningMode" | "isolateUntaggedReasoning">,
+  adapter: Pick<
+    ModelAdapter,
+    "applyReasoningMode" | "isolateUntaggedReasoning" | "isContentOnlyMode"
+  >,
   mode: string,
 ): boolean {
-  return (
-    Boolean(adapter.applyReasoningMode) &&
-    mode !== "none" &&
-    adapter.isolateUntaggedReasoning !== false
-  );
+  if (!adapter.applyReasoningMode || adapter.isolateUntaggedReasoning === false) {
+    return false;
+  }
+  if (typeof adapter.isContentOnlyMode === "function") {
+    return !adapter.isContentOnlyMode(mode);
+  }
+  return mode !== "none";
 }
 
 export abstract class BaseModelAdapter implements ModelAdapter {
