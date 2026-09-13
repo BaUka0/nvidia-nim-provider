@@ -13,6 +13,7 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 - **Failover starvation on primary model retry exhaustion (`src/provider/chat-provider.ts`).** Moved `isFallbackEligibleError` check ahead of `fetchBudget.exhausted` in failover loop and called `fetchBudget.ensureMinimum(MAX_FETCH_ATTEMPTS_PER_STREAM)` upon hopping to fallback candidate. Prevents primary model retry/timeout burn from preemptively aborting before fallback execution. Resolves #7.
 - **Duplicate tool suppression scoping (`src/tools/canonical-key.ts`).** Restricted `isDuplicateSuppressionEnabled` to `isReadTool(toolName)` instead of broad negation (`!isTerminal && !isEdit && !isDir`). Fixes non-file diagnostic tools (such as `get_errors`) being incorrectly suppressed as duplicates. Resolves #7.
 - **Invalid tool call retry limit (`src/provider/turn-executor.ts`).** Capped `MAX_INVALID_TOOL_RETRIES` to `Math.min(2, MAX_EMPTY_STREAM_RETRIES)` so malformed tool calls trigger fallback failover rather than burning remaining stream attempts.
+- **Live reasoning stream emission (`src/provider/stream-pump.ts`).** Removed `pendingThinking` buffering that withheld `reasoning_content` deltas until the arrival of the first visible text token or tool call. Reasoning is now streamed immediately via `emitThinkingPart`, resolving long perceived freezes during deep thinking phases (e.g. Turn #2 with GLM 5.3 Flash).
 
 ## [0.11.0] - 2026-09-12
 

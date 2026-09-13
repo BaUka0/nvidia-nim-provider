@@ -13,6 +13,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Automatic model failover is now guaranteed dedicated connection attempts when switching away from an overloaded primary model, preventing retries from exhausting the turn budget before the backup model can run.
 - Non-file inspection tools such as diagnostics and test runners are no longer mistakenly treated as duplicate file reads and dropped during complex agent turns.
 - In-turn retries triggered by malformed tool calls are now capped at two attempts before switching to a fallback model.
+- Model reasoning is now streamed in real time to the thinking display instead of being buffered until the first answer word arrives, eliminating long perceived freezes during deep thinking phases.
 
 ## [0.11.0] - 2026-09-12
 

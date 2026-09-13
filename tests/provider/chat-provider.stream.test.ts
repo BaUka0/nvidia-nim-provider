@@ -305,7 +305,10 @@ describe("NimChatModelProvider", () => {
 
     const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
 
-    expect(thinkingReports).toHaveLength(0);
+    expect(thinkingReports).toHaveLength(1);
+    expect(thinkingReports[0][0]).toEqual(
+      expect.objectContaining({ value: "Only reasoning, no answer" }),
+    );
   });
 
   const closeTag = "</" + "think>";
@@ -687,7 +690,7 @@ describe("NimChatModelProvider", () => {
     const textReports = allReports.filter((r) => r instanceof vscode.LanguageModelTextPart);
 
     expect(textReports).toHaveLength(0);
-    expect(thinkingText).toBe("");
+    expect(thinkingText).toBe("thinking without tagsproper reasoningambiguous continuation");
   });
 
   it("does not route content to thinking when reasoning mode is none", async () => {
@@ -2349,7 +2352,7 @@ describe("NimChatModelProvider", () => {
     );
   });
 
-  it("does not emit thinking parts when the stream never produces visible content", async () => {
+  it("emits live thinking parts and throws empty_stream when the stream produces no visible answer", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((key: string, defaultValue: unknown) => {
@@ -2378,7 +2381,8 @@ describe("NimChatModelProvider", () => {
     ).rejects.toThrow(/EMPTY_STREAM|no visible/);
 
     const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
-    expect(thinkingReports).toHaveLength(0);
+    expect(thinkingReports).toHaveLength(1);
+    expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "silent thoughts" }));
   });
 
   it("falls back to a custom configured fallback model when set", async () => {
@@ -3618,7 +3622,8 @@ describe("NimChatModelProvider", () => {
     expect(streamChatCompletion).toHaveBeenCalledTimes(1);
 
     const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
-    expect(thinkingReports).toHaveLength(0);
+    expect(thinkingReports).toHaveLength(1);
+    expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "thinking only" }));
   });
 
   const getUsageParts = (progress: { report: jest.Mock }) =>
