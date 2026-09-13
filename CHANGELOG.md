@@ -4,6 +4,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-09-13
+
 ### Added
 
 - Added a user-configurable connection attempt budget setting (`nvidia-nim.network.maxTotalFetchAttempts`, default 6, range 2 to 30) to control total connection attempts across retries, history compaction, and fallback switches in a single turn.

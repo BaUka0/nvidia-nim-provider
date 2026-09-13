@@ -4,6 +4,8 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-09-13
+
 ### Added
 
 - **Configurable connection attempt budget (`src/shared/config.ts`, `src/shared/fetch-attempt-budget.ts`, `package.json`, `docs/configuration.md`).** Added `nvidia-nim.network.maxTotalFetchAttempts` (default 6, clamp 2–30) to replace hardcoded `MAX_TOTAL_FETCH_ATTEMPTS` constant in `provideLanguageModelChatResponse`. Added `ensureMinimum(min: number)` to `FetchAttemptBudget` ensuring failover hops are allocated fresh connection attempts regardless of primary model exhaustion.
