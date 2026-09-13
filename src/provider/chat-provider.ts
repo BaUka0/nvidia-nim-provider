@@ -16,6 +16,7 @@ import { ConfigManager } from "../shared/config";
 import {
   DEFAULT_MAX_OUTPUT_TOKENS,
   MANAGE_COMMAND_ID,
+  MAX_FETCH_ATTEMPTS_PER_STREAM,
   PROVIDER_DISPLAY_NAME,
   PROVIDER_VENDOR,
   SECRET_STORAGE_KEY,
@@ -369,7 +370,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
     // Failover chain state is local to this response: one shared fetch budget
     // and the depth / tried-models bookkeeping for the hop loop below.
-    const fetchBudget = new FetchAttemptBudget();
+    const initialNetworkConfig = ConfigManager.getNetworkConfig();
+    const fetchBudget = new FetchAttemptBudget(initialNetworkConfig.maxTotalFetchAttempts);
     let currentModel = model;
     const chainState = { depth: 0, triedModelIds: [] as string[] };
     const reportState: ModelTurnReportState = {
@@ -421,9 +423,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
           const fallbackConfig = nimConfig.fallback;
           const priorDepth = chainState.depth;
-          if (fetchBudget.exhausted) {
-            throw toHostChatError(err);
-          }
           if (
             !isFallbackEligibleError(
               err,
@@ -465,6 +464,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             }
             throw toHostChatError(err);
           }
+
+          fetchBudget.ensureMinimum(MAX_FETCH_ATTEMPTS_PER_STREAM);
 
           reportFallbackHop({
             err,

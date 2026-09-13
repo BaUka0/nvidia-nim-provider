@@ -2275,6 +2275,80 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("guarantees failover execution when primary model exhausts its connection attempt budget", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "network.maxTotalFetchAttempts") return 4;
+        if (key === "network.maxHttpRetries") return 5;
+        if (key === "fallback.enabled") return true;
+        if (key === "fallback.onTimeout") return true;
+        return defaultValue;
+      }),
+    }));
+
+    (globalState.get as jest.Mock).mockImplementation((key: string) =>
+      key === "nvidia-nim.models"
+        ? [
+            {
+              id: "z-ai/glm-5.3-flash",
+              displayName: "GLM 5.3 Flash",
+              contextWindow: 1048576,
+              maxOutputTokens: 65536,
+              supportsTools: true,
+              supportsVision: true,
+            },
+            {
+              id: "nvidia/nemotron-3-super-120b-a12b",
+              displayName: "Nemotron 3 Super 120B",
+              contextWindow: 1000000,
+              maxOutputTokens: 65536,
+              supportsTools: true,
+              supportsVision: false,
+            },
+          ]
+        : key === MODELS_CACHE_VERSION_STATE_KEY
+          ? MODELS_CACHE_VERSION
+          : key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY
+            ? getApiKeyFingerprint("test-key")
+            : undefined,
+    );
+
+    let calls = 0;
+    (streamChatCompletion as jest.Mock).mockImplementation((_url, body) => {
+      calls += 1;
+      if (body.model === "z-ai/glm-5.3-flash") {
+        return (async function* () {
+          throw new NvidiaApiError("timeout", "[GATEWAY_TIMEOUT] stream idle timeout.");
+        })();
+      }
+      return (async function* () {
+        yield { choices: [{ delta: { content: "Recovered on Nemotron fallback" } }] };
+      })();
+    });
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "z-ai/glm-5.3-flash",
+        name: "GLM 5.3 Flash",
+        maxInputTokens: 200000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hello"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(calls).toBeGreaterThan(1);
+    const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
+    expect(fallbackRequest.model).toBe("nvidia/nemotron-3-super-120b-a12b");
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Recovered on Nemotron fallback" }),
+    );
+  });
+
   it("does not emit thinking parts when the stream never produces visible content", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({

@@ -275,7 +275,7 @@ export class ModelTurnExecutor {
       const toolsConfig = nimConfig.tools;
       const MAX_NETWORK_RETRIES = httpAttemptsFromConfig(networkConfig.maxHttpRetries);
       const MAX_EMPTY_STREAM_RETRIES = networkConfig.maxEmptyStreamRetries;
-      const MAX_INVALID_TOOL_RETRIES = MAX_EMPTY_STREAM_RETRIES;
+      const MAX_INVALID_TOOL_RETRIES = Math.min(2, MAX_EMPTY_STREAM_RETRIES);
       const MAX_LOOP_CONTINUES = generationConfig.maxLoopContinues;
       const streamHttpAttempts = MAX_NETWORK_RETRIES;
       const attemptSafetyCap =

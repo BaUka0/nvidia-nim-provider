@@ -114,6 +114,7 @@ describe("ConfigManager", () => {
       expect(config.streamIdleTimeout).toBe(120);
       expect(config.maxHttpRetries).toBe(3);
       expect(config.maxEmptyStreamRetries).toBe(2);
+      expect(config.maxTotalFetchAttempts).toBe(6);
     });
 
     it("clamps streamIdleTimeout within 15..600", () => {
@@ -141,6 +142,17 @@ describe("ConfigManager", () => {
 
       mockStore["network.maxEmptyStreamRetries"] = 10;
       expect(ConfigManager.getNetworkConfig().maxEmptyStreamRetries).toBe(5);
+    });
+
+    it("clamps maxTotalFetchAttempts within 2..30", () => {
+      mockStore["network.maxTotalFetchAttempts"] = -5;
+      expect(ConfigManager.getNetworkConfig().maxTotalFetchAttempts).toBe(2);
+
+      mockStore["network.maxTotalFetchAttempts"] = 999;
+      expect(ConfigManager.getNetworkConfig().maxTotalFetchAttempts).toBe(30);
+
+      mockStore["network.maxTotalFetchAttempts"] = 12;
+      expect(ConfigManager.getNetworkConfig().maxTotalFetchAttempts).toBe(12);
     });
   });
 

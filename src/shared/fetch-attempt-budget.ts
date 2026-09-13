@@ -33,6 +33,13 @@ export class FetchAttemptBudget {
     this.remainingValue -= 1;
     return granted;
   }
+
+  ensureMinimum(min: number): void {
+    const clampedMin = Math.max(0, Math.floor(min));
+    if (this.remainingValue < clampedMin) {
+      this.remainingValue = clampedMin;
+    }
+  }
 }
 
 /** Treat a configured retry count of 0 as "try once". */

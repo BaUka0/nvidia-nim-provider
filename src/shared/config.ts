@@ -41,6 +41,7 @@ export interface NetworkConfig {
   readonly streamIdleTimeout: number; // in seconds
   readonly maxHttpRetries: number;
   readonly maxEmptyStreamRetries: number;
+  readonly maxTotalFetchAttempts: number;
 }
 
 export interface ReasoningConfig {
@@ -113,6 +114,7 @@ export const DEFAULT_NETWORK_CONFIG: NetworkConfig = {
   streamIdleTimeout: 120,
   maxHttpRetries: 3,
   maxEmptyStreamRetries: 2,
+  maxTotalFetchAttempts: 6,
 };
 
 export const DEFAULT_REASONING_CONFIG: ReasoningConfig = {
@@ -260,10 +262,20 @@ export class ConfigManager {
         ? Math.max(0, Math.min(5, Math.round(rawEmptyRetries)))
         : DEFAULT_NETWORK_CONFIG.maxEmptyStreamRetries;
 
+    const rawTotalAttempts = config.get<number>(
+      "network.maxTotalFetchAttempts",
+      DEFAULT_NETWORK_CONFIG.maxTotalFetchAttempts,
+    );
+    const maxTotalFetchAttempts =
+      typeof rawTotalAttempts === "number" && Number.isFinite(rawTotalAttempts)
+        ? Math.max(2, Math.min(30, Math.round(rawTotalAttempts)))
+        : DEFAULT_NETWORK_CONFIG.maxTotalFetchAttempts;
+
     return {
       streamIdleTimeout,
       maxHttpRetries,
       maxEmptyStreamRetries,
+      maxTotalFetchAttempts,
     };
   }
 

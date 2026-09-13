@@ -30,4 +30,23 @@ describe("FetchAttemptBudget", () => {
     expect(httpAttemptsFromConfig(0)).toBe(1);
     expect(httpAttemptsFromConfig(3)).toBe(3);
   });
+
+  it("guarantees minimum attempt allowance when below threshold", () => {
+    const budget = new FetchAttemptBudget(2);
+    budget.consume();
+    budget.consume();
+    expect(budget.exhausted).toBe(true);
+
+    budget.ensureMinimum(3);
+    expect(budget.remaining).toBe(3);
+    expect(budget.exhausted).toBe(false);
+
+    // does not reduce if already higher
+    budget.ensureMinimum(2);
+    expect(budget.remaining).toBe(3);
+
+    // ignores negative or zero minimums
+    budget.ensureMinimum(-1);
+    expect(budget.remaining).toBe(3);
+  });
 });

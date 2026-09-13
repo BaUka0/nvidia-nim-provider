@@ -3,7 +3,7 @@ import { LanguageModelChatMessage } from "vscode";
 import { ConfigManager, ToolsConfig } from "../shared/config";
 import { repairToolArguments } from "./argument-repair";
 import { ChatRequestContext } from "./request-context";
-import { isDirTool, isEditTool, isTerminalTool } from "./tool-kinds";
+import { isReadTool } from "./tool-kinds";
 import { ToolSchema } from "./tool-schema";
 
 export function buildToolCallCanonicalKey(name: string, args: unknown): string {
@@ -17,10 +17,7 @@ export function isDuplicateSuppressionEnabled(
   if (!toolsConfig.suppressDuplicateReads) {
     return false;
   }
-  if (isTerminalTool(toolName) || isEditTool(toolName) || isDirTool(toolName)) {
-    return false;
-  }
-  return true;
+  return isReadTool(toolName);
 }
 
 export function sortObjectKeys(value: unknown): unknown {

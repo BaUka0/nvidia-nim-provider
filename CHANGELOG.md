@@ -4,6 +4,16 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Added
+
+- Added a user-configurable connection attempt budget setting (`nvidia-nim.network.maxTotalFetchAttempts`, default 6, range 2 to 30) to control total connection attempts across retries, history compaction, and fallback switches in a single turn.
+
+### Fixed
+
+- Automatic model failover is now guaranteed dedicated connection attempts when switching away from an overloaded primary model, preventing retries from exhausting the turn budget before the backup model can run.
+- Non-file inspection tools such as diagnostics and test runners are no longer mistakenly treated as duplicate file reads and dropped during complex agent turns.
+- In-turn retries triggered by malformed tool calls are now capped at two attempts before switching to a fallback model.
+
 ## [0.11.0] - 2026-09-12
 
 ### Added

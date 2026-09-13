@@ -4,6 +4,16 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Added
+
+- **Configurable connection attempt budget (`src/shared/config.ts`, `src/shared/fetch-attempt-budget.ts`, `package.json`, `docs/configuration.md`).** Added `nvidia-nim.network.maxTotalFetchAttempts` (default 6, clamp 2–30) to replace hardcoded `MAX_TOTAL_FETCH_ATTEMPTS` constant in `provideLanguageModelChatResponse`. Added `ensureMinimum(min: number)` to `FetchAttemptBudget` ensuring failover hops are allocated fresh connection attempts regardless of primary model exhaustion.
+
+### Fixed
+
+- **Failover starvation on primary model retry exhaustion (`src/provider/chat-provider.ts`).** Moved `isFallbackEligibleError` check ahead of `fetchBudget.exhausted` in failover loop and called `fetchBudget.ensureMinimum(MAX_FETCH_ATTEMPTS_PER_STREAM)` upon hopping to fallback candidate. Prevents primary model retry/timeout burn from preemptively aborting before fallback execution. Resolves #7.
+- **Duplicate tool suppression scoping (`src/tools/canonical-key.ts`).** Restricted `isDuplicateSuppressionEnabled` to `isReadTool(toolName)` instead of broad negation (`!isTerminal && !isEdit && !isDir`). Fixes non-file diagnostic tools (such as `get_errors`) being incorrectly suppressed as duplicates. Resolves #7.
+- **Invalid tool call retry limit (`src/provider/turn-executor.ts`).** Capped `MAX_INVALID_TOOL_RETRIES` to `Math.min(2, MAX_EMPTY_STREAM_RETRIES)` so malformed tool calls trigger fallback failover rather than burning remaining stream attempts.
+
 ## [0.11.0] - 2026-09-12
 
 ### Added

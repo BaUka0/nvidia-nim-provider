@@ -1409,6 +1409,16 @@ describe("tool argument parsing and validation", () => {
     expect(repaired.filePath).toBeUndefined();
   });
 
+  it("enables duplicate suppression only for read tools", () => {
+    expect(isDuplicateSuppressionEnabled("read_file")).toBe(true);
+    expect(isDuplicateSuppressionEnabled("view_file")).toBe(true);
+    expect(isDuplicateSuppressionEnabled("get_file_contents")).toBe(true);
+    expect(isDuplicateSuppressionEnabled("get_errors")).toBe(false);
+    expect(isDuplicateSuppressionEnabled("run_in_terminal")).toBe(false);
+    expect(isDuplicateSuppressionEnabled("edit_file")).toBe(false);
+    expect(isDuplicateSuppressionEnabled("list_dir")).toBe(false);
+  });
+
   it("disables duplicate suppression when suppressDuplicateReads is false", () => {
     (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
       get: jest.fn((key: string, defaultValue: unknown) => {
@@ -1418,6 +1428,7 @@ describe("tool argument parsing and validation", () => {
     });
 
     expect(isDuplicateSuppressionEnabled("read_file")).toBe(false);
+    expect(isDuplicateSuppressionEnabled("get_errors")).toBe(false);
   });
 
   describe("Issue #8: cross-file line range scoping and read_file defaulting", () => {
