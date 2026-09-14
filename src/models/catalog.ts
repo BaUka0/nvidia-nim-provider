@@ -42,14 +42,6 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsVision: false,
     adapter: "deepseek",
   },
-  "deepseek-ai/deepseek-v4-pro-0813": {
-    displayName: "DeepSeek V4 Pro 0813",
-    contextWindow: 1048576,
-    maxOutputTokens: 131072,
-    supportsTools: true,
-    supportsVision: false,
-    adapter: "deepseek",
-  },
   "moonshotai/kimi-k3": {
     displayName: "Kimi K3",
     contextWindow: 1048576,

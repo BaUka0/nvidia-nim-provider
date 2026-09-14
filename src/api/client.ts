@@ -238,9 +238,19 @@ async function discardResponseBody(response: Response): Promise<void> {
   }
 }
 
+const RESPONSE_DETAIL_TIMEOUT_MS = 5000;
+
 async function readResponseDetail(response: Response): Promise<string | undefined> {
   try {
-    const detail = await response.text();
+    let timerId: NodeJS.Timeout | undefined;
+    const textPromise = response.text();
+    const timeoutPromise = new Promise<undefined>((resolve) => {
+      timerId = setTimeout(() => resolve(undefined), RESPONSE_DETAIL_TIMEOUT_MS);
+    });
+    const detail = await Promise.race([textPromise, timeoutPromise]);
+    if (timerId !== undefined) {
+      clearTimeout(timerId);
+    }
     if (!detail) {
       return undefined;
     }
@@ -330,6 +340,7 @@ export async function fetchWithRetry(
  * deliberately bypass this cap.
  */
 const NON_STREAM_REQUEST_TIMEOUT_MS = 120000;
+const INITIAL_CONNECTION_TIMEOUT_MS = 60000;
 
 interface RequestTimeoutHandle {
   signal: AbortSignal;
@@ -396,9 +407,8 @@ export async function fetchModelsOrThrow(
   retries?: number,
 ): Promise<NvidiaModelSummary[]> {
   const requestTimeout = withRequestTimeout(signal, NON_STREAM_REQUEST_TIMEOUT_MS);
-  let response: Response;
   try {
-    response = await fetchWithRetry(
+    const response = await fetchWithRetry(
       `${BASE_URL}/models`,
       {
         method: "GET",
@@ -408,21 +418,22 @@ export async function fetchModelsOrThrow(
       retries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries,
       { operation: "models" },
     );
-  } finally {
-    requestTimeout.cleanup();
-  }
-  if (!response.ok) {
-    throw await classifyResponseError(response, { operation: "models" });
-  }
+    if (!response.ok) {
+      throw await classifyResponseError(response, { operation: "models" });
+    }
 
-  try {
     const data = (await response.json()) as NvidiaModelListResponse;
     if (!Array.isArray(data.data)) {
       throw new Error("NVIDIA NIM models response did not contain a data array");
     }
     return data.data;
   } catch (error) {
+    if (signal?.aborted && !isTimeoutAbortReason(signal.reason)) {
+      throw createAbortError();
+    }
     throw classifyApiError(error, { operation: "models" });
+  } finally {
+    requestTimeout.cleanup();
   }
 }
 
@@ -435,9 +446,8 @@ export async function chatCompletion(
   operation = "completion",
 ): Promise<string> {
   const requestTimeout = withRequestTimeout(signal, NON_STREAM_REQUEST_TIMEOUT_MS);
-  let response: Response;
   try {
-    response = await fetchWithRetry(
+    const response = await fetchWithRetry(
       `${BASE_URL}/chat/completions`,
       {
         method: "POST",
@@ -448,24 +458,24 @@ export async function chatCompletion(
       retries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries,
       { operation, model: requestBody.model },
     );
-  } finally {
-    requestTimeout.cleanup();
-  }
+    if (!response.ok) {
+      throw await classifyResponseError(response, {
+        operation,
+        model: requestBody.model,
+      });
+    }
 
-  if (!response.ok) {
-    throw await classifyResponseError(response, {
-      operation,
-      model: requestBody.model,
-    });
-  }
-
-  try {
     const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
     return data.choices?.[0]?.message?.content ?? "";
   } catch (error) {
+    if (signal?.aborted && !isTimeoutAbortReason(signal.reason)) {
+      throw createAbortError();
+    }
     throw classifyApiError(error, { operation, model: requestBody.model });
+  } finally {
+    requestTimeout.cleanup();
   }
 }
 
@@ -501,8 +511,8 @@ export async function* streamChatCompletion(
   const firstTokenTimeoutMs = options?.firstTokenTimeoutMs;
   const initialConnectionTimeoutMs =
     typeof firstTokenTimeoutMs === "number" && firstTokenTimeoutMs > 0
-      ? Math.min(idleTimeoutMs, firstTokenTimeoutMs)
-      : idleTimeoutMs;
+      ? firstTokenTimeoutMs
+      : Math.max(INITIAL_CONNECTION_TIMEOUT_MS, idleTimeoutMs);
 
   const requestTimeout = withRequestTimeout(signal, initialConnectionTimeoutMs);
   let response: Response;
@@ -518,6 +528,11 @@ export async function* streamChatCompletion(
       Math.max(1, fetchAttempts),
       { operation: "stream", model: requestBody.model },
     );
+  } catch (error) {
+    if (signal?.aborted && !isTimeoutAbortReason(signal.reason)) {
+      throw createAbortError();
+    }
+    throw classifyApiError(error, { operation: "stream", model: requestBody.model });
   } finally {
     requestTimeout.cleanup();
   }

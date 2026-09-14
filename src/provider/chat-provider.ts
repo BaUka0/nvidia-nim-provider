@@ -34,7 +34,7 @@ import {
   NvidiaLanguageModelChatInformation,
 } from "../models/discovery";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver";
-import { createStructuredError, NvidiaApiError } from "../api/errors";
+import { classifyApiError, createStructuredError, NvidiaApiError } from "../api/errors";
 import { NimRequestBuilder } from "./request-builder";
 import { ContextLimitStore } from "./context-limit-store";
 import {
@@ -416,11 +416,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             },
           });
           return;
-        } catch (err) {
-          if (isCancellation(err, token)) {
+        } catch (rawErr) {
+          if (isCancellation(rawErr, token) || abortController.signal.aborted) {
             throw new vscode.CancellationError();
           }
 
+          const err = rawErr instanceof NvidiaApiError ? rawErr : classifyApiError(rawErr);
           const fallbackConfig = nimConfig.fallback;
           const priorDepth = chainState.depth;
           if (

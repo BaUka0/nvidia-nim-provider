@@ -979,10 +979,13 @@ describe("streamChatCompletion", () => {
         { model: "kimi-k2.6", messages: [], stream: true },
         undefined,
         undefined,
-        { idleTimeoutMs: 30000 },
+        { firstTokenTimeoutMs: 30000 },
       );
       const nextPromise = gen.next();
-      const rejection = expect(nextPromise).rejects.toThrow(/timed out|timeout/i);
+      const rejection = expect(nextPromise).rejects.toMatchObject({
+        name: "NvidiaApiError",
+        kind: "timeout",
+      });
 
       await jest.advanceTimersByTimeAsync(30000);
 

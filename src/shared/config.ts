@@ -192,7 +192,7 @@ export class ConfigManager {
       typeof rawFirstTokenTimeout === "number" &&
       Number.isFinite(rawFirstTokenTimeout) &&
       rawFirstTokenTimeout >= 5 &&
-      rawFirstTokenTimeout <= 120
+      rawFirstTokenTimeout <= 600
         ? rawFirstTokenTimeout
         : null;
     const showNoticeInChat = config.get<boolean>(

@@ -63,17 +63,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "think",
   },
   {
-    modelId: "deepseek-ai/deepseek-v4-pro-0813",
-    reasoningModes: ["none", "high", "max"],
-    reasoningCases: deepSeekReasoningCases,
-    reasoningParameterFormat: "chat_template_kwargs",
-    toolCallProtocol: "native-and-text",
-    reasoningRouting: "isolated",
-    contentOnlyMode: "none",
-    contentOnlyRouting: "text",
-    thinkTag: "think",
-  },
-  {
     modelId: "moonshotai/kimi-k3",
     reasoningModes: ["none", "low", "high", "max"],
     reasoningCases: [

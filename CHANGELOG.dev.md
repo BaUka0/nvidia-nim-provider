@@ -4,10 +4,18 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Changed
+
+- **Expanded firstTokenTimeoutSeconds range (`src/shared/config.ts`, `package.json`, `docs/configuration.md`, `tests/config.test.ts`).** Increased upper boundary of `nvidia-nim.fallback.firstTokenTimeoutSeconds` from 120s to 600s, matching `streamIdleTimeout` scale. Maintained `INITIAL_CONNECTION_TIMEOUT_MS` floor at 60s in `src/api/client.ts`. Addresses #12.
+
 ### Fixed
 
 - **Stream idle timeout inflation on large context models (`src/api/client.ts`, `tests/api.test.ts`).** Removed `options.maxOutputTokens / 10 * 1000` adaptive idle timeout calculation that inflated `idleTimeoutMs` up to `STREAM_IDLE_TIMEOUT_MAX_MS` (10 minutes) on models with large output budgets. `idleTimeoutMs` now strictly honors `configuredIdleTimeoutMs` clamped to bounds (15..600s), enabling timely failovers when an upstream stream stalls. Addresses #12.
-- **Initial stream HTTP connection deadline (`src/api/client.ts`, `tests/api.test.ts`).** Wrapped `fetchWithRetry` in `streamChatCompletion` with `withRequestTimeout` using `initialConnectionTimeoutMs` (derived from `idleTimeoutMs` and `firstTokenTimeoutMs`), and refactored `withRequestTimeout` to use `setTimeout` and `AbortController` with explicit cleanup instead of uncancelable `AbortSignal.timeout` and native `AbortSignal.any`. Ensures unacknowledged TCP requests abort with `TimeoutError` and map to `kind: "timeout"` for fallback triggering. Addresses #12.
+- **Initial stream HTTP connection deadline (`src/api/client.ts`, `tests/api.test.ts`).** Wrapped `fetchWithRetry` in `streamChatCompletion` with `withRequestTimeout` using `initialConnectionTimeoutMs` (derived from `idleTimeoutMs` and `firstTokenTimeoutMs`), and refactored `withRequestTimeout` to use `setTimeout` and `AbortController` with explicit cleanup instead of uncancelable `AbortSignal.timeout` and native `AbortSignal.any`. Wrapped connection attempts with `classifyApiError` so connection timeouts surface as classified `NvidiaApiError` instances (`kind: "timeout"`), ensuring `isFallbackEligibleError` properly triggers model failovers instead of aborting the turn. Addresses #12.
+
+### Removed
+
+- **Removed deprecated model `deepseek-ai/deepseek-v4-pro-0813` (`src/models/catalog.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `tests/model-capability-matrix.test.ts`).** Removed `deepseek-ai/deepseek-v4-pro-0813` from `MODEL_LIST`, configuration schemas/enums in `package.json`, model probe script, and test capability matrix following upstream discontinuation on NVIDIA NIM `/v1/models`.
 
 ## [0.11.1] - 2026-09-13
 

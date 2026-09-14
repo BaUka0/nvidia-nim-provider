@@ -75,8 +75,11 @@ describe("ConfigManager", () => {
       mockStore["fallback.firstTokenTimeoutSeconds"] = 3; // Below min 5
       expect(ConfigManager.getFallbackConfig().firstTokenTimeoutSeconds).toBeNull();
 
-      mockStore["fallback.firstTokenTimeoutSeconds"] = 150; // Above max 120
+      mockStore["fallback.firstTokenTimeoutSeconds"] = 700; // Above max 600
       expect(ConfigManager.getFallbackConfig().firstTokenTimeoutSeconds).toBeNull();
+
+      mockStore["fallback.firstTokenTimeoutSeconds"] = 150; // Valid (within 5..600)
+      expect(ConfigManager.getFallbackConfig().firstTokenTimeoutSeconds).toBe(150);
 
       mockStore["fallback.firstTokenTimeoutSeconds"] = 45; // Valid
       expect(ConfigManager.getFallbackConfig().firstTokenTimeoutSeconds).toBe(45);
