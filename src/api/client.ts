@@ -300,7 +300,7 @@ export async function fetchWithRetry(
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       if (lastError.name === "AbortError" || signal?.aborted) {
-        throw lastError;
+        throw signal ? errorForAbortedSignal(signal) : lastError;
       }
       if (lastError instanceof NvidiaApiError) {
         throw lastError;
@@ -331,32 +331,58 @@ export async function fetchWithRetry(
  */
 const NON_STREAM_REQUEST_TIMEOUT_MS = 120000;
 
+interface RequestTimeoutHandle {
+  signal: AbortSignal;
+  cleanup: () => void;
+}
+
 /**
  * Combine the caller's cancellation signal with an overall request deadline.
- * A hung TCP connection can otherwise block a non-streaming call forever
- * because `fetchWithRetry` has no inherent timeout once retries succeed.
+ * A hung TCP connection can otherwise block calls forever when NVIDIA NIM
+ * stalls before sending HTTP response headers.
  */
-function withRequestTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  if (!signal) {
-    return timeoutSignal;
-  }
-  if (typeof AbortSignal.any === "function") {
-    return AbortSignal.any([signal, timeoutSignal]);
-  }
-  // Fallback for runtimes without AbortSignal.any: wire both sources into a
-  // single controller and propagate whichever fires first.
+function withRequestTimeout(
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+): RequestTimeoutHandle {
   const controller = new AbortController();
-  const propagate = (source: AbortSignal): void => {
-    controller.abort(source.reason);
+  let settled = false;
+
+  const onAbort = (): void => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    controller.abort(signal?.reason);
   };
-  if (signal.aborted) {
-    controller.abort(signal.reason);
-  } else {
-    signal.addEventListener("abort", () => propagate(signal), { once: true });
-    timeoutSignal.addEventListener("abort", () => propagate(timeoutSignal), { once: true });
+
+  const timerId = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    const timeoutError = new Error(
+      `NVIDIA NIM connection timeout: no response received within ${Math.round(timeoutMs / 1000)}s`,
+    );
+    timeoutError.name = "TimeoutError";
+    controller.abort(timeoutError);
+  }, timeoutMs);
+
+  function cleanup(): void {
+    clearTimeout(timerId);
+    if (signal && typeof signal.removeEventListener === "function") {
+      signal.removeEventListener("abort", onAbort);
+    }
   }
-  return controller.signal;
+
+  if (signal?.aborted) {
+    onAbort();
+  } else if (signal && typeof signal.addEventListener === "function") {
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup,
+  };
 }
 
 /**
@@ -369,16 +395,22 @@ export async function fetchModelsOrThrow(
   userAgent?: string,
   retries?: number,
 ): Promise<NvidiaModelSummary[]> {
-  const response = await fetchWithRetry(
-    `${BASE_URL}/models`,
-    {
-      method: "GET",
-      headers: buildHeaders(apiKey, userAgent),
-      signal: withRequestTimeout(signal, NON_STREAM_REQUEST_TIMEOUT_MS),
-    },
-    retries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries,
-    { operation: "models" },
-  );
+  const requestTimeout = withRequestTimeout(signal, NON_STREAM_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetchWithRetry(
+      `${BASE_URL}/models`,
+      {
+        method: "GET",
+        headers: buildHeaders(apiKey, userAgent),
+        signal: requestTimeout.signal,
+      },
+      retries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries,
+      { operation: "models" },
+    );
+  } finally {
+    requestTimeout.cleanup();
+  }
   if (!response.ok) {
     throw await classifyResponseError(response, { operation: "models" });
   }
@@ -402,17 +434,23 @@ export async function chatCompletion(
   retries?: number,
   operation = "completion",
 ): Promise<string> {
-  const response = await fetchWithRetry(
-    `${BASE_URL}/chat/completions`,
-    {
-      method: "POST",
-      headers: buildHeaders(apiKey, userAgent),
-      body: JSON.stringify({ ...requestBody, stream: false }),
-      signal: withRequestTimeout(signal, NON_STREAM_REQUEST_TIMEOUT_MS),
-    },
-    retries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries,
-    { operation, model: requestBody.model },
-  );
+  const requestTimeout = withRequestTimeout(signal, NON_STREAM_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetchWithRetry(
+      `${BASE_URL}/chat/completions`,
+      {
+        method: "POST",
+        headers: buildHeaders(apiKey, userAgent),
+        body: JSON.stringify({ ...requestBody, stream: false }),
+        signal: requestTimeout.signal,
+      },
+      retries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries,
+      { operation, model: requestBody.model },
+    );
+  } finally {
+    requestTimeout.cleanup();
+  }
 
   if (!response.ok) {
     throw await classifyResponseError(response, {
@@ -452,17 +490,37 @@ export async function* streamChatCompletion(
       model: requestBody.model,
     });
   }
-  const response = await fetchWithRetry(
-    `${BASE_URL}/chat/completions`,
-    {
-      method: "POST",
-      headers: buildHeaders(apiKey, userAgent),
-      body: JSON.stringify(requestBody),
-      signal,
-    },
-    Math.max(1, fetchAttempts),
-    { operation: "stream", model: requestBody.model },
+  const configuredIdleTimeoutMs =
+    options?.idleTimeoutMs ?? DEFAULT_NETWORK_CONFIG.streamIdleTimeout * 1000;
+
+  const idleTimeoutMs = Math.min(
+    STREAM_IDLE_TIMEOUT_MAX_MS,
+    Math.max(STREAM_IDLE_TIMEOUT_MIN_MS, configuredIdleTimeoutMs),
   );
+
+  const firstTokenTimeoutMs = options?.firstTokenTimeoutMs;
+  const initialConnectionTimeoutMs =
+    typeof firstTokenTimeoutMs === "number" && firstTokenTimeoutMs > 0
+      ? Math.min(idleTimeoutMs, firstTokenTimeoutMs)
+      : idleTimeoutMs;
+
+  const requestTimeout = withRequestTimeout(signal, initialConnectionTimeoutMs);
+  let response: Response;
+  try {
+    response = await fetchWithRetry(
+      `${BASE_URL}/chat/completions`,
+      {
+        method: "POST",
+        headers: buildHeaders(apiKey, userAgent),
+        body: JSON.stringify(requestBody),
+        signal: requestTimeout.signal,
+      },
+      Math.max(1, fetchAttempts),
+      { operation: "stream", model: requestBody.model },
+    );
+  } finally {
+    requestTimeout.cleanup();
+  }
 
   if (!response.ok) {
     throw await classifyResponseError(response, {
@@ -496,15 +554,6 @@ export async function* streamChatCompletion(
     );
   }
 
-  const configuredIdleTimeoutMs =
-    options?.idleTimeoutMs ?? DEFAULT_NETWORK_CONFIG.streamIdleTimeout * 1000;
-
-  const idleTimeoutMs = Math.min(
-    STREAM_IDLE_TIMEOUT_MAX_MS,
-    Math.max(STREAM_IDLE_TIMEOUT_MIN_MS, configuredIdleTimeoutMs),
-  );
-
-  const firstTokenTimeoutMs = options?.firstTokenTimeoutMs;
   let isFirstChunk = true;
   let buffer = "";
   let lastChunkTime = Date.now();

@@ -961,4 +961,34 @@ describe("streamChatCompletion", () => {
       jest.useRealTimers();
     }
   });
+
+  it("times out if initial HTTP connection hangs before response headers", async () => {
+    jest.useFakeTimers();
+
+    try {
+      global.fetch = jest.fn((_url, init?: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(init.signal?.reason ?? new Error("aborted"));
+          });
+        });
+      });
+
+      const gen = streamChatCompletion(
+        "key",
+        { model: "kimi-k2.6", messages: [], stream: true },
+        undefined,
+        undefined,
+        { idleTimeoutMs: 30000 },
+      );
+      const nextPromise = gen.next();
+      const rejection = expect(nextPromise).rejects.toThrow(/timed out|timeout/i);
+
+      await jest.advanceTimersByTimeAsync(30000);
+
+      await rejection;
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
