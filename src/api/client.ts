@@ -499,22 +499,10 @@ export async function* streamChatCompletion(
   const configuredIdleTimeoutMs =
     options?.idleTimeoutMs ?? DEFAULT_NETWORK_CONFIG.streamIdleTimeout * 1000;
 
-  // Adaptive idle timeout for large outputs (roughly 10 tokens/s), but the
-  // user-configured timeout is always honored as a floor so a larger configured
-  // value is never shortened, and the bounds match the declared 15..600 s range.
-  const idleTimeoutMs = options?.maxOutputTokens
-    ? Math.min(
-        STREAM_IDLE_TIMEOUT_MAX_MS,
-        Math.max(
-          configuredIdleTimeoutMs,
-          STREAM_IDLE_TIMEOUT_MIN_MS,
-          Math.round(options.maxOutputTokens / 10) * 1000,
-        ),
-      )
-    : Math.min(
-        STREAM_IDLE_TIMEOUT_MAX_MS,
-        Math.max(STREAM_IDLE_TIMEOUT_MIN_MS, configuredIdleTimeoutMs),
-      );
+  const idleTimeoutMs = Math.min(
+    STREAM_IDLE_TIMEOUT_MAX_MS,
+    Math.max(STREAM_IDLE_TIMEOUT_MIN_MS, configuredIdleTimeoutMs),
+  );
 
   const firstTokenTimeoutMs = options?.firstTokenTimeoutMs;
   let isFirstChunk = true;

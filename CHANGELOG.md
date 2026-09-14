@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Fixed
+
+- Stalled streams no longer wait up to 10 minutes before timing out on large context models. The stream idle timeout setting is now strictly honored, allowing stalled connections to abort and fail over to the backup model promptly.
+
 ## [0.11.1] - 2026-09-13
 
 ### Added

@@ -4,6 +4,10 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Fixed
+
+- **Stream idle timeout inflation on large context models (`src/api/client.ts`, `tests/api.test.ts`).** Removed `options.maxOutputTokens / 10 * 1000` adaptive idle timeout calculation that inflated `idleTimeoutMs` up to `STREAM_IDLE_TIMEOUT_MAX_MS` (10 minutes) on models with large output budgets. `idleTimeoutMs` now strictly honors `configuredIdleTimeoutMs` clamped to bounds (15..600s), enabling timely failovers when an upstream stream stalls. Addresses #12.
+
 ## [0.11.1] - 2026-09-13
 
 ### Added
