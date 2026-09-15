@@ -4,6 +4,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-16
+
 ### Added
 
 - Added GLM 5.3 (`z-ai/glm-5.3`) to the model catalog and fallback options. Features a 1,048,576 token context window, 65,536 maximum output tokens, native tool calling, and selectable reasoning effort modes (`Low`, `High`, `Max`) where `Low` produces instant answers without a reasoning delay.
