@@ -340,7 +340,7 @@ export async function fetchWithRetry(
  * deliberately bypass this cap.
  */
 const NON_STREAM_REQUEST_TIMEOUT_MS = 120000;
-const INITIAL_CONNECTION_TIMEOUT_MS = 60000;
+const INITIAL_CONNECTION_TIMEOUT_MS = 120000;
 
 interface RequestTimeoutHandle {
   signal: AbortSignal;

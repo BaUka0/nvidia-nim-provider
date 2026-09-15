@@ -6,7 +6,7 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ### Changed
 
-- **Expanded firstTokenTimeoutSeconds range (`src/shared/config.ts`, `package.json`, `docs/configuration.md`, `tests/config.test.ts`).** Increased upper boundary of `nvidia-nim.fallback.firstTokenTimeoutSeconds` from 120s to 600s, matching `streamIdleTimeout` scale. Maintained `INITIAL_CONNECTION_TIMEOUT_MS` floor at 60s in `src/api/client.ts`. Addresses #12.
+- **Expanded firstTokenTimeoutSeconds range (`src/shared/config.ts`, `package.json`, `docs/configuration.md`, `tests/config.test.ts`).** Increased upper boundary of `nvidia-nim.fallback.firstTokenTimeoutSeconds` from 120s to 600s, matching `streamIdleTimeout` scale. Raised `INITIAL_CONNECTION_TIMEOUT_MS` floor to 120s in `src/api/client.ts`. Addresses #12.
 
 ### Fixed
 
