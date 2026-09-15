@@ -39,8 +39,8 @@ If something goes wrong, save the session file. Debug logging does not need to b
 
 ### Request timed out waiting for stream data
 
-- **Cause:** Slow network or high server load.
-- **Fix:** Raise `"nvidia-nim.network.streamIdleTimeout"` in `settings.json` (e.g. from `120` to `240`).
+- **Cause:** Slow network, high server load, or a large prompt (many tools / long history) that takes more than the idle deadline to start streaming.
+- **Fix:** Raise `"nvidia-nim.network.streamIdleTimeout"` and `"nvidia-nim.fallback.firstTokenTimeoutSeconds"` in the Settings UI or `settings.json` (e.g. `120` to `180`). Disable unused Copilot / MCP tools so the prompt is smaller. If the model already printed text and then went quiet, the extension nudges it to keep going instead of aborting the turn. If every backup model also times out with no answer, it restarts the chain from the original model (`nvidia-nim.fallback.maxChainRestarts`).
 
 ---
 

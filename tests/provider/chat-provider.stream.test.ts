@@ -1881,6 +1881,87 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("auto-continues when a stream stalls after visible text instead of aborting the turn", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.enabled") return false;
+        return defaultValue;
+      }),
+    }));
+    const stalledStream = async function* () {
+      yield { choices: [{ delta: { content: "Working on the next change" } }] };
+      throw new NvidiaApiError("timeout", "NVIDIA NIM streaming timeout: no data received for 60s");
+    };
+    const continueStream = async function* () {
+      yield { choices: [{ delta: { content: " and calling the tool." } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => stalledStream())
+      .mockImplementationOnce(() => continueStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(JSON.stringify(retryBody.messages)).toContain("stalled");
+    expect(JSON.stringify(retryBody.messages)).toContain("Working on the next change");
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Working on the next change" }),
+    );
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: " and calling the tool." }),
+    );
+  });
+
+  it("keeps a partial answer when a stream stalls and auto-continue is disabled", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.enabled") return false;
+        if (key === "generation.autoContinueOnLoop") return false;
+        return defaultValue;
+      }),
+    }));
+    const stalledStream = async function* () {
+      yield { choices: [{ delta: { content: "Partial answer" } }] };
+      throw new NvidiaApiError("timeout", "NVIDIA NIM streaming timeout: no data received for 60s");
+    };
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock).mockImplementationOnce(() => stalledStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Partial answer" }),
+    );
+  });
+
   it("auto-continues a hanging colon after an empty-stream retry", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     const emptyStream = async function* () {
@@ -3962,5 +4043,149 @@ describe("NimChatModelProvider", () => {
     ).rejects.toThrow(
       /All NVIDIA NIM failover candidates failed[\s\S]*Tried chain: moonshotai\/kimi-k3 -> nvidia\/nemotron-3-ultra-550b-a55b/,
     );
+  });
+
+  it("restarts the failover chain from the original model after every candidate times out", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.priorityList") return ["nvidia/nemotron-3-ultra-550b-a55b"];
+        if (key === "fallback.maxChainRestarts") return 1;
+        return defaultValue;
+      }),
+    }));
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "moonshotai/kimi-k3",
+            displayName: "Kimi K3",
+            contextWindow: 1048576,
+            maxOutputTokens: 65536,
+            supportsTools: true,
+            supportsVision: true,
+          },
+          {
+            id: "nvidia/nemotron-3-ultra-550b-a55b",
+            displayName: "Nemotron 3 Ultra 550B",
+            contextWindow: 1048576,
+            maxOutputTokens: 65536,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === MODELS_CACHE_VERSION_STATE_KEY) return MODELS_CACHE_VERSION;
+      if (key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY) {
+        return getApiKeyFingerprint("test-key");
+      }
+      return undefined;
+    });
+
+    let calls = 0;
+    (streamChatCompletion as jest.Mock).mockImplementation((_apiKey, body: { model: string }) => {
+      calls += 1;
+      if (calls <= 2) {
+        return (async function* () {
+          throw new NvidiaApiError(
+            "timeout",
+            "NVIDIA NIM streaming timeout: no data received for 60s",
+          );
+        })();
+      }
+      expect(body.model).toBe("moonshotai/kimi-k3");
+      return (async function* () {
+        yield { choices: [{ delta: { content: "Recovered after chain restart" } }] };
+      })();
+    });
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "moonshotai/kimi-k3",
+        name: "Kimi K3",
+        maxInputTokens: 200000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    const requestedModels = (streamChatCompletion as jest.Mock).mock.calls.map(
+      (call) => call[1].model,
+    );
+    expect(requestedModels).toEqual([
+      "moonshotai/kimi-k3",
+      "nvidia/nemotron-3-ultra-550b-a55b",
+      "moonshotai/kimi-k3",
+    ]);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Recovered after chain restart" }),
+    );
+  });
+
+  it("does not restart the timeout chain when maxChainRestarts is 0", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.priorityList") return ["nvidia/nemotron-3-ultra-550b-a55b"];
+        if (key === "fallback.maxChainRestarts") return 0;
+        return defaultValue;
+      }),
+    }));
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "moonshotai/kimi-k3",
+            displayName: "Kimi K3",
+            contextWindow: 1048576,
+            maxOutputTokens: 65536,
+            supportsTools: true,
+            supportsVision: true,
+          },
+          {
+            id: "nvidia/nemotron-3-ultra-550b-a55b",
+            displayName: "Nemotron 3 Ultra 550B",
+            contextWindow: 1048576,
+            maxOutputTokens: 65536,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === MODELS_CACHE_VERSION_STATE_KEY) return MODELS_CACHE_VERSION;
+      if (key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY) {
+        return getApiKeyFingerprint("test-key");
+      }
+      return undefined;
+    });
+
+    (streamChatCompletion as jest.Mock).mockImplementation(() =>
+      (async function* () {
+        throw new NvidiaApiError(
+          "timeout",
+          "NVIDIA NIM streaming timeout: no data received for 60s",
+        );
+      })(),
+    );
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "moonshotai/kimi-k3",
+          name: "Kimi K3",
+          maxInputTokens: 200000,
+          maxOutputTokens: 65536,
+        }),
+        makeUserMessages("Hi"),
+        makeChatOptions(),
+        { report: jest.fn() },
+        makeToken(),
+      ),
+    ).rejects.toThrow(/STREAM_TIMEOUT|streaming timeout|All NVIDIA NIM failover candidates failed/);
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
   });
 });

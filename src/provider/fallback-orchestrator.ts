@@ -9,6 +9,25 @@ import { NormalizedNvidiaModel } from "../models/catalog";
  * Failover policy helpers. The hop loop stays in `chat-provider.ts` because
  * it owns API-key resolution and VS Code UI; this module stays UI-free.
  */
+export function shouldRestartTimeoutChain(options: {
+  err: unknown;
+  fallbackConfig: FallbackConfig;
+  failingAttemptHasVisibleContent: boolean;
+  chainRestarts: number;
+}): boolean {
+  if (!(options.err instanceof NvidiaApiError) || options.err.kind !== "timeout") {
+    return false;
+  }
+  if (options.failingAttemptHasVisibleContent) {
+    return false;
+  }
+  if (!options.fallbackConfig.onTimeout) {
+    return false;
+  }
+  const maxRestarts = options.fallbackConfig.maxChainRestarts;
+  return maxRestarts > 0 && options.chainRestarts < maxRestarts;
+}
+
 export function isFallbackEligibleError(
   err: unknown,
   fallbackConfig: FallbackConfig,

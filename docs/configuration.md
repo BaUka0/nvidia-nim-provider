@@ -64,6 +64,7 @@ These settings control automatic re-routing when an NVIDIA NIM endpoint returns 
 | `nvidia-nim.fallback.onModelUnavailable` | `true` | Automatically switch to backup if a model is offline or decommissioned (`HTTP 404` / `410`). |
 | `nvidia-nim.fallback.onEmptyStream` | `true` | Automatically switch to backup if a model returns an empty response. |
 | `nvidia-nim.fallback.onTimeout` | `true` | Automatically switch to backup if a model stops responding mid-stream. |
+| `nvidia-nim.fallback.maxChainRestarts` | `2` | Extra full passes of the failover chain from the original model after every candidate times out with no visible answer (`0`–`5`). `0` disables chain restarts. |
 | `nvidia-nim.fallback.firstTokenTimeoutSeconds` | `null` | Maximum seconds to wait for the model to start responding before switching to backup (5–600 seconds, or `null` to use stream timeout). |
 | `nvidia-nim.fallback.showNoticeInChat` | `true` | Displays a short note at the top of the answer letting you know a backup model was used for that turn. |
 | `nvidia-nim.fallback.notifyUser` | `true` | Shows a small notification popup in VS Code when failover occurs. |
@@ -132,8 +133,8 @@ Optional sampling parameters sent with each request.
 | `nvidia-nim.generation.presencePenalty` | `null` | `-2`–`2` | Encourages the model to introduce new topics. `null` omits the parameter. |
 | `nvidia-nim.generation.repetitionPenalty` | `null` | `0.5`–`2` | Specific penalty against repetitive phrasing. Values above `1.0` reduce repetition. |
 | `nvidia-nim.generation.maxRepeatedLines` | `4` | `0`–`50` | Stops the response early if the model gets stuck repeating the same sentence or a paragraph with no line breaks. `0` disables loop detection. |
-| `nvidia-nim.generation.autoContinueOnLoop` | `true` | — | Automatically prompts the model to keep working if it pauses mid-sentence, hits the token limit, or gets caught in a text or tool loop. |
-| `nvidia-nim.generation.maxLoopContinues` | `2` | `0`–`8` | How many times in one turn to nudge after a loop, hanging colon, truncated reply, or repeated tool call. `0` disables auto-continue even if `autoContinueOnLoop` is on. |
+| `nvidia-nim.generation.autoContinueOnLoop` | `true` | — | Automatically prompts the model to keep working if it pauses mid-sentence, hits the token limit, gets caught in a text or tool loop, or the stream stalls after partial output. |
+| `nvidia-nim.generation.maxLoopContinues` | `2` | `0`–`8` | How many times in one turn to nudge after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. `0` disables auto-continue even if `autoContinueOnLoop` is on. |
 
 ---
 

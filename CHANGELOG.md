@@ -4,19 +4,24 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Added
+
+- After every backup model times out with no visible answer, the extension restarts the failover chain from the original model. How many extra passes is `nvidia-nim.fallback.maxChainRestarts` (default 2, Settings UI and `settings.json`).
+
 ### Changed
 
 - The first response timeout setting (`nvidia-nim.fallback.firstTokenTimeoutSeconds`) now accepts values up to 600 seconds (previously 120 seconds).
 
 ### Fixed
 
+- If a model stalls after it has already started answering, the turn no longer dies with a stream timeout. The extension keeps the partial reply and nudges the same model to continue (up to `nvidia-nim.generation.maxLoopContinues` times).
 - Fixed runaway character and punctuation loops (such as infinite repeating exclamation marks) bypassing repetition detection. Streaming now immediately trips and halts when character or short pattern runaways occur.
 - Integrated repetition detection into reasoning streams, preventing models from looping indefinitely behind the "Analyzing" spinner and burning tokens.
 - Cross-turn agent tool loops now automatically escalate to an explicit stop instruction rather than repeatedly injecting soft nudges across turns.
 - Stalled streams no longer wait up to 10 minutes before timing out on large context models. The stream idle timeout setting is now strictly honored, allowing stalled connections to abort and fail over to the backup model promptly.
 - Initial stream connections that hang indefinitely before HTTP headers are received now time out promptly, triggering automatic failover to the configured fallback model.
 - Fixed first response timeout (`nvidia-nim.fallback.firstTokenTimeoutSeconds`) being inadvertently restricted by the stream idle timeout (`streamIdleTimeout`). Setting a longer first response timeout now reliably grants models extra prefill time before the first token arrives without being clamped by inter-chunk idle limits.
-- Diagnostic session log exports now include network timeout and retry configurations (`streamIdleTimeout`, `maxHttpRetries`, `maxEmptyStreamRetries`, `maxTotalFetchAttempts`, `firstTokenTimeoutSeconds`).
+- Diagnostic session log exports now include network timeout and retry configurations (`streamIdleTimeout`, `maxHttpRetries`, `maxEmptyStreamRetries`, `maxTotalFetchAttempts`, `firstTokenTimeoutSeconds`, `maxChainRestarts`).
 
 ### Removed
 

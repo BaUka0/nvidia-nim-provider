@@ -16,6 +16,7 @@ function result(overrides: Partial<StreamAttemptResult> = {}): StreamAttemptResu
     repetitionTripped: false,
     toolCallLoopTripped: false,
     streamChunkCount: 1,
+    timedOut: false,
     ...overrides,
   };
 }
@@ -142,5 +143,59 @@ describe("evaluateAttemptRetry", () => {
       }),
     });
     expect(evaluation.retryReason).toBe("repetition_loop");
+  });
+
+  it("auto-continues a stream stall after visible text", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        timedOut: true,
+        reportedContent: true,
+        reportedVisibleContent: true,
+        lastVisibleText: "Working on the next change",
+      }),
+    });
+    expect(evaluation.retryReason).toBe("stream_timeout");
+  });
+
+  it("auto-continues a stream stall that only produced reasoning", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        timedOut: true,
+        sawReasoning: true,
+        reportedContent: true,
+        reportedVisibleContent: false,
+        lastVisibleText: "",
+      }),
+    });
+    expect(evaluation.retryReason).toBe("stream_timeout");
+  });
+
+  it("does not auto-continue a stream stall after a tool call was already emitted", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        timedOut: true,
+        sawToolCall: true,
+        emittedToolCall: true,
+        reportedContent: true,
+        reportedVisibleContent: true,
+      }),
+    });
+    expect(evaluation.retryReason).toBeUndefined();
+  });
+
+  it("stops auto-continuing a stream stall after the same-turn loop budget is spent", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      loopContinueCount: DEFAULT_GENERATION_CONFIG.maxLoopContinues,
+      result: result({
+        timedOut: true,
+        reportedVisibleContent: true,
+        lastVisibleText: "Working on the next change",
+      }),
+    });
+    expect(evaluation.retryReason).toBeUndefined();
   });
 });

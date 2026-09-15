@@ -42,6 +42,7 @@ describe("ConfigManager", () => {
       expect(config.onEmptyStream).toBe(true);
       expect(config.onTimeout).toBe(true);
       expect(config.firstTokenTimeoutSeconds).toBeNull();
+      expect(config.maxChainRestarts).toBe(2);
       expect(config.showNoticeInChat).toBe(true);
       expect(config.notifyUser).toBe(true);
     });
@@ -55,6 +56,7 @@ describe("ConfigManager", () => {
       mockStore["fallback.onEmptyStream"] = false;
       mockStore["fallback.onTimeout"] = false;
       mockStore["fallback.firstTokenTimeoutSeconds"] = 25;
+      mockStore["fallback.maxChainRestarts"] = 1;
       mockStore["fallback.showNoticeInChat"] = false;
       mockStore["fallback.notifyUser"] = false;
 
@@ -67,8 +69,23 @@ describe("ConfigManager", () => {
       expect(config.onEmptyStream).toBe(false);
       expect(config.onTimeout).toBe(false);
       expect(config.firstTokenTimeoutSeconds).toBe(25);
+      expect(config.maxChainRestarts).toBe(1);
       expect(config.showNoticeInChat).toBe(false);
       expect(config.notifyUser).toBe(false);
+    });
+
+    it("clamps fallback.maxChainRestarts into the 0..5 range", () => {
+      mockStore["fallback.maxChainRestarts"] = -1;
+      expect(ConfigManager.getFallbackConfig().maxChainRestarts).toBe(0);
+
+      mockStore["fallback.maxChainRestarts"] = 9;
+      expect(ConfigManager.getFallbackConfig().maxChainRestarts).toBe(5);
+
+      mockStore["fallback.maxChainRestarts"] = 3;
+      expect(ConfigManager.getFallbackConfig().maxChainRestarts).toBe(3);
+
+      mockStore["fallback.maxChainRestarts"] = Number.NaN;
+      expect(ConfigManager.getFallbackConfig().maxChainRestarts).toBe(2);
     });
 
     it("clamps or rejects invalid firstTokenTimeoutSeconds", () => {

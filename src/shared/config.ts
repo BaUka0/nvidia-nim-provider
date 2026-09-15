@@ -33,6 +33,8 @@ export interface FallbackConfig {
   readonly onEmptyStream: boolean;
   readonly onTimeout: boolean;
   readonly firstTokenTimeoutSeconds: number | null;
+  /** Extra full failover-chain passes after every candidate times out. 0 disables. */
+  readonly maxChainRestarts: number;
   readonly showNoticeInChat: boolean;
   readonly notifyUser: boolean;
 }
@@ -106,6 +108,7 @@ export const DEFAULT_FALLBACK_CONFIG: FallbackConfig = {
   onEmptyStream: true,
   onTimeout: true,
   firstTokenTimeoutSeconds: null,
+  maxChainRestarts: 2,
   showNoticeInChat: true,
   notifyUser: true,
 };
@@ -184,6 +187,14 @@ export class ConfigManager {
       DEFAULT_FALLBACK_CONFIG.onEmptyStream,
     );
     const onTimeout = config.get<boolean>("fallback.onTimeout", DEFAULT_FALLBACK_CONFIG.onTimeout);
+    const rawMaxChainRestarts = config.get<number>(
+      "fallback.maxChainRestarts",
+      DEFAULT_FALLBACK_CONFIG.maxChainRestarts,
+    );
+    const maxChainRestarts =
+      typeof rawMaxChainRestarts === "number" && Number.isFinite(rawMaxChainRestarts)
+        ? Math.max(0, Math.min(5, Math.round(rawMaxChainRestarts)))
+        : DEFAULT_FALLBACK_CONFIG.maxChainRestarts;
     const rawFirstTokenTimeout = config.get<number | null>(
       "fallback.firstTokenTimeoutSeconds",
       null,
@@ -228,6 +239,7 @@ export class ConfigManager {
       onEmptyStream,
       onTimeout,
       firstTokenTimeoutSeconds,
+      maxChainRestarts,
       showNoticeInChat,
       notifyUser,
     };
