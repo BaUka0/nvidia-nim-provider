@@ -109,6 +109,25 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
+  it("normalizes z-ai/glm-5.3 with its curated 1M / 64K limits", () => {
+    const raw: NvidiaModelSummary[] = [
+      {
+        id: "z-ai/glm-5.3",
+      },
+    ];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([
+      {
+        id: "z-ai/glm-5.3",
+        displayName: "GLM 5.3",
+        contextWindow: 1048576,
+        maxOutputTokens: 65536,
+        supportsTools: true,
+        supportsVision: false,
+      },
+    ]);
+  });
+
   it("normalizes z-ai/glm-5.3-flash with its curated 1M / 128K limits", () => {
     const raw: NvidiaModelSummary[] = [
       {

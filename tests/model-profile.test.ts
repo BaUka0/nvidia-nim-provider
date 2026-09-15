@@ -135,6 +135,7 @@ describe("applyReasoningMode", () => {
 
     expect(adapter.supportsPresencePenalty).toBe(false);
     expect(adapter.supportsFrequencyPenalty).toBe(false);
+    expect(getModelAdapter("z-ai/glm-5.3")).toBe(adapter);
   });
 
   it("maps Lightning reasoning modes to OpenRouter-style reasoning_budget percentages", () => {

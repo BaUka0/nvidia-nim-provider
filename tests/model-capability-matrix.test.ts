@@ -174,6 +174,21 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "think",
   },
   {
+    modelId: "z-ai/glm-5.3",
+    reasoningModes: ["low", "high", "max"],
+    reasoningCases: [
+      { mode: "low", expectedFields: { reasoning_effort: "low" } },
+      { mode: "high", expectedFields: { reasoning_effort: "high" } },
+      { mode: "max", expectedFields: { reasoning_effort: "max" } },
+    ],
+    reasoningParameterFormat: "reasoning_effort",
+    toolCallProtocol: "native-and-text",
+    reasoningRouting: "isolated",
+    contentOnlyMode: "low",
+    contentOnlyRouting: "text",
+    thinkTag: "think",
+  },
+  {
     modelId: "z-ai/glm-5.3-flash",
     reasoningModes: ["low", "high", "max"],
     reasoningCases: [

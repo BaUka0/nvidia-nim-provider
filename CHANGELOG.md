@@ -6,6 +6,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ### Added
 
+- Added GLM 5.3 (`z-ai/glm-5.3`) to the model catalog and fallback options. Features a 1,048,576 token context window, 65,536 maximum output tokens, native tool calling, and selectable reasoning effort modes (`Low`, `High`, `Max`) where `Low` produces instant answers without a reasoning delay.
 - After every backup model times out with no visible answer, the extension restarts the failover chain from the original model. How many extra passes is `nvidia-nim.fallback.maxChainRestarts` (default 2, Settings UI and `settings.json`).
 - Added setting to disable fallback on initial response timeouts (`nvidia-nim.fallback.onFirstTokenTimeout`, default true). When disabled, long prefill or server queue delays will not trigger switching to secondary models.
 

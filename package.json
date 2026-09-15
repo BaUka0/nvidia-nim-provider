@@ -151,6 +151,7 @@
             "nvidia/nemotron-3-super-120b-a12b",
             "nvidia/nemotron-3-ultra-550b-a55b",
             "nvidia/nemotron-3.5-lightning-30b-a3b",
+            "z-ai/glm-5.3",
             "z-ai/glm-5.3-flash"
           ],
           "default": "nvidia/nemotron-3-super-120b-a12b",
@@ -177,6 +178,7 @@
               "nvidia/nemotron-3-super-120b-a12b",
               "nvidia/nemotron-3-ultra-550b-a55b",
               "nvidia/nemotron-3.5-lightning-30b-a3b",
+              "z-ai/glm-5.3",
               "z-ai/glm-5.3-flash"
             ]
           },
@@ -340,6 +342,7 @@
             "nvidia/nemotron-3-super-120b-a12b",
             "nvidia/nemotron-3-ultra-550b-a55b",
             "nvidia/nemotron-3.5-lightning-30b-a3b",
+            "z-ai/glm-5.3",
             "z-ai/glm-5.3-flash"
           ],
           "default": "nvidia/nemotron-3-super-120b-a12b",

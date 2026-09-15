@@ -6,6 +6,7 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ### Added
 
+- **GLM 5.3 model catalog entry (`src/models/catalog.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `tests/model-capability-matrix.test.ts`, `tests/model-catalog.test.ts`, `docs/*`).** Added `z-ai/glm-5.3` with 1,048,576 token context window, 65,536 max output tokens, native-and-text tool calling protocol, and `reasoning_effort` modes (`low`, `high`, `max`) mapped via `GlmAdapter`. Synced fallback model, priority list, and summarization model enums in `package.json`.
 - **Disable fallback on first token / TTFT timeout (`src/shared/config.ts`, `src/provider/fallback-orchestrator.ts`, `src/api/errors.ts`, `src/api/client.ts`, `src/shared/turn-report.ts`, `package.json`, `docs/configuration.md`).** Added `nvidia-nim.fallback.onFirstTokenTimeout` (default `true`). When set to `false`, timeouts occurring before the first token is received (long TTFT or initial connection prefill) do not trigger failover to secondary models in `isFallbackEligibleError` and `shouldRestartTimeoutChain`. Addresses #12.
 - **Failover chain restart after timeout exhaustion (`src/provider/fallback-orchestrator.ts`, `src/provider/chat-provider.ts`, `src/shared/config.ts`, `package.json`).** Added `nvidia-nim.fallback.maxChainRestarts` (default 2, clamp 0–5). When every candidate times out with no visible content, the hop loop resets `triedModelIds`/`depth` and retries from the original picker model, granting a fresh fetch-budget floor per restart. Addresses #12.
 
