@@ -83,6 +83,24 @@ function buildToolDescription(
   return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
+/**
+ * Strips in-chat fallback notices from assistant messages (e.g. injected during failover hops).
+ * Prevents models from mimicking or echoing fallback banners in subsequent conversation turns.
+ */
+export function stripFallbackNotices(text: string): string {
+  if (!text.includes("NVIDIA NIM Fallback")) {
+    return text;
+  }
+  return text
+    .replace(
+      /(?:^|\r?\n)>?\s*⚡\s*\*{0,2}NVIDIA NIM Fallback:?\*{0,2}(?:[^\r\n]*(?:\r?\n>[^\r\n]*)*)/gi,
+      "",
+    )
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^\s*[\r\n]+/, "")
+    .trimStart();
+}
+
 export function convertMessages(
   messages: readonly vscode.LanguageModelChatMessage[],
   options?: { maxToolResultChars?: number; supportsVision?: boolean },
@@ -143,6 +161,14 @@ export function convertMessages(
         continue;
       }
       debugLog("convertMessages", `Unrecognized message part: ${JSON.stringify(part)}`);
+    }
+
+    if (role === "assistant" && textParts.length > 0) {
+      const stripped = stripFallbackNotices(textParts.join(""));
+      textParts.length = 0;
+      if (stripped.length > 0) {
+        textParts.push(stripped);
+      }
     }
 
     if (toolCalls.length > 0) {

@@ -78,6 +78,38 @@ describe("isFallbackEligibleError", () => {
       ),
     ).toBe(false);
   });
+
+  it("respects onFirstTokenTimeout setting for TTFT and connection timeouts", () => {
+    const disabledFirstTokenConfig = { ...config, onFirstTokenTimeout: false };
+
+    // First token timeout with onFirstTokenTimeout: false -> ineligible
+    const firstTokenErr = new NvidiaApiError(
+      "timeout",
+      "NVIDIA NIM first token timeout: no response received for 120s",
+      { timeoutKind: "first-token" },
+    );
+    expect(isFallbackEligibleError(firstTokenErr, disabledFirstTokenConfig, 0, false)).toBe(false);
+
+    // Connection timeout with onFirstTokenTimeout: false -> ineligible
+    const connectionErr = new NvidiaApiError(
+      "timeout",
+      "NVIDIA NIM connection timeout: no response received within 120s",
+      { timeoutKind: "connection" },
+    );
+    expect(isFallbackEligibleError(connectionErr, disabledFirstTokenConfig, 0, false)).toBe(false);
+
+    // Idle stream timeout with onFirstTokenTimeout: false -> still eligible because onTimeout: true
+    const idleErr = new NvidiaApiError(
+      "timeout",
+      "NVIDIA NIM streaming timeout: no data received for 60s",
+      { timeoutKind: "idle" },
+    );
+    expect(isFallbackEligibleError(idleErr, disabledFirstTokenConfig, 0, false)).toBe(true);
+
+    // With default onFirstTokenTimeout: true -> eligible
+    expect(isFallbackEligibleError(firstTokenErr, config, 0, false)).toBe(true);
+    expect(isFallbackEligibleError(connectionErr, config, 0, false)).toBe(true);
+  });
 });
 
 describe("shouldRestartTimeoutChain", () => {
@@ -131,6 +163,16 @@ describe("shouldRestartTimeoutChain", () => {
       shouldRestartTimeoutChain({
         err: new NvidiaApiError("timeout", "stalled"),
         fallbackConfig: { ...config, onTimeout: false },
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRestartTimeoutChain({
+        err: new NvidiaApiError("timeout", "NVIDIA NIM first token timeout: 120s", {
+          timeoutKind: "first-token",
+        }),
+        fallbackConfig: { ...config, onFirstTokenTimeout: false },
         failingAttemptHasVisibleContent: false,
         chainRestarts: 0,
       }),

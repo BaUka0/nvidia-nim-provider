@@ -203,6 +203,11 @@
           "default": true,
           "description": "Trigger fallback if the stream idle timeout is exceeded."
         },
+        "nvidia-nim.fallback.onFirstTokenTimeout": {
+          "type": "boolean",
+          "default": true,
+          "description": "Trigger fallback when the initial response / first token times out (long TTFT). If disabled, TTFT timeouts will not switch to backup models."
+        },
         "nvidia-nim.fallback.maxChainRestarts": {
           "type": "integer",
           "default": 2,
@@ -217,8 +222,8 @@
           ],
           "default": null,
           "minimum": 5,
-          "maximum": 600,
-          "description": "Maximum seconds to wait for the first response token (TTFT) before triggering fallback. If null, standard stream timeout applies."
+          "maximum": 3600,
+          "description": "Maximum seconds to wait for the first response token (TTFT) before triggering fallback (5–3600 seconds). If null, standard stream timeout applies."
         },
         "nvidia-nim.fallback.showNoticeInChat": {
           "type": "boolean",
@@ -234,8 +239,8 @@
           "type": "integer",
           "default": 120,
           "minimum": 15,
-          "maximum": 600,
-          "description": "Maximum idle time in seconds between streamed chunks before timing out."
+          "maximum": 3600,
+          "description": "Maximum idle time in seconds between streamed chunks before timing out (15–3600 seconds)."
         },
         "nvidia-nim.network.maxHttpRetries": {
           "type": "integer",
@@ -426,23 +431,6 @@
           "type": "boolean",
           "default": false,
           "description": "Include outgoing chat message bodies in the debug log and saved session logs. Off by default to avoid leaking prompt and file contents."
-        },
-        "nvidia-nim.reasoningMode": {
-          "type": "string",
-          "enum": [
-            "none",
-            "on",
-            "medium",
-            "high",
-            "max"
-          ],
-          "default": "none",
-          "description": "Legacy setting: Use nvidia-nim.reasoning.mode instead."
-        },
-        "nvidia-nim.showReasoning": {
-          "type": "boolean",
-          "default": false,
-          "description": "Legacy setting: Use nvidia-nim.reasoning.showInChat instead."
         }
       }
     }

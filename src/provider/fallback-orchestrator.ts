@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { LanguageModelChatInformation } from "vscode";
-import { NvidiaApiError } from "../api/errors";
+import { isFirstTokenTimeout, NvidiaApiError } from "../api/errors";
 import { calculateSafetyMargin, FallbackConfig } from "../shared/config";
 import { DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 import { NormalizedNvidiaModel } from "../models/catalog";
@@ -22,6 +22,9 @@ export function shouldRestartTimeoutChain(options: {
     return false;
   }
   if (!options.fallbackConfig.onTimeout) {
+    return false;
+  }
+  if (isFirstTokenTimeout(options.err) && !options.fallbackConfig.onFirstTokenTimeout) {
     return false;
   }
   const maxRestarts = options.fallbackConfig.maxChainRestarts;
@@ -51,7 +54,9 @@ export function isFallbackEligibleError(
     ((err.kind === "rate_limited" && fallbackConfig.onRateLimit) ||
       (err.kind === "model_unavailable" && fallbackConfig.onModelUnavailable) ||
       (err.kind === "empty_stream" && fallbackConfig.onEmptyStream) ||
-      (err.kind === "timeout" && fallbackConfig.onTimeout) ||
+      (err.kind === "timeout" &&
+        fallbackConfig.onTimeout &&
+        (!isFirstTokenTimeout(err) || fallbackConfig.onFirstTokenTimeout)) ||
       err.kind === "server_error" ||
       err.kind === "network_error" ||
       err.kind === "token_limit" ||

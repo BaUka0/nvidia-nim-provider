@@ -32,6 +32,7 @@ export interface FallbackConfig {
   readonly onModelUnavailable: boolean;
   readonly onEmptyStream: boolean;
   readonly onTimeout: boolean;
+  readonly onFirstTokenTimeout: boolean;
   readonly firstTokenTimeoutSeconds: number | null;
   /** Extra full failover-chain passes after every candidate times out. 0 disables. */
   readonly maxChainRestarts: number;
@@ -107,6 +108,7 @@ export const DEFAULT_FALLBACK_CONFIG: FallbackConfig = {
   onModelUnavailable: true,
   onEmptyStream: true,
   onTimeout: true,
+  onFirstTokenTimeout: true,
   firstTokenTimeoutSeconds: null,
   maxChainRestarts: 2,
   showNoticeInChat: true,
@@ -187,6 +189,10 @@ export class ConfigManager {
       DEFAULT_FALLBACK_CONFIG.onEmptyStream,
     );
     const onTimeout = config.get<boolean>("fallback.onTimeout", DEFAULT_FALLBACK_CONFIG.onTimeout);
+    const onFirstTokenTimeout = config.get<boolean>(
+      "fallback.onFirstTokenTimeout",
+      DEFAULT_FALLBACK_CONFIG.onFirstTokenTimeout,
+    );
     const rawMaxChainRestarts = config.get<number>(
       "fallback.maxChainRestarts",
       DEFAULT_FALLBACK_CONFIG.maxChainRestarts,
@@ -203,7 +209,7 @@ export class ConfigManager {
       typeof rawFirstTokenTimeout === "number" &&
       Number.isFinite(rawFirstTokenTimeout) &&
       rawFirstTokenTimeout >= 5 &&
-      rawFirstTokenTimeout <= 600
+      rawFirstTokenTimeout <= 3600
         ? rawFirstTokenTimeout
         : null;
     const showNoticeInChat = config.get<boolean>(
@@ -238,6 +244,7 @@ export class ConfigManager {
       onModelUnavailable,
       onEmptyStream,
       onTimeout,
+      onFirstTokenTimeout,
       firstTokenTimeoutSeconds,
       maxChainRestarts,
       showNoticeInChat,
@@ -253,7 +260,7 @@ export class ConfigManager {
     );
     const streamIdleTimeout =
       typeof rawTimeout === "number" && Number.isFinite(rawTimeout)
-        ? Math.max(15, Math.min(600, Math.round(rawTimeout)))
+        ? Math.max(15, Math.min(3600, Math.round(rawTimeout)))
         : DEFAULT_NETWORK_CONFIG.streamIdleTimeout;
 
     const rawHttpRetries = config.get<number>(
@@ -293,17 +300,16 @@ export class ConfigManager {
 
   public static getReasoningConfig(): ReasoningConfig {
     const config = this.getConfiguration();
-    const rawMode =
-      config.get<string>("reasoning.mode") ??
-      config.get<string>("reasoningMode", DEFAULT_REASONING_CONFIG.mode);
+    const rawMode = config.get<string>("reasoning.mode", DEFAULT_REASONING_CONFIG.mode);
     const validModes: Array<ReasoningConfig["mode"]> = ["none", "on", "medium", "high", "max"];
     const mode = validModes.includes(rawMode as ReasoningConfig["mode"])
       ? (rawMode as ReasoningConfig["mode"])
       : DEFAULT_REASONING_CONFIG.mode;
 
-    const showInChat =
-      config.get<boolean>("reasoning.showInChat") ??
-      config.get<boolean>("showReasoning", DEFAULT_REASONING_CONFIG.showInChat);
+    const showInChat = config.get<boolean>(
+      "reasoning.showInChat",
+      DEFAULT_REASONING_CONFIG.showInChat,
+    );
 
     return {
       mode,

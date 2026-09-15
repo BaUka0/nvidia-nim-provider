@@ -6,6 +6,7 @@ import { normalizeLineForRepetition } from "./repetition-guard";
 import { buildToolCallCanonicalKey, tryParseJsonValue } from "../tools/parser";
 import { cloneNimChatRequest } from "./request-snapshot";
 import { BoundedMap } from "../shared/bounded-map";
+import { stripFallbackNotices } from "../messages/converter";
 
 const MAX_INJECTED_LOOPS_TRACKED = 128;
 const recentInjectedLoops = new BoundedMap<string, number>(MAX_INJECTED_LOOPS_TRACKED);
@@ -60,7 +61,11 @@ function extractAssistantFirstLine(content: unknown): string | undefined {
   if (!fullText) {
     return undefined;
   }
-  return fullText.split(/\r?\n/).find((l) => l.trim().length > 0) ?? fullText;
+  const stripped = stripFallbackNotices(fullText);
+  if (!stripped) {
+    return undefined;
+  }
+  return stripped.split(/\r?\n/).find((l) => l.trim().length > 0) ?? stripped;
 }
 
 /**

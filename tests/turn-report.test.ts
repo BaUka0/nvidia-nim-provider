@@ -188,6 +188,7 @@ describe("turn-report", () => {
         logUserMessages: boolean;
         streamIdleTimeout: number;
         firstTokenTimeoutSeconds: number | null;
+        fallbackOnFirstTokenTimeout: boolean;
       };
       turns: { modelId: string }[];
       events: { label: string }[];
@@ -196,6 +197,7 @@ describe("turn-report", () => {
     expect(parsed.settings.logUserMessages).toBe(false);
     expect(parsed.settings.streamIdleTimeout).toBe(120);
     expect(parsed.settings.firstTokenTimeoutSeconds).toBeNull();
+    expect(parsed.settings.fallbackOnFirstTokenTimeout).toBe(true);
     expect(parsed.turns).toHaveLength(1);
     expect(parsed.events.some((event) => event.label === "budget")).toBe(true);
   });

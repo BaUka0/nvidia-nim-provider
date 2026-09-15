@@ -19,6 +19,7 @@ export interface ApiErrorContext {
   status?: number;
   detail?: string;
   contextOverflow?: ContextOverflowInfo;
+  timeoutKind?: "first-token" | "idle" | "connection";
 }
 
 export interface StructuredError {
@@ -180,6 +181,7 @@ export class NvidiaApiError extends Error {
   readonly operation?: string;
   readonly retryable: boolean;
   readonly contextOverflow?: ContextOverflowInfo;
+  readonly timeoutKind?: "first-token" | "idle" | "connection";
 
   constructor(kind: ApiErrorKind, message: string, context: ApiErrorContext = {}) {
     super(message);
@@ -190,6 +192,7 @@ export class NvidiaApiError extends Error {
     this.operation = context.operation;
     this.retryable = context.status !== undefined && RETRYABLE_STATUS_CODES.has(context.status);
     this.contextOverflow = context.contextOverflow;
+    this.timeoutKind = context.timeoutKind;
 
     if (typeof this.stack === "string") {
       const lines = this.stack.split("\n");
@@ -349,11 +352,47 @@ export function classifyApiError(error: unknown, context: ApiErrorContext = {}):
   }
   const contextOverflow =
     kind === "context_overflow" && detail ? parseContextOverflowDetail(detail) : undefined;
+
+  let timeoutKind = context.timeoutKind;
+  if (!timeoutKind && error instanceof Error) {
+    if (
+      "timeoutKind" in error &&
+      typeof (error as { timeoutKind?: unknown }).timeoutKind === "string"
+    ) {
+      timeoutKind = (error as { timeoutKind: "first-token" | "idle" | "connection" }).timeoutKind;
+    } else if (/\bfirst token timeout\b/i.test(error.message)) {
+      timeoutKind = "first-token";
+    } else if (/\bconnection timeout\b/i.test(error.message)) {
+      timeoutKind = "connection";
+    } else if (/\bstreaming timeout\b|\bidle timeout\b/i.test(error.message)) {
+      timeoutKind = "idle";
+    }
+  }
+
   return new NvidiaApiError(kind, buildClassifiedMessage(kind, error, { ...context, status }), {
     ...context,
     status,
     contextOverflow,
+    timeoutKind,
   });
+}
+
+export function isFirstTokenTimeout(err: unknown): boolean {
+  if (err instanceof NvidiaApiError) {
+    if (err.timeoutKind === "first-token" || err.timeoutKind === "connection") {
+      return true;
+    }
+    return /\bfirst token timeout\b|\bconnection timeout\b/i.test(err.message);
+  }
+  if (err instanceof Error) {
+    return (
+      ("timeoutKind" in err &&
+        ((err as { timeoutKind?: unknown }).timeoutKind === "first-token" ||
+          (err as { timeoutKind?: unknown }).timeoutKind === "connection")) ||
+      /\bfirst token timeout\b|\bconnection timeout\b/i.test(err.message)
+    );
+  }
+  return false;
 }
 
 export function isRetryableApiStatus(status: number): boolean {

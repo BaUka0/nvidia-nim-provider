@@ -532,7 +532,11 @@ export async function* streamChatCompletion(
     if (signal?.aborted && !isTimeoutAbortReason(signal.reason)) {
       throw createAbortError();
     }
-    throw classifyApiError(error, { operation: "stream", model: requestBody.model });
+    throw classifyApiError(error, {
+      operation: "stream",
+      model: requestBody.model,
+      timeoutKind: "connection",
+    });
   } finally {
     requestTimeout.cleanup();
   }
@@ -673,6 +677,7 @@ export async function* streamChatCompletion(
       throw classifyApiError(streamTimeoutError(kind, idleSec), {
         operation: "stream",
         model: requestBody.model,
+        timeoutKind: kind,
       });
     }
     if (error instanceof Error && error.name === "AbortError") {

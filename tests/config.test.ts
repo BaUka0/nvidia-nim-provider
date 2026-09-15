@@ -55,6 +55,7 @@ describe("ConfigManager", () => {
       mockStore["fallback.onModelUnavailable"] = false;
       mockStore["fallback.onEmptyStream"] = false;
       mockStore["fallback.onTimeout"] = false;
+      mockStore["fallback.onFirstTokenTimeout"] = false;
       mockStore["fallback.firstTokenTimeoutSeconds"] = 25;
       mockStore["fallback.maxChainRestarts"] = 1;
       mockStore["fallback.showNoticeInChat"] = false;
@@ -68,6 +69,7 @@ describe("ConfigManager", () => {
       expect(config.onModelUnavailable).toBe(false);
       expect(config.onEmptyStream).toBe(false);
       expect(config.onTimeout).toBe(false);
+      expect(config.onFirstTokenTimeout).toBe(false);
       expect(config.firstTokenTimeoutSeconds).toBe(25);
       expect(config.maxChainRestarts).toBe(1);
       expect(config.showNoticeInChat).toBe(false);
@@ -92,14 +94,17 @@ describe("ConfigManager", () => {
       mockStore["fallback.firstTokenTimeoutSeconds"] = 3; // Below min 5
       expect(ConfigManager.getFallbackConfig().firstTokenTimeoutSeconds).toBeNull();
 
-      mockStore["fallback.firstTokenTimeoutSeconds"] = 700; // Above max 600
+      mockStore["fallback.firstTokenTimeoutSeconds"] = 4000; // Above max 3600
       expect(ConfigManager.getFallbackConfig().firstTokenTimeoutSeconds).toBeNull();
 
-      mockStore["fallback.firstTokenTimeoutSeconds"] = 150; // Valid (within 5..600)
+      mockStore["fallback.firstTokenTimeoutSeconds"] = 150; // Valid (within 5..3600)
       expect(ConfigManager.getFallbackConfig().firstTokenTimeoutSeconds).toBe(150);
 
       mockStore["fallback.firstTokenTimeoutSeconds"] = 45; // Valid
       expect(ConfigManager.getFallbackConfig().firstTokenTimeoutSeconds).toBe(45);
+
+      mockStore["fallback.firstTokenTimeoutSeconds"] = 3600; // Upper bound
+      expect(ConfigManager.getFallbackConfig().firstTokenTimeoutSeconds).toBe(3600);
     });
 
     it("defaults fallback.priorityList to an empty list", () => {
@@ -137,15 +142,18 @@ describe("ConfigManager", () => {
       expect(config.maxTotalFetchAttempts).toBe(6);
     });
 
-    it("clamps streamIdleTimeout within 15..600", () => {
+    it("clamps streamIdleTimeout within 15..3600", () => {
       mockStore["network.streamIdleTimeout"] = 5;
       expect(ConfigManager.getNetworkConfig().streamIdleTimeout).toBe(15);
 
-      mockStore["network.streamIdleTimeout"] = 999;
-      expect(ConfigManager.getNetworkConfig().streamIdleTimeout).toBe(600);
+      mockStore["network.streamIdleTimeout"] = 5000;
+      expect(ConfigManager.getNetworkConfig().streamIdleTimeout).toBe(3600);
 
       mockStore["network.streamIdleTimeout"] = 45;
       expect(ConfigManager.getNetworkConfig().streamIdleTimeout).toBe(45);
+
+      mockStore["network.streamIdleTimeout"] = 3600;
+      expect(ConfigManager.getNetworkConfig().streamIdleTimeout).toBe(3600);
     });
 
     it("clamps maxHttpRetries within 0..10", () => {
@@ -184,7 +192,7 @@ describe("ConfigManager", () => {
       expect(config.showInChat).toBe(false);
     });
 
-    it("reads new setting keys", () => {
+    it("reads reasoning setting keys", () => {
       mockStore["reasoning.mode"] = "high";
       mockStore["reasoning.showInChat"] = true;
 
@@ -193,23 +201,12 @@ describe("ConfigManager", () => {
       expect(config.showInChat).toBe(true);
     });
 
-    it("falls back to legacy keys if new keys are not present", () => {
+    it("ignores removed legacy keys", () => {
       mockStore["reasoningMode"] = "max";
       mockStore["showReasoning"] = true;
 
       const config = ConfigManager.getReasoningConfig();
-      expect(config.mode).toBe("max");
-      expect(config.showInChat).toBe(true);
-    });
-
-    it("prefers new keys over legacy keys", () => {
-      mockStore["reasoning.mode"] = "medium";
-      mockStore["reasoningMode"] = "max";
-      mockStore["reasoning.showInChat"] = false;
-      mockStore["showReasoning"] = true;
-
-      const config = ConfigManager.getReasoningConfig();
-      expect(config.mode).toBe("medium");
+      expect(config.mode).toBe("none");
       expect(config.showInChat).toBe(false);
     });
 

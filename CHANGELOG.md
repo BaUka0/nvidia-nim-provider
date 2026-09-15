@@ -7,10 +7,11 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 ### Added
 
 - After every backup model times out with no visible answer, the extension restarts the failover chain from the original model. How many extra passes is `nvidia-nim.fallback.maxChainRestarts` (default 2, Settings UI and `settings.json`).
+- Added setting to disable fallback on initial response timeouts (`nvidia-nim.fallback.onFirstTokenTimeout`, default true). When disabled, long prefill or server queue delays will not trigger switching to secondary models.
 
 ### Changed
 
-- The first response timeout setting (`nvidia-nim.fallback.firstTokenTimeoutSeconds`) now accepts values up to 600 seconds (previously 120 seconds).
+- The first response timeout (`nvidia-nim.fallback.firstTokenTimeoutSeconds`) and stream idle timeout (`nvidia-nim.network.streamIdleTimeout`) settings now accept values up to 3600 seconds (1 hour).
 
 ### Fixed
 
@@ -22,9 +23,11 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Initial stream connections that hang indefinitely before HTTP headers are received now time out promptly, triggering automatic failover to the configured fallback model.
 - Fixed first response timeout (`nvidia-nim.fallback.firstTokenTimeoutSeconds`) being inadvertently restricted by the stream idle timeout (`streamIdleTimeout`). Setting a longer first response timeout now reliably grants models extra prefill time before the first token arrives without being clamped by inter-chunk idle limits.
 - Diagnostic session log exports now include network timeout and retry configurations (`streamIdleTimeout`, `maxHttpRetries`, `maxEmptyStreamRetries`, `maxTotalFetchAttempts`, `firstTokenTimeoutSeconds`, `maxChainRestarts`).
+- Fixed failover callout notices leaking into conversation history. Assistant messages in conversation history now have fallback banners stripped before being sent to the model, preventing models from mimicking or repeating fallback notices in subsequent turns.
 
 ### Removed
 
+- Removed deprecated legacy settings `nvidia-nim.reasoningMode` and `nvidia-nim.showReasoning`.
 - Removed DeepSeek V4 Pro 0813 (`deepseek-ai/deepseek-v4-pro-0813`) as it has been discontinued on NVIDIA NIM.
 
 ## [0.11.1] - 2026-09-13

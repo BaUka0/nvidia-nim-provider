@@ -64,8 +64,9 @@ These settings control automatic re-routing when an NVIDIA NIM endpoint returns 
 | `nvidia-nim.fallback.onModelUnavailable` | `true` | Automatically switch to backup if a model is offline or decommissioned (`HTTP 404` / `410`). |
 | `nvidia-nim.fallback.onEmptyStream` | `true` | Automatically switch to backup if a model returns an empty response. |
 | `nvidia-nim.fallback.onTimeout` | `true` | Automatically switch to backup if a model stops responding mid-stream. |
+| `nvidia-nim.fallback.onFirstTokenTimeout` | `true` | Automatically switch to backup when the initial response / first token times out (long TTFT). If set to `false`, TTFT timeouts will not trigger failover. |
 | `nvidia-nim.fallback.maxChainRestarts` | `2` | Extra full passes of the failover chain from the original model after every candidate times out with no visible answer (`0`–`5`). `0` disables chain restarts. |
-| `nvidia-nim.fallback.firstTokenTimeoutSeconds` | `null` | Maximum seconds to wait for the model to start responding before switching to backup (5–600 seconds, or `null` to use stream timeout). |
+| `nvidia-nim.fallback.firstTokenTimeoutSeconds` | `null` | Maximum seconds to wait for the model to start responding before switching to backup (5–3600 seconds, or `null` to use stream timeout). |
 | `nvidia-nim.fallback.showNoticeInChat` | `true` | Displays a short note at the top of the answer letting you know a backup model was used for that turn. |
 | `nvidia-nim.fallback.notifyUser` | `true` | Shows a small notification popup in VS Code when failover occurs. |
 
@@ -113,7 +114,7 @@ Timeout and retry settings for streaming and HTTP connections.
 
 | Setting | Default | Range | What it does |
 | :--- | :--- | :---: | :--- |
-| `nvidia-nim.network.streamIdleTimeout` | `120` | `15`–`600` | How many seconds to wait between streaming chunks before considering the connection stalled. Increase this if you have a slow or high-latency connection. |
+| `nvidia-nim.network.streamIdleTimeout` | `120` | `15`–`3600` | How many seconds to wait between streaming chunks before considering the connection stalled. Increase this if you have a slow or high-latency connection. |
 | `nvidia-nim.network.maxHttpRetries` | `3` | `0`–`10` | Number of automatic retries on temporary connection drops (e.g. network blips). |
 | `nvidia-nim.network.maxEmptyStreamRetries` | `2` | `0`–`5` | Number of immediate retries if the server responds without emitting text chunks. |
 | `nvidia-nim.network.maxTotalFetchAttempts` | `6` | `2`–`30` | Maximum cumulative HTTP fetch attempts across all retries, compact retries, and fallback model hops within a single Copilot turn. |
