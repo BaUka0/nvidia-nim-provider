@@ -41,6 +41,7 @@ import {
   buildFallbackModelInfo,
   fallbackCapacityLabel,
   isFallbackEligibleError,
+  shouldRestartTimeoutChain,
 } from "./fallback-orchestrator";
 import { ChatRuntimeInfo, ModelTurnExecutor, ModelTurnReportState } from "./turn-executor";
 import { isCancellation } from "../shared/cancellation";
@@ -372,12 +373,25 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     // and the depth / tried-models bookkeeping for the hop loop below.
     const initialNetworkConfig = ConfigManager.getNetworkConfig();
     const fetchBudget = new FetchAttemptBudget(initialNetworkConfig.maxTotalFetchAttempts);
+    const originalModel = model;
     let currentModel = model;
-    const chainState = { depth: 0, triedModelIds: [] as string[] };
+    const chainState = { depth: 0, triedModelIds: [] as string[], chainRestarts: 0 };
     const reportState: ModelTurnReportState = {
       hasReportedContent: false,
       hasReportedVisibleContent: false,
       failingAttemptHasVisibleContent: false,
+    };
+
+    const restartTimeoutChain = (maxRestarts: number): void => {
+      chainState.chainRestarts += 1;
+      chainState.depth = 0;
+      chainState.triedModelIds = [];
+      currentModel = originalModel;
+      fetchBudget.ensureMinimum(MAX_FETCH_ATTEMPTS_PER_STREAM);
+      outputLog(
+        "fallback",
+        `Timeout chain exhausted, retrying from ${originalModel.id} (restart ${chainState.chainRestarts}/${maxRestarts}).`,
+      );
     };
 
     try {
@@ -424,6 +438,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           const err = rawErr instanceof NvidiaApiError ? rawErr : classifyApiError(rawErr);
           const fallbackConfig = nimConfig.fallback;
           const priorDepth = chainState.depth;
+          const timeoutRestart = shouldRestartTimeoutChain({
+            err,
+            fallbackConfig,
+            failingAttemptHasVisibleContent: reportState.failingAttemptHasVisibleContent,
+            chainRestarts: chainState.chainRestarts,
+          });
           if (
             !isFallbackEligibleError(
               err,
@@ -432,6 +452,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               reportState.failingAttemptHasVisibleContent,
             )
           ) {
+            if (timeoutRestart) {
+              restartTimeoutChain(fallbackConfig.maxChainRestarts);
+              continue;
+            }
             throw toHostChatError(err);
           }
 
@@ -450,6 +474,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           );
 
           if (!fallbackModel) {
+            if (timeoutRestart) {
+              restartTimeoutChain(fallbackConfig.maxChainRestarts);
+              continue;
+            }
             if (priorDepth > 0) {
               throw toHostChatError(
                 createStructuredError(

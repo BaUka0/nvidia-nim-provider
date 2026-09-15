@@ -168,7 +168,8 @@ export type LoopBreakerNudgeReason =
   | "tool_call_loop"
   | "hanging_colon"
   | "output_truncated"
-  | "content_filter";
+  | "content_filter"
+  | "stream_timeout";
 
 const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
   repetition_loop:
@@ -181,6 +182,8 @@ const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
     "your previous reply was cut off at the output token limit. Continue from where you left off. Call a tool if needed or finish the answer.",
   content_filter:
     "your previous reply was stopped by the safety filter. Continue the answer without the blocked content. Call a tool if needed or finish the answer. Do not mention the filter.",
+  stream_timeout:
+    "hey you got stuck — the previous reply stalled before a tool call or final answer. Continue working from where you left off. Call a tool if needed or provide the final answer. Do not repeat the stalled preamble.",
 };
 
 const HISTORY_LOOP_ESCALATION_NUDGE =

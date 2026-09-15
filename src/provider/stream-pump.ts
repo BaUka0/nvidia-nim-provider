@@ -8,6 +8,7 @@ import {
   ProvideLanguageModelChatResponseOptions,
 } from "vscode";
 import { streamChatCompletion } from "../api/client";
+import { NvidiaApiError } from "../api/errors";
 import { ReasoningStreamRouter } from "../messages/reasoning-router";
 import { emitThinkingPart } from "../shared/proposed-apis";
 import { isCancellation } from "../shared/cancellation";
@@ -75,6 +76,8 @@ export interface StreamAttemptResult {
   firstResponseAtMs?: number;
   firstToolCallAtMs?: number;
   toolParsingStateInitDurationMs?: number;
+  /** True when the SSE idle/first-token deadline fired after partial output. */
+  timedOut?: boolean;
 }
 
 /**
@@ -98,6 +101,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   let lastVisibleText = "";
   let toolCallLoopKey: string | undefined;
   let toolParsingStateInitDurationMs: number | undefined;
+  let timedOut = false;
 
   const repetitionGuard = new RepetitionGuard({
     maxRepeatedLines: input.maxRepeatedLines,
@@ -361,43 +365,68 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
         break;
       }
     }
-
-    if (!repetitionGuard.tripped && repetitionGuard.flush()) {
-      const willAutoContinue = input.autoContinueOnLoop && !input.hasRetriedRepetitionLoop;
-      debugLog("repetitionGuard", {
-        model: input.model.id,
-        trippedLine: repetitionGuard.trippedLine,
-        action: willAutoContinue ? "flushTrippedAutoContinue" : "flushTrippedStopWithoutChatNotice",
-      });
-      if (!willAutoContinue) {
-        outputLog(
-          "repetitionGuard",
-          `Stopped degenerate repeat loop on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
-        );
-      }
-    }
-
-    if (!reasoningGuard.tripped && reasoningGuard.flush()) {
-      debugLog("repetitionGuard", {
-        model: input.model.id,
-        trippedLine: reasoningGuard.trippedLine,
-        source: "reasoningFlush",
-      });
-      outputLog(
-        "repetitionGuard",
-        `Stopped degenerate repeat loop in reasoning on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
-      );
-    }
-
-    if (toolAggregator) {
-      toolAggregator.flushRemaining();
-      toolCallLoopKey ??= toolAggregator.getToolCallLoop()?.key;
-    }
   } catch (streamErr) {
     if (isCancellation(streamErr, input.token) || input.signal.aborted) {
       throw new vscode.CancellationError();
     }
-    throw streamErr;
+    const isTimeout =
+      (streamErr instanceof NvidiaApiError && streamErr.kind === "timeout") ||
+      (streamErr instanceof Error && streamErr.name === "TimeoutError");
+    const hasPartialProgress =
+      reportedVisibleContent ||
+      reportedContent ||
+      sawReasoning ||
+      sawToolCall ||
+      lastVisibleText.length > 0 ||
+      pendingText.length > 0;
+    if (!isTimeout || !hasPartialProgress) {
+      throw streamErr;
+    }
+    timedOut = true;
+    debugLog("streamTimeout", {
+      action: "returnPartial",
+      model: input.model.id,
+      reportedVisibleContent,
+      sawReasoning,
+      sawToolCall,
+      visibleChars: lastVisibleText.length,
+    });
+    outputLog(
+      "streamTimeout",
+      `Stream stalled on ${input.model.id} after partial output; keeping the turn open for auto-continue.`,
+    );
+  }
+
+  if (!repetitionGuard.tripped && repetitionGuard.flush()) {
+    const willAutoContinue = input.autoContinueOnLoop && !input.hasRetriedRepetitionLoop;
+    debugLog("repetitionGuard", {
+      model: input.model.id,
+      trippedLine: repetitionGuard.trippedLine,
+      action: willAutoContinue ? "flushTrippedAutoContinue" : "flushTrippedStopWithoutChatNotice",
+    });
+    if (!willAutoContinue) {
+      outputLog(
+        "repetitionGuard",
+        `Stopped degenerate repeat loop on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
+      );
+    }
+  }
+
+  if (!reasoningGuard.tripped && reasoningGuard.flush()) {
+    debugLog("repetitionGuard", {
+      model: input.model.id,
+      trippedLine: reasoningGuard.trippedLine,
+      source: "reasoningFlush",
+    });
+    outputLog(
+      "repetitionGuard",
+      `Stopped degenerate repeat loop in reasoning on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
+    );
+  }
+
+  if (toolAggregator) {
+    toolAggregator.flushRemaining();
+    toolCallLoopKey ??= toolAggregator.getToolCallLoop()?.key;
   }
 
   router.flush();
@@ -450,5 +479,6 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     firstResponseAtMs,
     firstToolCallAtMs,
     toolParsingStateInitDurationMs,
+    timedOut,
   };
 }

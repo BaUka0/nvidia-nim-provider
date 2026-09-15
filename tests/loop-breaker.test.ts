@@ -1,6 +1,7 @@
 import {
   LOOP_BREAKER_ESCALATION_MARKER,
   LOOP_BREAKER_MARKER,
+  buildLoopBreakerNudge,
   injectHistoryLoopBreaker,
   resetInjectedLoopsForTests,
 } from "../src/provider/loop-breaker";
@@ -176,5 +177,14 @@ describe("injectHistoryLoopBreaker", () => {
     });
     expect(turn3.messages).toHaveLength(1);
     expect(turn3.messages[0]?.content).toBe("hi");
+  });
+});
+
+describe("buildLoopBreakerNudge", () => {
+  it("nudges a stalled stream to continue from the partial reply", () => {
+    const nudge = buildLoopBreakerNudge("stream_timeout");
+    expect(nudge.role).toBe("user");
+    expect(nudge.content).toContain(LOOP_BREAKER_MARKER);
+    expect(nudge.content).toContain("stalled");
   });
 });

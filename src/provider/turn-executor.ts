@@ -666,7 +666,9 @@ export class ModelTurnExecutor {
                     ? "hanging ':'"
                     : retryReason === "content_filter"
                       ? "content filter"
-                      : "truncated output";
+                      : retryReason === "stream_timeout"
+                        ? "stream stall"
+                        : "truncated output";
             outputLog(
               "repetitionGuard",
               `Auto-continue after ${loopLabel} on ${model.id}: "${(result.trippedLine ?? result.toolCallLoopKey ?? result.lastVisibleText).slice(0, 80)}"`,

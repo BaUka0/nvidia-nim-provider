@@ -6,7 +6,8 @@ export type LoopRetryReason =
   | "tool_call_loop"
   | "hanging_colon"
   | "output_truncated"
-  | "content_filter";
+  | "content_filter"
+  | "stream_timeout";
 export type RetryReason = LoopRetryReason | "invalid_tool_call" | "empty_stream";
 
 export const LOOP_RETRY_REASONS: ReadonlySet<RetryReason> = new Set([
@@ -15,6 +16,7 @@ export const LOOP_RETRY_REASONS: ReadonlySet<RetryReason> = new Set([
   "hanging_colon",
   "output_truncated",
   "content_filter",
+  "stream_timeout",
 ]);
 
 export function isLoopRetryReason(reason: RetryReason | undefined): reason is LoopRetryReason {
@@ -45,8 +47,8 @@ export interface AttemptRetryEvaluation {
   skippedToolCallNames: string[];
   /**
    * The single winning retry reason in branch order
-   * (loop variants → invalid tool call → empty stream), or undefined when
-   * the attempt is final.
+   * (loop variants including stream stall → invalid tool call → empty stream),
+   * or undefined when the attempt is final.
    */
   retryReason: RetryReason | undefined;
 }
@@ -104,13 +106,6 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     !isTruncatedLength &&
     isContentFilterPartial &&
     loopAutoContinueEligible;
-  const willRetryOnLoop =
-    willRetryRepetitionLoop ||
-    willRetryToolCallLoop ||
-    willRetryHangingColon ||
-    willRetryTruncation ||
-    willRetryContentFilter;
-
   const retryMessage = result.sawToolCall
     ? buildInvalidToolCallRetryMessage(result.skippedToolCalls)
     : undefined;
@@ -126,6 +121,18 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     !result.emittedToolCall &&
     facts.invalidToolRetryCount < facts.maxInvalidToolRetries &&
     Boolean(retryMessage);
+  const willRetryStreamTimeout =
+    Boolean(result.timedOut) &&
+    !result.emittedToolCall &&
+    !willRetryAfterInvalidToolCall &&
+    loopAutoContinueEligible;
+  const willRetryOnLoop =
+    willRetryRepetitionLoop ||
+    willRetryToolCallLoop ||
+    willRetryHangingColon ||
+    willRetryTruncation ||
+    willRetryContentFilter ||
+    willRetryStreamTimeout;
   const willRetryEmptyStream =
     !result.sawReasoning &&
     !result.sawToolCall &&
@@ -143,7 +150,9 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
           ? "hanging_colon"
           : willRetryTruncation
             ? "output_truncated"
-            : "content_filter"
+            : willRetryContentFilter
+              ? "content_filter"
+              : "stream_timeout"
     : willRetryAfterInvalidToolCall
       ? "invalid_tool_call"
       : willRetryEmptyStream

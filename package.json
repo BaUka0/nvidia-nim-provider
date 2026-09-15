@@ -3,7 +3,7 @@
   "publisher": "neuraldock",
   "displayName": "NVIDIA NIM Agent",
   "description": "Use NVIDIA NIM reasoning models in GitHub Copilot Chat for VS Code",
-  "version": "0.11.1",
+  "version": "0.11.2-hotfix.4",
   "license": "MIT",
   "homepage": "https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent",
   "bugs": {
@@ -203,6 +203,13 @@
           "default": true,
           "description": "Trigger fallback if the stream idle timeout is exceeded."
         },
+        "nvidia-nim.fallback.maxChainRestarts": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 5,
+          "description": "How many extra times to restart the failover chain from the original model after every candidate times out with no visible answer. 0 disables chain restarts."
+        },
         "nvidia-nim.fallback.firstTokenTimeoutSeconds": {
           "type": [
             "integer",
@@ -338,14 +345,14 @@
         "nvidia-nim.generation.autoContinueOnLoop": {
           "type": "boolean",
           "default": true,
-          "description": "When the repetition guard trips, the model hangs on a trailing ':', output hits the token limit, a safety filter stops a partial reply, or the same tool call repeats without progress, automatically nudge the model to keep working. Disable to stop that turn without printing a notice in chat."
+          "description": "When the repetition guard trips, the model hangs on a trailing ':', output hits the token limit, a safety filter stops a partial reply, the same tool call repeats without progress, or the stream stalls after partial output, automatically nudge the model to keep working. Disable to stop that turn without printing a notice in chat."
         },
         "nvidia-nim.generation.maxLoopContinues": {
           "type": "integer",
           "default": 2,
           "minimum": 0,
           "maximum": 8,
-          "description": "How many times in one turn to nudge the model after a loop, hanging colon, truncated reply, or repeated tool call. 0 disables auto-continue even if nvidia-nim.generation.autoContinueOnLoop is on."
+          "description": "How many times in one turn to nudge the model after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. 0 disables auto-continue even if nvidia-nim.generation.autoContinueOnLoop is on."
         },
         "nvidia-nim.tools.autoRepairArguments": {
           "type": "boolean",

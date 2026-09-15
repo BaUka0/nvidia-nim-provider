@@ -293,6 +293,7 @@ export function formatSessionLogsPayload(): string | undefined {
       fallbackOnModelUnavailable: fallback.onModelUnavailable,
       fallbackOnEmptyStream: fallback.onEmptyStream,
       fallbackOnTimeout: fallback.onTimeout,
+      maxChainRestarts: fallback.maxChainRestarts,
       firstTokenTimeoutSeconds: fallback.firstTokenTimeoutSeconds,
     },
 

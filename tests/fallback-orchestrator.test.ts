@@ -3,6 +3,7 @@ import { DEFAULT_FALLBACK_CONFIG } from "../src/shared/config";
 import {
   fallbackCapacityLabel,
   isFallbackEligibleError,
+  shouldRestartTimeoutChain,
 } from "../src/provider/fallback-orchestrator";
 
 describe("isFallbackEligibleError", () => {
@@ -75,6 +76,64 @@ describe("isFallbackEligibleError", () => {
         0,
         false,
       ),
+    ).toBe(false);
+  });
+});
+
+describe("shouldRestartTimeoutChain", () => {
+  const config = { ...DEFAULT_FALLBACK_CONFIG, enabled: true, maxChainRestarts: 2 };
+
+  it("restarts after a timeout with no visible content while restarts remain", () => {
+    expect(
+      shouldRestartTimeoutChain({
+        err: new NvidiaApiError("timeout", "stalled"),
+        fallbackConfig: config,
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not restart after visible content, non-timeout errors, or a spent budget", () => {
+    expect(
+      shouldRestartTimeoutChain({
+        err: new NvidiaApiError("timeout", "stalled"),
+        fallbackConfig: config,
+        failingAttemptHasVisibleContent: true,
+        chainRestarts: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRestartTimeoutChain({
+        err: new NvidiaApiError("rate_limited", "429"),
+        fallbackConfig: config,
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRestartTimeoutChain({
+        err: new NvidiaApiError("timeout", "stalled"),
+        fallbackConfig: { ...config, maxChainRestarts: 0 },
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRestartTimeoutChain({
+        err: new NvidiaApiError("timeout", "stalled"),
+        fallbackConfig: config,
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 2,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRestartTimeoutChain({
+        err: new NvidiaApiError("timeout", "stalled"),
+        fallbackConfig: { ...config, onTimeout: false },
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 0,
+      }),
     ).toBe(false);
   });
 });
