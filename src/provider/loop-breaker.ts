@@ -5,6 +5,14 @@ import { LanguageModelChatMessageRole } from "vscode";
 import { normalizeLineForRepetition } from "./repetition-guard";
 import { buildToolCallCanonicalKey, tryParseJsonValue } from "../tools/parser";
 import { cloneNimChatRequest } from "./request-snapshot";
+import { BoundedMap } from "../shared/bounded-map";
+
+const MAX_INJECTED_LOOPS_TRACKED = 128;
+const recentInjectedLoops = new BoundedMap<string, number>(MAX_INJECTED_LOOPS_TRACKED);
+
+export function resetInjectedLoopsForTests(): void {
+  recentInjectedLoops.clear();
+}
 
 const MIN_NORMALIZED_LINE_LENGTH = 10;
 
@@ -267,19 +275,31 @@ export function injectHistoryLoopBreaker(options: {
   modelId: string;
   applyBudget: (body: NimChatRequest) => NimChatRequest;
 }): NimChatRequest {
+  const historyLoopPreamble = detectHistoryLoop(options.historyMessages);
+  const historyLoopTool = detectToolCallHistoryLoop(options.historyMessages);
   const loopContent = buildHistoryLoopBreakerContent(options.historyMessages);
   if (!loopContent) {
     return options.requestBody;
   }
 
-  if (hasEscalatedLoopBreaker(options.requestBody.messages, options.historyMessages)) {
+  const loopKey = historyLoopTool ?? historyLoopPreamble ?? loopContent;
+  const previousInjections = recentInjectedLoops.get(loopKey) ?? 0;
+  const hasEscalatedMarker = hasEscalatedLoopBreaker(
+    options.requestBody.messages,
+    options.historyMessages,
+  );
+  const hasMarker = hasLoopBreaker(options.requestBody.messages, options.historyMessages);
+
+  if (hasEscalatedMarker || (hasMarker && previousInjections >= 1) || previousInjections >= 2) {
     return options.requestBody;
   }
 
-  const escalate = hasLoopBreaker(options.requestBody.messages, options.historyMessages);
+  const escalate = hasMarker || previousInjections >= 1;
   const breakerContent = escalate
     ? `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_ESCALATION_MARKER} ${HISTORY_LOOP_ESCALATION_NUDGE}`
     : loopContent;
+
+  recentInjectedLoops.set(loopKey, previousInjections + 1);
 
   debugLog("repetitionGuard", { action: escalate ? "injectBreakerEscalation" : "injectBreaker" });
   outputLog(

@@ -2078,6 +2078,44 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("stops and auto-continues when a reasoning repetition loop occurs", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const reasoningLoopStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Let me think about this. " } }] };
+      yield { choices: [{ delta: { reasoning_content: "!".repeat(35) } }] };
+      yield { choices: [{ delta: { reasoning_content: "more reasoning" } }] };
+    };
+    const recoveryStream = async function* () {
+      yield {
+        choices: [{ delta: { content: "Here is the direct answer." }, finish_reason: "stop" }],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock)
+      .mockReturnValueOnce(reasoningLoopStream())
+      .mockReturnValueOnce(recoveryStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Here is the direct answer." }),
+    );
+  });
+
   it("does not loop-retry content_filter after a tool call in the same turn", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     const filteredToolStream = async function* () {

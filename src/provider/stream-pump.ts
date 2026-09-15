@@ -102,6 +102,9 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   const repetitionGuard = new RepetitionGuard({
     maxRepeatedLines: input.maxRepeatedLines,
   });
+  const reasoningGuard = new RepetitionGuard({
+    maxRepeatedLines: input.maxRepeatedLines,
+  });
 
   const markFirstResponse = (): void => {
     if (firstResponseAtMs === undefined) {
@@ -110,7 +113,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   };
 
   const emitThinking = (text: string): void => {
-    if (!text) {
+    if (!text || reasoningGuard.tripped) {
       return;
     }
     const thinkingResult = emitThinkingPart(input.progress, text, input.showReasoningInChat);
@@ -260,7 +263,22 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     onThinking: (text) => {
       sawReasoning = true;
       markFirstResponse();
+      let crossedThreshold = false;
+      if (!reasoningGuard.tripped) {
+        crossedThreshold = reasoningGuard.add(text);
+      }
       emitThinking(text);
+      if (crossedThreshold) {
+        debugLog("repetitionGuard", {
+          model: input.model.id,
+          trippedLine: reasoningGuard.trippedLine,
+          source: "reasoning",
+        });
+        outputLog(
+          "repetitionGuard",
+          `Stopped degenerate repeat loop in reasoning on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
+        );
+      }
     },
     onText: (text) => {
       processAnswerText(text);
@@ -338,7 +356,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
         toolCallLoopKey ??= getToolAggregator().getToolCallLoop()?.key;
       }
 
-      if (repetitionGuard.tripped || toolCallLoopKey) {
+      if (repetitionGuard.tripped || reasoningGuard.tripped || toolCallLoopKey) {
         debugLog("repetitionGuard", "stopping stream consumption");
         break;
       }
@@ -357,6 +375,18 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
           `Stopped degenerate repeat loop on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
         );
       }
+    }
+
+    if (!reasoningGuard.tripped && reasoningGuard.flush()) {
+      debugLog("repetitionGuard", {
+        model: input.model.id,
+        trippedLine: reasoningGuard.trippedLine,
+        source: "reasoningFlush",
+      });
+      outputLog(
+        "repetitionGuard",
+        `Stopped degenerate repeat loop in reasoning on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
+      );
     }
 
     if (toolAggregator) {
@@ -412,8 +442,8 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     lastUsage,
     lastVisibleText,
     skippedToolCalls,
-    repetitionTripped: repetitionGuard.tripped,
-    trippedLine: repetitionGuard.trippedLine,
+    repetitionTripped: repetitionGuard.tripped || reasoningGuard.tripped,
+    trippedLine: repetitionGuard.trippedLine ?? reasoningGuard.trippedLine,
     toolCallLoopTripped: toolCallLoopKey !== undefined,
     ...(toolCallLoopKey ? { toolCallLoopKey } : {}),
     streamChunkCount,

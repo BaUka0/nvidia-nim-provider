@@ -1,6 +1,12 @@
 import { RepetitionGuard, normalizeLineForRepetition } from "../src/provider/repetition-guard";
 import { detectHistoryLoop, detectToolCallHistoryLoop } from "../src/provider/loop-breaker";
-import { detectCycleHint, detectPhraseCycle } from "../src/shared/cycle-detection";
+import {
+  detectCharacterRunaway,
+  detectCycleHint,
+  detectPeriodicCycle,
+  detectPhraseCycle,
+  detectRunawayCycle,
+} from "../src/shared/cycle-detection";
 
 const ISSUE_7_SUPER_CYCLE = [
   "Probably it's done. Let's check subfolders. We need to see if it succeeded. Let's check a sample file. We need to check if the script is still running or finished. Let's see output more. ",
@@ -15,6 +21,34 @@ describe("detectPhraseCycle", () => {
     ).toBeUndefined();
     expect(detectCycleHint("")).toBe(false);
     expect(detectCycleHint(ISSUE_7_SUPER_CYCLE.repeat(3))).toBe(true);
+  });
+});
+
+describe("detectRunawayCycle", () => {
+  it("detects 30+ consecutive identical characters", () => {
+    expect(detectCharacterRunaway("!".repeat(30))).toBe("!".repeat(30));
+    expect(detectCharacterRunaway("?".repeat(35))).toBe("?".repeat(35));
+    expect(detectCharacterRunaway(".".repeat(32))).toBe(".".repeat(32));
+    expect(detectCharacterRunaway("!".repeat(29))).toBeUndefined();
+  });
+
+  it("allows standard markdown dividers under 80 characters but catches runaway dividers", () => {
+    expect(detectCharacterRunaway("-".repeat(40))).toBeUndefined();
+    expect(detectCharacterRunaway("=".repeat(50))).toBeUndefined();
+    expect(detectCharacterRunaway("-".repeat(85))).toBeDefined();
+  });
+
+  it("detects short periodic pattern cycles", () => {
+    expect(detectPeriodicCycle("!?".repeat(25))).toBeDefined();
+    expect(detectPeriodicCycle("abc".repeat(15))).toBeDefined();
+    expect(detectPeriodicCycle("short text")).toBeUndefined();
+  });
+
+  it("detects runaway cycles via detectRunawayCycle and flags cycleHint", () => {
+    expect(detectRunawayCycle("!".repeat(30))).toBe("!".repeat(30));
+    expect(detectRunawayCycle("!?".repeat(25))).toBeDefined();
+    expect(detectCycleHint("!".repeat(30))).toBe(true);
+    expect(detectCycleHint("!?".repeat(25))).toBe(true);
   });
 });
 
@@ -217,6 +251,21 @@ describe("RepetitionGuard.add", () => {
     }
     expect(guard.add(`${line}\n`)).toBe(false);
     expect(guard.add(`${line}\n`)).toBe(true);
+  });
+
+  it("trips immediately on 30+ identical characters without newlines", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 4 });
+    expect(guard.add("!".repeat(20))).toBe(false);
+    expect(guard.tripped).toBe(false);
+    expect(guard.add("!".repeat(10))).toBe(true);
+    expect(guard.tripped).toBe(true);
+    expect(guard.trippedLine).toContain("!");
+  });
+
+  it("trips on short periodic cycles without newlines", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 4 });
+    expect(guard.add("!?".repeat(25))).toBe(true);
+    expect(guard.tripped).toBe(true);
   });
 });
 

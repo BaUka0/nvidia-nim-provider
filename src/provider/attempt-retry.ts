@@ -77,7 +77,8 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
   );
   const loopAutoContinueEligible =
     facts.generationAutoContinueOnLoop && facts.loopContinueCount < facts.maxLoopContinues;
-  const willRetryRepetitionLoop = isRepetitionLoop && loopAutoContinueEligible && hasVisibleText;
+  const willRetryRepetitionLoop =
+    isRepetitionLoop && loopAutoContinueEligible && (hasVisibleText || result.sawReasoning);
   const willRetryToolCallLoop =
     !willRetryRepetitionLoop &&
     Boolean(result.toolCallLoopTripped) &&

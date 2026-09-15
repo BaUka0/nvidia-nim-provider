@@ -129,4 +129,18 @@ describe("evaluateAttemptRetry", () => {
     });
     expect(evaluation.retryReason).toBeUndefined();
   });
+
+  it("auto-continues a loop that tripped during reasoning before visible text", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        repetitionTripped: true,
+        sawReasoning: true,
+        reportedContent: true,
+        reportedVisibleContent: false,
+        lastVisibleText: "",
+      }),
+    });
+    expect(evaluation.retryReason).toBe("repetition_loop");
+  });
 });

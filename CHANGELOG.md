@@ -10,6 +10,9 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ### Fixed
 
+- Fixed runaway character and punctuation loops (such as infinite repeating exclamation marks) bypassing repetition detection. Streaming now immediately trips and halts when character or short pattern runaways occur.
+- Integrated repetition detection into reasoning streams, preventing models from looping indefinitely behind the "Analyzing" spinner and burning tokens.
+- Cross-turn agent tool loops now automatically escalate to an explicit stop instruction rather than repeatedly injecting soft nudges across turns.
 - Stalled streams no longer wait up to 10 minutes before timing out on large context models. The stream idle timeout setting is now strictly honored, allowing stalled connections to abort and fail over to the backup model promptly.
 - Initial stream connections that hang indefinitely before HTTP headers are received now time out promptly, triggering automatic failover to the configured fallback model.
 

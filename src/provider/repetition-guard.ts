@@ -8,7 +8,12 @@
  * Normalization is Unicode-aware so non-English loops (Cyrillic, CJK,
  * accented) are caught too.
  */
-import { CYCLE_SCAN_CHARS, detectPhraseCycle, normalizeForCycle } from "../shared/cycle-detection";
+import {
+  CYCLE_SCAN_CHARS,
+  detectPhraseCycle,
+  detectRunawayCycle,
+  normalizeForCycle,
+} from "../shared/cycle-detection";
 
 export interface RepetitionGuardOptions {
   readonly maxRepeatedLines: number;
@@ -104,6 +109,9 @@ export class RepetitionGuard {
     if (!remaining) {
       return false;
     }
+    if (!this.inCodeFence && this.tripFromRunaway(remaining)) {
+      return true;
+    }
     return this.observeLine(remaining, threshold);
   }
 
@@ -122,6 +130,9 @@ export class RepetitionGuard {
       } else {
         return false;
       }
+    }
+    if (this.tripFromRunaway(rawLine)) {
+      return true;
     }
     this.appendVisible(rawLine);
     const key = normalizeLineForRepetition(rawLine);
@@ -168,7 +179,20 @@ export class RepetitionGuard {
     if (this.inCodeFence || this.trippedLineValue !== undefined) {
       return false;
     }
-    return this.tripFromPhrase(this.visibleWindow + this.pendingLine);
+    const candidate = this.visibleWindow + this.pendingLine;
+    if (this.tripFromRunaway(candidate)) {
+      return true;
+    }
+    return this.tripFromPhrase(candidate);
+  }
+
+  private tripFromRunaway(text: string): boolean {
+    const runaway = detectRunawayCycle(text);
+    if (!runaway) {
+      return false;
+    }
+    this.trippedLineValue = runaway;
+    return true;
   }
 
   private tripFromPhrase(text: string): boolean {
