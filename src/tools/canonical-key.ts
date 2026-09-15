@@ -12,11 +12,8 @@ export function buildToolCallCanonicalKey(name: string, args: unknown): string {
 
 export function isDuplicateSuppressionEnabled(
   toolName: string,
-  toolsConfig: ToolsConfig = ConfigManager.getToolsConfig(),
+  _toolsConfig: ToolsConfig = ConfigManager.getToolsConfig(),
 ): boolean {
-  if (!toolsConfig.suppressDuplicateReads) {
-    return false;
-  }
   return isReadTool(toolName);
 }
 

@@ -28,6 +28,13 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 ### Removed
 
 - Removed deprecated legacy settings `nvidia-nim.reasoningMode` and `nvidia-nim.showReasoning`.
+- Removed non-functional `nvidia-nim.reasoning.showInChat` setting. Reasoning process is natively displayed in Copilot Chat via collapsible thinking blocks.
+- Removed obsolete `nvidia-nim.tools.autoRepairArguments` and `nvidia-nim.tools.autoRetryInvalidCalls` settings. Argument repair and invalid call recovery are now always active by default.
+- Removed redundant fallback trigger settings `nvidia-nim.fallback.onRateLimit`, `nvidia-nim.fallback.onModelUnavailable`, and `nvidia-nim.fallback.onEmptyStream`. Failover for rate limits, unavailable models, and empty responses is now unconditionally active whenever fallback is enabled.
+- Removed redundant `nvidia-nim.generation.autoContinueOnLoop` setting. Auto-continue after loops, hanging colons, or stalled streams is now controlled directly by `nvidia-nim.generation.maxLoopContinues` (setting `0` disables auto-continue).
+- Removed redundant `nvidia-nim.tools.suppressDuplicateReads` setting. Suppression of duplicate read-only tool calls is now always active to protect agent workflows.
+- Removed redundant `nvidia-nim.context.autoCompactOnOverflow` setting. Automatic conversation compaction on context window overflow is now always active.
+- Removed unused `nvidia-nim.developer.logTimingBreakdowns` setting. Generation timing metrics are included directly when debug logging is active.
 - Removed DeepSeek V4 Pro 0813 (`deepseek-ai/deepseek-v4-pro-0813`) as it has been discontinued on NVIDIA NIM.
 
 ## [0.11.1] - 2026-09-13

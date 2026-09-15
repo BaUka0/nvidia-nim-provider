@@ -23,8 +23,6 @@ function result(overrides: Partial<StreamAttemptResult> = {}): StreamAttemptResu
 
 const baseFacts = {
   toolsEnabled: true,
-  generationAutoContinueOnLoop: true,
-  autoRetryInvalidCalls: true,
   loopContinueCount: 0,
   maxLoopContinues: DEFAULT_GENERATION_CONFIG.maxLoopContinues,
   invalidToolRetryCount: 0,
@@ -122,6 +120,19 @@ describe("evaluateAttemptRetry", () => {
     const evaluation = evaluateAttemptRetry({
       ...baseFacts,
       loopContinueCount: DEFAULT_GENERATION_CONFIG.maxLoopContinues,
+      result: result({
+        repetitionTripped: true,
+        reportedVisibleContent: true,
+        lastVisibleText: "Let me fix the formatting issue:",
+      }),
+    });
+    expect(evaluation.retryReason).toBeUndefined();
+  });
+
+  it("does not auto-continue when maxLoopContinues is 0", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      maxLoopContinues: 0,
       result: result({
         repetitionTripped: true,
         reportedVisibleContent: true,

@@ -183,21 +183,6 @@
           "default": [],
           "description": "Ordered list of fallback models tried in sequence before giving up. Takes precedence over fallback.model / fallback.visionModel; unknown or unavailable entries are skipped, and the currently failing model is never retried."
         },
-        "nvidia-nim.fallback.onRateLimit": {
-          "type": "boolean",
-          "default": true,
-          "description": "Trigger fallback on rate limits or server overload (HTTP 429 / 529)."
-        },
-        "nvidia-nim.fallback.onModelUnavailable": {
-          "type": "boolean",
-          "default": true,
-          "description": "Trigger fallback if the model is temporarily disabled or unavailable on the server (HTTP 404)."
-        },
-        "nvidia-nim.fallback.onEmptyStream": {
-          "type": "boolean",
-          "default": true,
-          "description": "Trigger fallback if the model returns an empty stream after retry attempts."
-        },
         "nvidia-nim.fallback.onTimeout": {
           "type": "boolean",
           "default": true,
@@ -275,11 +260,6 @@
           "default": "none",
           "description": "Configure the default reasoning effort mode sent to supported models."
         },
-        "nvidia-nim.reasoning.showInChat": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show model reasoning content (thinking process) in responses."
-        },
         "nvidia-nim.generation.temperature": {
           "type": [
             "number",
@@ -330,16 +310,6 @@
           "maximum": 2,
           "description": "Presence penalty discourages the model from repeating the same topics. Null disables custom penalty."
         },
-        "nvidia-nim.generation.repetitionPenalty": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "default": null,
-          "minimum": 0.5,
-          "maximum": 2,
-          "description": "Repetition penalty (NVIDIA NIM specific) penalizes already generated tokens; >1 discourages repetition, <1 encourages it."
-        },
         "nvidia-nim.generation.maxRepeatedLines": {
           "type": "integer",
           "default": 4,
@@ -347,32 +317,12 @@
           "maximum": 50,
           "description": "Stop the response early when the same normalized line is repeated this many times (guards against degenerate 'Let me...' loops). 0 disables the guard. Code fences are ignored to avoid false positives on repetitive code."
         },
-        "nvidia-nim.generation.autoContinueOnLoop": {
-          "type": "boolean",
-          "default": true,
-          "description": "When the repetition guard trips, the model hangs on a trailing ':', output hits the token limit, a safety filter stops a partial reply, the same tool call repeats without progress, or the stream stalls after partial output, automatically nudge the model to keep working. Disable to stop that turn without printing a notice in chat."
-        },
         "nvidia-nim.generation.maxLoopContinues": {
           "type": "integer",
           "default": 2,
           "minimum": 0,
           "maximum": 8,
-          "description": "How many times in one turn to nudge the model after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. 0 disables auto-continue even if nvidia-nim.generation.autoContinueOnLoop is on."
-        },
-        "nvidia-nim.tools.autoRepairArguments": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically repair stringified JSON, missing quotes, and malformed tool call arguments."
-        },
-        "nvidia-nim.tools.autoRetryInvalidCalls": {
-          "type": "boolean",
-          "default": true,
-          "description": "Send a system correction prompt when the model produces invalid or unfixable tool arguments."
-        },
-        "nvidia-nim.tools.suppressDuplicateReads": {
-          "type": "boolean",
-          "default": true,
-          "description": "Suppress duplicate consecutive identical read-only tool calls."
+          "description": "How many times in one turn to nudge the model after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. 0 disables auto-continue."
         },
         "nvidia-nim.tools.maxConsecutiveIdenticalCalls": {
           "type": "integer",
@@ -380,11 +330,6 @@
           "minimum": 0,
           "maximum": 20,
           "description": "Drop extra copies of the same validated tool call in one reply after this many identical calls. Already-emitted calls still run. 0 disables the cap."
-        },
-        "nvidia-nim.context.autoCompactOnOverflow": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically compact older conversation turns with summarization on context overflow (HTTP 400)."
         },
         "nvidia-nim.context.summarizationModel": {
           "type": "string",
@@ -416,11 +361,6 @@
           "type": "boolean",
           "default": false,
           "description": "Enable verbose technical debug logging (retries, budget, tool names, finish reasons). SSE chunks and user message bodies stay off unless their own settings are enabled."
-        },
-        "nvidia-nim.developer.logTimingBreakdowns": {
-          "type": "boolean",
-          "default": true,
-          "description": "Log detailed generation timing and speed metrics (tokens/sec, TTFT, durations)."
         },
         "nvidia-nim.developer.logStreamChunks": {
           "type": "boolean",

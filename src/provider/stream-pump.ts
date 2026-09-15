@@ -47,10 +47,9 @@ export interface StreamAttemptInput {
   maxFetchAttempts: number;
   firstTokenTimeoutMs?: number;
   toolsConfig: ToolsConfig;
-  showReasoningInChat: boolean;
   hasRetriedRepetitionLoop: boolean;
   maxRepeatedLines: number;
-  autoContinueOnLoop: boolean;
+  maxLoopContinues: number;
   idleTimeoutMs?: number;
   /** When false, skip DSML/XML embedded tool recovery (native-only adapters). */
   parseEmbeddedToolText?: boolean;
@@ -120,7 +119,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     if (!text || reasoningGuard.tripped) {
       return;
     }
-    const thinkingResult = emitThinkingPart(input.progress, text, input.showReasoningInChat);
+    const thinkingResult = emitThinkingPart(input.progress, text);
     if (thinkingResult.didReport) {
       reportedContent = true;
       input.onContentReported?.();
@@ -156,7 +155,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       input.onVisibleContentReported?.();
     }
     if (crossedThreshold) {
-      const willAutoContinue = input.autoContinueOnLoop && !input.hasRetriedRepetitionLoop;
+      const willAutoContinue = input.maxLoopContinues > 0 && !input.hasRetriedRepetitionLoop;
       debugLog("repetitionGuard", {
         model: input.model.id,
         trippedLine: repetitionGuard.trippedLine,
@@ -398,7 +397,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   }
 
   if (!repetitionGuard.tripped && repetitionGuard.flush()) {
-    const willAutoContinue = input.autoContinueOnLoop && !input.hasRetriedRepetitionLoop;
+    const willAutoContinue = input.maxLoopContinues > 0 && !input.hasRetriedRepetitionLoop;
     debugLog("repetitionGuard", {
       model: input.model.id,
       trippedLine: repetitionGuard.trippedLine,

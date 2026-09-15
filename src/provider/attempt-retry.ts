@@ -26,8 +26,6 @@ export function isLoopRetryReason(reason: RetryReason | undefined): reason is Lo
 export interface AttemptRetryFacts {
   result: StreamAttemptResult;
   toolsEnabled: boolean;
-  generationAutoContinueOnLoop: boolean;
-  autoRetryInvalidCalls: boolean;
   loopContinueCount: number;
   maxLoopContinues: number;
   invalidToolRetryCount: number;
@@ -77,8 +75,7 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
   const hasVisibleText = Boolean(
     result.lastVisibleText && result.lastVisibleText.trim().length > 0,
   );
-  const loopAutoContinueEligible =
-    facts.generationAutoContinueOnLoop && facts.loopContinueCount < facts.maxLoopContinues;
+  const loopAutoContinueEligible = facts.loopContinueCount < facts.maxLoopContinues;
   const willRetryRepetitionLoop =
     isRepetitionLoop && loopAutoContinueEligible && (hasVisibleText || result.sawReasoning);
   const willRetryToolCallLoop =
@@ -116,7 +113,6 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
         call.name.length > 0 && call.name !== "tool_call" && !facts.knownToolNames.has(call.name),
     );
   const willRetryAfterInvalidToolCall =
-    facts.autoRetryInvalidCalls &&
     result.sawToolCall &&
     !result.emittedToolCall &&
     facts.invalidToolRetryCount < facts.maxInvalidToolRetries &&

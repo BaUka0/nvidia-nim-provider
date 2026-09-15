@@ -28,9 +28,6 @@ export interface FallbackConfig {
   readonly model: string;
   readonly visionModel: string;
   readonly priorityList: string[];
-  readonly onRateLimit: boolean;
-  readonly onModelUnavailable: boolean;
-  readonly onEmptyStream: boolean;
   readonly onTimeout: boolean;
   readonly onFirstTokenTimeout: boolean;
   readonly firstTokenTimeoutSeconds: number | null;
@@ -49,7 +46,6 @@ export interface NetworkConfig {
 
 export interface ReasoningConfig {
   readonly mode: "none" | "on" | "medium" | "high" | "max";
-  readonly showInChat: boolean;
 }
 
 export interface GenerationConfig {
@@ -58,21 +54,15 @@ export interface GenerationConfig {
   readonly maxOutputTokens: number | null;
   readonly frequencyPenalty: number | null;
   readonly presencePenalty: number | null;
-  readonly repetitionPenalty: number | null;
   readonly maxRepeatedLines: number;
-  readonly autoContinueOnLoop: boolean;
   readonly maxLoopContinues: number;
 }
 
 export interface ToolsConfig {
-  readonly autoRepairArguments: boolean;
-  readonly autoRetryInvalidCalls: boolean;
-  readonly suppressDuplicateReads: boolean;
   readonly maxConsecutiveIdenticalCalls: number;
 }
 
 export interface ContextConfig {
-  readonly autoCompactOnOverflow: boolean;
   readonly summarizationModel: string;
   readonly safetyMarginPercent: number;
 }
@@ -83,7 +73,6 @@ export interface UiConfig {
 
 export interface DeveloperConfig {
   readonly debugLogging: boolean;
-  readonly logTimingBreakdowns: boolean;
   readonly logStreamChunks: boolean;
   readonly logUserMessages: boolean;
 }
@@ -104,9 +93,6 @@ export const DEFAULT_FALLBACK_CONFIG: FallbackConfig = {
   model: FALLBACK_MODEL_ID,
   visionModel: FALLBACK_VISION_MODEL_ID,
   priorityList: [],
-  onRateLimit: true,
-  onModelUnavailable: true,
-  onEmptyStream: true,
   onTimeout: true,
   onFirstTokenTimeout: true,
   firstTokenTimeoutSeconds: null,
@@ -124,7 +110,6 @@ export const DEFAULT_NETWORK_CONFIG: NetworkConfig = {
 
 export const DEFAULT_REASONING_CONFIG: ReasoningConfig = {
   mode: "none",
-  showInChat: false,
 };
 
 export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
@@ -133,21 +118,15 @@ export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
   maxOutputTokens: null,
   frequencyPenalty: null,
   presencePenalty: null,
-  repetitionPenalty: null,
   maxRepeatedLines: 4,
-  autoContinueOnLoop: true,
   maxLoopContinues: 2,
 };
 
 export const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
-  autoRepairArguments: true,
-  autoRetryInvalidCalls: true,
-  suppressDuplicateReads: true,
   maxConsecutiveIdenticalCalls: 3,
 };
 
 export const DEFAULT_CONTEXT_CONFIG: ContextConfig = {
-  autoCompactOnOverflow: true,
   summarizationModel: FALLBACK_MODEL_ID,
   safetyMarginPercent: 1.0,
 };
@@ -158,7 +137,6 @@ export const DEFAULT_UI_CONFIG: UiConfig = {
 
 export const DEFAULT_DEVELOPER_CONFIG: DeveloperConfig = {
   debugLogging: false,
-  logTimingBreakdowns: true,
   logStreamChunks: false,
   logUserMessages: false,
 };
@@ -175,18 +153,6 @@ export class ConfigManager {
     const visionModel = config.get<string>(
       "fallback.visionModel",
       DEFAULT_FALLBACK_CONFIG.visionModel,
-    );
-    const onRateLimit = config.get<boolean>(
-      "fallback.onRateLimit",
-      DEFAULT_FALLBACK_CONFIG.onRateLimit,
-    );
-    const onModelUnavailable = config.get<boolean>(
-      "fallback.onModelUnavailable",
-      DEFAULT_FALLBACK_CONFIG.onModelUnavailable,
-    );
-    const onEmptyStream = config.get<boolean>(
-      "fallback.onEmptyStream",
-      DEFAULT_FALLBACK_CONFIG.onEmptyStream,
     );
     const onTimeout = config.get<boolean>("fallback.onTimeout", DEFAULT_FALLBACK_CONFIG.onTimeout);
     const onFirstTokenTimeout = config.get<boolean>(
@@ -240,9 +206,6 @@ export class ConfigManager {
       model: sanitizeKnownModelId(model, DEFAULT_FALLBACK_CONFIG.model),
       visionModel: sanitizeKnownModelId(visionModel, DEFAULT_FALLBACK_CONFIG.visionModel),
       priorityList,
-      onRateLimit,
-      onModelUnavailable,
-      onEmptyStream,
       onTimeout,
       onFirstTokenTimeout,
       firstTokenTimeoutSeconds,
@@ -306,14 +269,8 @@ export class ConfigManager {
       ? (rawMode as ReasoningConfig["mode"])
       : DEFAULT_REASONING_CONFIG.mode;
 
-    const showInChat = config.get<boolean>(
-      "reasoning.showInChat",
-      DEFAULT_REASONING_CONFIG.showInChat,
-    );
-
     return {
       mode,
-      showInChat: Boolean(showInChat),
     };
   }
 
@@ -349,12 +306,6 @@ export class ConfigManager {
         ? Math.max(-2, Math.min(2, rawPresencePenalty))
         : null;
 
-    const rawRepetitionPenalty = config.get<number | null>("generation.repetitionPenalty", null);
-    const repetitionPenalty =
-      typeof rawRepetitionPenalty === "number" && Number.isFinite(rawRepetitionPenalty)
-        ? Math.max(0.5, Math.min(2, rawRepetitionPenalty))
-        : null;
-
     const rawMaxRepeatedLines = config.get<number>(
       "generation.maxRepeatedLines",
       DEFAULT_GENERATION_CONFIG.maxRepeatedLines,
@@ -363,11 +314,6 @@ export class ConfigManager {
       typeof rawMaxRepeatedLines === "number" && Number.isFinite(rawMaxRepeatedLines)
         ? Math.max(0, Math.min(50, Math.round(rawMaxRepeatedLines)))
         : DEFAULT_GENERATION_CONFIG.maxRepeatedLines;
-
-    const autoContinueOnLoop = config.get<boolean>(
-      "generation.autoContinueOnLoop",
-      DEFAULT_GENERATION_CONFIG.autoContinueOnLoop,
-    );
 
     const rawMaxLoopContinues = config.get<number>(
       "generation.maxLoopContinues",
@@ -384,28 +330,13 @@ export class ConfigManager {
       maxOutputTokens,
       frequencyPenalty,
       presencePenalty,
-      repetitionPenalty,
       maxRepeatedLines,
-      autoContinueOnLoop: autoContinueOnLoop ?? DEFAULT_GENERATION_CONFIG.autoContinueOnLoop,
       maxLoopContinues,
     };
   }
 
   public static getToolsConfig(): ToolsConfig {
     const config = this.getConfiguration();
-    const autoRepairArguments = config.get<boolean>(
-      "tools.autoRepairArguments",
-      DEFAULT_TOOLS_CONFIG.autoRepairArguments,
-    );
-    const autoRetryInvalidCalls = config.get<boolean>(
-      "tools.autoRetryInvalidCalls",
-      DEFAULT_TOOLS_CONFIG.autoRetryInvalidCalls,
-    );
-    const suppressDuplicateReads = config.get<boolean>(
-      "tools.suppressDuplicateReads",
-      DEFAULT_TOOLS_CONFIG.suppressDuplicateReads,
-    );
-
     const rawMaxConsecutiveIdenticalCalls = config.get<number>(
       "tools.maxConsecutiveIdenticalCalls",
       DEFAULT_TOOLS_CONFIG.maxConsecutiveIdenticalCalls,
@@ -417,19 +348,12 @@ export class ConfigManager {
         : DEFAULT_TOOLS_CONFIG.maxConsecutiveIdenticalCalls;
 
     return {
-      autoRepairArguments,
-      autoRetryInvalidCalls,
-      suppressDuplicateReads,
       maxConsecutiveIdenticalCalls,
     };
   }
 
   public static getContextConfig(): ContextConfig {
     const config = this.getConfiguration();
-    const autoCompactOnOverflow = config.get<boolean>(
-      "context.autoCompactOnOverflow",
-      DEFAULT_CONTEXT_CONFIG.autoCompactOnOverflow,
-    );
     const summarizationModel = config.get<string>(
       "context.summarizationModel",
       DEFAULT_CONTEXT_CONFIG.summarizationModel,
@@ -444,7 +368,6 @@ export class ConfigManager {
         : DEFAULT_CONTEXT_CONFIG.safetyMarginPercent;
 
     return {
-      autoCompactOnOverflow,
       summarizationModel: sanitizeKnownModelId(
         summarizationModel,
         DEFAULT_CONTEXT_CONFIG.summarizationModel,
@@ -470,10 +393,6 @@ export class ConfigManager {
       "developer.debugLogging",
       DEFAULT_DEVELOPER_CONFIG.debugLogging,
     );
-    const logTimingBreakdowns = config.get<boolean>(
-      "developer.logTimingBreakdowns",
-      DEFAULT_DEVELOPER_CONFIG.logTimingBreakdowns,
-    );
     const logStreamChunks = config.get<boolean>(
       "developer.logStreamChunks",
       DEFAULT_DEVELOPER_CONFIG.logStreamChunks,
@@ -484,7 +403,6 @@ export class ConfigManager {
     );
     return {
       debugLogging,
-      logTimingBreakdowns,
       logStreamChunks: logStreamChunks ?? DEFAULT_DEVELOPER_CONFIG.logStreamChunks,
       logUserMessages: logUserMessages ?? DEFAULT_DEVELOPER_CONFIG.logUserMessages,
     };

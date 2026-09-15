@@ -37,9 +37,6 @@ describe("ConfigManager", () => {
       expect(config.enabled).toBe(true);
       expect(config.model).toBe(FALLBACK_MODEL_ID);
       expect(config.visionModel).toBe(FALLBACK_VISION_MODEL_ID);
-      expect(config.onRateLimit).toBe(true);
-      expect(config.onModelUnavailable).toBe(true);
-      expect(config.onEmptyStream).toBe(true);
       expect(config.onTimeout).toBe(true);
       expect(config.firstTokenTimeoutSeconds).toBeNull();
       expect(config.maxChainRestarts).toBe(2);
@@ -51,9 +48,6 @@ describe("ConfigManager", () => {
       mockStore["fallback.enabled"] = false;
       mockStore["fallback.model"] = "deepseek-ai/deepseek-v4-flash-0731";
       mockStore["fallback.visionModel"] = "moonshotai/kimi-k3";
-      mockStore["fallback.onRateLimit"] = false;
-      mockStore["fallback.onModelUnavailable"] = false;
-      mockStore["fallback.onEmptyStream"] = false;
       mockStore["fallback.onTimeout"] = false;
       mockStore["fallback.onFirstTokenTimeout"] = false;
       mockStore["fallback.firstTokenTimeoutSeconds"] = 25;
@@ -65,9 +59,6 @@ describe("ConfigManager", () => {
       expect(config.enabled).toBe(false);
       expect(config.model).toBe("deepseek-ai/deepseek-v4-flash-0731");
       expect(config.visionModel).toBe("moonshotai/kimi-k3");
-      expect(config.onRateLimit).toBe(false);
-      expect(config.onModelUnavailable).toBe(false);
-      expect(config.onEmptyStream).toBe(false);
       expect(config.onTimeout).toBe(false);
       expect(config.onFirstTokenTimeout).toBe(false);
       expect(config.firstTokenTimeoutSeconds).toBe(25);
@@ -189,25 +180,22 @@ describe("ConfigManager", () => {
       const config = ConfigManager.getReasoningConfig();
       expect(config).toEqual(DEFAULT_REASONING_CONFIG);
       expect(config.mode).toBe("none");
-      expect(config.showInChat).toBe(false);
     });
 
     it("reads reasoning setting keys", () => {
       mockStore["reasoning.mode"] = "high";
-      mockStore["reasoning.showInChat"] = true;
 
       const config = ConfigManager.getReasoningConfig();
       expect(config.mode).toBe("high");
-      expect(config.showInChat).toBe(true);
     });
 
     it("ignores removed legacy keys", () => {
       mockStore["reasoningMode"] = "max";
       mockStore["showReasoning"] = true;
+      mockStore["reasoning.showInChat"] = true;
 
       const config = ConfigManager.getReasoningConfig();
       expect(config.mode).toBe("none");
-      expect(config.showInChat).toBe(false);
     });
 
     it("handles invalid reasoning mode by defaulting to none", () => {
@@ -225,9 +213,7 @@ describe("ConfigManager", () => {
       expect(config.maxOutputTokens).toBeNull();
       expect(config.frequencyPenalty).toBeNull();
       expect(config.presencePenalty).toBeNull();
-      expect(config.repetitionPenalty).toBeNull();
       expect(config.maxRepeatedLines).toBe(4);
-      expect(config.autoContinueOnLoop).toBe(true);
       expect(config.maxLoopContinues).toBe(2);
     });
 
@@ -248,7 +234,7 @@ describe("ConfigManager", () => {
       expect(ConfigManager.getGenerationConfig().maxOutputTokens).toBe(4096);
     });
 
-    it("clamps frequency, presence, and repetition penalties", () => {
+    it("clamps frequency and presence penalties", () => {
       mockStore["generation.frequencyPenalty"] = 5;
       expect(ConfigManager.getGenerationConfig().frequencyPenalty).toBe(2);
       mockStore["generation.frequencyPenalty"] = -5;
@@ -260,13 +246,6 @@ describe("ConfigManager", () => {
       expect(ConfigManager.getGenerationConfig().presencePenalty).toBe(2);
       mockStore["generation.presencePenalty"] = -3;
       expect(ConfigManager.getGenerationConfig().presencePenalty).toBe(-2);
-
-      mockStore["generation.repetitionPenalty"] = 0.1;
-      expect(ConfigManager.getGenerationConfig().repetitionPenalty).toBe(0.5);
-      mockStore["generation.repetitionPenalty"] = 5;
-      expect(ConfigManager.getGenerationConfig().repetitionPenalty).toBe(2);
-      mockStore["generation.repetitionPenalty"] = 1.05;
-      expect(ConfigManager.getGenerationConfig().repetitionPenalty).toBe(1.05);
     });
 
     it("rejects non-finite penalties as null", () => {
@@ -274,8 +253,6 @@ describe("ConfigManager", () => {
       expect(ConfigManager.getGenerationConfig().frequencyPenalty).toBeNull();
       mockStore["generation.presencePenalty"] = Number.POSITIVE_INFINITY;
       expect(ConfigManager.getGenerationConfig().presencePenalty).toBeNull();
-      mockStore["generation.repetitionPenalty"] = "1.1";
-      expect(ConfigManager.getGenerationConfig().repetitionPenalty).toBeNull();
     });
 
     it("clamps generation.maxRepeatedLines into the 0..50 range", () => {
@@ -311,21 +288,12 @@ describe("ConfigManager", () => {
     it("returns defaults", () => {
       const config = ConfigManager.getToolsConfig();
       expect(config).toEqual(DEFAULT_TOOLS_CONFIG);
-      expect(config.autoRepairArguments).toBe(true);
-      expect(config.autoRetryInvalidCalls).toBe(true);
-      expect(config.suppressDuplicateReads).toBe(true);
       expect(config.maxConsecutiveIdenticalCalls).toBe(3);
     });
 
     it("reads custom flags", () => {
-      mockStore["tools.autoRepairArguments"] = false;
-      mockStore["tools.autoRetryInvalidCalls"] = false;
-      mockStore["tools.suppressDuplicateReads"] = false;
       mockStore["tools.maxConsecutiveIdenticalCalls"] = 5;
       const config = ConfigManager.getToolsConfig();
-      expect(config.autoRepairArguments).toBe(false);
-      expect(config.autoRetryInvalidCalls).toBe(false);
-      expect(config.suppressDuplicateReads).toBe(false);
       expect(config.maxConsecutiveIdenticalCalls).toBe(5);
     });
 
@@ -345,18 +313,15 @@ describe("ConfigManager", () => {
     it("returns defaults", () => {
       const config = ConfigManager.getContextConfig();
       expect(config).toEqual(DEFAULT_CONTEXT_CONFIG);
-      expect(config.autoCompactOnOverflow).toBe(true);
       expect(config.summarizationModel).toBe("nvidia/nemotron-3-super-120b-a12b");
       expect(config.safetyMarginPercent).toBe(1.0);
     });
 
     it("reads custom context settings and clamps safety margin", () => {
-      mockStore["context.autoCompactOnOverflow"] = false;
       mockStore["context.summarizationModel"] = "meta/muse-glimmer-30b";
       mockStore["context.safetyMarginPercent"] = 15; // clamped to 10
 
       const config = ConfigManager.getContextConfig();
-      expect(config.autoCompactOnOverflow).toBe(false);
       expect(config.summarizationModel).toBe("meta/muse-glimmer-30b");
       expect(config.safetyMarginPercent).toBe(10.0);
     });
@@ -373,7 +338,6 @@ describe("ConfigManager", () => {
       const config = ConfigManager.getDeveloperConfig();
       expect(config).toEqual(DEFAULT_DEVELOPER_CONFIG);
       expect(config.debugLogging).toBe(false);
-      expect(config.logTimingBreakdowns).toBe(true);
       expect(config.logStreamChunks).toBe(false);
       expect(config.logUserMessages).toBe(false);
     });

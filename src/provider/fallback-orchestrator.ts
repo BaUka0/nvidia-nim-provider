@@ -51,9 +51,9 @@ export function isFallbackEligibleError(
   }
   return (
     err instanceof NvidiaApiError &&
-    ((err.kind === "rate_limited" && fallbackConfig.onRateLimit) ||
-      (err.kind === "model_unavailable" && fallbackConfig.onModelUnavailable) ||
-      (err.kind === "empty_stream" && fallbackConfig.onEmptyStream) ||
+    (err.kind === "rate_limited" ||
+      err.kind === "model_unavailable" ||
+      err.kind === "empty_stream" ||
       (err.kind === "timeout" &&
         fallbackConfig.onTimeout &&
         (!isFirstTokenTimeout(err) || fallbackConfig.onFirstTokenTimeout)) ||

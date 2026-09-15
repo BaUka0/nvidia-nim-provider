@@ -27,9 +27,6 @@ Automatically switches to backup models during outages or rate limits, auto-repa
   "nvidia-nim.fallback.model": "nvidia/nemotron-3-super-120b-a12b",
   "nvidia-nim.fallback.visionModel": "meta/muse-glimmer-30b",
   "nvidia-nim.network.streamIdleTimeout": 120,
-  "nvidia-nim.tools.autoRepairArguments": true,
-  "nvidia-nim.tools.suppressDuplicateReads": true,
-  "nvidia-nim.context.autoCompactOnOverflow": true,
   "nvidia-nim.ui.showStatusBarItem": true
 }
 ```
@@ -41,8 +38,7 @@ Disables automatic backup routing so you can test specific models directly and i
 ```json
 {
   "nvidia-nim.fallback.enabled": false,
-  "nvidia-nim.developer.debugLogging": true,
-  "nvidia-nim.developer.logTimingBreakdowns": true
+  "nvidia-nim.developer.debugLogging": true
 }
 ```
 
@@ -60,9 +56,6 @@ These settings control automatic re-routing when an NVIDIA NIM endpoint returns 
 | `nvidia-nim.fallback.model` | `nvidia/nemotron-3-super-120b-a12b` | The backup model used for standard text prompts if your primary model fails. |
 | `nvidia-nim.fallback.visionModel` | `meta/muse-glimmer-30b` | The backup model used when your prompt contains images or screenshots. |
 | `nvidia-nim.fallback.priorityList` | `[]` | An optional list of specific models to try in order before falling back to the default backup model. |
-| `nvidia-nim.fallback.onRateLimit` | `true` | Automatically switch to backup if you reach rate limits (`HTTP 429` / `529`). |
-| `nvidia-nim.fallback.onModelUnavailable` | `true` | Automatically switch to backup if a model is offline or decommissioned (`HTTP 404` / `410`). |
-| `nvidia-nim.fallback.onEmptyStream` | `true` | Automatically switch to backup if a model returns an empty response. |
 | `nvidia-nim.fallback.onTimeout` | `true` | Automatically switch to backup if a model stops responding mid-stream. |
 | `nvidia-nim.fallback.onFirstTokenTimeout` | `true` | Automatically switch to backup when the initial response / first token times out (long TTFT). If set to `false`, TTFT timeouts will not trigger failover. |
 | `nvidia-nim.fallback.maxChainRestarts` | `2` | Extra full passes of the failover chain from the original model after every candidate times out with no visible answer (`0`–`5`). `0` disables chain restarts. |
@@ -79,7 +72,6 @@ Controls the thinking process for reasoning models (like DeepSeek V4, Nemotron S
 | Setting | Default | Options | What it does |
 | :--- | :--- | :--- | :--- |
 | `nvidia-nim.reasoning.mode` | `none` | `none`, `on`, `medium`, `high`, `max` | Default reasoning depth for models that support configurable thinking effort. |
-| `nvidia-nim.reasoning.showInChat` | `false` | `true`, `false` | When set to `true`, shows the internal thinking steps as regular text instead of a collapsible "Thinking..." block. |
 
 ---
 
@@ -89,7 +81,6 @@ Keeps conversation history within the model's context window.
 
 | Setting | Default | What it does |
 | :--- | :--- | :--- |
-| `nvidia-nim.context.autoCompactOnOverflow` | `true` | Automatically summarizes earlier messages in the background when a conversation gets too long, allowing you to keep chatting without errors. |
 | `nvidia-nim.context.summarizationModel` | `nvidia/nemotron-3-super-120b-a12b` | The model used in the background to summarize older conversation history. |
 | `nvidia-nim.context.safetyMarginPercent` | `1.0` | Percentage of the model's context window reserved as a safety buffer (0.0% to 10.0%) to prevent unexpected overflow errors. |
 
@@ -101,9 +92,6 @@ Settings for file edits, terminal commands, and agent workflows.
 
 | Setting | Default | What it does |
 | :--- | :--- | :--- |
-| `nvidia-nim.tools.autoRepairArguments` | `true` | Automatically fixes minor formatting and syntax mistakes in tool commands emitted by AI models. |
-| `nvidia-nim.tools.autoRetryInvalidCalls` | `true` | Prompts the model to fix and retry its action if a command format is invalid, rather than crashing. |
-| `nvidia-nim.tools.suppressDuplicateReads` | `true` | Prevents the AI agent from repeatedly reading the exact same file in a row. |
 | `nvidia-nim.tools.maxConsecutiveIdenticalCalls` | `3` | Drops extra copies of the same tool call in one reply after this many identical calls. Already-emitted calls still run. `0` disables the cap. |
 
 ---
@@ -132,10 +120,8 @@ Optional sampling parameters sent with each request.
 | `nvidia-nim.generation.maxOutputTokens` | `null` | `≥128` | Maximum length of generated responses in tokens. `null` allows the full model capacity. |
 | `nvidia-nim.generation.frequencyPenalty` | `null` | `-2`–`2` | Discourages the model from repeating words. `null` omits the parameter. |
 | `nvidia-nim.generation.presencePenalty` | `null` | `-2`–`2` | Encourages the model to introduce new topics. `null` omits the parameter. |
-| `nvidia-nim.generation.repetitionPenalty` | `null` | `0.5`–`2` | Specific penalty against repetitive phrasing. Values above `1.0` reduce repetition. |
 | `nvidia-nim.generation.maxRepeatedLines` | `4` | `0`–`50` | Stops the response early if the model gets stuck repeating the same sentence or a paragraph with no line breaks. `0` disables loop detection. |
-| `nvidia-nim.generation.autoContinueOnLoop` | `true` | — | Automatically prompts the model to keep working if it pauses mid-sentence, hits the token limit, gets caught in a text or tool loop, or the stream stalls after partial output. |
-| `nvidia-nim.generation.maxLoopContinues` | `2` | `0`–`8` | How many times in one turn to nudge after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. `0` disables auto-continue even if `autoContinueOnLoop` is on. |
+| `nvidia-nim.generation.maxLoopContinues` | `2` | `0`–`8` | How many times in one turn to nudge after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. `0` disables auto-continue. |
 
 ---
 
@@ -145,7 +131,6 @@ Optional sampling parameters sent with each request.
 | :--- | :--- | :--- |
 | `nvidia-nim.ui.showStatusBarItem` | `true` | Shows real-time token utilization at the bottom of your VS Code window. |
 | `nvidia-nim.developer.debugLogging` | `false` | Technical debug logging in the Output panel (retries, budget, tool names, finish reasons). |
-| `nvidia-nim.developer.logTimingBreakdowns` | `true` | Records millisecond-level response speed metrics (TTFT and tokens-per-second) in debug logs. |
 | `nvidia-nim.developer.logStreamChunks` | `false` | Include per-chunk SSE dumps in the debug log and saved session file. Leave off unless asked. |
 | `nvidia-nim.developer.logUserMessages` | `false` | Include outgoing chat message bodies in the debug log and saved session file. Leave off unless asked. |
 

@@ -1932,7 +1932,7 @@ describe("NimChatModelProvider", () => {
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((key: string, defaultValue: unknown) => {
         if (key === "fallback.enabled") return false;
-        if (key === "generation.autoContinueOnLoop") return false;
+        if (key === "generation.maxLoopContinues") return 0;
         return defaultValue;
       }),
     }));
@@ -2041,7 +2041,7 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((key: string, defaultValue: unknown) =>
-        key === "generation.autoContinueOnLoop" ? false : defaultValue,
+        key === "generation.maxLoopContinues" ? 0 : defaultValue,
       ),
     }));
     const truncatedStream = async function* () {
@@ -2131,7 +2131,7 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((key: string, defaultValue: unknown) =>
-        key === "generation.autoContinueOnLoop" ? false : defaultValue,
+        key === "generation.maxLoopContinues" ? 0 : defaultValue,
       ),
     }));
     const filteredStream = async function* () {
@@ -2538,7 +2538,6 @@ describe("NimChatModelProvider", () => {
       get: jest.fn((key: string, defaultValue: unknown) => {
         if (key === "fallback.model") return "deepseek-ai/deepseek-v4-flash-0731";
         if (key === "fallback.enabled") return true;
-        if (key === "fallback.onRateLimit") return true;
         if (key === "fallback.showNoticeInChat") return true;
         return defaultValue;
       }),

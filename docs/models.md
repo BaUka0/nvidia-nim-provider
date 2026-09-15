@@ -45,4 +45,3 @@ You can set the effort in two ways:
 1. Per turn in chat: pick the model with your preferred mode from the Copilot model dropdown (e.g. `DeepSeek V4 Flash 0731 (High)`).
 2. Globally via settings: `"nvidia-nim.reasoning.mode": "high"` in `settings.json`.
 
-If you want thinking to render as visible text instead of a collapsible block, set `"nvidia-nim.reasoning.showInChat": true`.

@@ -404,10 +404,9 @@ export class ModelTurnExecutor {
               maxFetchAttempts: allocated,
               firstTokenTimeoutMs,
               maxRepeatedLines: generationConfig.maxRepeatedLines,
-              autoContinueOnLoop: generationConfig.autoContinueOnLoop,
+              maxLoopContinues: MAX_LOOP_CONTINUES,
               idleTimeoutMs: networkConfig.streamIdleTimeout * 1000,
               toolsConfig: toolsConfig,
-              showReasoningInChat: nimConfig.reasoning.showInChat,
               hasRetriedRepetitionLoop: loopContinueCount >= MAX_LOOP_CONTINUES,
               parseEmbeddedToolText,
               onContentReported: () => {
@@ -465,8 +464,7 @@ export class ModelTurnExecutor {
               streamErr instanceof NvidiaApiError &&
               (streamErr.kind === "context_overflow" || streamErr.kind === "token_limit") &&
               Boolean(apiKey) &&
-              Boolean(attemptBody) &&
-              nimConfig.context.autoCompactOnOverflow
+              Boolean(attemptBody)
             ) {
               const overflowApplied = await this.applyOverflowCompaction({
                 err: streamErr,
@@ -552,8 +550,6 @@ export class ModelTurnExecutor {
           const evaluation = evaluateAttemptRetry({
             result,
             toolsEnabled,
-            generationAutoContinueOnLoop: generationConfig.autoContinueOnLoop,
-            autoRetryInvalidCalls: toolsConfig.autoRetryInvalidCalls,
             loopContinueCount,
             maxLoopContinues: MAX_LOOP_CONTINUES,
             invalidToolRetryCount,
@@ -697,12 +693,7 @@ export class ModelTurnExecutor {
             continue;
           }
 
-          if (
-            result.sawToolCall &&
-            !result.emittedToolCall &&
-            toolsConfig.autoRetryInvalidCalls &&
-            retryMessage
-          ) {
+          if (result.sawToolCall && !result.emittedToolCall && retryMessage) {
             reportState.failingAttemptHasVisibleContent = false;
             throw createInvalidToolExhaustionError(
               model.name ?? model.id,

@@ -143,12 +143,11 @@ describe("NimRequestBuilder context accounting", () => {
     expect(prepared.requestBody.max_tokens).toBe(500);
   });
 
-  it("forwards configured frequency, presence and repetition penalties", async () => {
+  it("forwards configured frequency and presence penalties", async () => {
     (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
       get: jest.fn((key: string, defaultValue: unknown) => {
         if (key === "generation.frequencyPenalty") return 0.7;
         if (key === "generation.presencePenalty") return -0.5;
-        if (key === "generation.repetitionPenalty") return 1.1;
         return defaultValue;
       }),
     });
@@ -170,7 +169,6 @@ describe("NimRequestBuilder context accounting", () => {
 
     expect(prepared.requestBody.frequency_penalty).toBe(0.7);
     expect(prepared.requestBody.presence_penalty).toBe(-0.5);
-    expect(prepared.requestBody.repetition_penalty).toBe(1.1);
   });
 
   it("does not apply default penalties when not explicitly configured", async () => {
@@ -348,7 +346,6 @@ describe("NimRequestBuilder context accounting", () => {
       get: jest.fn((key: string, defaultValue: unknown) => {
         if (key === "generation.frequencyPenalty") return 0.5;
         if (key === "generation.presencePenalty") return 0.5;
-        if (key === "generation.repetitionPenalty") return 1.2;
         return defaultValue;
       }),
     });
@@ -377,6 +374,5 @@ describe("NimRequestBuilder context accounting", () => {
 
     expect(prepared.requestBody.frequency_penalty).toBeUndefined();
     expect(prepared.requestBody.presence_penalty).toBeUndefined();
-    expect(prepared.requestBody.repetition_penalty).toBe(1.2);
   });
 });

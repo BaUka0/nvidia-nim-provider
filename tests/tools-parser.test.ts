@@ -1,5 +1,4 @@
 import { ConfigManager } from "../src/shared/config";
-import * as vscode from "vscode";
 import {
   buildInvalidToolCallFallback,
   buildInvalidToolCallRetryMessage,
@@ -1393,22 +1392,6 @@ describe("tool argument parsing and validation", () => {
     expect(hasRequiredToolArguments(repaired, deploySchema)).toBe(false);
   });
 
-  it("skips argument repair when autoRepairArguments is disabled", () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: jest.fn((key: string, defaultValue: unknown) => {
-        if (key === "tools.autoRepairArguments") return false;
-        return defaultValue;
-      }),
-    });
-
-    const schema = getToolSchemaMap(options).get("read_file");
-    const raw = { path: "/tmp/a.ts", startLine: "1" };
-    const repaired = repairToolArguments("read_file", raw, undefined, schema);
-
-    expect(repaired).toEqual({ path: "/tmp/a.ts", startLine: "1" });
-    expect(repaired.filePath).toBeUndefined();
-  });
-
   it("enables duplicate suppression only for read tools", () => {
     expect(isDuplicateSuppressionEnabled("read_file")).toBe(true);
     expect(isDuplicateSuppressionEnabled("view_file")).toBe(true);
@@ -1417,18 +1400,6 @@ describe("tool argument parsing and validation", () => {
     expect(isDuplicateSuppressionEnabled("run_in_terminal")).toBe(false);
     expect(isDuplicateSuppressionEnabled("edit_file")).toBe(false);
     expect(isDuplicateSuppressionEnabled("list_dir")).toBe(false);
-  });
-
-  it("disables duplicate suppression when suppressDuplicateReads is false", () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: jest.fn((key: string, defaultValue: unknown) => {
-        if (key === "tools.suppressDuplicateReads") return false;
-        return defaultValue;
-      }),
-    });
-
-    expect(isDuplicateSuppressionEnabled("read_file")).toBe(false);
-    expect(isDuplicateSuppressionEnabled("get_errors")).toBe(false);
   });
 
   describe("Issue #8: cross-file line range scoping and read_file defaulting", () => {

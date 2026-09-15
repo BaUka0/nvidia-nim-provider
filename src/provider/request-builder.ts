@@ -393,13 +393,7 @@ export class NimRequestBuilder {
       );
     }
     if (adapter.supportsRepetitionPenalty !== false) {
-      assignClamped(
-        requestBody,
-        "repetition_penalty",
-        [modelOpts?.repetition_penalty, generationConfig.repetitionPenalty],
-        0.5,
-        2,
-      );
+      assignClamped(requestBody, "repetition_penalty", [modelOpts?.repetition_penalty], 0.5, 2);
     }
     const stopVal = modelOpts?.stop;
     if (typeof stopVal === "string" && stopVal.length > 0 && stopVal.length <= 256) {

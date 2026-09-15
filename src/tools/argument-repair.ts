@@ -152,7 +152,7 @@ export function repairToolArguments(
   args: unknown,
   requestContext: ChatRequestContext | undefined,
   schema?: ToolSchema,
-  toolsConfig: ToolsConfig = ConfigManager.getToolsConfig(),
+  _toolsConfig: ToolsConfig = ConfigManager.getToolsConfig(),
 ): Record<string, unknown> {
   let parsedArgs: Record<string, unknown>;
   if (typeof args === "string") {
@@ -165,10 +165,6 @@ export function repairToolArguments(
     parsedArgs = { ...(args as Record<string, unknown>) };
   } else {
     parsedArgs = {};
-  }
-
-  if (!toolsConfig.autoRepairArguments) {
-    return parsedArgs;
   }
 
   const required = new Set(schema?.required ?? []);

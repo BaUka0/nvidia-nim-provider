@@ -24,6 +24,15 @@ describe("isFallbackEligibleError", () => {
     ).toBe(false);
   });
 
+  it("allows failover for rate_limited and empty_stream when nothing visible was reported", () => {
+    expect(
+      isFallbackEligibleError(new NvidiaApiError("rate_limited", "429"), config, 0, false),
+    ).toBe(true);
+    expect(
+      isFallbackEligibleError(new NvidiaApiError("empty_stream", "0 chunks"), config, 0, false),
+    ).toBe(true);
+  });
+
   it("allows failover for model_unavailable including HTTP 410 Gone", () => {
     expect(
       isFallbackEligibleError(

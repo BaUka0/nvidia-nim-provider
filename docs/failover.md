@@ -39,7 +39,7 @@ Set `nvidia-nim.fallback.priorityList` to an ordered list of model IDs to try be
 
 **Example:** `["moonshotai/kimi-k3", "meta/muse-glimmer-30b"]` tries Kimi K3 first, then Muse Glimmer, and only then the regular fallbacks. If every candidate fails, the error message lists the full tried chain with the last underlying error.
 
-If every candidate **times out** with no visible answer, `nvidia-nim.fallback.maxChainRestarts` (default `2`) starts the same chain again from the original model. Set it to `0` to keep the old one-pass behavior. Mid-stream stalls after text or thinking already went to Copilot are not hopped to another model; those abort the HTTP stream and nudge the same model to keep going (`nvidia-nim.generation.autoContinueOnLoop`).
+If every candidate **times out** with no visible answer, `nvidia-nim.fallback.maxChainRestarts` (default `2`) starts the same chain again from the original model. Set it to `0` to keep the old one-pass behavior. Mid-stream stalls after text or thinking already went to Copilot are not hopped to another model; those abort the HTTP stream and nudge the same model to keep going (`nvidia-nim.generation.maxLoopContinues`).
 
 ---
 
