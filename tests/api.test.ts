@@ -880,6 +880,56 @@ describe("streamChatCompletion", () => {
     }
   });
 
+  it("honors firstTokenTimeoutMs when it is larger than idleTimeoutMs without clamping", async () => {
+    jest.useFakeTimers();
+
+    try {
+      const cancel = jest.fn().mockResolvedValue(undefined);
+      const reader = {
+        read: jest.fn(() => new Promise(() => undefined)),
+        cancel,
+        releaseLock: jest.fn(),
+      };
+
+      global.fetch = jest.fn().mockResolvedValue(
+        makeFetchResponse({
+          ok: true,
+          body: {
+            getReader: () => reader,
+          },
+        }),
+      );
+
+      const gen = streamChatCompletion(
+        "key",
+        { model: "kimi-k2.6", messages: [], stream: true },
+        undefined,
+        undefined,
+        { firstTokenTimeoutMs: 60000, idleTimeoutMs: 15000 },
+      );
+      const nextPromise = gen.next();
+      let streamError: unknown;
+      nextPromise.catch((err) => {
+        streamError = err;
+      });
+
+      // Advancing by idleTimeoutMs (15s) must NOT trigger timeout because firstTokenTimeoutMs is 60s
+      await jest.advanceTimersByTimeAsync(15000);
+      expect(cancel).not.toHaveBeenCalled();
+      expect(streamError).toBeUndefined();
+
+      // Advancing to full 60s triggers first-token timeout
+      await jest.advanceTimersByTimeAsync(45000);
+      expect(streamError).toBeDefined();
+      expect((streamError as Error).message).toContain(
+        "NVIDIA NIM first token timeout: no response received for 60s",
+      );
+      expect(cancel).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("respects custom idleTimeoutMs for streaming chunks", async () => {
     jest.useFakeTimers();
 

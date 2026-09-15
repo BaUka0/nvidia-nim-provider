@@ -15,6 +15,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Cross-turn agent tool loops now automatically escalate to an explicit stop instruction rather than repeatedly injecting soft nudges across turns.
 - Stalled streams no longer wait up to 10 minutes before timing out on large context models. The stream idle timeout setting is now strictly honored, allowing stalled connections to abort and fail over to the backup model promptly.
 - Initial stream connections that hang indefinitely before HTTP headers are received now time out promptly, triggering automatic failover to the configured fallback model.
+- Fixed first response timeout (`nvidia-nim.fallback.firstTokenTimeoutSeconds`) being inadvertently restricted by the stream idle timeout (`streamIdleTimeout`). Setting a longer first response timeout now reliably grants models extra prefill time before the first token arrives without being clamped by inter-chunk idle limits.
+- Diagnostic session log exports now include network timeout and retry configurations (`streamIdleTimeout`, `maxHttpRetries`, `maxEmptyStreamRetries`, `maxTotalFetchAttempts`, `firstTokenTimeoutSeconds`).
 
 ### Removed
 

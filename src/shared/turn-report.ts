@@ -269,6 +269,7 @@ export function formatSessionLogsPayload(): string | undefined {
   const developer = ConfigManager.getDeveloperConfig();
   const generation = ConfigManager.getGenerationConfig();
   const fallback = ConfigManager.getFallbackConfig();
+  const network = ConfigManager.getNetworkConfig();
   const payload = {
     extension: "nvidia-nim-provider",
     version: EXTENSION_VERSION,
@@ -281,6 +282,10 @@ export function formatSessionLogsPayload(): string | undefined {
       maxRepeatedLines: generation.maxRepeatedLines,
       autoContinueOnLoop: generation.autoContinueOnLoop,
       maxLoopContinues: generation.maxLoopContinues,
+      streamIdleTimeout: network.streamIdleTimeout,
+      maxHttpRetries: network.maxHttpRetries,
+      maxEmptyStreamRetries: network.maxEmptyStreamRetries,
+      maxTotalFetchAttempts: network.maxTotalFetchAttempts,
       fallbackEnabled: fallback.enabled,
       fallbackModel: fallback.model,
       fallbackVisionModel: fallback.visionModel,
@@ -288,7 +293,9 @@ export function formatSessionLogsPayload(): string | undefined {
       fallbackOnModelUnavailable: fallback.onModelUnavailable,
       fallbackOnEmptyStream: fallback.onEmptyStream,
       fallbackOnTimeout: fallback.onTimeout,
+      firstTokenTimeoutSeconds: fallback.firstTokenTimeoutSeconds,
     },
+
     turns: reports,
     events,
   };

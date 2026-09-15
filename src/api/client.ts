@@ -581,7 +581,7 @@ export async function* streamChatCompletion(
 
     const currentTimeoutMs =
       isFirstChunk && typeof firstTokenTimeoutMs === "number" && firstTokenTimeoutMs > 0
-        ? Math.min(idleTimeoutMs, firstTokenTimeoutMs)
+        ? firstTokenTimeoutMs
         : idleTimeoutMs;
 
     return new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve, reject) => {
@@ -613,10 +613,7 @@ export async function* streamChatCompletion(
       const timeoutId = setTimeout(() => {
         const idleSec = Math.round((Date.now() - lastChunkTime) / 1000);
         const isFirstTokenTimeout =
-          isFirstChunk &&
-          typeof firstTokenTimeoutMs === "number" &&
-          firstTokenTimeoutMs > 0 &&
-          currentTimeoutMs === firstTokenTimeoutMs;
+          isFirstChunk && typeof firstTokenTimeoutMs === "number" && firstTokenTimeoutMs > 0;
         const err = streamTimeoutError(isFirstTokenTimeout ? "first-token" : "idle", idleSec);
         cancelReader(err);
         rejectOnce(err);

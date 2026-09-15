@@ -183,12 +183,19 @@ describe("turn-report", () => {
     const payload = formatSessionLogsPayload();
     expect(payload).toBeDefined();
     const parsed = JSON.parse(payload ?? "{}") as {
-      settings: { logStreamChunks: boolean; logUserMessages: boolean };
+      settings: {
+        logStreamChunks: boolean;
+        logUserMessages: boolean;
+        streamIdleTimeout: number;
+        firstTokenTimeoutSeconds: number | null;
+      };
       turns: { modelId: string }[];
       events: { label: string }[];
     };
     expect(parsed.settings.logStreamChunks).toBe(false);
     expect(parsed.settings.logUserMessages).toBe(false);
+    expect(parsed.settings.streamIdleTimeout).toBe(120);
+    expect(parsed.settings.firstTokenTimeoutSeconds).toBeNull();
     expect(parsed.turns).toHaveLength(1);
     expect(parsed.events.some((event) => event.label === "budget")).toBe(true);
   });
