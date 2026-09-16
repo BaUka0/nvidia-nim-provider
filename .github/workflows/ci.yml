@@ -6,9 +6,18 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,9 +25,14 @@ jobs:
           node-version: 22.x
           cache: npm
       - run: npm ci
-      - run: npm run lint
-      - run: npm run compile
-      - run: npm test -- --runInBand
-      - run: npm run package:vsix
-      - name: Type Check
+      - name: Lint
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run lint
+      - name: Compile
+        run: npm run compile
+      - name: Test Suite
+        run: npm test -- --runInBand
+      - name: Package VSIX
+        run: npm run package:vsix
+      - name: Strict Type Check
         run: npm exec -- tsc --noEmit

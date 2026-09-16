@@ -9,6 +9,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Failover chain restarts now recover from transient server overloads (HTTP 529, 503, 429) and connection drops in addition to timeouts. If every backup model encounters a transient error before any answer is printed, the extension pauses with backoff and retries from the original model (up to `nvidia-nim.fallback.maxChainRestarts` times).
 - Added instructions and configuration tuning recommendations for running autonomous agent workflows in the VS Code Agents window (`chat.agentHost.byokModels.enabled`).
 - Added automated twice-daily tracking of the upstream NVIDIA NIM model catalog via GitHub Actions. Changes and new models in the NGC registry are detected automatically to accelerate fast-track model releases.
+- Expanded continuous integration (CI) testing across Linux, Windows, and macOS with concurrent run cancellation and cross-platform line ending normalization.
 
 ### Fixed
 
