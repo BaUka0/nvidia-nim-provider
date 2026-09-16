@@ -41,10 +41,10 @@ import {
   buildFallbackModelInfo,
   fallbackCapacityLabel,
   isFallbackEligibleError,
-  shouldRestartTimeoutChain,
+  shouldRestartFailoverChain,
 } from "./fallback-orchestrator";
 import { ChatRuntimeInfo, ModelTurnExecutor, ModelTurnReportState } from "./turn-executor";
-import { isCancellation } from "../shared/cancellation";
+import { isCancellation, waitForBackoff } from "../shared/cancellation";
 
 const MAX_RUNTIME_INFO_CACHE_SIZE = 64;
 
@@ -380,16 +380,30 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       failingAttemptHasVisibleContent: false,
     };
 
-    const restartTimeoutChain = (maxRestarts: number): void => {
+    const restartFailoverChain = async (
+      maxRestarts: number,
+      err: unknown,
+      signal?: AbortSignal,
+    ): Promise<void> => {
       chainState.chainRestarts += 1;
       chainState.depth = 0;
       chainState.triedModelIds = [];
       currentModel = originalModel;
       fetchBudget.ensureMinimum(MAX_FETCH_ATTEMPTS_PER_STREAM);
+      const label = err instanceof NvidiaApiError ? fallbackCapacityLabel(err) : "Request failed";
       outputLog(
         "fallback",
-        `Timeout chain exhausted, retrying from ${originalModel.id} (restart ${chainState.chainRestarts}/${maxRestarts}).`,
+        `Failover chain exhausted (${label}), retrying from ${originalModel.id} (restart ${chainState.chainRestarts}/${maxRestarts}).`,
       );
+      const backoffMs = Math.min(1000 * Math.pow(2, chainState.chainRestarts), 10000);
+      try {
+        await waitForBackoff(backoffMs, signal);
+      } catch (backoffErr) {
+        if (isCancellation(backoffErr, token) || abortController.signal.aborted) {
+          throw new vscode.CancellationError();
+        }
+        throw backoffErr;
+      }
     };
 
     try {
@@ -436,11 +450,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           const err = rawErr instanceof NvidiaApiError ? rawErr : classifyApiError(rawErr);
           const fallbackConfig = nimConfig.fallback;
           const priorDepth = chainState.depth;
-          const timeoutRestart = shouldRestartTimeoutChain({
+          const failoverRestart = shouldRestartFailoverChain({
             err,
             fallbackConfig,
             failingAttemptHasVisibleContent: reportState.failingAttemptHasVisibleContent,
             chainRestarts: chainState.chainRestarts,
+            priorDepth,
           });
           if (
             !isFallbackEligibleError(
@@ -450,8 +465,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
               reportState.failingAttemptHasVisibleContent,
             )
           ) {
-            if (timeoutRestart) {
-              restartTimeoutChain(fallbackConfig.maxChainRestarts);
+            if (failoverRestart) {
+              await restartFailoverChain(
+                fallbackConfig.maxChainRestarts,
+                err,
+                abortController.signal,
+              );
               continue;
             }
             throw toHostChatError(err);
@@ -474,8 +493,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           );
 
           if (!fallbackModel) {
-            if (timeoutRestart) {
-              restartTimeoutChain(fallbackConfig.maxChainRestarts);
+            if (failoverRestart && priorDepth > 0) {
+              await restartFailoverChain(
+                fallbackConfig.maxChainRestarts,
+                err,
+                abortController.signal,
+              );
               continue;
             }
             if (priorDepth > 0) {

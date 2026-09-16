@@ -15,3 +15,47 @@ export function createAbortError(): Error {
 export function isCancellation(err: unknown, token: CancellationToken): boolean {
   return token.isCancellationRequested || (err instanceof Error && err.name === "AbortError");
 }
+
+/**
+ * Asynchronously waits for `delayMs` milliseconds, aborting immediately if `signal` fires.
+ * In test environments, resolves immediately to avoid artificially slowing down unit test suites.
+ */
+export function waitForBackoff(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(createAbortError());
+  }
+  if (delayMs <= 0 || process.env.NODE_ENV === "test" || process.env.JEST_WORKER_ID !== undefined) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+
+    function cleanup(): void {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", onAbort);
+    }
+    function resolveOnce(): void {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    }
+    function rejectOnce(error: Error): void {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    }
+    function onAbort(): void {
+      rejectOnce(createAbortError());
+    }
+
+    const timeoutId = setTimeout(resolveOnce, delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) {
+      cleanup();
+      rejectOnce(createAbortError());
+    }
+  });
+}

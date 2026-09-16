@@ -5,6 +5,7 @@ import {
   buildFallbackModelInfo,
   fallbackCapacityLabel,
   isFallbackEligibleError,
+  shouldRestartFailoverChain,
   shouldRestartTimeoutChain,
 } from "../src/provider/fallback-orchestrator";
 
@@ -123,13 +124,45 @@ describe("isFallbackEligibleError", () => {
   });
 });
 
-describe("shouldRestartTimeoutChain", () => {
+describe("shouldRestartFailoverChain", () => {
   const config = { ...DEFAULT_FALLBACK_CONFIG, enabled: true, maxChainRestarts: 2 };
 
-  it("restarts after a timeout with no visible content while restarts remain", () => {
+  it("restarts after timeout, rate limit / overload, server error, network error, or empty stream with no visible content", () => {
     expect(
-      shouldRestartTimeoutChain({
+      shouldRestartFailoverChain({
         err: new NvidiaApiError("timeout", "stalled"),
+        fallbackConfig: config,
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 0,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRestartFailoverChain({
+        err: new NvidiaApiError("rate_limited", "429"),
+        fallbackConfig: config,
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 0,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRestartFailoverChain({
+        err: new NvidiaApiError("server_error", "503"),
+        fallbackConfig: config,
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 0,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRestartFailoverChain({
+        err: new NvidiaApiError("network_error", "ECONNRESET"),
+        fallbackConfig: config,
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 0,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRestartFailoverChain({
+        err: new NvidiaApiError("empty_stream", "empty"),
         fallbackConfig: config,
         failingAttemptHasVisibleContent: false,
         chainRestarts: 0,
@@ -137,9 +170,9 @@ describe("shouldRestartTimeoutChain", () => {
     ).toBe(true);
   });
 
-  it("does not restart after visible content, non-timeout errors, or a spent budget", () => {
+  it("does not restart after visible content, non-retryable errors, or a spent budget", () => {
     expect(
-      shouldRestartTimeoutChain({
+      shouldRestartFailoverChain({
         err: new NvidiaApiError("timeout", "stalled"),
         fallbackConfig: config,
         failingAttemptHasVisibleContent: true,
@@ -147,15 +180,51 @@ describe("shouldRestartTimeoutChain", () => {
       }),
     ).toBe(false);
     expect(
-      shouldRestartTimeoutChain({
-        err: new NvidiaApiError("rate_limited", "429"),
+      shouldRestartFailoverChain({
+        err: new NvidiaApiError("rate_limited", "529"),
+        fallbackConfig: config,
+        failingAttemptHasVisibleContent: true,
+        chainRestarts: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRestartFailoverChain({
+        err: new NvidiaApiError("auth_failed", "401"),
         fallbackConfig: config,
         failingAttemptHasVisibleContent: false,
         chainRestarts: 0,
       }),
     ).toBe(false);
     expect(
-      shouldRestartTimeoutChain({
+      shouldRestartFailoverChain({
+        err: new NvidiaApiError("invalid_request", "400"),
+        fallbackConfig: config,
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRestartFailoverChain({
+        err: new NvidiaApiError("empty_stream", "invalid tool call", {
+          operation: "invalid_tool_call",
+        }),
+        fallbackConfig: config,
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRestartFailoverChain({
+        err: new NvidiaApiError("empty_stream", "loop", {
+          operation: "tool_call_loop",
+        }),
+        fallbackConfig: config,
+        failingAttemptHasVisibleContent: false,
+        chainRestarts: 0,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRestartFailoverChain({
         err: new NvidiaApiError("timeout", "stalled"),
         fallbackConfig: { ...config, maxChainRestarts: 0 },
         failingAttemptHasVisibleContent: false,
@@ -163,7 +232,7 @@ describe("shouldRestartTimeoutChain", () => {
       }),
     ).toBe(false);
     expect(
-      shouldRestartTimeoutChain({
+      shouldRestartFailoverChain({
         err: new NvidiaApiError("timeout", "stalled"),
         fallbackConfig: config,
         failingAttemptHasVisibleContent: false,
@@ -171,7 +240,7 @@ describe("shouldRestartTimeoutChain", () => {
       }),
     ).toBe(false);
     expect(
-      shouldRestartTimeoutChain({
+      shouldRestartFailoverChain({
         err: new NvidiaApiError("timeout", "stalled"),
         fallbackConfig: { ...config, onTimeout: false },
         failingAttemptHasVisibleContent: false,
@@ -179,7 +248,7 @@ describe("shouldRestartTimeoutChain", () => {
       }),
     ).toBe(false);
     expect(
-      shouldRestartTimeoutChain({
+      shouldRestartFailoverChain({
         err: new NvidiaApiError("timeout", "NVIDIA NIM first token timeout: 120s", {
           timeoutKind: "first-token",
         }),
@@ -188,6 +257,10 @@ describe("shouldRestartTimeoutChain", () => {
         chainRestarts: 0,
       }),
     ).toBe(false);
+  });
+
+  it("aliases shouldRestartTimeoutChain to shouldRestartFailoverChain for backward compatibility", () => {
+    expect(shouldRestartTimeoutChain).toBe(shouldRestartFailoverChain);
   });
 });
 

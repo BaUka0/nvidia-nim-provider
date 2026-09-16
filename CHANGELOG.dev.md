@@ -4,6 +4,11 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Added
+
+- **Failover chain restart on transient server overload and network errors (`src/provider/fallback-orchestrator.ts`, `src/provider/chat-provider.ts`, `src/api/client.ts`, `package.json`, `docs/configuration.md`, `tests/fallback-orchestrator.test.ts`).** Generalized `shouldRestartTimeoutChain` into `shouldRestartFailoverChain` (retaining `shouldRestartTimeoutChain` as an alias). Chain restart eligibility now covers transient server errors (HTTP 500, 502, 503, 504), rate limit / overload conditions (HTTP 429, 529), network disconnects, and generic empty streams when no visible content was emitted. In `chat-provider.ts`, added exponential backoff pause via exported `waitForRetry` before restarting the failover chain, giving upstream NIM worker nodes time to shed queue congestion. Addresses #5, Addresses #12.
+- **Autonomous Agent Window documentation and watchdog schema (`README.md`, `docs/configuration.md`, `package.json`).** Documented setup instructions for VS Code's background agent host (`chat.agentHost.byokModels.enabled: true`), recommended model pairings (GLM 5.3 and Kimi K3), and suggested watchdog timeout configurations (`firstTokenTimeoutSeconds: 120-180`, `streamIdleTimeout: 120-180`). Addresses #5, Addresses #12.
+
 ### Fixed
 
 - **Language-agnostic narrative loop detection and recovery (`src/shared/cycle-detection.ts`, `src/provider/loop-breaker.ts`, `src/provider/attempt-retry.ts`, `src/provider/turn-executor.ts`, `tests/repetition-guard.test.ts`, `tests/attempt-retry.test.ts`).** Added `extractPrefixGram` and `detectPrefixCycle` in `src/shared/cycle-detection.ts` to detect repetitive 2-word prefix patterns across lines and sentences without hardcoded dictionaries or language-specific wordlists. Enhanced `detectHistoryLoop` in `src/provider/loop-breaker.ts` to track leading prefix N-grams across assistant turns, and removed hardcoded English constraint strings from `buildHistoryLoopBreakerContent`. Added `previousPreamblePrefixes` tracking in `AttemptRetryFacts` and `turn-executor.ts` to catch models ending unfulfilled preambles with a period (`.`). Resolves #13.

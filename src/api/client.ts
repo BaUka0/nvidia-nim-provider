@@ -187,7 +187,7 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   }
 }
 
-function waitForRetry(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
+export function waitForRetry(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
   if (delayMs <= 0) {
     throwIfAborted(signal);
     return Promise.resolve();

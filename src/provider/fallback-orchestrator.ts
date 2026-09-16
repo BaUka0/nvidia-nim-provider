@@ -9,27 +9,62 @@ import { NormalizedNvidiaModel } from "../models/catalog";
  * Failover policy helpers. The hop loop stays in `chat-provider.ts` because
  * it owns API-key resolution and VS Code UI; this module stays UI-free.
  */
-export function shouldRestartTimeoutChain(options: {
+/**
+ * Failover chain restart policy. Determines whether to cycle back to the original model
+ * after exhausting the fallback chain due to transient errors (timeouts, rate limits / overload 529, server errors),
+ * provided no visible response content has reached the user yet.
+ */
+export function shouldRestartFailoverChain(options: {
   err: unknown;
   fallbackConfig: FallbackConfig;
   failingAttemptHasVisibleContent: boolean;
   chainRestarts: number;
+  priorDepth?: number;
 }): boolean {
-  if (!(options.err instanceof NvidiaApiError) || options.err.kind !== "timeout") {
+  if (!options.fallbackConfig.enabled) {
+    return false;
+  }
+  if (options.priorDepth !== undefined && options.priorDepth === 0) {
+    return false;
+  }
+  if (!(options.err instanceof NvidiaApiError)) {
     return false;
   }
   if (options.failingAttemptHasVisibleContent) {
     return false;
   }
-  if (!options.fallbackConfig.onTimeout) {
-    return false;
-  }
-  if (isFirstTokenTimeout(options.err) && !options.fallbackConfig.onFirstTokenTimeout) {
-    return false;
-  }
   const maxRestarts = options.fallbackConfig.maxChainRestarts;
-  return maxRestarts > 0 && options.chainRestarts < maxRestarts;
+  if (maxRestarts <= 0 || options.chainRestarts >= maxRestarts) {
+    return false;
+  }
+  if (options.err.kind === "timeout") {
+    if (!options.fallbackConfig.onTimeout) {
+      return false;
+    }
+    if (isFirstTokenTimeout(options.err) && !options.fallbackConfig.onFirstTokenTimeout) {
+      return false;
+    }
+    return true;
+  }
+  if (
+    options.err.operation === "invalid_tool_call" ||
+    options.err.operation === "tool_call_loop" ||
+    options.err.operation === "history_loop"
+  ) {
+    return false;
+  }
+  return (
+    options.err.kind === "rate_limited" ||
+    options.err.kind === "server_error" ||
+    options.err.kind === "network_error" ||
+    options.err.kind === "empty_stream"
+  );
 }
+
+/**
+ * Backward compatibility alias for shouldRestartFailoverChain.
+ */
+export const shouldRestartTimeoutChain = shouldRestartFailoverChain;
 
 export function isFallbackEligibleError(
   err: unknown,

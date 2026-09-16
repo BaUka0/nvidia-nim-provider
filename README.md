@@ -97,6 +97,23 @@ Alternatively, run `NVIDIA NIM: Manage NVIDIA NIM API Key` from the Command Pale
 
 Pick any NVIDIA NIM model in Copilot Chat or Copilot Agent Mode.
 
+### 5. Autonomous Workflows (VS Code Agents Window)
+
+NVIDIA NIM models work natively in VS Code's dedicated **Agents window** (`chat.agentHost`) for autonomous multi-step coding sessions, file editing, and terminal tasks.
+
+To enable BYOK models for the agent host:
+
+1. Open `settings.json` (`Preferences: Open User Settings (JSON)` in Command Palette).
+2. Add:
+   ```json
+   "chat.agentHost.byokModels.enabled": true
+   ```
+3. Recommended settings for heavy agent sessions:
+   * **Recommended Models:** `z-ai/glm-5.3` or `moonshotai/kimi-k3` for multi-step reasoning and deep codebase context.
+   * **TTFT Timeout:** Set `"nvidia-nim.fallback.firstTokenTimeoutSeconds": 120` (or `180`) to allow NVIDIA NIM time for KV-cache prefill on large prompts with multiple MCP tools.
+   * **Idle Watchdog:** `"nvidia-nim.network.streamIdleTimeout": 120` (or `180`) ensures stalled streams are cleanly aborted and failed over.
+   * **Failover Restarts:** `"nvidia-nim.fallback.maxChainRestarts": 2` automatically retries the model chain with backoff if upstream endpoints hit transient 503/529 overload.
+
 ---
 
 ## Extension Commands

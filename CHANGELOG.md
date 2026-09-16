@@ -4,6 +4,11 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Added
+
+- Failover chain restarts now recover from transient server overloads (HTTP 529, 503, 429) and connection drops in addition to timeouts. If every backup model encounters a transient error before any answer is printed, the extension pauses with backoff and retries from the original model (up to `nvidia-nim.fallback.maxChainRestarts` times).
+- Added instructions and configuration tuning recommendations for running autonomous agent workflows in the VS Code Agents window (`chat.agentHost.byokModels.enabled`).
+
 ### Fixed
 
 - Fixed agent narrative loops where models narrate intended actions (such as repeated "Let me check..." preambles) in chat instead of executing tools. The system prompt now strictly instructs models to invoke tools immediately when actions are required.

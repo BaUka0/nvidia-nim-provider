@@ -200,7 +200,7 @@
           "default": 2,
           "minimum": 0,
           "maximum": 5,
-          "description": "How many extra times to restart the failover chain from the original model after every candidate times out with no visible answer. 0 disables chain restarts."
+          "description": "How many extra times to restart the failover chain from the original model with backoff after every candidate fails with a transient error (timeouts, rate limits/overload, server errors) and no visible answer. 0 disables chain restarts."
         },
         "nvidia-nim.fallback.firstTokenTimeoutSeconds": {
           "type": [
@@ -227,7 +227,7 @@
           "default": 120,
           "minimum": 15,
           "maximum": 3600,
-          "description": "Maximum idle time in seconds between streamed chunks before timing out (15–3600 seconds)."
+          "description": "Maximum idle watchdog time in seconds between streamed chunks or tool calls before timing out (15–3600 seconds). Increase for complex autonomous agent workflows."
         },
         "nvidia-nim.network.maxHttpRetries": {
           "type": "integer",

@@ -3976,9 +3976,11 @@ describe("NimChatModelProvider", () => {
   it("throws a structured chain error when every fallback candidate fails", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
-      get: jest.fn((key: string, defaultValue: unknown) =>
-        key === "fallback.priorityList" ? ["nvidia/nemotron-3-ultra-550b-a55b"] : defaultValue,
-      ),
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.priorityList") return ["nvidia/nemotron-3-ultra-550b-a55b"];
+        if (key === "fallback.maxChainRestarts") return 0;
+        return defaultValue;
+      }),
     }));
     (globalState.get as jest.Mock).mockImplementation((key: string) => {
       if (key === "nvidia-nim.models") {
@@ -4186,5 +4188,90 @@ describe("NimChatModelProvider", () => {
       ),
     ).rejects.toThrow(/STREAM_TIMEOUT|streaming timeout|All NVIDIA NIM failover candidates failed/);
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+  });
+
+  it("restarts the failover chain from the original model after every candidate is rate limited", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.priorityList") return ["nvidia/nemotron-3-ultra-550b-a55b"];
+        if (key === "fallback.maxChainRestarts") return 1;
+        return defaultValue;
+      }),
+    }));
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") {
+        return [
+          {
+            id: "moonshotai/kimi-k3",
+            displayName: "Kimi K3",
+            contextWindow: 1048576,
+            maxOutputTokens: 65536,
+            supportsTools: true,
+            supportsVision: true,
+          },
+          {
+            id: "nvidia/nemotron-3-ultra-550b-a55b",
+            displayName: "Nemotron 3 Ultra 550B",
+            contextWindow: 1048576,
+            maxOutputTokens: 65536,
+            supportsTools: true,
+            supportsVision: false,
+          },
+        ];
+      }
+      if (key === MODELS_CACHE_VERSION_STATE_KEY) return MODELS_CACHE_VERSION;
+      if (key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY) {
+        return getApiKeyFingerprint("test-key");
+      }
+      return undefined;
+    });
+
+    let attempt = 0;
+    (streamChatCompletion as jest.Mock).mockImplementation((_key, body) => {
+      attempt += 1;
+      if (attempt === 1) {
+        expect(body.model).toBe("moonshotai/kimi-k3");
+        return (async function* () {
+          throw new NvidiaApiError("rate_limited", "HTTP 429 Too Many Requests", { status: 429 });
+        })();
+      }
+      if (attempt === 2) {
+        expect(body.model).toBe("nvidia/nemotron-3-ultra-550b-a55b");
+        return (async function* () {
+          throw new NvidiaApiError("rate_limited", "HTTP 529 Overloaded", { status: 529 });
+        })();
+      }
+      expect(body.model).toBe("moonshotai/kimi-k3");
+      return (async function* () {
+        yield { choices: [{ delta: { content: "Recovered after rate limit chain restart" } }] };
+      })();
+    });
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "moonshotai/kimi-k3",
+        name: "Kimi K3",
+        maxInputTokens: 200000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    const requestedModels = (streamChatCompletion as jest.Mock).mock.calls.map(
+      (call) => call[1].model,
+    );
+    expect(requestedModels).toEqual([
+      "moonshotai/kimi-k3",
+      "nvidia/nemotron-3-ultra-550b-a55b",
+      "moonshotai/kimi-k3",
+    ]);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Recovered after rate limit chain restart" }),
+    );
   });
 });
