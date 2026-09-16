@@ -34,4 +34,5 @@ agents.md
 .DS_Store
 *.log
 *.mp4
+scripts/models-diff.md
 

@@ -1,0 +1,46 @@
+name: Track NVIDIA NIM Models
+
+on:
+  schedule:
+    - cron: '0 0,12 * * *' # Every 12 hours (00:00 and 12:00 UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - name: Check Catalog Changes
+        id: tracker
+        run: node scripts/track-models.mjs
+
+      - name: Create Issue on Catalog Changes
+        if: steps.tracker.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE_SUMMARY: ${{ steps.tracker.outputs.title_summary }}
+        run: |
+          gh issue create \
+            --title "NVIDIA NIM Catalog Update: ${TITLE_SUMMARY}" \
+            --body-file scripts/models-diff.md \
+            --label "enhancement"
+
+      - name: Commit Updated Models Snapshot
+        if: steps.tracker.outputs.has_changes == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/models-snapshot.json
+          git commit -m "chore: update NVIDIA NIM models snapshot [skip ci]"
+          git push
