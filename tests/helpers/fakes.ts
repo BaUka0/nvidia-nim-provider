@@ -191,8 +191,8 @@ export function makeFetchResponse(init: {
     statusText: init.statusText ?? (status === 200 ? "OK" : ""),
     headers: init.headers ?? { get: () => null },
     body: init.body ?? null,
-    json: init.json,
-    text: init.text,
+    json: init.json ?? (async () => ({})),
+    text: init.text ?? (async () => ""),
   } as Response;
 }
 

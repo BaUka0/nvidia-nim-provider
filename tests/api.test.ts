@@ -129,9 +129,11 @@ describe("fetchWithRetry", () => {
       }),
     );
 
-    await expect(
-      fetchWithRetry("https://example.test", { method: "GET" }, 2),
-    ).rejects.toMatchObject({
+    const error = await fetchWithRetry("https://example.test", { method: "GET" }, 2).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toMatchObject({
       name: "NvidiaApiError",
       code: "RATE_LIMITED",
       status: 429,

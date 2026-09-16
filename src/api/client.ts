@@ -241,16 +241,16 @@ async function discardResponseBody(response: Response): Promise<void> {
 const RESPONSE_DETAIL_TIMEOUT_MS = 5000;
 
 async function readResponseDetail(response: Response): Promise<string | undefined> {
+  if (typeof response.text !== "function") {
+    return undefined;
+  }
+  let timerId: NodeJS.Timeout | undefined;
   try {
-    let timerId: NodeJS.Timeout | undefined;
     const textPromise = response.text();
     const timeoutPromise = new Promise<undefined>((resolve) => {
       timerId = setTimeout(() => resolve(undefined), RESPONSE_DETAIL_TIMEOUT_MS);
     });
     const detail = await Promise.race([textPromise, timeoutPromise]);
-    if (timerId !== undefined) {
-      clearTimeout(timerId);
-    }
     if (!detail) {
       return undefined;
     }
@@ -259,6 +259,10 @@ async function readResponseDetail(response: Response): Promise<string | undefine
       : detail;
   } catch {
     return undefined;
+  } finally {
+    if (timerId !== undefined) {
+      clearTimeout(timerId);
+    }
   }
 }
 
