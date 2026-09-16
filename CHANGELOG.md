@@ -4,6 +4,13 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed agent narrative loops where models narrate intended actions (such as repeated "Let me check..." preambles) in chat instead of executing tools. The system prompt now strictly instructs models to invoke tools immediately when actions are required.
+- Added language-agnostic prefix repetition detection across turns and attempts. When a model repeats planning preambles across attempts or turns without invoking tools, the extension detects the loop regardless of language or word choice and nudges the model to execute the action immediately.
+- Prevented repetitive preamble text from polluting subsequent attempt history during retries, stopping models from imitating their own unexecuted planning loops.
+- Expanded suspension punctuation detection (including ellipses and dashes alongside colons) so that incomplete thoughts and trailing preambles are reliably recovered with an immediate action nudge.
+
 ## [1.0.1] - 2026-09-16
 
 ### Fixed

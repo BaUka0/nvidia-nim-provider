@@ -7,6 +7,7 @@ import { buildToolCallCanonicalKey, tryParseJsonValue } from "../tools/parser";
 import { cloneNimChatRequest } from "./request-snapshot";
 import { BoundedMap } from "../shared/bounded-map";
 import { stripFallbackNotices } from "../messages/converter";
+import { extractPrefixGram } from "../shared/cycle-detection";
 
 const MAX_INJECTED_LOOPS_TRACKED = 128;
 const recentInjectedLoops = new BoundedMap<string, number>(MAX_INJECTED_LOOPS_TRACKED);
@@ -99,17 +100,31 @@ export function detectHistoryLoop(
   }
   const recent = assistantFirstLines.slice(-windowSize).map(normalizeLineForRepetition);
   const lastNormalized = recent[recent.length - 1] ?? "";
-  if (lastNormalized.length < MIN_NORMALIZED_LINE_LENGTH) {
-    return undefined;
+
+  // 1. Exact full-line match check
+  if (lastNormalized.length >= MIN_NORMALIZED_LINE_LENGTH) {
+    if (countTrailingMatches(recent, minRepeats) >= minRepeats) {
+      return lastNormalized;
+    }
+    const total = recent.filter((t) => t === lastNormalized).length;
+    if (total >= threshold && total >= minRepeats) {
+      return lastNormalized;
+    }
   }
 
-  if (countTrailingMatches(recent, minRepeats) >= minRepeats) {
-    return lastNormalized;
+  // 2. Leading prefix N-gram check across assistant turns (e.g. "let me", "давайте я")
+  const recentPrefixes = recent.map((l) => extractPrefixGram(l, 2));
+  const lastPrefix = recentPrefixes[recentPrefixes.length - 1] ?? "";
+  if (lastPrefix.length >= 4) {
+    if (countTrailingMatches(recentPrefixes, minRepeats) >= minRepeats) {
+      return lastPrefix;
+    }
+    const prefixTotal = recentPrefixes.filter((p) => p === lastPrefix).length;
+    if (prefixTotal >= threshold && prefixTotal >= minRepeats) {
+      return lastPrefix;
+    }
   }
-  const total = recent.filter((t) => t === lastNormalized).length;
-  if (total >= threshold && total >= minRepeats) {
-    return lastNormalized;
-  }
+
   return undefined;
 }
 
@@ -256,7 +271,7 @@ export function buildHistoryLoopBreakerContent(
   const breakerNotices: string[] = [];
   if (historyLoopPreamble) {
     breakerNotices.push(
-      `You have repeated the same preamble "${historyLoopPreamble.slice(0, 80)}" multiple times without calling a tool or making progress. Stop repeating the preamble. Directly invoke the required tool with correct arguments, or provide the final answer without a preamble. Do not start your response with "Let me fix" or "Let me run" again.`,
+      `You have repeated the preamble pattern "${historyLoopPreamble.slice(0, 80)}" multiple times without calling a tool or making progress. Stop narrating actions. Directly invoke the required tool with correct arguments, or provide the final answer immediately without a preamble.`,
     );
   }
   if (historyLoopTool) {

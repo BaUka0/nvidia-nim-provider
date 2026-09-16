@@ -1,5 +1,13 @@
 import { StreamAttemptResult } from "./stream-pump";
 import { buildInvalidToolCallRetryMessage } from "../tools/parser";
+import { extractPrefixGram } from "../shared/cycle-detection";
+
+const HANGING_PUNCTUATION_SUFFIXES = [":", "...", "…", "—", "--"] as const;
+
+export function hasHangingPunctuation(text: string): boolean {
+  const trimmed = text.trimEnd();
+  return HANGING_PUNCTUATION_SUFFIXES.some((suffix) => trimmed.endsWith(suffix));
+}
 
 export type LoopRetryReason =
   | "repetition_loop"
@@ -34,6 +42,7 @@ export interface AttemptRetryFacts {
   maxInvalidToolRetries: number;
   fetchBudgetExhausted: boolean;
   knownToolNames: ReadonlySet<string>;
+  previousPreamblePrefixes?: readonly string[];
 }
 
 export interface AttemptRetryEvaluation {
@@ -58,14 +67,23 @@ export interface AttemptRetryEvaluation {
 export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEvaluation {
   const { result } = facts;
 
-  const isRepetitionLoop = Boolean(result.repetitionTripped);
+  const currentPrefix = extractPrefixGram(result.lastVisibleText, 2);
+  const isPreamblePrefixLoop =
+    !result.sawToolCall &&
+    !result.emittedToolCall &&
+    facts.toolsEnabled &&
+    result.reportedVisibleContent &&
+    currentPrefix.length >= 4 &&
+    Boolean(facts.previousPreamblePrefixes?.includes(currentPrefix));
+
+  const isRepetitionLoop = Boolean(result.repetitionTripped) || isPreamblePrefixLoop;
   const isHangingColon =
     !isRepetitionLoop &&
     !result.sawToolCall &&
     !result.emittedToolCall &&
     result.reportedVisibleContent &&
     facts.toolsEnabled &&
-    result.lastVisibleText.trimEnd().endsWith(":") &&
+    hasHangingPunctuation(result.lastVisibleText) &&
     (result.lastFinishReason === "stop" ||
       result.lastFinishReason === null ||
       result.lastFinishReason === undefined);

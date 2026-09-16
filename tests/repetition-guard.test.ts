@@ -1,11 +1,17 @@
 import { RepetitionGuard, normalizeLineForRepetition } from "../src/provider/repetition-guard";
-import { detectHistoryLoop, detectToolCallHistoryLoop } from "../src/provider/loop-breaker";
+import {
+  buildHistoryLoopBreakerContent,
+  detectHistoryLoop,
+  detectToolCallHistoryLoop,
+} from "../src/provider/loop-breaker";
 import {
   detectCharacterRunaway,
   detectCycleHint,
   detectPeriodicCycle,
   detectPhraseCycle,
+  detectPrefixCycle,
   detectRunawayCycle,
+  extractPrefixGram,
 } from "../src/shared/cycle-detection";
 
 const ISSUE_7_SUPER_CYCLE = [
@@ -21,6 +27,56 @@ describe("detectPhraseCycle", () => {
     ).toBeUndefined();
     expect(detectCycleHint("")).toBe(false);
     expect(detectCycleHint(ISSUE_7_SUPER_CYCLE.repeat(3))).toBe(true);
+  });
+});
+
+describe("extractPrefixGram", () => {
+  it("extracts 2-word prefix grams in English and Unicode", () => {
+    expect(extractPrefixGram("Let me first check the current browser page")).toBe("let me");
+    expect(extractPrefixGram("Давайте я проверю страницу в браузере")).toBe("давайте я");
+    expect(extractPrefixGram("Lassen Sie uns den Code prüfen")).toBe("lassen sie");
+    expect(extractPrefixGram("  Hello   World  ")).toBe("hello world");
+  });
+
+  it("returns empty string if fewer than gramWords words are present", () => {
+    expect(extractPrefixGram("")).toBe("");
+    expect(extractPrefixGram("Hello")).toBe("");
+  });
+});
+
+describe("detectPrefixCycle", () => {
+  it("detects 3 lines sharing the same 2-word prefix", () => {
+    const text = [
+      "Let me check the page.",
+      "Let me take a screenshot.",
+      "Let me navigate to the URL.",
+    ].join("\n");
+    expect(detectPrefixCycle(text)).toBe("let me");
+  });
+
+  it("detects Russian prefix loops", () => {
+    const text = [
+      "Давайте я проверю страницу.",
+      "Давайте я сделаю скриншот.",
+      "Давайте я открою настройки.",
+    ].join("\n");
+    expect(detectPrefixCycle(text)).toBe("давайте я");
+  });
+
+  it("ignores markdown list items to prevent false positives on task lists", () => {
+    const taskList = [
+      "- Fix the login button",
+      "- Fix the navigation bar",
+      "- Fix the footer layout",
+    ].join("\n");
+    expect(detectPrefixCycle(taskList)).toBeUndefined();
+
+    const numberedList = [
+      "1. Add the user model",
+      "2. Add the user controller",
+      "3. Add the user route",
+    ].join("\n");
+    expect(detectPrefixCycle(numberedList)).toBeUndefined();
   });
 });
 
@@ -321,6 +377,37 @@ describe("RepetitionGuard.detectHistoryLoop", () => {
     expect(detectHistoryLoop(messages)).toBe(
       normalizeLineForRepetition("Let me fix the formatting issue:"),
     );
+  });
+
+  it("detects Issue #13 prefix N-gram loops where actions differ after 'Let me'", () => {
+    const messages = [
+      assistant("Let me first check the current browser page to see if we're already on GitHub:"),
+      assistant("Let me take a screenshot to see where the Sign in button is:"),
+      assistant("Let me navigate directly to https://github.com/login using the browser:"),
+    ];
+    expect(detectHistoryLoop(messages)).toBe("let me");
+  });
+
+  it("detects Russian prefix N-gram loops in history", () => {
+    const messages = [
+      assistant("Давайте я проверю текущую страницу:"),
+      assistant("Давайте я сделаю снимок экрана:"),
+      assistant("Давайте я перейду по ссылке:"),
+    ];
+    expect(detectHistoryLoop(messages)).toBe("давайте я");
+  });
+
+  it("generates language-agnostic breaker notices without hardcoded English constraints", () => {
+    const messages = [
+      assistant("Давайте я проверю текущую страницу:"),
+      assistant("Давайте я сделаю снимок экрана:"),
+      assistant("Давайте я перейду по ссылке:"),
+    ];
+    const content = buildHistoryLoopBreakerContent(messages);
+    expect(content).toBeDefined();
+    expect(content).toContain('preamble pattern "давайте я"');
+    expect(content).not.toContain("Let me fix");
+    expect(content).not.toContain("Let me run");
   });
 });
 

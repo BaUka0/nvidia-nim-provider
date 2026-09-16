@@ -130,7 +130,78 @@ export function detectPhraseCycle(text: string): string | undefined {
   return undefined;
 }
 
-/** Boolean wrapper over `detectPhraseCycle` and `detectRunawayCycle` for turn-report `cycleHint`. */
+const PREFIX_CYCLE_MIN_REPEATS = 3;
+const PREFIX_CYCLE_GRAM_WORDS = 2;
+const PREFIX_MIN_GRAM_CHARS = 4;
+
+/**
+ * Extracts a normalized leading prefix N-gram (default 2 words) from text.
+ * Unicode-aware, lowercase, punctuation collapsed. Returns empty string if
+ * fewer than gramWords words are present.
+ */
+export function extractPrefixGram(text: string, gramWords = 2): string {
+  if (!text) {
+    return "";
+  }
+  const normalized = normalizeForCycle(text);
+  const words = normalized.split(/\s+/).filter((w) => w.length > 0);
+  if (words.length < gramWords) {
+    return "";
+  }
+  return words.slice(0, gramWords).join(" ");
+}
+
+/**
+ * Detects whether 3 or more non-list lines/sentences in a text block share the
+ * same leading 2-word prefix (e.g. "let me", "давайте я", "lassen sie").
+ * Ignores markdown list items to prevent false positives on repetitive bullet points.
+ * Language-agnostic, Unicode-aware, no hardcoded dictionaries.
+ */
+export function detectPrefixCycle(
+  text: string,
+  options: { minRepeats?: number; gramWords?: number } = {},
+): string | undefined {
+  if (!text) {
+    return undefined;
+  }
+  const minRepeats = options.minRepeats ?? PREFIX_CYCLE_MIN_REPEATS;
+  const gramWords = options.gramWords ?? PREFIX_CYCLE_GRAM_WORDS;
+
+  const segments = text
+    .split(/(?:\r?\n|(?<=[^\d\s][.!?])\s+)/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  if (segments.length < minRepeats) {
+    return undefined;
+  }
+
+  const counts = new Map<string, number>();
+  for (const seg of segments) {
+    // Markdown list items (- item, * item, 1. item) are legitimate structures and
+    // must not be treated as conversational preamble loops.
+    if (/^\s*([*+-]|\d+[.)])\s+/.test(seg)) {
+      continue;
+    }
+    const prefix = extractPrefixGram(seg, gramWords);
+    if (prefix.length < PREFIX_MIN_GRAM_CHARS) {
+      continue;
+    }
+    const count = (counts.get(prefix) ?? 0) + 1;
+    if (count >= minRepeats) {
+      return prefix;
+    }
+    counts.set(prefix, count);
+  }
+
+  return undefined;
+}
+
+/** Boolean wrapper over phrase, runaway, and prefix cycle detectors for turn-report cycleHint. */
 export function detectCycleHint(text: string): boolean {
-  return detectPhraseCycle(text) !== undefined || detectRunawayCycle(text) !== undefined;
+  return (
+    detectPhraseCycle(text) !== undefined ||
+    detectRunawayCycle(text) !== undefined ||
+    detectPrefixCycle(text) !== undefined
+  );
 }

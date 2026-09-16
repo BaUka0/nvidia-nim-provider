@@ -18,6 +18,7 @@ import { FetchAttemptBudget, httpAttemptsFromConfig } from "../shared/fetch-atte
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
 import { recordTurnReport, TurnReportOutcome } from "../shared/turn-report";
+import { extractPrefixGram } from "../shared/cycle-detection";
 import { NimChatMessage, NimChatRequest, NimTool } from "../types";
 import { evaluateAttemptRetry, isLoopRetryReason } from "./attempt-retry";
 import { ContextLimitStore } from "./context-limit-store";
@@ -349,6 +350,7 @@ export class ModelTurnExecutor {
         let loopContinueCount = 0;
         let invalidToolRetryCount = 0;
         let attemptCompleted = false;
+        const previousPreamblePrefixes: string[] = [];
 
         for (let attempt = 0; attempt < attemptSafetyCap; attempt += 1) {
           totalAttempts += 1;
@@ -558,6 +560,7 @@ export class ModelTurnExecutor {
             maxInvalidToolRetries: MAX_INVALID_TOOL_RETRIES,
             fetchBudgetExhausted: fetchBudget.exhausted,
             knownToolNames: collectKnownToolNames(),
+            previousPreamblePrefixes,
           });
           const { retryReason, retryMessage, skippedToolCallNames } = evaluation;
 
@@ -659,7 +662,7 @@ export class ModelTurnExecutor {
                 : retryReason === "tool_call_loop"
                   ? "repeated tool call"
                   : retryReason === "hanging_colon"
-                    ? "hanging ':'"
+                    ? "hanging punctuation"
                     : retryReason === "content_filter"
                       ? "content filter"
                       : retryReason === "stream_timeout"
@@ -669,7 +672,17 @@ export class ModelTurnExecutor {
               "repetitionGuard",
               `Auto-continue after ${loopLabel} on ${model.id}: "${(result.trippedLine ?? result.toolCallLoopKey ?? result.lastVisibleText).slice(0, 80)}"`,
             );
-            if (result.lastVisibleText.trim().length > 0) {
+
+            if (!result.sawToolCall && !result.emittedToolCall && result.lastVisibleText) {
+              const prefix = extractPrefixGram(result.lastVisibleText, 2);
+              if (prefix && !previousPreamblePrefixes.includes(prefix)) {
+                previousPreamblePrefixes.push(prefix);
+              }
+            }
+
+            const isPreambleLoop =
+              retryReason === "repetition_loop" || retryReason === "hanging_colon";
+            if (!isPreambleLoop && result.lastVisibleText.trim().length > 0) {
               baselineRequestBody = appendChatMessage(baselineRequestBody, {
                 role: "assistant",
                 content: result.lastVisibleText,

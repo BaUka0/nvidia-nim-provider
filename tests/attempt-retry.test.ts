@@ -209,4 +209,49 @@ describe("evaluateAttemptRetry", () => {
     });
     expect(evaluation.retryReason).toBeUndefined();
   });
+
+  it("retries hanging ellipsis and em-dash as hanging punctuation", () => {
+    const evalDots = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        reportedVisibleContent: true,
+        lastVisibleText: "Let me check the repository...",
+        lastFinishReason: "stop",
+      }),
+    });
+    expect(evalDots.retryReason).toBe("hanging_colon");
+
+    const evalUnicodeDots = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        reportedVisibleContent: true,
+        lastVisibleText: "Давайте проверим файлы…",
+        lastFinishReason: "stop",
+      }),
+    });
+    expect(evalUnicodeDots.retryReason).toBe("hanging_colon");
+
+    const evalDash = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        reportedVisibleContent: true,
+        lastVisibleText: "I will invoke the tool —",
+        lastFinishReason: "stop",
+      }),
+    });
+    expect(evalDash.retryReason).toBe("hanging_colon");
+  });
+
+  it("identifies a preamble loop across attempts via previousPreamblePrefixes even if ending with a period", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      previousPreamblePrefixes: ["let me"],
+      result: result({
+        reportedVisibleContent: true,
+        lastVisibleText: "Let me read the page content to find the username and password fields.",
+        lastFinishReason: "stop",
+      }),
+    });
+    expect(evaluation.retryReason).toBe("repetition_loop");
+  });
 });

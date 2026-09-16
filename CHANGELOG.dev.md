@@ -4,6 +4,13 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Fixed
+
+- **Language-agnostic narrative loop detection and recovery (`src/shared/cycle-detection.ts`, `src/provider/loop-breaker.ts`, `src/provider/attempt-retry.ts`, `src/provider/turn-executor.ts`, `tests/repetition-guard.test.ts`, `tests/attempt-retry.test.ts`).** Added `extractPrefixGram` and `detectPrefixCycle` in `src/shared/cycle-detection.ts` to detect repetitive 2-word prefix patterns across lines and sentences without hardcoded dictionaries or language-specific wordlists. Enhanced `detectHistoryLoop` in `src/provider/loop-breaker.ts` to track leading prefix N-grams across assistant turns, and removed hardcoded English constraint strings from `buildHistoryLoopBreakerContent`. Added `previousPreamblePrefixes` tracking in `AttemptRetryFacts` and `turn-executor.ts` to catch models ending unfulfilled preambles with a period (`.`). Resolves #13.
+- **Context de-pollution on loop retry (`src/provider/turn-executor.ts`).** Excluded unexecuted preambles (`repetition_loop`, `hanging_colon`) from being appended to `baselineRequestBody` in `turn-executor.ts`. Prevents autoregressive in-context reinforcement of repetitive prefix patterns ("Let me...", "Давайте я...") across retry attempts. Resolves #13.
+- **Expanded hanging punctuation recovery (`src/provider/attempt-retry.ts`, `tests/attempt-retry.test.ts`).** Added `hasHangingPunctuation` in `src/provider/attempt-retry.ts` to recognize colons (`:`), ellipses (`...`, `…`), and dashes (`—`, `--`) as hanging/suspended intent when no tools were emitted, triggering auto-continue action nudges. Resolves #13.
+- **Strict tool execution directives in DeepSeek adapter (`src/models/adapters/deepseek.ts`).** Hardened `toolSystemMessage` in `DeepSeekAdapter` to instruct immediate tool invocation when actions are required, explicitly forbidding conversational planning and preambles in place of tool execution. Resolves #13.
+
 ## [1.0.1] - 2026-09-16
 
 ### Fixed
