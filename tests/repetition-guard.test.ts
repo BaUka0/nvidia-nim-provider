@@ -217,6 +217,16 @@ describe("RepetitionGuard.add", () => {
     expect(guard.add(`${line}\n`)).toBe(true);
   });
 
+  it("does not treat self-contained single-line code blocks as multi-line fences", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 3 });
+    guard.add('```console.log("single line");```\n');
+    // Still outside code fence, so repeated lines trip as expected
+    guard.add(`${line}\n`);
+    guard.add(`${line}\n`);
+    expect(guard.add(`${line}\n`)).toBe(true);
+    expect(guard.tripped).toBe(true);
+  });
+
   it("evicts tracked lines once MAX_TRACKED_LINES is exceeded", () => {
     const guard = new RepetitionGuard({ maxRepeatedLines: 2 });
     for (let i = 0; i < 4096; i += 1) {

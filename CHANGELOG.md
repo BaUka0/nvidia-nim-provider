@@ -10,6 +10,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Added language-agnostic prefix repetition detection across turns and attempts. When a model repeats planning preambles across attempts or turns without invoking tools, the extension detects the loop regardless of language or word choice and nudges the model to execute the action immediately.
 - Prevented repetitive preamble text from polluting subsequent attempt history during retries, stopping models from imitating their own unexecuted planning loops.
 - Expanded suspension punctuation detection (including ellipses and dashes alongside colons) so that incomplete thoughts and trailing preambles are reliably recovered with an immediate action nudge.
+- Fixed stream termination checks in repetition detection. Final streaming fragments without newlines are now reliably evaluated when the answer finishes.
+- Prevented single-line code snippets from falsely putting repetition tracking into code block mode.
 
 ## [1.0.1] - 2026-09-16
 

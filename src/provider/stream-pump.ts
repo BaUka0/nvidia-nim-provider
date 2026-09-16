@@ -460,6 +460,18 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     flushPendingText();
   }
 
+  if (!repetitionGuard.tripped && repetitionGuard.flush()) {
+    debugLog("repetitionGuard", {
+      model: input.model.id,
+      trippedLine: repetitionGuard.trippedLine,
+      source: "textFlush",
+    });
+    outputLog(
+      "repetitionGuard",
+      `Stopped degenerate repeat loop on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
+    );
+  }
+
   return {
     reportedContent,
     reportedVisibleContent,

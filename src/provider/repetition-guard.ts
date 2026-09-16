@@ -41,7 +41,19 @@ export function normalizeLineForRepetition(line: string): string {
  */
 function isCodeFenceMarker(line: string): boolean {
   const trimmed = line.trim();
-  return trimmed.startsWith("```") || trimmed.startsWith("~~~");
+  if (!trimmed.startsWith("```") && !trimmed.startsWith("~~~")) {
+    return false;
+  }
+  // If the same line opens and closes the fence (e.g. ```console.log(1);```),
+  // it is a self-contained single-line block, not a multi-line fence delimiter.
+  if (
+    trimmed.length > 6 &&
+    ((trimmed.startsWith("```") && trimmed.endsWith("```")) ||
+      (trimmed.startsWith("~~~") && trimmed.endsWith("~~~")))
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export class RepetitionGuard {
@@ -162,6 +174,10 @@ export class RepetitionGuard {
     this.visibleWindow += `${rawLine}\n`;
     if (this.visibleWindow.length > CYCLE_SCAN_CHARS) {
       this.visibleWindow = this.visibleWindow.slice(-CYCLE_SCAN_CHARS);
+      const code = this.visibleWindow.charCodeAt(0);
+      if (code >= 0xdc00 && code <= 0xdfff) {
+        this.visibleWindow = this.visibleWindow.slice(1);
+      }
     }
   }
 
