@@ -1,6 +1,8 @@
+import * as vscode from "vscode";
 import { NvidiaApiError } from "../src/api/errors";
 import { DEFAULT_FALLBACK_CONFIG } from "../src/shared/config";
 import {
+  buildFallbackModelInfo,
   fallbackCapacityLabel,
   isFallbackEligibleError,
   shouldRestartTimeoutChain,
@@ -227,5 +229,57 @@ describe("fallbackCapacityLabel", () => {
     expect(fallbackCapacityLabel(new NvidiaApiError("empty_stream", "no content"))).toBe(
       "Empty response",
     );
+  });
+});
+
+describe("buildFallbackModelInfo", () => {
+  const fallbackModel = {
+    id: "deepseek-ai/deepseek-v4-flash-0731",
+    displayName: "DeepSeek V4 Flash",
+    contextWindow: 1000000,
+    maxOutputTokens: 131072,
+    supportsTools: true,
+    supportsVision: false,
+  };
+
+  it("preserves __nvidiaNimRuntimeKeyBinding from source model info", () => {
+    const source: vscode.LanguageModelChatInformation = {
+      id: "meta/llama-3.3-70b-instruct",
+      name: "Llama 3.3 70B Instruct",
+      family: "llama",
+      version: "1.0",
+      maxInputTokens: 100000,
+      maxOutputTokens: 4096,
+      capabilities: {},
+    };
+    Object.defineProperty(source, "__nvidiaNimRuntimeKeyBinding", {
+      value: "binding-uuid-1234",
+      configurable: true,
+      enumerable: false,
+      writable: false,
+    });
+
+    const result = buildFallbackModelInfo(source, fallbackModel);
+    expect(result.id).toBe(fallbackModel.id);
+    expect(result.name).toBe(fallbackModel.displayName);
+    const customProps = result as unknown as Record<string, unknown>;
+    expect(customProps["__nvidiaNimRuntimeKeyBinding"]).toBe("binding-uuid-1234");
+  });
+
+  it("works normally when source model info has no runtime key binding", () => {
+    const source: vscode.LanguageModelChatInformation = {
+      id: "meta/llama-3.3-70b-instruct",
+      name: "Llama 3.3 70B Instruct",
+      family: "llama",
+      version: "1.0",
+      maxInputTokens: 100000,
+      maxOutputTokens: 4096,
+      capabilities: {},
+    };
+
+    const result = buildFallbackModelInfo(source, fallbackModel);
+    expect(result.id).toBe(fallbackModel.id);
+    const customProps = result as unknown as Record<string, unknown>;
+    expect(customProps["__nvidiaNimRuntimeKeyBinding"]).toBeUndefined();
   });
 });

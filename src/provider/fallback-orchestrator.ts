@@ -104,7 +104,7 @@ export function buildFallbackModelInfo(
     toolCalling: fallbackModel.supportsTools ? 128 : false,
     imageInput: fallbackModel.supportsVision,
   };
-  return {
+  const info: LanguageModelChatInformation = {
     ...source,
     id: fallbackModel.id,
     name: fallbackModel.displayName,
@@ -117,4 +117,18 @@ export function buildFallbackModelInfo(
     maxOutputTokens: fallbackModel.maxOutputTokens,
     capabilities: fallbackCapabilities,
   };
+  const bindingId = (source as unknown as Record<string, unknown>)["__nvidiaNimRuntimeKeyBinding"];
+  if (typeof bindingId === "string" && bindingId.length > 0) {
+    try {
+      Object.defineProperty(info, "__nvidiaNimRuntimeKeyBinding", {
+        value: bindingId,
+        configurable: true,
+        enumerable: false,
+        writable: false,
+      });
+    } catch {
+      // Ignore if cannot define property
+    }
+  }
+  return info;
 }

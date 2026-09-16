@@ -181,4 +181,15 @@ describe("NvidiaApiKeyResolver", () => {
 
     await expect(resolver.resolveForModel(model)).resolves.toBeUndefined();
   });
+
+  it("resolves unbound model to unique runtime key when only one runtime key exists", async () => {
+    const resolver = new NvidiaApiKeyResolver(createSecrets(undefined));
+    resolver.rememberRuntimeKey("key-unique", "group-a");
+
+    const unboundModel = { id: "some-model-without-marker" };
+    await expect(resolver.resolveForModel(unboundModel)).resolves.toEqual({
+      value: "key-unique",
+      source: "runtime",
+    });
+  });
 });

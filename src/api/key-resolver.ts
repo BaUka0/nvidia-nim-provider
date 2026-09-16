@@ -165,6 +165,13 @@ export class NvidiaApiKeyResolver {
       }
     }
 
+    if (!hasBindingMarker) {
+      const uniqueRuntimeKeys = [...new Set(this.runtimeKeysByGroup.values())];
+      if (uniqueRuntimeKeys.length === 1) {
+        return { value: uniqueRuntimeKeys[0], source: "runtime" };
+      }
+    }
+
     // Compatibility for model objects supplied by older callers/tests. New
     // discovery results never include this property.
     const legacyModelKey = normalizeApiKey((model as { apiKey?: unknown }).apiKey);

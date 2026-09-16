@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { fetchModelsOrThrow, streamChatCompletion } from "../../src/api/client";
-import { getApiKeyFingerprint } from "../../src/api/key-resolver";
+import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../../src/api/key-resolver";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
 import { MODELS_CACHE_VERSION } from "../../src/shared/constants";
 import {
@@ -952,5 +952,49 @@ describe("NimChatModelProvider", () => {
     );
 
     expect(cacheHarness.runtimeInfoCache.size).toBe(0);
+  });
+
+  it("preserves configured provider group key bindings across background groupless resolution calls", async () => {
+    const cachedModels = [
+      {
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        displayName: "DeepSeek V4 Flash",
+        contextWindow: 1000000,
+        maxOutputTokens: 131072,
+        supportsTools: true,
+        supportsVision: false,
+      },
+    ];
+    (globalState.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === "nvidia-nim.models") return cachedModels;
+      if (key === "nvidia-nim.modelsCacheVersion") return MODELS_CACHE_VERSION;
+      if (key === "nvidia-nim.modelsCacheKeyFingerprint") {
+        return getApiKeyFingerprint("key-a");
+      }
+      return undefined;
+    });
+
+    const token = makeToken();
+    const groupModels = await provider.provideLanguageModelChatInformation(
+      makePrepareOptions({
+        group: "NVIDIA NIM",
+        silent: true,
+        configuration: { apiKey: "key-a" },
+      }),
+      token,
+    );
+
+    expect(groupModels).toHaveLength(1);
+    const model = groupModels[0];
+
+    // Background groupless resolution cycle (Copilot checking for vendor changes)
+    await provider.provideLanguageModelChatInformation(makePrepareOptions(), token);
+
+    const resolver = (provider as unknown as { apiKeyResolver: NvidiaApiKeyResolver })
+      .apiKeyResolver;
+    await expect(resolver.resolveForModel(model)).resolves.toEqual({
+      value: "key-a",
+      source: "runtime",
+    });
   });
 });

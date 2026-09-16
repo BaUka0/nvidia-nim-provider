@@ -284,8 +284,6 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       );
       this._selectableModelIdsInCycle.clear();
       this.runtimeInfoCache.clear();
-      this.apiKeyResolver.clearRuntimeBindings();
-      this._resolutionKeyFingerprintsByGroup.clear();
       return [];
     }
 
@@ -459,7 +457,9 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             throw toHostChatError(err);
           }
 
-          const modelApiKey = (await this.apiKeyResolver.resolveForModel(currentModel))?.value;
+          const modelApiKey =
+            (await this.apiKeyResolver.resolveForModel(currentModel))?.value ??
+            (await this.apiKeyResolver.resolveForTool())?.value;
           const hasImages = NimRequestBuilder.hasImageInput(messages);
           const fallbackModel = getFallbackModel(
             currentModel.id,
@@ -545,6 +545,12 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     const resolved = await this.apiKeyResolver.resolveForModel(model);
     if (resolved) {
       return resolved.value;
+    }
+
+    const fallbackKey = await this.apiKeyResolver.resolveForTool();
+    if (fallbackKey) {
+      this.apiKeyResolver.registerModelKey(model, fallbackKey.value);
+      return fallbackKey.value;
     }
 
     // Assign the in-flight promise before any await so parallel callers share

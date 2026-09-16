@@ -4,6 +4,14 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-16
+
+### Fixed
+
+- **API key binding preservation on groupless resolution (`src/provider/chat-provider.ts`, `tests/provider/chat-provider.info.test.ts`).** Removed `clearRuntimeBindings()` and `_resolutionKeyFingerprintsByGroup.clear()` calls from groupless resolution cycles (`!hasProviderGroup`) in `prepareLanguageModelChatModels`. VS Code triggers rapid groupless queries in the background to inspect provider capabilities; clearing runtime bindings caused race conditions where active Copilot agent turns intermittently failed with `ApiErrorKind.NOT_CONFIGURED` ("API key is not configured"). Addresses #12.
+- **Fallback key resolution resilience (`src/provider/chat-provider.ts`, `src/api/key-resolver.ts`, `tests/api-key-resolver.test.ts`).** Added fallback to `apiKeyResolver.resolveForTool()` in `ensureApiKey` and fallback orchestrator resolution paths before popping user prompts or failing closed. In `NvidiaApiKeyResolver.resolveForModel`, added automatic resolution to the unique active runtime key when a model reference lacks an explicit binding marker. Addresses #12.
+- **Runtime key binding propagation across fallback hops (`src/provider/fallback-orchestrator.ts`, `tests/fallback-orchestrator.test.ts`).** Explicitly propagated the non-enumerable `__nvidiaNimRuntimeKeyBinding` property onto cloned model descriptors in `buildFallbackModelInfo`, preventing failover candidates from losing their runtime credential bindings. Addresses #12.
+
 ## [1.0.0] - 2026-09-16
 
 ### Added

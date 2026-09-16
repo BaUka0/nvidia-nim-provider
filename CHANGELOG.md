@@ -4,6 +4,13 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-16
+
+### Fixed
+
+- Fixed intermittent "NVIDIA NIM API key is not configured" errors occurring during background Copilot agent turns. Background model updates in VS Code no longer accidentally wipe in-memory API key bindings.
+- Preserved active API key bindings across automatic fallback hops when primary models encounter rate limits or connection errors.
+
 ## [1.0.0] - 2026-09-16
 
 ### Added
