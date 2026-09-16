@@ -8,7 +8,7 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 
 | Model | Picker Name | Intelligence Index | Context Limit | Max Output | Reasoning Modes | Vision | Notes |
 | :--- | :--- | :---: | :---: | :---: | :--- | :---: | :--- |
-| **GLM 5.3** | `GLM 5.3` | **60** | 1,048,576 | 65,536 | `Low`, `High`, `Max` | No | Flagship reasoning model, complex agentic coding, deep problem solving |
+| **GLM 5.3** | `GLM 5.3` | **45** | 1,048,576 | 65,536 | `Low`, `High`, `Max` | No | Flagship reasoning model, complex agentic coding, deep problem solving |
 | **Kimi K3** | `Kimi K3` | **44** | 1,048,576 | 65,536 | `None`, `Low`, `High`, `Max` | Yes | Long-context reasoning, multimodal docs, agentic research |
 | **GLM 5.3 Flash** | `GLM 5.3 Flash` | **42** | 1,048,576 | 131,072 | `Low`, `High`, `Max` | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
 | **DeepSeek V4 Flash 0731** | `DeepSeek V4 Flash 0731` | **35** | 1,048,576 | 131,072 | `None`, `High`, `Max` | No | Hard algorithmic work, complex refactors, deep math |

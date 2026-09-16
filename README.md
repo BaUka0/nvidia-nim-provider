@@ -51,7 +51,7 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 
 | Model | Intelligence Index | Context Window | Reasoning Modes | Tools | Vision | Notes |
 | :--- | :---: | :---: | :--- | :---: | :---: | :--- |
-| **GLM 5.3** | **60** | 1M | `Low`, `High`, `Max` | Yes | No | Flagship reasoning model, complex agentic coding |
+| **GLM 5.3** | **45** | 1M | `Low`, `High`, `Max` | Yes | No | Flagship reasoning model, complex agentic coding |
 | **Kimi K3** | **44** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Long-context multimodal work, repo-scale jobs |
 | **GLM 5.3 Flash** | **42** | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
 | **DeepSeek V4 Flash 0731** | **35** | 1M | `None`, `High`, `Max` | Yes | No | Algorithm design, architecture, complex refactors |
