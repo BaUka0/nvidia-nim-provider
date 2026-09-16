@@ -22,6 +22,7 @@ import {
 } from "../../src/shared/constants";
 import { getTurnReports, resetTurnReportsForTests } from "../../src/shared/turn-report";
 import { setDeveloperLogOptions } from "../../src/shared/logging";
+import * as cancellation from "../../src/shared/cancellation";
 
 jest.mock("../../src/api/client", () => ({
   fetchModelsOrThrow: jest.fn(),
@@ -3031,6 +3032,50 @@ describe("NimChatModelProvider", () => {
     expect(retryRequest.messages).toEqual(
       (streamChatCompletion as jest.Mock).mock.calls[0][1].messages,
     );
+  });
+
+  it("waits for exponential backoff before retrying on server_error during stream", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const backoffSpy = jest.spyOn(cancellation, "waitForBackoff");
+
+    const serverError = new NvidiaApiError(
+      "server_error",
+      "[SERVER_ERROR] Service temporarily overloaded",
+      {
+        status: 503,
+      },
+    );
+    const failingStream = async function* () {
+      throw serverError;
+    };
+    const successStream = async function* () {
+      yield { choices: [{ delta: { content: "Recovered" } }] };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => failingStream())
+      .mockImplementationOnce(() => failingStream())
+      .mockImplementationOnce(() => successStream());
+
+    const progress = { report: jest.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "moonshotai/kimi-k2.6",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: true },
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(3);
+    expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: "Recovered" }));
+    expect(backoffSpy).toHaveBeenCalledTimes(2);
+    expect(backoffSpy).toHaveBeenNthCalledWith(1, 1000, expect.any(Object));
+    expect(backoffSpy).toHaveBeenNthCalledWith(2, 2000, expect.any(Object));
   });
 
   it("does not retry a server_error after this attempt already reported visible content", async () => {

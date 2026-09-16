@@ -12,7 +12,7 @@ import { getApiKeyFingerprint } from "../api/key-resolver";
 import { estimateNimMessagesTokensByCategory, estimateToolsTokens } from "../messages/converter";
 import { getModelAdapter } from "../models/adapters";
 import { NimConfig } from "../shared/config";
-import { isCancellation } from "../shared/cancellation";
+import { isCancellation, waitForBackoff } from "../shared/cancellation";
 import { DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 import { FetchAttemptBudget, httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
@@ -456,6 +456,15 @@ export class ModelTurnExecutor {
                   content:
                     "Your previous response was interrupted by a network error. Please start over and provide a complete response.",
                 };
+              }
+              const retryDelayMs = Math.min(1000 * Math.pow(2, transientRetryCount - 1), 5000);
+              try {
+                await waitForBackoff(retryDelayMs, abortController.signal);
+              } catch (backoffErr) {
+                if (isCancellation(backoffErr, token) || abortController.signal.aborted) {
+                  throw new vscode.CancellationError();
+                }
+                throw backoffErr;
               }
               continue;
             }
