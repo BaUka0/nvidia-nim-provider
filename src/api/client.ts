@@ -107,7 +107,10 @@ function parseSseDataLine(data: string, model: string): NimStreamResponse | unde
     }
     return parsed;
   } catch (error) {
-    if (error instanceof NvidiaApiError) {
+    if (
+      error instanceof NvidiaApiError ||
+      (error instanceof Error && error.name === "NvidiaApiError")
+    ) {
       throw error;
     }
     return undefined;
@@ -316,7 +319,10 @@ export async function fetchWithRetry(
       if (lastError.name === "AbortError" || signal?.aborted) {
         throw signal ? errorForAbortedSignal(signal) : lastError;
       }
-      if (lastError instanceof NvidiaApiError) {
+      if (
+        lastError instanceof NvidiaApiError ||
+        (lastError instanceof Error && lastError.name === "NvidiaApiError")
+      ) {
         throw lastError;
       }
       if (i < maxRetries - 1) {

@@ -4,7 +4,7 @@ import {
   fetchWithRetry,
   streamChatCompletion,
 } from "../src/api/client";
-import { classifyApiError } from "../src/api/errors";
+import { classifyApiError, NvidiaApiError } from "../src/api/errors";
 import { NvidiaModelSummary, NimStreamResponse } from "../src/types";
 import { makeAbortSignal, makeFetchResponse } from "./helpers/fakes";
 
@@ -133,11 +133,16 @@ describe("fetchWithRetry", () => {
       (caught: unknown) => caught,
     );
 
+    if ((error as Error)?.name !== "NvidiaApiError") {
+      throw error;
+    }
+
     expect(error).toMatchObject({
       name: "NvidiaApiError",
       code: "RATE_LIMITED",
       status: 429,
     });
+    expect(error).toBeInstanceOf(NvidiaApiError);
     expect(body.cancel).toHaveBeenCalledTimes(1);
   });
 

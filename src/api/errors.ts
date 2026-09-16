@@ -194,12 +194,8 @@ export class NvidiaApiError extends Error {
     this.contextOverflow = context.contextOverflow;
     this.timeoutKind = context.timeoutKind;
 
-    if (typeof this.stack === "string") {
-      const lines = this.stack.split("\n");
-      const atIndex = lines.findIndex((line) => line.trimStart().startsWith("at "));
-      if (atIndex > 0) {
-        this.stack = lines.slice(atIndex).join("\n");
-      }
+    if (typeof Error.captureStackTrace === "function") {
+      Error.captureStackTrace(this, NvidiaApiError);
     }
   }
 }
@@ -338,7 +334,10 @@ export function classifyApiError(error: unknown, context: ApiErrorContext = {}):
   if (isAbortError(error)) {
     return error;
   }
-  if (error instanceof NvidiaApiError) {
+  if (
+    error instanceof NvidiaApiError ||
+    (error instanceof Error && error.name === "NvidiaApiError")
+  ) {
     return error;
   }
 
@@ -378,11 +377,12 @@ export function classifyApiError(error: unknown, context: ApiErrorContext = {}):
 }
 
 export function isFirstTokenTimeout(err: unknown): boolean {
-  if (err instanceof NvidiaApiError) {
-    if (err.timeoutKind === "first-token" || err.timeoutKind === "connection") {
+  if (err instanceof NvidiaApiError || (err instanceof Error && err.name === "NvidiaApiError")) {
+    const apiErr = err as NvidiaApiError;
+    if (apiErr.timeoutKind === "first-token" || apiErr.timeoutKind === "connection") {
       return true;
     }
-    return /\bfirst token timeout\b|\bconnection timeout\b/i.test(err.message);
+    return /\bfirst token timeout\b|\bconnection timeout\b/i.test(apiErr.message);
   }
   if (err instanceof Error) {
     return (
