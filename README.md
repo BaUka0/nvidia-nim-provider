@@ -7,6 +7,7 @@
 [![Documentation](https://img.shields.io/badge/Docs-Configuration_Guide-green?style=flat&logo=markdown&logoColor=white)](docs/README.md)
 [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-Chat_Native-181717?style=flat&logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/baurzhanbissanov)
 
 Direct access to NVIDIA NIM reasoning models inside GitHub Copilot Chat. No proxy servers in between.
 
@@ -156,6 +157,12 @@ npm test          # runs Jest; all tests should pass
 npm run package:vsix   # compiles then packages the extension
 ```
 The resulting `.vsix` file can be installed via **Extensions → Install from VSIX…** in VS Code.
+
+---
+
+## Support
+
+If this extension saves you time and makes working with NVIDIA NIM in Copilot Chat smoother, you can support its maintenance on [Ko-fi](https://ko-fi.com/baurzhanbissanov).
 
 ---
 
