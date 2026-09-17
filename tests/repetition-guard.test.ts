@@ -88,10 +88,38 @@ describe("detectRunawayCycle", () => {
     expect(detectCharacterRunaway("!".repeat(29))).toBeUndefined();
   });
 
-  it("allows standard markdown dividers under 80 characters but catches runaway dividers", () => {
+  it("allows standard markdown and code dividers under 120 characters but catches runaway dividers", () => {
     expect(detectCharacterRunaway("-".repeat(40))).toBeUndefined();
     expect(detectCharacterRunaway("=".repeat(50))).toBeUndefined();
-    expect(detectCharacterRunaway("-".repeat(85))).toBeDefined();
+    expect(detectCharacterRunaway("-".repeat(85))).toBeUndefined();
+    expect(detectCharacterRunaway("#".repeat(80))).toBeUndefined();
+    expect(detectCharacterRunaway("/".repeat(80))).toBeUndefined();
+    expect(detectCharacterRunaway("-".repeat(125))).toBeDefined();
+  });
+
+  it("does not trip periodic cycle scanner on code comment dividers or markdown tables", () => {
+    // Issue #13: 75-char PEP 8 comment divider line was falsely detected as a period-2 cycle
+    const pep8Comment = "# " + "-".repeat(75);
+    expect(detectPeriodicCycle(pep8Comment)).toBeUndefined();
+    expect(detectRunawayCycle(pep8Comment)).toBeUndefined();
+
+    const cppDivider = "// " + "=".repeat(80);
+    expect(detectPeriodicCycle(cppDivider)).toBeUndefined();
+    expect(detectRunawayCycle(cppDivider)).toBeUndefined();
+
+    const hashBanner = "#".repeat(80);
+    expect(detectPeriodicCycle(hashBanner)).toBeUndefined();
+    expect(detectRunawayCycle(hashBanner)).toBeUndefined();
+
+    // Markdown table separator line
+    const tableDivider = "|---|---|---|---|---|---|---|---|---|---|";
+    expect(detectPeriodicCycle(tableDivider)).toBeUndefined();
+    expect(detectRunawayCycle(tableDivider)).toBeUndefined();
+
+    // Spaced divider patterns under 120 chars
+    expect(detectPeriodicCycle("- ".repeat(30))).toBeUndefined();
+    // Runaway spaced divider exceeding 120 chars
+    expect(detectPeriodicCycle("- ".repeat(70))).toBeDefined();
   });
 
   it("detects short periodic pattern cycles", () => {
@@ -332,6 +360,16 @@ describe("RepetitionGuard.add", () => {
     const guard = new RepetitionGuard({ maxRepeatedLines: 4 });
     expect(guard.add("!?".repeat(25))).toBe(true);
     expect(guard.tripped).toBe(true);
+  });
+
+  it("does not trip on comment divider lines or markdown table separators", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 4 });
+    expect(guard.add("# " + "-".repeat(75) + "\n")).toBe(false);
+    expect(guard.add("# Agreements helpers\n")).toBe(false);
+    expect(guard.add("# " + "-".repeat(75) + "\n")).toBe(false);
+    expect(guard.add("|---|---|---|---|---|---|---|---|---|---|\n")).toBe(false);
+    expect(guard.flush()).toBe(false);
+    expect(guard.tripped).toBe(false);
   });
 });
 

@@ -5,13 +5,43 @@ const CYCLE_MIN_GRAM_CHARS = 20;
 const CYCLE_MIN_REPEATS = 3;
 
 export const MIN_CHAR_RUNAWAY_REPEATS = 30;
-export const MIN_DIVIDER_RUNAWAY_REPEATS = 80;
-const RUNAWAY_DIVIDER_CHARS = new Set(["-", "*", "_", "=", "~"]);
+export const MIN_DIVIDER_RUNAWAY_REPEATS = 120;
+export const RUNAWAY_DIVIDER_CHARS = new Set([
+  "-",
+  "*",
+  "_",
+  "=",
+  "~",
+  "#",
+  "/",
+  "+",
+  "|",
+  "─",
+  "═",
+  "━",
+]);
 const MAX_PERIOD_LENGTH = 32;
 
 /**
+ * Checks if a pattern consists solely of divider/table formatting characters and/or whitespace.
+ * e.g. "--", "- ", "* * ", "====", "##", "/* ", "|---|", ":---|:"
+ */
+export function isDividerPattern(pattern: string): boolean {
+  const nonWhitespace = pattern.replace(/[\s:]+/gu, "");
+  if (nonWhitespace.length === 0) {
+    return false;
+  }
+  for (const char of nonWhitespace) {
+    if (!RUNAWAY_DIVIDER_CHARS.has(char)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Detects runaway identical character sequences (e.g. 30+ "!").
- * Markdown horizontal dividers (---, ***, ___, ===) are tolerated up to 80 characters.
+ * Markdown and code horizontal dividers (---, ***, ___, ===, ###, ///, |---|) are tolerated up to 120 characters.
  */
 export function detectCharacterRunaway(text: string): string | undefined {
   if (!text || text.length < MIN_CHAR_RUNAWAY_REPEATS) {
@@ -51,6 +81,11 @@ export function detectPeriodicCycle(text: string): string | undefined {
     if (/^\s+$/.test(pattern)) {
       continue;
     }
+    // Skip composite periods (e.g. "--" when period 1 already handles "-", or "abab" when period 2 handles "ab")
+    if (period >= 2 && (pattern + pattern).indexOf(pattern, 1) < pattern.length) {
+      continue;
+    }
+
     let count = 0;
     let idx = window.length;
     while (idx >= period && window.slice(idx - period, idx) === pattern) {
@@ -58,24 +93,35 @@ export function detectPeriodicCycle(text: string): string | undefined {
       idx -= period;
     }
 
+    const isDivider = isDividerPattern(pattern);
+    const totalChars = period * count;
+
     if (period === 1) {
-      if (RUNAWAY_DIVIDER_CHARS.has(pattern) && count < MIN_DIVIDER_RUNAWAY_REPEATS) {
+      if (isDivider && count < MIN_DIVIDER_RUNAWAY_REPEATS) {
         continue;
       }
       if (count >= MIN_CHAR_RUNAWAY_REPEATS) {
         return pattern.repeat(Math.min(count, 40));
       }
-    } else if (period >= 2 && period <= 4) {
-      if (period * count >= 40 && count >= 5) {
-        return pattern.repeat(Math.min(count, 10));
+    } else {
+      if (isDivider) {
+        if (totalChars >= MIN_DIVIDER_RUNAWAY_REPEATS) {
+          return pattern.repeat(Math.min(count, Math.ceil(40 / period)));
+        }
+        continue;
       }
-    } else if (period >= 5 && period <= 16) {
-      if (count >= 5 && period * count >= 50) {
-        return pattern.repeat(Math.min(count, 5));
-      }
-    } else if (period >= 17 && period <= MAX_PERIOD_LENGTH) {
-      if (count >= 4 && period * count >= 80) {
-        return pattern.repeat(Math.min(count, 4));
+      if (period >= 2 && period <= 4) {
+        if (totalChars >= 40 && count >= 5) {
+          return pattern.repeat(Math.min(count, 10));
+        }
+      } else if (period >= 5 && period <= 16) {
+        if (count >= 5 && totalChars >= 50) {
+          return pattern.repeat(Math.min(count, 5));
+        }
+      } else if (period >= 17 && period <= MAX_PERIOD_LENGTH) {
+        if (count >= 4 && totalChars >= 80) {
+          return pattern.repeat(Math.min(count, 4));
+        }
       }
     }
   }
