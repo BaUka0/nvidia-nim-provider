@@ -23,12 +23,9 @@ await cp(cjsRoot, path.join(outputPackageRoot, "lib", "cjs"), {
   recursive: true,
   filter: (source) => !source.endsWith(".map"),
 });
-const packageManifest = JSON.parse(
-  await readFile(path.join(packageRoot, "package.json"), "utf8"),
-);
+const packageManifest = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8"));
 const packageExports = packageManifest.exports?.["."];
-const requireEntry =
-  typeof packageExports === "string" ? packageExports : packageExports?.require;
+const requireEntry = typeof packageExports === "string" ? packageExports : packageExports?.require;
 const runtimeManifest = {
   name: packageManifest.name,
   version: packageManifest.version,

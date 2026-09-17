@@ -8,7 +8,18 @@ export const RAW_MODELS_STATE_KEY = "nvidia-nim.rawModels";
 export const MODELS_STATE_KEY = "nvidia-nim.models";
 export const MODELS_CACHE_VERSION_STATE_KEY = "nvidia-nim.modelsCacheVersion";
 export const MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY = "nvidia-nim.modelsCacheKeyFingerprint";
-export const MODELS_CACHE_VERSION = 17;
+/**
+ * Cache format version. `scripts/sync-manifest.mjs` increments it whenever the
+ * curated catalog changes, so an install with an older cached model list
+ * re-fetches instead of serving entries normalized against a previous catalog.
+ */
+export const MODELS_CACHE_VERSION = 18;
+
+/**
+ * Digest of MODEL_LIST recorded when {@link MODELS_CACHE_VERSION} was last
+ * bumped; a mismatch means the catalog changed and the version was not raised.
+ */
+export const MODELS_CACHE_CATALOG_DIGEST = "72327da5";
 export const MIGRATION_DONE_KEY = "nvidia-nim.legacyMigrationDone";
 export const DEBUG_STATE_KEY = "nvidia-nim.debug";
 export const DEBUG_ENV_VAR = "NVIDIA_NIM_DEBUG";

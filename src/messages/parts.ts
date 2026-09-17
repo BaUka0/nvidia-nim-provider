@@ -77,7 +77,7 @@ function toUint8Array(
   return undefined;
 }
 
-function isIgnorableToolResultPart(part: vscode.LanguageModelInputPart | LegacyPart): boolean {
+function isIgnorableToolResultPart(part: unknown): boolean {
   if (typeof part !== "object" || part === null) {
     return false;
   }
@@ -85,9 +85,7 @@ function isIgnorableToolResultPart(part: vscode.LanguageModelInputPart | LegacyP
   return typeof mimeType === "string" && mimeType.includes("cache_control");
 }
 
-export function getThinkingPartValue(
-  part: vscode.LanguageModelInputPart | LegacyPart,
-): string | undefined {
+export function getThinkingPartValue(part: unknown): string | undefined {
   if (typeof part !== "object" || part === null) {
     return undefined;
   }
@@ -107,9 +105,7 @@ export function getThinkingPartValue(
   return undefined;
 }
 
-export function getTextPartValue(
-  part: vscode.LanguageModelInputPart | LegacyPart,
-): string | undefined {
+export function getTextPartValue(part: unknown): string | undefined {
   if (getThinkingPartValue(part) !== undefined) {
     return undefined;
   }
@@ -125,9 +121,7 @@ export function getTextPartValue(
   return undefined;
 }
 
-export function getDataPartTextValue(
-  part: vscode.LanguageModelInputPart | LegacyPart,
-): string | undefined {
+export function getDataPartTextValue(part: unknown): string | undefined {
   if (typeof part !== "object" || part === null) {
     return undefined;
   }
@@ -172,7 +166,7 @@ function rejectOversizedChatImage(byteLength: number, mimeType: string): void {
 }
 
 export function extractImageData(
-  part: vscode.LanguageModelInputPart | LegacyPart,
+  part: unknown,
 ): { mimeType: string; data: Uint8Array } | undefined {
   if (typeof part !== "object" || part === null) return undefined;
 
@@ -221,8 +215,11 @@ export function extractImageData(
 }
 
 export function getToolCallInfo(
-  part: vscode.LanguageModelInputPart | LegacyPart,
+  part: unknown,
 ): { id?: string; name?: string; args?: Record<string, unknown> } | undefined {
+  if (typeof part !== "object" || part === null) {
+    return undefined;
+  }
   const p = part as { callId?: string; name?: string; input?: Record<string, unknown> };
   if (typeof p.callId === "string" && typeof p.name === "string") {
     return { id: p.callId, name: p.name, args: p.input };
@@ -230,12 +227,15 @@ export function getToolCallInfo(
   return undefined;
 }
 
-export function getToolResultTexts(part: vscode.LanguageModelInputPart | LegacyPart): string[] {
+export function getToolResultTexts(part: unknown): string[] {
   const results: string[] = [];
+  if (typeof part !== "object" || part === null) {
+    return results;
+  }
   const p = part as { callId?: string; content?: unknown[] };
   if (typeof p.callId === "string" && Array.isArray(p.content)) {
     for (const inner of p.content) {
-      if (isIgnorableToolResultPart(inner as vscode.LanguageModelInputPart | LegacyPart)) {
+      if (isIgnorableToolResultPart(inner)) {
         continue;
       }
       if (typeof inner === "object" && inner !== null && "value" in inner) {
@@ -253,9 +253,7 @@ export function getToolResultTexts(part: vscode.LanguageModelInputPart | LegacyP
           continue;
         }
       }
-      const tv =
-        getTextPartValue(inner as vscode.LanguageModelInputPart | LegacyPart) ??
-        getDataPartTextValue(inner as vscode.LanguageModelInputPart | LegacyPart);
+      const tv = getTextPartValue(inner) ?? getDataPartTextValue(inner);
       if (tv !== undefined) {
         results.push(tv);
         continue;

@@ -22,6 +22,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Prevented single-line code snippets from falsely putting repetition tracking into code block mode.
 - Fixed false positive loop detection on code comment dividers and markdown tables. When models generated lines containing repeated hyphens, equal signs, or table separators (such as PEP-8 section headers), the periodic loop scanner previously mistook them for infinite loops and prematurely aborted the stream. Divider patterns up to 120 characters and composite pattern aliases are now properly recognized as valid formatting.
 - Fixed an intermittent failure in cross-platform test suites on macOS where custom error object assertions triggered a stack limit error in the test runner.
+- Model list updates now reach existing installations on their own. Adding, removing, or adjusting a curated model invalidates the cached list on the next start, so new models appear in the picker without running Refresh Models by hand.
 
 ## [1.0.1] - 2026-09-16
 

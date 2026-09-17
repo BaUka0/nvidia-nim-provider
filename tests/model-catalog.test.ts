@@ -4,10 +4,12 @@ import {
   FALLBACK_MODEL_ID,
   FALLBACK_VISION_MODEL_ID,
   MODEL_LIST,
+  getCatalogDigest,
   getFallbackModel,
   isNormalizedNvidiaModel,
   normalizeNvidiaModels,
 } from "../src/models/catalog";
+import { MODELS_CACHE_CATALOG_DIGEST } from "../src/shared/constants";
 import type { NvidiaModelSummary } from "../src/types";
 
 describe("normalizeNvidiaModels", () => {
@@ -33,116 +35,16 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
-  it("normalizes moonshotai/kimi-k3 with its 1M context limits", () => {
-    const raw: NvidiaModelSummary[] = [
+  it.each(Object.keys(MODEL_LIST))("normalizes %s to its catalog entry", (id) => {
+    const entry = MODEL_LIST[id];
+    expect(normalizeNvidiaModels([{ id }])).toEqual([
       {
-        id: "moonshotai/kimi-k3",
-      },
-    ];
-
-    expect(normalizeNvidiaModels(raw)).toEqual([
-      {
-        id: "moonshotai/kimi-k3",
-        displayName: "Kimi K3",
-        contextWindow: 1048576,
-        maxOutputTokens: 65536,
-        supportsTools: true,
-        supportsVision: true,
-      },
-    ]);
-  });
-
-  it("normalizes meta/muse-glimmer-30b with its documented limits", () => {
-    const raw: NvidiaModelSummary[] = [
-      {
-        id: "meta/muse-glimmer-30b",
-      },
-    ];
-
-    expect(normalizeNvidiaModels(raw)).toEqual([
-      {
-        id: "meta/muse-glimmer-30b",
-        displayName: "Muse Glimmer",
-        contextWindow: 131072,
-        maxOutputTokens: 32768,
-        supportsTools: true,
-        supportsVision: true,
-      },
-    ]);
-  });
-
-  it("normalizes nvidia/nemotron-3-super-120b-a12b with its curated 1M / 64K limits", () => {
-    const raw: NvidiaModelSummary[] = [
-      {
-        id: "nvidia/nemotron-3-super-120b-a12b",
-      },
-    ];
-
-    expect(normalizeNvidiaModels(raw)).toEqual([
-      {
-        id: "nvidia/nemotron-3-super-120b-a12b",
-        displayName: "Nemotron 3 Super 120B",
-        contextWindow: 1000000,
-        maxOutputTokens: 65536,
-        supportsTools: true,
-        supportsVision: false,
-      },
-    ]);
-  });
-
-  it("normalizes nvidia/nemotron-3.5-lightning-30b-a3b with its curated 1M / 32K limits", () => {
-    const raw: NvidiaModelSummary[] = [
-      {
-        id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-      },
-    ];
-
-    expect(normalizeNvidiaModels(raw)).toEqual([
-      {
-        id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-        displayName: "Nemotron 3.5 Lightning 30B",
-        contextWindow: 1000000,
-        maxOutputTokens: 32768,
-        supportsTools: true,
-        supportsVision: false,
-      },
-    ]);
-  });
-
-  it("normalizes z-ai/glm-5.3 with its curated 1M / 64K limits", () => {
-    const raw: NvidiaModelSummary[] = [
-      {
-        id: "z-ai/glm-5.3",
-      },
-    ];
-
-    expect(normalizeNvidiaModels(raw)).toEqual([
-      {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
-        contextWindow: 1048576,
-        maxOutputTokens: 65536,
-        supportsTools: true,
-        supportsVision: false,
-      },
-    ]);
-  });
-
-  it("normalizes z-ai/glm-5.3-flash with its curated 1M / 128K limits", () => {
-    const raw: NvidiaModelSummary[] = [
-      {
-        id: "z-ai/glm-5.3-flash",
-      },
-    ];
-
-    expect(normalizeNvidiaModels(raw)).toEqual([
-      {
-        id: "z-ai/glm-5.3-flash",
-        displayName: "GLM 5.3 Flash",
-        contextWindow: 1048576,
-        maxOutputTokens: 131072,
-        supportsTools: true,
-        supportsVision: true,
+        id,
+        displayName: entry.displayName,
+        contextWindow: entry.contextWindow,
+        maxOutputTokens: entry.maxOutputTokens,
+        supportsTools: entry.supportsTools,
+        supportsVision: entry.supportsVision,
       },
     ]);
   });
@@ -413,5 +315,20 @@ describe("models probe curated ids", () => {
     expect(block).not.toBeNull();
     const probeIds = [...(block?.[1].matchAll(/"([^"]+)"/g) ?? [])].map((match) => match[1]).sort();
     expect(probeIds).toEqual(Object.keys(MODEL_LIST).sort());
+  });
+});
+
+describe("model cache catalog digest", () => {
+  it("records the digest of the current catalog so cached model lists invalidate on catalog edits", () => {
+    // A mismatch means the catalog changed without running `npm run sync:manifest`,
+    // which is what bumps MODELS_CACHE_VERSION and refreshes stale caches.
+    expect(MODELS_CACHE_CATALOG_DIGEST).toBe(getCatalogDigest());
+  });
+
+  it("is deterministic and reflects capability changes", () => {
+    const digest = getCatalogDigest();
+    expect(digest).toMatch(/^[a-f0-9]{8}$/);
+    expect(getCatalogDigest()).toBe(digest);
+    expect(MODEL_LIST[FALLBACK_MODEL_ID].supportsVision).toBe(false);
   });
 });

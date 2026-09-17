@@ -113,7 +113,9 @@ async function main() {
   }
 
   lines.push("---");
-  lines.push(`*Generated on ${new Date().toISOString()} by [track-models.yml](https://github.com/BaUka0/nvidia-nim-provider/actions/workflows/track-models.yml).*`);
+  lines.push(
+    `*Generated on ${new Date().toISOString()} by [track-models.yml](https://github.com/BaUka0/nvidia-nim-provider/actions/workflows/track-models.yml).*`,
+  );
   lines.push("");
 
   const markdownContent = lines.join("\n");

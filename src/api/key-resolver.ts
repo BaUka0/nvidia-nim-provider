@@ -27,6 +27,36 @@ interface RuntimeModelBinding {
   bindingId: string;
 }
 
+/**
+ * Read the non-enumerable runtime key binding token from a model descriptor.
+ * Kept here so no caller needs an untyped property access.
+ */
+export function readModelKeyBinding(model: object): string | undefined {
+  const value = (model as Record<string, unknown>)[MODEL_KEY_BINDING_PROPERTY];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/**
+ * Copy the runtime key binding token onto a derived descriptor. Safe on frozen
+ * targets: a failed define simply leaves the clone unbound (fail closed).
+ */
+export function copyModelKeyBinding(source: object, target: object): void {
+  const bindingId = readModelKeyBinding(source);
+  if (!bindingId) {
+    return;
+  }
+  try {
+    Object.defineProperty(target, MODEL_KEY_BINDING_PROPERTY, {
+      value: bindingId,
+      configurable: true,
+      enumerable: false,
+      writable: false,
+    });
+  } catch {
+    // Ignore if cannot define property
+  }
+}
+
 function normalizeApiKey(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
@@ -264,8 +294,7 @@ export class NvidiaApiKeyResolver {
   }
 
   private getSerializedBindingId(model: object): string | undefined {
-    const value = (model as Record<string, unknown>)[MODEL_KEY_BINDING_PROPERTY];
-    return typeof value === "string" && value.length > 0 ? value : undefined;
+    return readModelKeyBinding(model);
   }
 
   private getModelId(model: object): string | undefined {

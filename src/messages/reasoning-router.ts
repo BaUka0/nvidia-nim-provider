@@ -92,24 +92,7 @@ export class ReasoningStreamRouter {
         this.answerStarted = true;
         this.onText(segment.text);
       } else if (!this.reasoningIsolationExpected) {
-        const closeMatch = findOrphanedCloseTag(segment.text);
-        if (closeMatch) {
-          const { before, after } = splitOnTag(
-            segment.text,
-            closeMatch.index,
-            closeMatch.tag.length,
-          );
-          if (before) {
-            this.emitReasoning(before);
-          }
-          this.answerStarted = true;
-          if (after) {
-            this.onText(after);
-          }
-        } else {
-          this.answerStarted = true;
-          this.onText(segment.text);
-        }
+        this.emitAnswerOrSplitCloseTag(segment.text);
       } else if (this.reasoningIsolationExpected && !this.answerStarted) {
         if (!this.seenReasoningContent) {
           this.bufferPossibleAnswer(segment.text);

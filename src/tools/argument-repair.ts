@@ -147,6 +147,133 @@ export function fillMissingAuxiliaryBooleans(
   }
 }
 
+/**
+ * Alias groups used to recover a required argument from a sibling the model
+ * named instead (for example `file_path` for a required `filePath`).
+ */
+const PROPERTY_ALIAS_GROUPS: readonly (readonly string[])[] = [
+  [
+    "filePath",
+    "targetFile",
+    "target_file",
+    "file",
+    "filename",
+    "file_path",
+    "filepath",
+    "uri",
+    "destination",
+    "dest",
+    "AbsolutePath",
+    "FilePath",
+    "TargetFile",
+  ],
+  [
+    "content",
+    "code",
+    "text",
+    "data",
+    "body",
+    "file_content",
+    "fileContent",
+    "CodeContent",
+    "ReplacementContent",
+  ],
+  LINE_START_ALIASES,
+  LINE_END_ALIASES,
+  [
+    "path",
+    "directory",
+    "dir",
+    "folder",
+    "cwd",
+    "targetDirectory",
+    "SearchDirectory",
+    "DirectoryPath",
+    "Path",
+  ],
+  [
+    "query",
+    "pattern",
+    "search_pattern",
+    "searchPattern",
+    "regex",
+    "searchTerm",
+    "search_term",
+    "Query",
+    "Pattern",
+  ],
+  ["command", "cmd", "script", "commandLine", "command_line", "CommandLine"],
+];
+
+/** Copy an alias value onto a missing required key; never invent other keys. */
+function applyRequiredAliases(
+  parsedArgs: Record<string, unknown>,
+  required: ReadonlySet<string>,
+): void {
+  for (const reqKey of required) {
+    if (parsedArgs[reqKey] !== undefined && parsedArgs[reqKey] !== "") {
+      continue;
+    }
+    for (const group of PROPERTY_ALIAS_GROUPS) {
+      if (!group.some((alias) => alias.toLowerCase() === reqKey.toLowerCase())) {
+        continue;
+      }
+      for (const alias of group) {
+        if (parsedArgs[alias] !== undefined && parsedArgs[alias] !== "") {
+          parsedArgs[reqKey] = parsedArgs[alias];
+          break;
+        }
+      }
+      if (parsedArgs[reqKey] !== undefined && parsedArgs[reqKey] !== "") {
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * Models sometimes wrap the real arguments in a nested `arguments` object.
+ * Lift them to the top level only when the schema does not declare a nested
+ * `arguments` property.
+ */
+function unwrapNestedArguments(
+  repaired: Record<string, unknown>,
+  schema: ToolSchema | undefined,
+): void {
+  const argumentsSchema = schema?.properties?.arguments;
+  if (
+    typeof repaired.arguments === "string" &&
+    (!argumentsSchema || argumentsSchema.type === "object")
+  ) {
+    try {
+      repaired.arguments = parseToolArguments(repaired.arguments);
+    } catch {
+      // Leave an invalid nested value for schema validation to reject.
+    }
+  }
+
+  if (
+    repaired.arguments &&
+    typeof repaired.arguments === "object" &&
+    !Array.isArray(repaired.arguments)
+  ) {
+    const inner = repaired.arguments as Record<string, unknown>;
+    const outerRequiredKeys = schema?.required ?? [];
+    const knownPropertyNames = Object.keys(schema?.properties ?? {});
+    const hasRequiredInInner = outerRequiredKeys.some((k) => k in inner);
+    const hasKnownPropertyInInner = knownPropertyNames.some((k) => k in inner);
+    if (!schema?.properties?.arguments && (hasRequiredInInner || hasKnownPropertyInInner)) {
+      for (const [key, value] of Object.entries(inner)) {
+        if (!(key in repaired)) {
+          repaired[key] = value;
+        }
+      }
+      delete repaired.arguments;
+      Object.assign(repaired, normalizeArguments(repaired, schema ?? {}));
+    }
+  }
+}
+
 export function repairToolArguments(
   toolName: string,
   args: unknown,
@@ -194,113 +321,12 @@ export function repairToolArguments(
     }
   }
 
-  // 2. Resolve common property aliases when required properties are missing
-  const propertyAliasGroups: readonly (readonly string[])[] = [
-    [
-      "filePath",
-      "targetFile",
-      "target_file",
-      "file",
-      "filename",
-      "file_path",
-      "filepath",
-      "uri",
-      "destination",
-      "dest",
-      "AbsolutePath",
-      "FilePath",
-      "TargetFile",
-    ],
-    [
-      "content",
-      "code",
-      "text",
-      "data",
-      "body",
-      "file_content",
-      "fileContent",
-      "CodeContent",
-      "ReplacementContent",
-    ],
-    LINE_START_ALIASES,
-    LINE_END_ALIASES,
-    [
-      "path",
-      "directory",
-      "dir",
-      "folder",
-      "cwd",
-      "targetDirectory",
-      "SearchDirectory",
-      "DirectoryPath",
-      "Path",
-    ],
-    [
-      "query",
-      "pattern",
-      "search_pattern",
-      "searchPattern",
-      "regex",
-      "searchTerm",
-      "search_term",
-      "Query",
-      "Pattern",
-    ],
-    ["command", "cmd", "script", "commandLine", "command_line", "CommandLine"],
-  ];
-
-  for (const reqKey of required) {
-    if (parsedArgs[reqKey] === undefined || parsedArgs[reqKey] === "") {
-      for (const group of propertyAliasGroups) {
-        if (group.some((alias) => alias.toLowerCase() === reqKey.toLowerCase())) {
-          for (const alias of group) {
-            if (parsedArgs[alias] !== undefined && parsedArgs[alias] !== "") {
-              parsedArgs[reqKey] = parsedArgs[alias];
-              break;
-            }
-          }
-          if (parsedArgs[reqKey] !== undefined && parsedArgs[reqKey] !== "") {
-            break;
-          }
-        }
-      }
-    }
-  }
+  // 2. Resolve common property aliases when required properties are missing.
+  applyRequiredAliases(parsedArgs, required);
 
   const repaired: Record<string, unknown> = normalizeArguments(parsedArgs, schema ?? {});
 
-  const argumentsSchema = schema?.properties?.arguments;
-  if (
-    typeof repaired.arguments === "string" &&
-    (!argumentsSchema || argumentsSchema.type === "object")
-  ) {
-    try {
-      repaired.arguments = parseToolArguments(repaired.arguments);
-    } catch {
-      // Leave an invalid nested value for schema validation to reject.
-    }
-  }
-
-  if (
-    repaired.arguments &&
-    typeof repaired.arguments === "object" &&
-    !Array.isArray(repaired.arguments)
-  ) {
-    const inner = repaired.arguments as Record<string, unknown>;
-    const outerRequiredKeys = schema?.required ?? [];
-    const knownPropertyNames = Object.keys(schema?.properties ?? {});
-    const hasRequiredInInner = outerRequiredKeys.some((k) => k in inner);
-    const hasKnownPropertyInInner = knownPropertyNames.some((k) => k in inner);
-    if (!schema?.properties?.arguments && (hasRequiredInInner || hasKnownPropertyInInner)) {
-      for (const [key, value] of Object.entries(inner)) {
-        if (!(key in repaired)) {
-          repaired[key] = value;
-        }
-      }
-      delete repaired.arguments;
-      Object.assign(repaired, normalizeArguments(repaired, schema ?? {}));
-    }
-  }
+  unwrapNestedArguments(repaired, schema);
 
   if (isTerminalTool(toolName)) {
     if (needsStringField(repaired.goal, "goal")) {

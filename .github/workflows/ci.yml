@@ -30,7 +30,14 @@ jobs:
         run: npm run lint
       - name: Compile
         run: npm run compile
+      - name: Manifest Sync Check
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run sync:manifest:check
+      - name: Test Suite (with coverage)
+        if: matrix.os == 'ubuntu-latest'
+        run: npm test -- --runInBand --coverage
       - name: Test Suite
+        if: matrix.os != 'ubuntu-latest'
         run: npm test -- --runInBand
       - name: Package VSIX
         run: npm run package:vsix

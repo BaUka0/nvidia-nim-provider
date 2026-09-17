@@ -103,6 +103,36 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
 export const FALLBACK_MODEL_ID = "nvidia/nemotron-3-super-120b-a12b";
 export const FALLBACK_VISION_MODEL_ID = "meta/muse-glimmer-30b";
 
+/**
+ * Stable digest of the curated catalog: sorted ids plus every curated field.
+ * Must change whenever any of those fields changes, because cached model lists
+ * are normalized against MODEL_LIST at fetch time and would otherwise stay stale.
+ */
+export function getCatalogDigest(): string {
+  const canonical = Object.keys(MODEL_LIST)
+    .sort()
+    .map((id) => {
+      const entry = MODEL_LIST[id];
+      return [
+        id,
+        entry.displayName,
+        entry.contextWindow,
+        entry.maxOutputTokens,
+        entry.supportsTools,
+        entry.supportsVision,
+        entry.adapter,
+      ].join("|");
+    })
+    .join("\n");
+
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < canonical.length; index += 1) {
+    hash ^= canonical.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
 export interface FallbackModelSelectionOptions {
   configuredFallbackModelId?: string;
   configuredVisionFallbackModelId?: string;

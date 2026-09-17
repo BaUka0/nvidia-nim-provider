@@ -1,7 +1,6 @@
-import * as vscode from "vscode";
 import { NimChatMessage, NimTool } from "../types";
 import {
-  LegacyPart,
+  asObjectRecord,
   extractImageData,
   getDataPartTextValue,
   getTextPartValue,
@@ -12,6 +11,11 @@ import {
 /** Never charge fewer than 4 tokens for an image; ~750 bytes per token after that. */
 export const IMAGE_TOKEN_FLOOR = 4;
 export const IMAGE_BYTES_PER_TOKEN = 750;
+
+/** Single size→token heuristic for every image payload shape (parts and data URLs). */
+function imageTokensForBytes(bytes: number): number {
+  return Math.max(IMAGE_TOKEN_FLOOR, Math.ceil(bytes / IMAGE_BYTES_PER_TOKEN));
+}
 
 export function estimateTokens(text: string): number {
   const cjkPattern =
@@ -29,14 +33,14 @@ export function estimateTokens(text: string): number {
  * Estimate the token cost of a single message content part.
  *
  * Handles all part types VS Code passes in a heterogeneous `content` array:
- * {@link vscode.LanguageModelTextPart}, text-mime {@link vscode.LanguageModelDataPart},
- * {@link vscode.LanguageModelToolResultPart} (including structured/JSON/binary inner
- * content), and {@link vscode.LanguageModelToolCallPart}. Non-textable parts (images,
+ * `LanguageModelTextPart`, text-mime `LanguageModelDataPart`,
+ * `LanguageModelToolResultPart` (including structured/JSON/binary inner
+ * content), and `LanguageModelToolCallPart`. Non-textable parts (images,
  * raw binary) use a size-aware heuristic. This is what VS Code calls to render the
  * context-window token breakdown, so under-counting any part type makes the breakdown
  * disappear for tool-heavy conversations.
  */
-export function estimatePartTokens(part: vscode.LanguageModelInputPart | LegacyPart): number {
+export function estimatePartTokens(part: unknown): number {
   // Tool call: assistant requesting a tool invocation.
   const toolCallInfo = getToolCallInfo(part);
   if (toolCallInfo) {
@@ -47,8 +51,12 @@ export function estimatePartTokens(part: vscode.LanguageModelInputPart | LegacyP
 
   // Tool result: the outcome of a previous tool call. Its inner content array may hold
   // text parts, structured objects, JSON data parts, etc. Extract every textable piece.
-  const toolResultPart = part as { callId?: unknown; content?: unknown[] };
-  if (typeof toolResultPart.callId === "string" && Array.isArray(toolResultPart.content)) {
+  const toolResultPart = asObjectRecord(part);
+  if (
+    toolResultPart &&
+    typeof toolResultPart.callId === "string" &&
+    Array.isArray(toolResultPart.content)
+  ) {
     const texts = getToolResultTexts(part);
     const joined = texts.join("\n").trim();
     return joined ? estimateTokens(joined) : 2;
@@ -62,7 +70,7 @@ export function estimatePartTokens(part: vscode.LanguageModelInputPart | LegacyP
 
   const img = extractImageData(part);
   if (img) {
-    return Math.max(IMAGE_TOKEN_FLOOR, Math.ceil(img.data.length / IMAGE_BYTES_PER_TOKEN));
+    return imageTokensForBytes(img.data.length);
   }
 
   // Unknown part: rough placeholder so it still contributes to the breakdown.
@@ -72,9 +80,7 @@ export function estimatePartTokens(part: vscode.LanguageModelInputPart | LegacyP
 /**
  * Estimate the token cost of a single chat message by summing its content parts.
  */
-export function estimateMessageTokens(msg: {
-  content: (vscode.LanguageModelInputPart | LegacyPart)[];
-}): number {
+export function estimateMessageTokens(msg: { content: readonly unknown[] }): number {
   let total = 0;
   for (const part of msg.content) {
     total += estimatePartTokens(part);
@@ -83,7 +89,7 @@ export function estimateMessageTokens(msg: {
 }
 
 export function estimateMessagesTokens(
-  messages: readonly { content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
+  messages: readonly { content: readonly unknown[] }[],
 ): number {
   let total = 0;
   for (const m of messages) {
@@ -134,7 +140,7 @@ function estimateImageUrlTokens(url: string): number {
       const payload = url.slice(separatorIndex + 1).replace(/\s/g, "");
       const isBase64 = url.slice(0, separatorIndex).toLowerCase().includes(";base64");
       const byteEstimate = isBase64 ? Math.ceil((payload.length * 3) / 4) : payload.length;
-      return Math.max(IMAGE_TOKEN_FLOOR, Math.ceil(byteEstimate / IMAGE_BYTES_PER_TOKEN));
+      return imageTokensForBytes(byteEstimate);
     }
   }
   return Math.max(IMAGE_TOKEN_FLOOR, estimateTokens(url));

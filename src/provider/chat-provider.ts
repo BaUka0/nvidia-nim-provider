@@ -28,7 +28,7 @@ import { getFallbackModel, NormalizedNvidiaModel } from "../models/catalog";
 import { debugLog, outputLog } from "../shared/logging";
 import { FallbackConfig } from "../shared/config";
 import { StatusBarManager } from "../shared/status-bar";
-import { estimateMessageTokens, estimateTokens, LegacyPart } from "../messages/converter";
+import { estimateMessageTokens, estimateTokens } from "../messages/converter";
 import {
   NvidiaModelDiscoveryService,
   NvidiaLanguageModelChatInformation,
@@ -553,11 +553,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       if (typeof text === "string") {
         return Promise.resolve(estimateTokens(text));
       }
-      return Promise.resolve(
-        estimateMessageTokens(
-          text as unknown as { content: (vscode.LanguageModelInputPart | LegacyPart)[] },
-        ),
-      );
+      return Promise.resolve(estimateMessageTokens(text));
     } catch {
       // Never reject: a thrown token counter would hang VS Code's breakdown UI.
       return Promise.resolve(0);

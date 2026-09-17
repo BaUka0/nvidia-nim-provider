@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { LanguageModelChatInformation } from "vscode";
+import { copyModelKeyBinding } from "../api/key-resolver";
 import { isFirstTokenTimeout, NvidiaApiError } from "../api/errors";
 import { calculateSafetyMargin, FallbackConfig } from "../shared/config";
 import { DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
@@ -152,18 +153,6 @@ export function buildFallbackModelInfo(
     maxOutputTokens: fallbackModel.maxOutputTokens,
     capabilities: fallbackCapabilities,
   };
-  const bindingId = (source as unknown as Record<string, unknown>)["__nvidiaNimRuntimeKeyBinding"];
-  if (typeof bindingId === "string" && bindingId.length > 0) {
-    try {
-      Object.defineProperty(info, "__nvidiaNimRuntimeKeyBinding", {
-        value: bindingId,
-        configurable: true,
-        enumerable: false,
-        writable: false,
-      });
-    } catch {
-      // Ignore if cannot define property
-    }
-  }
+  copyModelKeyBinding(source, info);
   return info;
 }

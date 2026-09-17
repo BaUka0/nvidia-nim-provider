@@ -206,6 +206,14 @@ describe("estimateMessagesTokens", () => {
     );
     expect(result).toBeGreaterThan(4);
   });
+
+  it("treats non-object parts as placeholders instead of throwing", () => {
+    // VS Code declares `LanguageModelChatRequestMessage.content` as
+    // `readonly unknown[]`, so a malformed part must not reject the whole count.
+    const messages = [{ content: [null, undefined, 42, "text"] }];
+    expect(() => estimateMessagesTokens(messages)).not.toThrow();
+    expect(estimateMessagesTokens(messages)).toBe(8);
+  });
 });
 
 describe("convertTools", () => {
