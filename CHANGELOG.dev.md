@@ -9,7 +9,7 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 ### Added
 
 - **Contributor and issue reporting guidelines (`CONTRIBUTING.md`, `README.md`).** Documented project scope, local development setup, testing requirements, bug reporting workflows with `saveSessionLogs` and `saveLastTurnReport`, and sponsorship links.
-- **Structured GitHub issue templates (`.github/ISSUE_TEMPLATE/bug_report.yml`, `.github/ISSUE_TEMPLATE/feature_or_model_request.yml`, `.github/ISSUE_TEMPLATE/config.yml`).** Added YAML forms with model selection dropdowns matching the curated catalog, reasoning effort options, attachment fields for session logs and turn reports, and disabled unformatted blank issues.
+- **Structured GitHub issue templates (`.github/ISSUE_TEMPLATE/bug_report.yml`, `.github/ISSUE_TEMPLATE/feature_request.yml`, `.github/ISSUE_TEMPLATE/config.yml`).** Added YAML forms for bug reports with diagnostic attachment fields and feature requests for ideas or new models.
 
 ### Changed
 

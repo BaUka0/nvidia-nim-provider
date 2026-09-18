@@ -31,14 +31,9 @@ API keys and authorization tokens are automatically redacted by the diagnostic c
 
 ---
 
-## Feature & Model Requests
+## Feature Requests & Ideas
 
-To propose a new NVIDIA NIM model or configuration option, submit a [Feature or Model Request](https://github.com/BaUka0/nvidia-nim-provider/issues/new?template=feature_or_model_request.yml) with:
-* Upstream model ID from [build.nvidia.com/models](https://build.nvidia.com/models)
-* Context window and max output limits
-* Supported capabilities (tools, vision, reasoning)
-
-Pull requests adding verified model entries or adapters are welcome.
+Have an idea for an enhancement, a new workflow, or a model you'd like to see supported? Open a [Feature Request](https://github.com/BaUka0/nvidia-nim-provider/issues/new?template=feature_request.yml). Practical suggestions and community feedback that improve the coding workflow are always welcome.
 
 ---
 

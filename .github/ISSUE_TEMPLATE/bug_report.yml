@@ -7,8 +7,8 @@ body:
     id: description
     attributes:
       label: Problem Description
-      description: What happened, and what was expected instead?
-      placeholder: Clear summary of the issue...
+      description: What happened, and what did you expect instead?
+      placeholder: Describe what went wrong...
     validations:
       required: true
 
@@ -16,7 +16,7 @@ body:
     id: model
     attributes:
       label: Active Model
-      description: Active NVIDIA NIM model when the issue occurred.
+      description: Which model was selected when the issue occurred?
       options:
         - "z-ai/glm-5.3"
         - "z-ai/glm-5.3-flash"
@@ -26,15 +26,15 @@ body:
         - "nvidia/nemotron-3-ultra-550b-a55b"
         - "nvidia/nemotron-3.5-lightning-30b-a3b"
         - "meta/muse-glimmer-30b"
-        - "Other (specify in description)"
+        - "Other / Not sure / General issue"
     validations:
-      required: true
+      required: false
 
   - type: dropdown
     id: reasoning-mode
     attributes:
-      label: Reasoning Mode
-      description: Selected reasoning effort level (if applicable).
+      label: Reasoning Mode (optional)
+      description: Reasoning effort level, if applicable.
       options:
         - "Default / Unchanged"
         - "Disabled (None)"
@@ -42,18 +42,16 @@ body:
         - "Medium"
         - "High"
         - "Max"
-        - "N/A (model does not support reasoning)"
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: session-log
     attributes:
-      label: Session Log
+      label: Session Log (optional)
       description: |
-        Output from Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → `NVIDIA NIM: Save Session Logs`.
-        Attach or drag-and-drop the generated JSON file here.
-        Required for HTTP 429/503/529 errors, failover failures, tool crashes, or connection drops.
+        Paste or attach the JSON log from Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → `NVIDIA NIM: Save Session Logs`.
+        Helpful for network errors (429, 503, 529), failover issues, and connection drops. API keys are automatically redacted.
       placeholder: Attach log file or paste contents here...
     validations:
       required: false
@@ -61,19 +59,10 @@ body:
   - type: textarea
     id: last-turn-report
     attributes:
-      label: Last Turn Report
+      label: Last Turn Report (optional)
       description: |
-        Output from Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → `NVIDIA NIM: Save Last Turn Report`.
-        Attach or drag-and-drop the generated JSON file here.
-        Required for repetition loops, hanging colons, truncated responses, or stalled turns.
+        Paste or attach the JSON report from Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → `NVIDIA NIM: Save Last Turn Report`.
+        Helpful for repetition loops, hanging colons, or cut-off replies. API keys are automatically redacted.
       placeholder: Attach report file or paste contents here...
     validations:
       required: false
-
-  - type: checkboxes
-    id: privacy-check
-    attributes:
-      label: Privacy Check
-      options:
-        - label: I verified that attached logs do not contain sensitive private data (API keys are automatically redacted by the extension).
-          required: true
