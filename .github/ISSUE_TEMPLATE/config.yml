@@ -2,7 +2,7 @@ blank_issues_enabled: false
 contact_links:
   - name: Documentation & Settings Guide
     url: https://github.com/BaUka0/nvidia-nim-provider/blob/main/docs/README.md
-    about: Read full settings, failover policies, and architecture documentation.
-  - name: Support the Project on Ko-fi
+    about: Configuration settings, failover policies, and architecture documentation.
+  - name: Support on Ko-fi
     url: https://ko-fi.com/baurzhanbissanov
-    about: If NVIDIA NIM Agent saves you time and subscription costs, consider buying me a coffee!
+    about: Support project maintenance on Ko-fi.

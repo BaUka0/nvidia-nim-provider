@@ -1,13 +1,13 @@
-# v1.1.1 — Maintenance Mode and Contributor Experience
+# v1.1.1 — Issue Diagnostics and Contributing Guidelines
 
-This update formalizes the transition of NVIDIA NIM Agent into a stable, feature-complete maintenance status following the v1.1.0 release. It introduces structured GitHub issue reporting forms, feature request workflows, and community contribution guidelines.
+This update introduces structured issue reporting templates with direct support for attaching session logs and turn reports, clarifies contributor guidelines, and updates documentation.
 
 ## What changed for you
 
-* **Interactive issue reporting forms.** Reporting an unexpected issue on GitHub now provides dropdown selections for all active NVIDIA NIM models and reasoning effort levels, along with dedicated areas where you can drag and drop generated session logs and turn reports directly.
-* **Feature and model request workflow.** Suggestions for newly released NVIDIA NIM models or useful configuration enhancements can now be submitted through a dedicated request form.
-* **Contributor and maintenance manual.** Added a comprehensive `CONTRIBUTING.md` detailing the project's maintenance lifecycle, local development setup, testing practices, and sponsorship options.
-* **Documentation and presentation updates.** Synchronized extension presentation badges, release checklists, and navigation links.
+* **Diagnostic issue reporting.** Submitting an issue on GitHub now includes dropdown selections for active models and reasoning modes, alongside designated upload fields for session logs and turn reports generated from the Command Palette.
+* **Model and feature requests.** Added dedicated request forms for proposing new NVIDIA NIM models or configuration options.
+* **Contributing guidelines.** Added a contributing guide covering local development setup, testing requirements, and issue submission standards.
+* **Documentation updates.** Synchronized extension presentation badges, documentation links, and release checklists.
 
 ## Install / Update
 

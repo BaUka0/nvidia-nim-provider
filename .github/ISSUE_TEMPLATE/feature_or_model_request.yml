@@ -1,22 +1,17 @@
 name: Feature or Model Request
-description: Suggest a new NVIDIA NIM model, setting, or enhancement.
+description: Propose a new NVIDIA NIM model, setting, or enhancement.
 title: "[Request]: "
 labels: ["enhancement"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Thank you for suggesting an enhancement! While the core product is stable and in maintenance mode, new models, useful settings, and practical improvements are warmly welcomed and implemented as needed and when time permits.
-
   - type: dropdown
     id: request-type
     attributes:
       label: Request Type
-      description: What kind of request is this?
+      description: Category of request.
       options:
         - "New NVIDIA NIM Model"
-        - "Feature / Setting Enhancement"
-        - "Tool or Agentic Workflow Improvement"
+        - "Configuration Setting"
+        - "Tool or Agentic Workflow"
         - "Documentation or Other"
     validations:
       required: true
@@ -24,9 +19,9 @@ body:
   - type: textarea
     id: description
     attributes:
-      label: Proposal & Motivation
-      description: What would you like to add or change, and why is it useful?
-      placeholder: Describe the requested feature, model, or enhancement...
+      label: Description
+      description: What should be added or changed, and what problem does it solve?
+      placeholder: Detailed description...
     validations:
       required: true
 
@@ -35,11 +30,11 @@ body:
     attributes:
       label: Model Details (if requesting a model)
       description: |
-        If requesting a new model, please provide:
-        * Model ID on [build.nvidia.com/models](https://build.nvidia.com/models) (e.g. `nvidia/nemotron-...`)
-        * Context window & output token limits
-        * Does it support tools, vision, or thinking/reasoning?
-      placeholder: "Model ID, capabilities, context size..."
+        If requesting a model, specify:
+        * Upstream model ID from build.nvidia.com/models
+        * Context window and maximum output tokens
+        * Capabilities (tool calling, vision, reasoning)
+      placeholder: Model identifier and specs...
     validations:
       required: false
 
@@ -47,7 +42,7 @@ body:
     id: additional-context
     attributes:
       label: Additional Context
-      description: Any extra details, links, or references?
-      placeholder: "Additional notes or PR references..."
+      description: Relevant references or pull requests.
+      placeholder: Optional references...
     validations:
       required: false

@@ -1,60 +1,52 @@
-# Contributing to NVIDIA NIM Agent
+# Contributing Guidelines
 
-Thank you for your interest in contributing to **NVIDIA NIM Agent**!
-
----
-
-## 📌 Project Status: Feature-Complete & Maintenance Mode
-
-As of version **v1.1.0**, the project has achieved all core architectural goals:
-* Autonomous agentic workflows and tool-calling repair
-* Live reasoning streaming via native `LanguageModelThinkingPart`
-* Multi-tiered model failover with automatic chain recovery
-* Repetition guard and loop breaker
-* Context auto-compaction and token usage tracking
-
-The product is considered **feature-complete**. Ongoing development is dedicated to:
-* **Bug fixes and stability improvements**
-* **Adapting to upstream NVIDIA NIM API changes and model catalog updates**
-* **Compatibility updates for newer VS Code releases**
-
-> [!NOTE]
-> This is a personal open-source project maintained in spare time. Issues and pull requests are reviewed periodically in batches rather than on a 24/7 on-call basis.
+Guidelines for reporting issues, contributing code, and maintaining NVIDIA NIM Agent.
 
 ---
 
-## 🐛 Reporting Bugs
+## Project Status
 
-If you run into an issue, please submit a report using the [Bug Report Issue Template](https://github.com/BaUka0/nvidia-nim-provider/issues/new?template=bug_report.yml).
+The extension's core feature set is complete:
+* Streaming chat and live reasoning integration
+* Multi-model failover chains and restart recovery
+* Repetition detection and loop breaking
+* Context compaction and token usage accounting
+* Tool calling argument repair and validation
 
-To help investigate and resolve the problem efficiently, please include:
-1. **Model & Reasoning Mode:** Which model and reasoning effort level (`None`, `Low`, `Medium`, `High`, `Max`) were active.
-2. **Diagnostic Logs (drag-and-drop or attach files):**
-   * **Session Log** (`Ctrl+Shift+P` / `Cmd+Shift+P` → `NVIDIA NIM: Save Session Logs`): Essential for extension errors, HTTP 503/429 status codes, connection drops, or tool execution failures.
-   * **Last Turn Report** (`Ctrl+Shift+P` / `Cmd+Shift+P` → `NVIDIA NIM: Save Last Turn Report`): Essential for model anomalies, degenerate repetition loops (e.g. repeated lines, "Let me..." loops), or truncated responses.
-     > *Tip:* Repetition loops are often non-deterministic and hard to reproduce on demand. The **Last Turn Report** captures the exact prompt, turn history, and model output needed to diagnose and fix loop guards.
-
-*(All sensitive credentials and API keys are automatically redacted by the built-in diagnostic commands).*
+Development is focused on stability, bug fixes, model catalog updates from upstream NVIDIA NIM, and compatibility with new VS Code releases.
 
 ---
 
-## 💡 Feature & Model Requests
+## Reporting Issues
 
-Suggestions for new NVIDIA NIM models, helpful configuration options, or workflow improvements are always welcome!
+Use the [GitHub Bug Report form](https://github.com/BaUka0/nvidia-nim-provider/issues/new?template=bug_report.yml) to submit issues.
 
-* Submit your ideas via the [Feature or Model Request Template](https://github.com/BaUka0/nvidia-nim-provider/issues/new?template=feature_or_model_request.yml).
-* New models and enhancements are evaluated and implemented based on necessity, practical utility for everyday developer workflows, and maintainer availability.
-* Community contributions and PRs adding verified model adapters or catalog entries are warmly appreciated.
+Include the following to ensure issues can be investigated without unnecessary round-trips:
+* **Active Model & Reasoning Mode:** Model ID and reasoning level in use when the issue occurred.
+* **Diagnostic Logs:**
+  * **Session Log** (`Ctrl+Shift+P` / `Cmd+Shift+P` → `NVIDIA NIM: Save Session Logs`): For network timeouts, HTTP 429/503/529 errors, failover failures, or tool execution issues.
+  * **Last Turn Report** (`Ctrl+Shift+P` / `Cmd+Shift+P` → `NVIDIA NIM: Save Last Turn Report`): For repetition loops, truncated output, or abnormal model responses.
+
+API keys and authorization tokens are automatically redacted by the diagnostic commands.
 
 ---
 
-## 💻 Local Development & Pull Requests
+## Feature & Model Requests
 
-Pull requests for bug fixes, test improvements, and catalog maintenance are very welcome!
+To propose a new NVIDIA NIM model or configuration option, submit a [Feature or Model Request](https://github.com/BaUka0/nvidia-nim-provider/issues/new?template=feature_or_model_request.yml) with:
+* Upstream model ID from [build.nvidia.com/models](https://build.nvidia.com/models)
+* Context window and max output limits
+* Supported capabilities (tools, vision, reasoning)
+
+Pull requests adding verified model entries or adapters are welcome.
+
+---
+
+## Local Development
 
 ### Prerequisites
 
-* [Node.js](https://nodejs.org/) (v20 or v22+ recommended)
+* [Node.js](https://nodejs.org/) (v20 or v22+)
 * [npm](https://www.npmjs.com/)
 * [VS Code](https://code.visualstudio.com/) (v1.125.0+)
 
@@ -67,33 +59,32 @@ npm install
 npm run compile
 ```
 
-### Verification & Testing
+### Verification
 
-Before submitting a pull request, ensure all tests and linter checks pass:
+All checks must pass before opening a pull request:
 
 ```bash
-# Run unit test suite (~800 tests across 39 suites)
+# Run unit test suite
 npm test
 
-# Run ESLint validation
+# Run ESLint
 npm run lint
 
-# Format codebase
+# Check code formatting
 npm run format
+
+# Strict type check
+npm exec -- tsc --noEmit
 ```
 
-### Guidelines for PRs
+### Pull Request Guidelines
 
-1. **Include Tests:** When fixing a bug, add a regression test in the appropriate suite under `tests/`.
-2. **Keep PRs Focused:** Avoid bundling unrelated refactorings or cosmetic changes with bug fixes.
-3. **Respect Architecture:** Follow established modular boundaries (`src/api/`, `src/messages/`, `src/models/`, `src/provider/`, `src/shared/`).
+1. Add unit or regression tests under `tests/` for all bug fixes and new behavior.
+2. Keep changes focused. Avoid mixing refactorings or cosmetic edits into bug fix PRs.
+3. Respect architectural boundaries (`src/api/`, `src/messages/`, `src/models/`, `src/provider/`, `src/shared/`, `src/tools/`).
 
 ---
 
-## ☕ Supporting the Project
+## Support
 
-If **NVIDIA NIM Agent** saves you subscription fees, improves your daily coding workflow, or helps in autonomous agent tasks, consider supporting development:
-
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy_me_a_coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/baurzhanbissanov)
-
-Every donation is greatly appreciated and helps keep maintenance active!
+If you find this project useful, you can support ongoing maintenance on [Ko-fi](https://ko-fi.com/baurzhanbissanov).
