@@ -4,6 +4,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-18
+
 ### Added
 
 - Failover chain restarts now recover from transient server overloads (HTTP 529, 503, 429) and connection drops in addition to timeouts. If every backup model encounters a transient error before any answer is printed, the extension pauses with backoff and retries from the original model (up to `nvidia-nim.fallback.maxChainRestarts` times).

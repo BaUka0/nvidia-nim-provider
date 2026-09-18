@@ -4,6 +4,8 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-18
+
 ### Added
 
 - **Failover chain restart on transient server overload and network errors (`src/provider/fallback-orchestrator.ts`, `src/provider/chat-provider.ts`, `src/api/client.ts`, `package.json`, `docs/configuration.md`, `tests/fallback-orchestrator.test.ts`).** Generalized `shouldRestartTimeoutChain` into `shouldRestartFailoverChain` (retaining `shouldRestartTimeoutChain` as an alias). Chain restart eligibility now covers transient server errors (HTTP 500, 502, 503, 504), rate limit / overload conditions (HTTP 429, 529), network disconnects, and generic empty streams when no visible content was emitted. In `chat-provider.ts`, added exponential backoff pause via exported `waitForRetry` before restarting the failover chain, giving upstream NIM worker nodes time to shed queue congestion. Addresses #5, Addresses #12.
