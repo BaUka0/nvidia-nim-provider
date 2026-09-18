@@ -4,6 +4,17 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-18
+
+### Added
+
+- Added `CONTRIBUTING.md` outlining project maintenance status, community expectations, bug reporting practices with diagnostic logs, and sponsorship.
+- Added structured GitHub Issue forms (`.github/ISSUE_TEMPLATE/bug_report.yml`, `feature_or_model_request.yml`, `config.yml`) with model and reasoning mode dropdowns, plus file drag-and-drop support for session logs and turn reports.
+
+### Changed
+
+- Updated `README.md` and `AGENTS.md` guidelines for maintenance mode and release version badge synchronization.
+
 ## [1.1.0] - 2026-09-18
 
 ### Added

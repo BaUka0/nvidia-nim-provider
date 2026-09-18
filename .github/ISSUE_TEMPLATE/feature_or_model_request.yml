@@ -1,0 +1,53 @@
+name: Feature or Model Request
+description: Suggest a new NVIDIA NIM model, setting, or enhancement.
+title: "[Request]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an enhancement! While the core product is stable and in maintenance mode, new models, useful settings, and practical improvements are warmly welcomed and implemented as needed and when time permits.
+
+  - type: dropdown
+    id: request-type
+    attributes:
+      label: Request Type
+      description: What kind of request is this?
+      options:
+        - "New NVIDIA NIM Model"
+        - "Feature / Setting Enhancement"
+        - "Tool or Agentic Workflow Improvement"
+        - "Documentation or Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Proposal & Motivation
+      description: What would you like to add or change, and why is it useful?
+      placeholder: Describe the requested feature, model, or enhancement...
+    validations:
+      required: true
+
+  - type: textarea
+    id: model-details
+    attributes:
+      label: Model Details (if requesting a model)
+      description: |
+        If requesting a new model, please provide:
+        * Model ID on [build.nvidia.com/models](https://build.nvidia.com/models) (e.g. `nvidia/nemotron-...`)
+        * Context window & output token limits
+        * Does it support tools, vision, or thinking/reasoning?
+      placeholder: "Model ID, capabilities, context size..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any extra details, links, or references?
+      placeholder: "Additional notes or PR references..."
+    validations:
+      required: false

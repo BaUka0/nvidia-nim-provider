@@ -1,0 +1,84 @@
+name: Bug Report
+description: Report an error, connection failure, model stall, or repetition loop in NVIDIA NIM Agent.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Please provide the details below to help diagnose and fix the problem.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem Description
+      description: What happened? What did you expect to happen instead?
+      placeholder: Describe the problem clearly...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: model
+    attributes:
+      label: Selected Model
+      description: Which NVIDIA NIM model was active when the issue occurred?
+      options:
+        - "z-ai/glm-5.3"
+        - "z-ai/glm-5.3-flash"
+        - "moonshotai/kimi-k3"
+        - "deepseek-ai/deepseek-v4-flash-0731"
+        - "nvidia/nemotron-3-super-120b-a12b"
+        - "nvidia/nemotron-3-ultra-550b-a55b"
+        - "nvidia/nemotron-3.5-lightning-30b-a3b"
+        - "meta/muse-glimmer-30b"
+        - "Other (please specify in description)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reasoning-mode
+    attributes:
+      label: Reasoning Mode
+      description: What reasoning effort level was selected (if applicable)?
+      options:
+        - "Default / Unchanged"
+        - "None"
+        - "Low"
+        - "Medium"
+        - "High"
+        - "Max"
+        - "N/A (Model does not support reasoning)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: session-log
+    attributes:
+      label: Session Log (Extension errors & Connection failures)
+      description: |
+        Attach or paste the log from `Ctrl+Shift+P` (or `Cmd+Shift+P`) → `NVIDIA NIM: Save Session Logs`.
+        You can **drag and drop the saved log file directly here**, or paste its content.
+        Essential for HTTP 503/429 errors, failover failures, tool calling crashes, and connection drops.
+      placeholder: "Drag and drop the saved log file or paste its content here..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: last-turn-report
+    attributes:
+      label: Last Turn Report (Repetition loops & Model anomalies)
+      description: |
+        Attach or paste the report from `Ctrl+Shift+P` (or `Cmd+Shift+P`) → `NVIDIA NIM: Save Last Turn Report`.
+        You can **drag and drop the saved report file directly here**, or paste its content.
+        Essential for repetition loops (e.g. repeated lines, 'Let me...' loops), truncated output, or strange model responses.
+      placeholder: "Drag and drop the saved report file or paste its content here..."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: privacy-check
+    attributes:
+      label: Privacy Check
+      options:
+        - label: I verified that the attached files/logs do not contain sensitive personal data or private secrets (API keys are automatically redacted by the extension commands).
+          required: true

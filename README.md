@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Install](https://img.shields.io/badge/Install-Marketplace-007ACC?style=flat&logo=visual-studio-code&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
-[![Version](https://img.shields.io/badge/Version-1.0.1-76B900?logo=nvidia&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
+[![Version](https://img.shields.io/badge/Version-1.1.1-76B900?logo=nvidia&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
 [![Documentation](https://img.shields.io/badge/Docs-Configuration_Guide-green?style=flat&logo=markdown&logoColor=white)](docs/README.md)
 [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-Chat_Native-181717?style=flat&logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -11,7 +11,7 @@
 
 Direct access to NVIDIA NIM reasoning models inside GitHub Copilot Chat. No proxy servers in between.
 
-[Install](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent) • [Documentation](docs/README.md) • [Supported Models](#supported-models) • [Quick Start](#quick-start) • [FAQ](#frequently-asked-questions) • [Commands](#extension-commands)
+[Install](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent) • [Documentation](docs/README.md) • [Contributing](CONTRIBUTING.md) • [Supported Models](#supported-models) • [Quick Start](#quick-start) • [FAQ](#frequently-asked-questions) • [Commands](#extension-commands)
 
 <br/>
 

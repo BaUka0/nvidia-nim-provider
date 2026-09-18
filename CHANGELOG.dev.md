@@ -4,6 +4,17 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-18
+
+### Added
+
+- **Maintenance mode and contributor guide (`CONTRIBUTING.md`, `README.md`).** Formally documented the transition of the project to feature-complete status following the v1.1.0 release. Established maintenance guidelines, bug reporting workflows with `saveSessionLogs` and `saveLastTurnReport`, local dev environment setup, and Ko-fi sponsorship.
+- **Interactive GitHub Issue Forms (`.github/ISSUE_TEMPLATE/bug_report.yml`, `.github/ISSUE_TEMPLATE/feature_or_model_request.yml`, `.github/ISSUE_TEMPLATE/config.yml`).** Added structured YAML issue forms featuring curated model selection dropdowns, reasoning mode options, direct file drag-and-drop support for session logs and turn reports, and quick links to documentation and Ko-fi.
+
+### Changed
+
+- **Agent release manual update (`AGENTS.md`).** Added step 2 to the Production Release Workflow requiring the `README.md` version badge to be bumped in sync with `package.json`.
+
 ## [1.1.0] - 2026-09-18
 
 ### Added
