@@ -292,26 +292,6 @@
           "maximum": 131072,
           "description": "Override maximum output tokens limit per response (null uses model maximum)."
         },
-        "nvidia-nim.generation.frequencyPenalty": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "default": null,
-          "minimum": -2,
-          "maximum": 2,
-          "description": "Frequency penalty reduces repetition of tokens that already appeared (higher = less verbatim repetition). Null disables custom penalty."
-        },
-        "nvidia-nim.generation.presencePenalty": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "default": null,
-          "minimum": -2,
-          "maximum": 2,
-          "description": "Presence penalty discourages the model from repeating the same topics. Null disables custom penalty."
-        },
         "nvidia-nim.generation.maxRepeatedLines": {
           "type": "integer",
           "default": 4,

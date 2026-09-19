@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Removed
+
+- Removed sampling penalties configuration (`nvidia-nim.generation.frequencyPenalty` and `nvidia-nim.generation.presencePenalty`). Sampling penalties are no longer sent to NVIDIA NIM models, avoiding compatibility issues with models that enforce immutable penalty defaults.
+
 ## [1.1.1] - 2026-09-18
 
 ### Added

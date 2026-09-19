@@ -52,7 +52,7 @@ function firstFiniteNumber(values: readonly unknown[]): number | undefined {
 
 function assignClamped(
   body: NimChatRequest,
-  key: "top_p" | "frequency_penalty" | "presence_penalty" | "repetition_penalty",
+  key: "top_p",
   sources: readonly unknown[],
   min: number,
   max: number,
@@ -366,35 +366,6 @@ export class NimRequestBuilder {
       0,
       1,
     );
-    if (adapter.supportsFrequencyPenalty !== false) {
-      assignClamped(
-        requestBody,
-        "frequency_penalty",
-        [
-          modelOpts?.frequency_penalty,
-          generationConfig.frequencyPenalty,
-          requestProfile.defaultFrequencyPenalty,
-        ],
-        -2,
-        2,
-      );
-    }
-    if (adapter.supportsPresencePenalty !== false) {
-      assignClamped(
-        requestBody,
-        "presence_penalty",
-        [
-          modelOpts?.presence_penalty,
-          generationConfig.presencePenalty,
-          requestProfile.defaultPresencePenalty,
-        ],
-        -2,
-        2,
-      );
-    }
-    if (adapter.supportsRepetitionPenalty !== false) {
-      assignClamped(requestBody, "repetition_penalty", [modelOpts?.repetition_penalty], 0.5, 2);
-    }
     const stopVal = modelOpts?.stop;
     if (typeof stopVal === "string" && stopVal.length > 0 && stopVal.length <= 256) {
       requestBody.stop = stopVal;

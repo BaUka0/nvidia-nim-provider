@@ -37,9 +37,6 @@ export interface TurnReport {
   readonly toolNames: string[];
   readonly temperature?: number;
   readonly topP?: number;
-  readonly frequencyPenalty?: number;
-  readonly presencePenalty?: number;
-  readonly repetitionPenalty?: number;
   readonly toolChoice?: NimChatRequest["tool_choice"];
   readonly chatTemplateKwargs?: Record<string, unknown>;
   readonly sawToolCall: boolean;
@@ -216,9 +213,6 @@ export function recordTurnReport(input: TurnReportInput): TurnReport {
     toolNames: toolNamesFromRequest(input.requestBody),
     temperature: input.requestBody?.temperature,
     topP: input.requestBody?.top_p,
-    frequencyPenalty: input.requestBody?.frequency_penalty,
-    presencePenalty: input.requestBody?.presence_penalty,
-    repetitionPenalty: input.requestBody?.repetition_penalty,
     toolChoice: input.requestBody?.tool_choice,
     chatTemplateKwargs: pickTemplateKwargs(input.requestBody?.chat_template_kwargs),
     sawToolCall: Boolean(input.sawToolCall),

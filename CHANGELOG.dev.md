@@ -4,6 +4,10 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Removed
+
+- **Complete removal of sampling penalties (`package.json`, `src/types.ts`, `src/shared/config.ts`, `src/models/adapters/*`, `src/provider/request-builder.ts`, `src/shared/turn-report.ts`, `docs/configuration.md`, `tests/*`).** Removed `nvidia-nim.generation.frequencyPenalty` and `nvidia-nim.generation.presencePenalty` configuration properties from `package.json` and `src/shared/config.ts`. Removed `frequency_penalty`, `presence_penalty`, and `repetition_penalty` from `NimChatRequest`, `GenerationConfig`, and `TurnReport`. Removed adapter penalty capability flags (`supportsPresencePenalty`, `supportsFrequencyPenalty`, `supportsRepetitionPenalty`) and profile defaults (`defaultFrequencyPenalty`, `defaultPresencePenalty`). Removed all penalty clamping and forwarding logic from `NimRequestBuilder`, restricting `assignClamped` strictly to `top_p`.
+
 ## [1.1.1] - 2026-09-18
 
 ### Added

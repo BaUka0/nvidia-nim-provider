@@ -17,8 +17,6 @@ export interface NvidiaModelRequestProfile {
   defaultTemperature: number;
   toolTemperature?: number;
   defaultTopP?: number;
-  defaultFrequencyPenalty?: number;
-  defaultPresencePenalty?: number;
   extraSystemMessages: string[];
 }
 
@@ -33,9 +31,6 @@ export interface ModelAdapter {
   readonly reasoningParameterFormat?: ReasoningParameterFormat;
   readonly toolCallProtocol?: ToolCallProtocol;
   readonly isolateUntaggedReasoning?: boolean;
-  readonly supportsPresencePenalty?: boolean;
-  readonly supportsFrequencyPenalty?: boolean;
-  readonly supportsRepetitionPenalty?: boolean;
 
   getCapabilityContract(): ModelAdapterCapabilityContract;
 }
@@ -92,9 +87,6 @@ export abstract class BaseModelAdapter implements ModelAdapter {
   readonly toolSystemMessage?: string;
   readonly supportedReasoningModes?: string[];
   readonly isolateUntaggedReasoning?: boolean;
-  readonly supportsPresencePenalty?: boolean;
-  readonly supportsFrequencyPenalty?: boolean;
-  readonly supportsRepetitionPenalty?: boolean;
   readonly reasoningParameterFormat: ReasoningParameterFormat = "none";
   readonly toolCallProtocol: ToolCallProtocol = "native-and-text";
 
@@ -107,16 +99,11 @@ export abstract class BaseModelAdapter implements ModelAdapter {
     };
   }
 
-  readonly defaultFrequencyPenalty?: number;
-  readonly defaultPresencePenalty?: number;
-
   getProfile(options: { toolsEnabled?: boolean }): NvidiaModelRequestProfile {
     return {
       defaultTemperature: this.defaultTemperature,
       toolTemperature: this.toolTemperature,
       defaultTopP: this.defaultTopP,
-      defaultFrequencyPenalty: this.defaultFrequencyPenalty,
-      defaultPresencePenalty: this.defaultPresencePenalty,
       extraSystemMessages: options.toolsEnabled
         ? [
             ...(this.toolSystemMessage ? [this.toolSystemMessage] : []),

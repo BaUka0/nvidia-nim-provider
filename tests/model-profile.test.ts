@@ -20,8 +20,6 @@ describe("getModelAdapter", () => {
       expect(profile.toolTemperature).toBe(expectedToolTemperature);
       expect(profile.defaultTopP).toBe(0.95);
       if (modelId.includes("nemotron")) {
-        expect(profile.defaultFrequencyPenalty).toBeUndefined();
-        expect(profile.defaultPresencePenalty).toBeUndefined();
         expect(profile.extraSystemMessages[0]).toContain(
           'NEVER start your response with "Let me fix"',
         );
@@ -88,12 +86,6 @@ describe("applyReasoningMode", () => {
     expect(request.reasoning_effort).toBe("none");
   });
 
-  it("marks Kimi adapter with supportsPresencePenalty = false and supportsFrequencyPenalty = false", () => {
-    const adapter = getModelAdapter("moonshotai/kimi-k3");
-    expect(adapter.supportsPresencePenalty).toBe(false);
-    expect(adapter.supportsFrequencyPenalty).toBe(false);
-  });
-
   it("exposes Muse Glimmer reasoning effort modes and sends the selected mode", () => {
     const adapter = getModelAdapter("meta/muse-glimmer-30b");
     const request: NimChatRequest = {
@@ -133,8 +125,6 @@ describe("applyReasoningMode", () => {
     adapter.applyReasoningMode!(request, "none");
     expect(request.reasoning_effort).toBe("low");
 
-    expect(adapter.supportsPresencePenalty).toBe(false);
-    expect(adapter.supportsFrequencyPenalty).toBe(false);
     expect(getModelAdapter("z-ai/glm-5.3")).toBe(adapter);
   });
 

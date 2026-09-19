@@ -127,7 +127,6 @@ describe("turn-report", () => {
       messages: [],
       temperature: 1,
       top_p: 0.95,
-      repetition_penalty: 1.05,
       tool_choice: "auto",
       chat_template_kwargs: { enable_thinking: true, low_effort: true },
       tools: [{ type: "function", function: { name: "read_file" } }],

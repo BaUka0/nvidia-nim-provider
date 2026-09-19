@@ -9,8 +9,6 @@ export class GlmAdapter extends BaseModelAdapter {
   readonly supportedReasoningModes = ["low", "high", "max"];
   readonly reasoningParameterFormat = "reasoning_effort" as const;
   readonly toolCallProtocol = "native-and-text" as const;
-  readonly supportsPresencePenalty = false;
-  readonly supportsFrequencyPenalty = false;
 
   isContentOnlyMode(mode: string): boolean {
     return mode === "none" || mode === "low";
