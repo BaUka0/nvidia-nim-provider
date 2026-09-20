@@ -210,14 +210,16 @@ function findParameterClose(
   return undefined;
 }
 
-function readBalancedJsonObject(
+export function readBalancedJsonObject(
   text: string,
   startIndex: number,
 ): { json: string; end: number } | { incomplete: true } | undefined {
-  if (text[startIndex] !== "{") {
+  if (text[startIndex] !== "{" && text[startIndex] !== "[") {
     return undefined;
   }
 
+  const openChar = text[startIndex];
+  const closeChar = openChar === "{" ? "}" : "]";
   let depth = 0;
   let inString = false;
   let escape = false;
@@ -241,11 +243,11 @@ function readBalancedJsonObject(
       inString = true;
       continue;
     }
-    if (char === "{") {
+    if (char === openChar) {
       depth += 1;
       continue;
     }
-    if (char === "}") {
+    if (char === closeChar) {
       depth -= 1;
       if (depth === 0) {
         return { json: text.slice(startIndex, cursor + 1), end: cursor + 1 };

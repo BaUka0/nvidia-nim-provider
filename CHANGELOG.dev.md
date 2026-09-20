@@ -4,6 +4,10 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Added
+
+- **Fallback parsing for text-embedded JSON tool calls (`src/tools/json-tool-scanner.ts`, `src/tools/embedded-parser.ts`, `src/provider/stream-pump.ts`, `src/provider/tool-call-aggregator.ts`, `tests/tools-parser.test.ts`, `tests/stream-tool-calls.test.ts`).** Implemented `scanJsonToolConstruct` and `findBestMatchingTool` to intercept standalone JSON objects, OpenAI-style `tool_calls` payloads, arrays, and fenced ```` ```json ```` blocks emitted into `delta.content`. When tools are enabled and no native tool parts are emitted, arguments are validated and scored against candidate tool schemas (`schema.properties`, `schema.required`, and `PROPERTY_ALIAS_GROUPS`), recovering tool execution without leaking raw JSON to chat. Resolves #15.
+
 ### Changed
 
 - **Positive tool execution directives across model adapters (`src/models/adapters/deepseek.ts`, `src/models/adapters/kimi.ts`, `src/models/adapters/nemotron.ts`, `src/models/adapters/glm.ts`, `src/models/adapters/base.ts`, `src/models/adapters/index.ts`, `tests/model-profile.test.ts`, `tests/provider/chat-provider.adapters.test.ts`).** Cleaned up adapter system messages across all models to eliminate negative prompt priming, leaked internal control tokens (`tool_call_begin`, `伏`, `第`), XML wrapper token leaks (`<steps>`, `<suggested_fix>`, `<analysis>`, `<plan>`), and verbose prohibitions against scratchpads and disclaimers. Prompts now focus strictly and positively on direct native tool calling and clean Markdown formatting. Resolves #8, Resolves #12, Resolves #13.

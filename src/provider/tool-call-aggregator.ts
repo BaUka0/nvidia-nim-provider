@@ -88,6 +88,14 @@ export class ToolCallStreamAggregator {
     return this.toolSchemas.get(name);
   }
 
+  public getToolSchemas(): ReadonlyMap<string, ToolSchema> {
+    return this.toolSchemas;
+  }
+
+  public getRequestContext(): ChatRequestContext | undefined {
+    return this.requestContext;
+  }
+
   public recordExtractedParameters(params: Record<string, unknown>, toolName?: string): void {
     if (!toolName) {
       return;

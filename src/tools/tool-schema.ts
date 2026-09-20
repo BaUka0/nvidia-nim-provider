@@ -3,6 +3,8 @@ import { tryParseJsonValue } from "./json-args";
 
 export type ToolSchemaType = "string" | "number" | "integer" | "boolean" | "object" | "array";
 
+export const FORBIDDEN_TOOL_IDENTIFIERS = new Set(["__proto__", "prototype", "constructor"]);
+
 export interface ToolPropertySchema {
   type?: ToolSchemaType;
   enum?: unknown[];

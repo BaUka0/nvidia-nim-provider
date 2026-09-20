@@ -18,8 +18,10 @@ import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { NimChatRequest } from "../types";
 import {
   getIncompleteTextToolCallName,
+  getToolSchemaMap,
   parseTextEmbeddedToolCalls,
   SkippedToolCall,
+  ToolSchema,
 } from "../tools/parser";
 import { collectChoiceToolCalls } from "../tools/stream-tool-calls";
 import { RepetitionGuard } from "./repetition-guard";
@@ -206,6 +208,14 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     return toolAggregator;
   };
 
+  let parsedToolSchemas: Map<string, ToolSchema> | undefined;
+  const getToolSchemas = (): Map<string, ToolSchema> | undefined => {
+    if (!input.options.tools || input.options.tools.length === 0) {
+      return undefined;
+    }
+    return (parsedToolSchemas ??= getToolSchemaMap(input.options));
+  };
+
   const processFilteredText = (text: string): void => {
     if (!text) {
       return;
@@ -217,6 +227,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
 
     const { segments, incompleteText, extractedParams } = parseTextEmbeddedToolCalls(
       pendingTextEmbeddedContent + text,
+      getToolSchemas(),
     );
     pendingTextEmbeddedContent =
       incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : incompleteText;
@@ -445,7 +456,10 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     }
   }
 
-  const incompleteTextToolName = getIncompleteTextToolCallName(pendingTextEmbeddedContent);
+  const incompleteTextToolName = getIncompleteTextToolCallName(
+    pendingTextEmbeddedContent,
+    getToolSchemas(),
+  );
   if (incompleteTextToolName) {
     sawToolCall = true;
     const schema = getToolAggregator().getToolSchema(incompleteTextToolName);

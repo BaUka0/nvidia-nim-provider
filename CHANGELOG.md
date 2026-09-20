@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Added
+
+- Added text-embedded JSON tool fallback parsing. When models (such as Nemotron 120B under heavy tool catalogs) emit tool arguments as JSON text or fenced markdown blocks instead of native wire protocol parts, the extension now detects the intended tool from schema matching or explicit name fields and executes it directly as a tool call rather than dumping raw JSON text into chat.
+
 ### Changed
 
 - Replaced negative prompt directives and leaked control token markers across DeepSeek, Kimi, Nemotron, GLM, and default model adapter system prompts with clear positive instructions for direct tool execution, eliminating prompt-induced hallucinations and repetitive conversational preambles.

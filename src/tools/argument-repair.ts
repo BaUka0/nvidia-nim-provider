@@ -1,11 +1,10 @@
 import { ConfigManager, ToolsConfig } from "../shared/config";
 import { MAX_REPAIRED_LINE_SPAN } from "../shared/constants";
 import { AUXILIARY_BOOLEAN_FIELDS } from "../shared/tool-fields";
-import { FORBIDDEN_TOOL_IDENTIFIERS } from "./embedded-parser";
+import { FORBIDDEN_TOOL_IDENTIFIERS, normalizeArguments, ToolSchema } from "./tool-schema";
 import { parseToolArguments } from "./json-args";
 import { ChatRequestContext } from "./request-context";
 import { isEditTool, isReadTool, isTerminalTool } from "./tool-kinds";
-import { normalizeArguments, ToolSchema } from "./tool-schema";
 
 const LINE_START_ALIASES = [
   "startLine",
@@ -151,7 +150,7 @@ export function fillMissingAuxiliaryBooleans(
  * Alias groups used to recover a required argument from a sibling the model
  * named instead (for example `file_path` for a required `filePath`).
  */
-const PROPERTY_ALIAS_GROUPS: readonly (readonly string[])[] = [
+export const PROPERTY_ALIAS_GROUPS: readonly (readonly string[])[] = [
   [
     "filePath",
     "targetFile",

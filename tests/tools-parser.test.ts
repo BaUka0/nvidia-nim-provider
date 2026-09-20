@@ -1665,4 +1665,212 @@ describe("tool argument parsing and validation", () => {
       expect(hasRequiredToolArguments(repaired, writeToFileSchema)).toBe(true);
     });
   });
+
+  describe("text-embedded JSON tool fallback parsing (Issue #15)", () => {
+    const multiToolOptions = makeChatOptions({
+      tools: [
+        {
+          name: "read_file",
+          inputSchema: {
+            type: "object",
+            properties: {
+              filePath: { type: "string" },
+              startLine: { type: "integer" },
+              endLine: { type: "integer" },
+            },
+            required: ["filePath"],
+          },
+        },
+        {
+          name: "insert_edit_into_file",
+          inputSchema: {
+            type: "object",
+            properties: {
+              filePath: { type: "string" },
+              code: { type: "string" },
+              explanation: { type: "string" },
+            },
+            required: ["filePath", "code"],
+          },
+        },
+        {
+          name: "run_in_terminal",
+          inputSchema: {
+            type: "object",
+            properties: {
+              command: { type: "string" },
+              explanation: { type: "string" },
+            },
+            required: ["command"],
+          },
+        },
+      ],
+    });
+    const toolSchemas = getToolSchemaMap(multiToolOptions);
+
+    it("recovers Nemotron raw JSON tool call matching insert_edit_into_file without native wrapper (Issue #15)", () => {
+      const rawText = JSON.stringify(
+        {
+          filePath: "/home/rdp/code/blue-forks/mwmbl/mwmbl/crawler/stats.py",
+          code: "\nfrom mwmbl.crawler.urls import URLDatabase",
+          explanation: "Add import for URLDatabase from mwmbl.crawler.urls",
+        },
+        null,
+        2,
+      );
+
+      const result = parseTextEmbeddedToolCalls(rawText, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "insert_edit_into_file",
+            args: {
+              filePath: "/home/rdp/code/blue-forks/mwmbl/mwmbl/crawler/stats.py",
+              code: "\nfrom mwmbl.crawler.urls import URLDatabase",
+              explanation: "Add import for URLDatabase from mwmbl.crawler.urls",
+            },
+          },
+        },
+      ]);
+    });
+
+    it("parses fenced ```json tool call block and strips fences from text", () => {
+      const text = [
+        "I will update stats.py now:",
+        "```json",
+        JSON.stringify(
+          {
+            filePath: "/home/rdp/code/blue-forks/mwmbl/mwmbl/crawler/stats.py",
+            code: "\nfrom mwmbl.crawler.urls import URLDatabase",
+          },
+          null,
+          2,
+        ),
+        "```",
+        "Done updating.",
+      ].join("\n");
+
+      const result = parseTextEmbeddedToolCalls(text, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        { type: "text", text: "I will update stats.py now:\n" },
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "insert_edit_into_file",
+            args: {
+              filePath: "/home/rdp/code/blue-forks/mwmbl/mwmbl/crawler/stats.py",
+              code: "\nfrom mwmbl.crawler.urls import URLDatabase",
+            },
+          },
+        },
+        { type: "text", text: "Done updating." },
+      ]);
+    });
+
+    it("parses explicit tool call with name and arguments", () => {
+      const rawText =
+        '{"name": "read_file", "arguments": {"filePath": "/tmp/a.ts", "startLine": 1}}';
+      const result = parseTextEmbeddedToolCalls(rawText, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "read_file",
+            args: { filePath: "/tmp/a.ts", startLine: 1 },
+          },
+        },
+      ]);
+    });
+
+    it("parses explicit tool call with tool and parameters keys", () => {
+      const rawText = '{"tool": "run_in_terminal", "parameters": {"command": "npm test"}}';
+      const result = parseTextEmbeddedToolCalls(rawText, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "run_in_terminal",
+            args: { command: "npm test" },
+          },
+        },
+      ]);
+    });
+
+    it("parses array of tool calls in JSON", () => {
+      const rawText = JSON.stringify([
+        { name: "read_file", arguments: { filePath: "/tmp/a.ts" } },
+        { name: "read_file", arguments: { filePath: "/tmp/b.ts" } },
+      ]);
+      const result = parseTextEmbeddedToolCalls(rawText, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "read_file",
+            args: { filePath: "/tmp/a.ts" },
+          },
+        },
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "read_file",
+            args: { filePath: "/tmp/b.ts" },
+          },
+        },
+      ]);
+    });
+
+    it("does not treat normal user JSON as a tool call", () => {
+      const normalJson = JSON.stringify(
+        {
+          name: "my-package",
+          version: "1.0.0",
+          description: "A test package",
+        },
+        null,
+        2,
+      );
+
+      const result = parseTextEmbeddedToolCalls(normalJson, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([{ type: "text", text: normalJson }]);
+    });
+
+    it("buffers incomplete JSON tool calls across stream chunks", () => {
+      const chunk1 = '{\n  "filePath": "/workspace/stats.py",\n  "co';
+      const chunk2 = 'de": "import os"\n}';
+
+      const res1 = parseTextEmbeddedToolCalls(chunk1, toolSchemas);
+      expect(res1.segments).toEqual([]);
+      expect(res1.incompleteText).toBe(chunk1);
+
+      const res2 = parseTextEmbeddedToolCalls(res1.incompleteText + chunk2, toolSchemas);
+      expect(res2.incompleteText).toBe("");
+      expect(res2.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "insert_edit_into_file",
+            args: { filePath: "/workspace/stats.py", code: "import os" },
+          },
+        },
+      ]);
+    });
+
+    it("identifies incomplete JSON tool name from partial stream", () => {
+      const partialExplicit = '{\n  "name": "insert_edit_into_file",\n  "arguments": {';
+      expect(getIncompleteTextToolCallName(partialExplicit, toolSchemas)).toBe(
+        "insert_edit_into_file",
+      );
+
+      const partialImplicit = '{\n  "command": "npm run build';
+      expect(getIncompleteTextToolCallName(partialImplicit, toolSchemas)).toBe("run_in_terminal");
+    });
+  });
 });
