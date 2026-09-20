@@ -3,9 +3,10 @@ import type * as vscode from "vscode";
 import {
   getToolSchemaMap,
   extractChatRequestContext,
-  getCompletedToolCallKeys,
+  getCompletedToolCallCounts,
   buildToolCallCanonicalKey,
   isDuplicateSuppressionEnabled,
+  DEFAULT_MAX_DUPLICATE_READS,
   isToolCallInput,
   hasRequiredToolArguments,
   missingRequiredToolArguments,
@@ -16,6 +17,7 @@ import {
   ToolSchema,
   SkippedToolCallReason,
 } from "../tools/parser";
+import { isEditTool, isReadTool } from "../tools/tool-kinds";
 import { debugLog } from "../shared/logging";
 import { MAX_TOOL_ARGUMENT_CHARS } from "../shared/constants";
 import {
@@ -37,7 +39,7 @@ export class ToolCallStreamAggregator {
   private toolSchemas: Map<string, ToolSchema>;
   private toolsConfig: ToolsConfig;
   private requestContext: ChatRequestContext | undefined;
-  private emittedTextToolCallKeys: Set<string>;
+  private emittedToolCallCounts: Map<string, number>;
   private onEmitToolCall: (id: string, name: string, args: Record<string, unknown>) => void;
   private onSkipToolCall: (
     name: string,
@@ -61,7 +63,7 @@ export class ToolCallStreamAggregator {
     this.toolSchemas = getToolSchemaMap(options.options);
     this.toolsConfig = options.toolsConfig;
     this.requestContext = extractChatRequestContext(options.messages);
-    this.emittedTextToolCallKeys = getCompletedToolCallKeys(
+    this.emittedToolCallCounts = getCompletedToolCallCounts(
       options.messages,
       this.requestContext,
       this.toolSchemas,
@@ -158,18 +160,32 @@ export class ToolCallStreamAggregator {
       });
       return false;
     }
+    const currentCompleted = this.emittedToolCallCounts.get(canonicalKey) ?? 0;
     if (
       isDuplicateSuppressionEnabled(name, this.toolsConfig) &&
-      this.emittedTextToolCallKeys.has(canonicalKey)
+      currentCompleted >= DEFAULT_MAX_DUPLICATE_READS
     ) {
       this.onSkipToolCall(name, [], "duplicate");
-      debugLog("Skipped duplicate tool call", { name });
+      debugLog("Skipped duplicate tool call", { name, currentCompleted });
       return false;
     }
     this.onEmitToolCall(id, name, args);
     this.emittedToolCall = true;
-    this.emittedTextToolCallKeys.add(canonicalKey);
+    this.emittedToolCallCounts.set(canonicalKey, currentCompleted + 1);
+    if (isEditTool(name)) {
+      this.resetReadToolCounts();
+    }
     return true;
+  }
+
+  private resetReadToolCounts(): void {
+    for (const key of Array.from(this.emittedToolCallCounts.keys())) {
+      const colonIndex = key.indexOf(":");
+      const tool = colonIndex !== -1 ? key.slice(0, colonIndex) : key;
+      if (isReadTool(tool)) {
+        this.emittedToolCallCounts.delete(key);
+      }
+    }
   }
 
   public recordInvalidToolCall(name: string): void {

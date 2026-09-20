@@ -55,7 +55,7 @@ export function ensureChatTemplateKwargs(
 
 /** Shared visible-reply hygiene. Prefer this over growing the stream sanitizer. */
 export const VISIBLE_REPLY_HYGIENE_MESSAGE =
-  "Visible replies must be markdown only. Do not emit XML section wrappers such as <steps>, <suggested_fix>, <next_steps>, <analysis>, or <plan>. Do not emit _vscodecontentref_ URLs or markdown links to them; write plain file names.";
+  "Format user-facing replies in clean Markdown using plain file names. Do not use XML wrapper tags or internal URL references.";
 
 /**
  * Single source of the reasoning-isolation routing rule used by the request

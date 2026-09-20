@@ -100,10 +100,22 @@ export class NimRequestBuilder {
       ? input.adapter.applyMessagesWorkaround(apiMessages)
       : apiMessages;
     if (extraSystemMessages.length > 0) {
-      apiMessages = [
-        ...extraSystemMessages.map((content): NimChatMessage => ({ role: "system", content })),
-        ...apiMessages,
-      ];
+      const extraContent = extraSystemMessages.join("\n\n");
+      if (
+        apiMessages.length > 0 &&
+        apiMessages[0].role === "system" &&
+        typeof apiMessages[0].content === "string"
+      ) {
+        apiMessages = [
+          {
+            ...apiMessages[0],
+            content: `${extraContent}\n\n${apiMessages[0].content}`,
+          },
+          ...apiMessages.slice(1),
+        ];
+      } else {
+        apiMessages = [{ role: "system", content: extraContent }, ...apiMessages];
+      }
     }
     return apiMessages;
   }

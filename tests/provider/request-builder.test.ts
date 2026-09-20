@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { chatCompletion } from "../../src/api/client";
+import { getModelAdapter } from "../../src/models/adapters";
 import { NimRequestBuilder } from "../../src/provider/request-builder";
 import { ConfigManager } from "../../src/shared/config";
 import { makeChatMessages, makeChatOptions, makeModel } from "../helpers/fakes";
@@ -203,5 +204,79 @@ describe("NimRequestBuilder context accounting", () => {
 
     expect(prepared.requestBody.temperature).toBe(1);
     expect(prepared.requestBody.top_p).toBe(0.95);
+  });
+});
+
+describe("NimRequestBuilder.convertMessagesWithProfile", () => {
+  const adapter = getModelAdapter("deepseek-ai/deepseek-v4-flash-0731");
+
+  it("consolidates extra system messages into a single system turn when input has no system message", () => {
+    const inputMessages = makeChatMessages({
+      role: 1,
+      content: [new vscode.LanguageModelTextPart("Hello")],
+    });
+
+    const result = NimRequestBuilder.convertMessagesWithProfile({
+      messages: inputMessages,
+      contextWindow: 128000,
+      adapter,
+      supportsVision: false,
+      toolsEnabled: true,
+    });
+
+    const systemMessages = result.filter((m) => m.role === "system");
+    expect(systemMessages).toHaveLength(1);
+    expect(systemMessages[0].content).toContain("invoke the required tool directly");
+    expect(systemMessages[0].content).toContain("Format user-facing replies in clean Markdown");
+    expect(result[1].role).toBe("user");
+  });
+
+  it("merges extra system messages with the existing leading system message into a single turn", () => {
+    const inputMessages = makeChatMessages(
+      {
+        role: 3,
+        content: [new vscode.LanguageModelTextPart("You are VS Code Copilot.")],
+      },
+      {
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Hello")],
+      },
+    );
+
+    const result = NimRequestBuilder.convertMessagesWithProfile({
+      messages: inputMessages,
+      contextWindow: 128000,
+      adapter,
+      supportsVision: false,
+      toolsEnabled: true,
+    });
+
+    const systemMessages = result.filter((m) => m.role === "system");
+    expect(systemMessages).toHaveLength(1);
+    expect(systemMessages[0].content).toContain("invoke the required tool directly");
+    expect(systemMessages[0].content).toContain("Format user-facing replies in clean Markdown");
+    expect(systemMessages[0].content).toContain("You are VS Code Copilot.");
+    expect(result[0].role).toBe("system");
+    expect(result[1].role).toBe("user");
+  });
+
+  it("does not add extra system guidance when tools are disabled", () => {
+    const inputMessages = makeChatMessages({
+      role: 1,
+      content: [new vscode.LanguageModelTextPart("Hello")],
+    });
+
+    const result = NimRequestBuilder.convertMessagesWithProfile({
+      messages: inputMessages,
+      contextWindow: 128000,
+      adapter,
+      supportsVision: false,
+      toolsEnabled: false,
+    });
+
+    const systemMessages = result.filter((m) => m.role === "system");
+    expect(systemMessages).toHaveLength(0);
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("user");
   });
 });

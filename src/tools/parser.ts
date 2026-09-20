@@ -20,9 +20,11 @@ export { ChatRequestContext, extractChatRequestContext } from "./request-context
 export { repairToolArguments } from "./argument-repair";
 
 export {
+  DEFAULT_MAX_DUPLICATE_READS,
   buildToolCallCanonicalKey,
   isDuplicateSuppressionEnabled,
   getCompletedToolCallKeys,
+  getCompletedToolCallCounts,
 } from "./canonical-key";
 
 export {

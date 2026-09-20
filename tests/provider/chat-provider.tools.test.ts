@@ -442,7 +442,7 @@ describe("NimChatModelProvider", () => {
     expect(textReports).toEqual([]);
   });
 
-  it("retries a duplicate read_file with the model instead of showing it in chat", async () => {
+  it("emits a repeated read_file directly without triggering a duplicate-call retry", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const duplicateRead = async function* () {
@@ -467,30 +467,7 @@ describe("NimChatModelProvider", () => {
         ],
       };
     };
-    const repairedRead = async function* () {
-      yield {
-        choices: [
-          {
-            delta: {
-              tool_calls: [
-                {
-                  index: 0,
-                  id: "read_file:2",
-                  type: "function",
-                  function: {
-                    name: "read_file",
-                    arguments: '{"filePath":"/tmp/types.ts","startLine":1,"endLine":40}',
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      };
-    };
-    (streamChatCompletion as jest.Mock)
-      .mockImplementationOnce(() => duplicateRead())
-      .mockImplementationOnce(() => repairedRead());
+    (streamChatCompletion as jest.Mock).mockImplementationOnce(() => duplicateRead());
 
     const progress = { report: jest.fn() };
     await provider.provideLanguageModelChatResponse(
@@ -537,21 +514,15 @@ describe("NimChatModelProvider", () => {
       makeToken(),
     );
 
-    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
-    const retryRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(retryRequest.messages.at(-1).content).toContain("already completed");
-    const visibleRepair = progress.report.mock.calls.filter((c: unknown[]) =>
-      String((c[0] as { value?: string }).value ?? "").includes("was not repeated"),
-    );
-    expect(visibleRepair).toEqual([]);
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
     const toolCallReports = progress.report.mock.calls.filter(
       (c: unknown[]) => (c[0] as { callId?: string })?.callId,
     );
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].input).toEqual({
-      filePath: "/tmp/types.ts",
-      startLine: 1,
-      endLine: 40,
+      filePath: "/tmp/example.md",
+      startLine: 158,
+      endLine: 158,
     });
   });
 

@@ -4,6 +4,12 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Changed
+
+- Replaced negative prompt directives and leaked control token markers across DeepSeek, Kimi, Nemotron, GLM, and default model adapter system prompts with clear positive instructions for direct tool execution, eliminating prompt-induced hallucinations and repetitive conversational preambles.
+- Consolidated leading system directives and user instructions into a single unified system turn, preventing multi-system message context pollution in Copilot Chat requests.
+- Softened duplicate read tool suppression: models are now permitted to re-read files for verification without immediate dropping, while protecting against runaway infinite loops on repeated identical reads. Intervening file edits immediately reset read counts.
+
 ### Removed
 
 - Removed sampling penalties configuration (`nvidia-nim.generation.frequencyPenalty` and `nvidia-nim.generation.presencePenalty`). Sampling penalties are no longer sent to NVIDIA NIM models, avoiding compatibility issues with models that enforce immutable penalty defaults.

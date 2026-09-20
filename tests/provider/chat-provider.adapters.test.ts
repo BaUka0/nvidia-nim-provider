@@ -940,7 +940,7 @@ describe("NimChatModelProvider", () => {
       expect.arrayContaining([
         expect.objectContaining({
           role: "system",
-          content: expect.stringContaining("Do not reveal internal control tokens"),
+          content: expect.stringContaining("invoke the required tool directly"),
         }),
       ]),
     );
@@ -1002,8 +1002,8 @@ describe("NimChatModelProvider", () => {
   });
 
   it.each([
-    ["moonshotai/kimi-k3", 1, "Do not reveal chain-of-thought"],
-    ["nvidia/nemotron-3-ultra-550b-a55b", 1, "Do not wrap tool arguments in markdown fences"],
+    ["moonshotai/kimi-k3", 1, "invoke tools via native function calls"],
+    ["nvidia/nemotron-3-ultra-550b-a55b", 1, "invoke the appropriate tool directly"],
   ])(
     "applies the provider request profile for %s when tools are enabled",
     async (modelId: string, expectedTemperature: number, expectedMessageSnippet: string) => {

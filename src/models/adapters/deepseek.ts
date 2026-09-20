@@ -3,7 +3,7 @@ import { BaseModelAdapter, ensureChatTemplateKwargs } from "./base";
 export class DeepSeekAdapter extends BaseModelAdapter {
   readonly idPattern = /(^|[\/_-])deepseek([\/_-]|$)/i;
   readonly toolSystemMessage =
-    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, emit tool calls directly whenever an action, inspection, or tool execution is needed. Do not output conversational planning, narrations of intended actions, or preambles in place of calling tools. Answer with normal text only when no tools are needed to satisfy the request. Use the native tool call format (tool_calls array in the API response). Do NOT emit tool calls as inline text markers (tool_call_begin, 伏, 第), plain JSON blocks, or markdown code fences masquerading as tool calls. Do not reveal internal control tokens, protocol markers, JSON fences, planning text, or DSML/tool_call markers in the user-visible response.";
+    "You are an expert AI programming assistant. Provide correct, concise, production-ready code. When tools are available, invoke the required tool directly via native function calls to inspect code or perform actions. Emit user-facing text only when no tools are needed or to explain completed actions.";
 
   readonly supportedReasoningModes = ["none", "high", "max"];
   readonly reasoningParameterFormat = "chat_template_kwargs" as const;

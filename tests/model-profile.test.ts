@@ -3,8 +3,8 @@ import { NimChatMessage, NimChatRequest } from "../src/types";
 
 describe("getModelAdapter", () => {
   it.each([
-    ["kimi-k3", 1, 1, "Do not reveal chain-of-thought"],
-    ["nemotron-70b", 1, 1, "Do not wrap tool arguments in markdown fences"],
+    ["kimi-k3", 1, 1, "invoke tools via native function calls"],
+    ["nemotron-70b", 1, 1, "invoke the appropriate tool directly"],
   ])(
     "returns a specialized tool-enabled profile for %s",
     (
@@ -20,9 +20,7 @@ describe("getModelAdapter", () => {
       expect(profile.toolTemperature).toBe(expectedToolTemperature);
       expect(profile.defaultTopP).toBe(0.95);
       if (modelId.includes("nemotron")) {
-        expect(profile.extraSystemMessages[0]).toContain(
-          'NEVER start your response with "Let me fix"',
-        );
+        expect(profile.extraSystemMessages[0]).toContain("invoke the appropriate tool directly");
       }
       expect(profile.extraSystemMessages).toEqual(
         expect.arrayContaining([expect.stringContaining(expectedMessageSnippet)]),
@@ -47,7 +45,9 @@ describe("getModelAdapter", () => {
       "You are an expert AI programming assistant. Provide correct, concise, production-ready code.",
     );
     expect(profile.extraSystemMessages).toEqual(
-      expect.arrayContaining([expect.stringContaining("Do not emit XML section wrappers")]),
+      expect.arrayContaining([
+        expect.stringContaining("Format user-facing replies in clean Markdown"),
+      ]),
     );
   });
 

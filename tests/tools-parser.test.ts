@@ -581,7 +581,7 @@ describe("tool argument parsing and validation", () => {
     expect(emitted[0].id.length).toBeGreaterThan(0);
   });
 
-  it("reports a completed duplicate instead of dropping it silently", () => {
+  it("allows a second read tool call but suppresses a third identical call to prevent loops", () => {
     const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
     const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
     const aggregator = new ToolCallStreamAggregator({
@@ -607,6 +607,7 @@ describe("tool argument parsing and validation", () => {
       onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
     });
 
+    // 2nd call: allowed (softened)
     aggregator.handleToolCalls([
       {
         index: 0,
@@ -618,10 +619,80 @@ describe("tool argument parsing and validation", () => {
         },
       },
     ]);
-    aggregator.flushRemaining();
+    expect(emitted).toHaveLength(1);
+    expect(skipped).toEqual([]);
 
-    expect(emitted).toEqual([]);
+    // 3rd call: suppressed as duplicate to stop runaway loop
+    aggregator.handleToolCalls([
+      {
+        index: 1,
+        id: "read_file:2",
+        type: "function",
+        function: {
+          name: "read_file",
+          arguments: '{"filePath":"/tmp/a.ts","startLine":1,"mode":"full"}',
+        },
+      },
+    ]);
+    expect(emitted).toHaveLength(1);
     expect(skipped).toEqual([{ name: "read_file", required: [], reason: "duplicate" }]);
+  });
+
+  it("resets duplicate read counts after an intervening edit tool is executed", () => {
+    const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+    const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
+    const aggregator = new ToolCallStreamAggregator({
+      options,
+      messages: [
+        {
+          role: 2,
+          content: [
+            {
+              callId: "read_file:0",
+              name: "read_file",
+              input: { filePath: "/tmp/a.ts", startLine: 1, mode: "full" },
+            },
+            {
+              callId: "read_file:1",
+              name: "read_file",
+              input: { filePath: "/tmp/a.ts", startLine: 1, mode: "full" },
+            },
+            {
+              callId: "edit_file:0",
+              name: "edit_file",
+              input: { filePath: "/tmp/a.ts", content: "new content" },
+            },
+          ],
+        } as never,
+        {
+          role: 1,
+          content: [
+            { callId: "read_file:0", content: [{ value: "content1" }] },
+            { callId: "read_file:1", content: [{ value: "content2" }] },
+            { callId: "edit_file:0", content: [{ value: "edited" }] },
+          ],
+        } as never,
+      ],
+      toolsConfig: ConfigManager.getToolsConfig(),
+      onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
+      onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
+    });
+
+    // Reading after edit is allowed again because the edit reset the read count
+    aggregator.handleToolCalls([
+      {
+        index: 0,
+        id: "read_file:3",
+        type: "function",
+        function: {
+          name: "read_file",
+          arguments: '{"filePath":"/tmp/a.ts","startLine":1,"mode":"full"}',
+        },
+      },
+    ]);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].name).toBe("read_file");
+    expect(skipped).toEqual([]);
   });
 
   it("re-emits run_in_terminal even when the same command already completed", () => {

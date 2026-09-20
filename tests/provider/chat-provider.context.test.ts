@@ -643,7 +643,7 @@ describe("NimChatModelProvider", () => {
     });
   });
 
-  it("suppresses an immediate duplicate of the just-completed tool call", async () => {
+  it("emits a repeated tool call when requested by the model", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -717,7 +717,7 @@ describe("NimChatModelProvider", () => {
     );
 
     const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
-    expect(toolCallReports).toHaveLength(0);
+    expect(toolCallReports).toHaveLength(1);
   });
 
   it("allows the same tool call again after an intervening user message", async () => {
