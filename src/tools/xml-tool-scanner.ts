@@ -83,17 +83,17 @@ export function isTokenInStringOrRegexLiteral(text: string, index: number): bool
     }
 
     if (!inDouble && !inTick && ch === "'") {
-      // Ignore English contractions and possessives: e.g. "Let's", "I'll", "don't", "it's", "user's"
-      const isWordContraction =
-        i > scanFrom &&
-        /[a-zA-Z]/.test(text[i - 1]) &&
-        i + 1 < text.length &&
-        /[a-zA-Z]/.test(text[i + 1]);
+      const next = text.slice(i + 1);
+      const precededByLetter = i > scanFrom && /[a-zA-Z]/.test(text[i - 1]);
+      // Closed suffixes only. `return'hello...'` is a string, not a contraction like "I'll".
+      const isWordContraction = precededByLetter && /^(?:s|t|ll|re|ve|d|m)(?![a-zA-Z])/i.test(next);
       if (isWordContraction) {
         continue;
       }
-      // Possessive at word end in English prose: e.g. "users' "
-      if (i > scanFrom && /[a-zA-Z]/.test(text[i - 1]) && !inSingle) {
+      // Plural possessive ends the word: "users' files".
+      const isTrailingPossessive =
+        precededByLetter && !inSingle && (next.length === 0 || !/[a-zA-Z]/.test(next[0]));
+      if (isTrailingPossessive) {
         continue;
       }
       inSingle = !inSingle;

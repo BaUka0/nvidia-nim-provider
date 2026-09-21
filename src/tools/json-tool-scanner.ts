@@ -281,6 +281,17 @@ export function findBestMatchingTool(
   return bestMatch ? { name: bestMatch.name, args: bestMatch.args } : undefined;
 }
 
+function withoutForbiddenKeys(source: Record<string, unknown>): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (FORBIDDEN_TOOL_IDENTIFIERS.has(key)) {
+      continue;
+    }
+    args[key] = value;
+  }
+  return args;
+}
+
 function extractSingleToolCall(
   record: Record<string, unknown>,
   toolSchemas: ReadonlyMap<string, ToolSchema> | undefined,
@@ -308,20 +319,24 @@ function extractSingleToolCall(
                   : undefined;
 
         if (inner && !Array.isArray(inner)) {
-          args = inner as Record<string, unknown>;
+          args = withoutForbiddenKeys(inner as Record<string, unknown>);
         } else if (typeof record.arguments === "string") {
-          args = (tryParseJsonObjectOrRepair(record.arguments) as Record<string, unknown>) ?? {};
+          args = withoutForbiddenKeys(
+            (tryParseJsonObjectOrRepair(record.arguments) as Record<string, unknown>) ?? {},
+          );
         } else {
           for (const [k, v] of Object.entries(record)) {
             if (
-              !EXPLICIT_TOOL_NAME_KEYS.includes(k as never) &&
-              k !== "arguments" &&
-              k !== "parameters" &&
-              k !== "action_input" &&
-              k !== "input"
+              EXPLICIT_TOOL_NAME_KEYS.includes(k as never) ||
+              k === "arguments" ||
+              k === "parameters" ||
+              k === "action_input" ||
+              k === "input" ||
+              FORBIDDEN_TOOL_IDENTIFIERS.has(k)
             ) {
-              args[k] = v;
+              continue;
             }
+            args[k] = v;
           }
         }
         return { name, args };
@@ -438,9 +453,13 @@ export function scanJsonToolConstruct(
         const name = String(func?.name ?? itemRecord.name ?? "").trim();
         const rawArgs = func?.arguments ?? itemRecord.arguments ?? itemRecord.parameters ?? {};
         if (name && isValidName(name) && toolSchemas?.has(name)) {
-          const args =
+          const parsedArgs =
             typeof rawArgs === "string" ? (tryParseJsonObjectOrRepair(rawArgs) ?? {}) : rawArgs;
-          toolCalls.push({ name, args: args as Record<string, unknown> });
+          const args =
+            parsedArgs && typeof parsedArgs === "object" && !Array.isArray(parsedArgs)
+              ? withoutForbiddenKeys(parsedArgs as Record<string, unknown>)
+              : {};
+          toolCalls.push({ name, args });
         }
       }
     }

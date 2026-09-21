@@ -28,6 +28,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Fixed JSON text detection so ordinary JSON examples and non-tool objects stay intact in chat, including an unfinished wrapper around a nested tool-shaped object. A fenced tool call still runs when the reply ends before its closing fence.
 - Fixed stream cleanup so that partial non-tool text and thinking content held at the end of a response are flushed to chat rather than being discarded.
 - Fixed duplicate tool suppression so that models are not told their arguments were invalid when duplicate tool calls are suppressed.
+- Fixed JSON tool fallback so internal field names such as constructor are not forwarded as tool arguments.
+- Fixed code snippets written as return'...' so a tool tag inside that string is left as text. Contractions such as "Let's" and possessives such as "users'" still allow the following tool call to run.
 
 ### Removed
 

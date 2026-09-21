@@ -1267,6 +1267,34 @@ describe("tool argument parsing and validation", () => {
     ]);
   });
 
+  it("keeps a tool tag inside return'...' as text", () => {
+    const text =
+      "return'hello <tool_call> <function=read_file> <parameter=filePath> /tmp/a.ts </parameter> </function> </tool_call>'";
+    const result = parseTextEmbeddedToolCalls(text);
+    expect(result.segments.filter((segment) => segment.type === "toolCall")).toEqual([]);
+    const visible = result.segments
+      .filter((segment): segment is { type: "text"; text: string } => segment.type === "text")
+      .map((segment) => segment.text)
+      .join("");
+    expect(visible).toContain("<tool_call>");
+  });
+
+  it("still executes a tool call after a plural possessive", () => {
+    const text =
+      "users' <tool_call> <function=read_file> <parameter=filePath> /tmp/a.ts </parameter> </function> </tool_call>";
+    const result = parseTextEmbeddedToolCalls(text);
+    const toolCalls = result.segments.filter((segment) => segment.type === "toolCall");
+    expect(toolCalls).toEqual([
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "read_file",
+          args: { filePath: "/tmp/a.ts" },
+        },
+      },
+    ]);
+  });
+
   it("parses single-line XML tool call with preceding reasoning prose and apostrophe", () => {
     const text =
       "Let's start with getApiKeyFromConfiguration.\n\nI need to find where getApiKeyFromConfiguration is defined and replace its body with a delegation.\n\nLet's locate the function. I'll search for \"function getApiKeyFromConfiguration\". <tool_call> <function=grep_search> <parameter=includePattern> src/provider.ts </parameter> <parameter=query> function getApiKeyFromConfiguration </parameter> <parameter=isRegexp> false </parameter> </function> </tool_call>\n\nNow I need to replace the API key related functions with calls to the apiKeyManager.";
@@ -1783,6 +1811,37 @@ describe("tool argument parsing and validation", () => {
           },
         },
         { type: "text", text: "Done updating." },
+      ]);
+    });
+
+    it("drops forbidden keys copied from a flat JSON tool call", () => {
+      const rawText =
+        '{"name":"read_file","filePath":"/tmp/a.ts","constructor":"nope","prototype":"nope","__proto__":{"polluted":true}}';
+      const result = parseTextEmbeddedToolCalls(rawText, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "read_file",
+            args: { filePath: "/tmp/a.ts" },
+          },
+        },
+      ]);
+    });
+
+    it("drops forbidden keys nested in a JSON arguments object", () => {
+      const rawText =
+        '{"name":"read_file","arguments":{"filePath":"/tmp/a.ts","constructor":"nope","__proto__":{"polluted":true}}}';
+      const result = parseTextEmbeddedToolCalls(rawText, toolSchemas);
+      expect(result.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "read_file",
+            args: { filePath: "/tmp/a.ts" },
+          },
+        },
       ]);
     });
 
