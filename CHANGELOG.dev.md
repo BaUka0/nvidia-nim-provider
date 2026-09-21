@@ -6,6 +6,7 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ### Added
 
+- **Nemotron loop regression lock (`tests/nemotron-loop-regression.test.ts`).** Added 9 regression tests pinning post-314802f/92271e5 behavior for issue #7: verbatim `Let me` guard trip, reasoning-only `repetition_loop` auto-continue, reasoning-only `empty_stream` retry, shared `loopContinueCount` budget exhaustion, tool-call loop stop vs nudge, plus 3 documented GAPs (varied 2-word preamble prefix without `repetitionTripped`, `hanging_colon` preamble, single-preamble-per-turn inter-turn loop with no history breaker). Addresses #7.
 - **Fallback parsing for text-embedded JSON tool calls (`src/tools/json-tool-scanner.ts`, `src/tools/embedded-parser.ts`, `src/provider/stream-pump.ts`, `src/provider/tool-call-aggregator.ts`, `tests/tools-parser.test.ts`, `tests/stream-tool-calls.test.ts`).** Implemented `scanJsonToolConstruct` and `findBestMatchingTool` to intercept standalone JSON objects, OpenAI-style `tool_calls` payloads, arrays, and fenced ```` ```json ```` blocks emitted into `delta.content`. When tools are enabled and no native tool parts are emitted, arguments are validated and scored against candidate tool schemas (`schema.properties`, `schema.required`, and `PROPERTY_ALIAS_GROUPS`), recovering tool execution without leaking raw JSON to chat. Resolves #15.
 
 ### Changed
