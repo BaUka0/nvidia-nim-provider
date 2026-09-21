@@ -21,6 +21,24 @@ export function isLoopRetryReason(reason: RetryReason | undefined): reason is Lo
   return reason !== undefined && LOOP_RETRY_REASONS.has(reason);
 }
 
+/**
+ * The only action in the attempt was a read that history already completed.
+ * Nothing was emitted, so Copilot would otherwise see a finished turn with no
+ * tool and no answer and stop the agent.
+ */
+export function isSuppressedDuplicateStall(result: StreamAttemptResult): boolean {
+  const hasVisibleText = Boolean(
+    result.lastVisibleText && result.lastVisibleText.trim().length > 0,
+  );
+  return (
+    !result.emittedToolCall &&
+    !result.reportedVisibleContent &&
+    !hasVisibleText &&
+    result.skippedToolCalls.length > 0 &&
+    result.skippedToolCalls.every((call) => call.reason === "duplicate")
+  );
+}
+
 export interface AttemptRetryFacts {
   result: StreamAttemptResult;
   toolsEnabled: boolean;
@@ -67,11 +85,12 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
   const loopAutoContinueEligible = facts.loopContinueCount < facts.maxLoopContinues;
   const willRetryRepetitionLoop =
     isRepetitionLoop && loopAutoContinueEligible && (hasVisibleText || result.sawReasoning);
+  const suppressedDuplicateStall = isSuppressedDuplicateStall(result);
   const willRetryToolCallLoop =
     !willRetryRepetitionLoop &&
-    Boolean(result.toolCallLoopTripped) &&
     !result.emittedToolCall &&
-    loopAutoContinueEligible;
+    loopAutoContinueEligible &&
+    (Boolean(result.toolCallLoopTripped) || suppressedDuplicateStall);
   const willRetryTruncation =
     !willRetryRepetitionLoop &&
     !willRetryToolCallLoop &&

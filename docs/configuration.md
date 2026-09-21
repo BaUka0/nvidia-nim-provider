@@ -118,7 +118,7 @@ Optional sampling parameters sent with each request.
 | `nvidia-nim.generation.temperature` | `null` | `0.0`–`2.0` | Controls response creativity. Lower values (e.g. `0.2`) make answers more focused and deterministic; higher values (e.g. `0.8`) make them more creative. `null` uses the model default. |
 | `nvidia-nim.generation.topP` | `null` | `0.0`–`1.0` | Alternative way to control response diversity. `null` uses the model default. |
 | `nvidia-nim.generation.maxOutputTokens` | `null` | `≥128` | Maximum length of generated responses in tokens. `null` allows the full model capacity. |
-| `nvidia-nim.generation.maxRepeatedLines` | `4` | `0`–`50` | Stops the response early if the model gets stuck repeating the same sentence or a paragraph with no line breaks. `0` disables loop detection. |
+| `nvidia-nim.generation.maxRepeatedLines` | `4` | `0`–`50` | Stops the response early if the model gets stuck repeating the same sentence or a longer passage. Ordinary repeated openings in thinking are left alone. `0` disables loop detection. |
 | `nvidia-nim.generation.maxLoopContinues` | `2` | `0`–`8` | How many times in one turn to nudge after a loop, truncated reply, repeated tool call, or stalled stream. `0` disables auto-continue. |
 
 ---

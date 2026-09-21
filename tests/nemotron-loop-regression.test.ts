@@ -1,6 +1,6 @@
 import { evaluateAttemptRetry } from "../src/provider/attempt-retry";
 import { StreamAttemptResult } from "../src/provider/stream-pump";
-import { RepetitionGuard } from "../src/provider/repetition-guard";
+import { REASONING_REPETITION_OPTIONS, RepetitionGuard } from "../src/provider/repetition-guard";
 import { DEFAULT_GENERATION_CONFIG } from "../src/shared/config";
 import { detectHistoryLoop, injectHistoryLoopBreaker } from "../src/provider/loop-breaker";
 
@@ -61,6 +61,26 @@ describe("nemotron loop regression (#7)", () => {
       }),
     });
     expect(evaluation.retryReason).toBe("repetition_loop");
+  });
+
+  it("reasoning openings from the 2026-09-21 session do not trip the reasoning guard", () => {
+    const guard = new RepetitionGuard({
+      maxRepeatedLines: 4,
+      ...REASONING_REPETITION_OPTIONS,
+    });
+    const reasoning = [
+      "We'll first check the repository structure.",
+      "We'll examine the parser implementation.",
+      "We'll run the existing test suite.",
+      "We need to read the catalog before switching.",
+      "We have the context sizes already.",
+      "Let's compare the fallback window.",
+      "Since the user is not available to answer, proceed with the safe default.",
+      "We need to perform a deep refactoring of the parser next.",
+      "Since the user is not available we should not block on questions.",
+    ].join("\n");
+    expect(guard.add(reasoning)).toBe(false);
+    expect(guard.tripped).toBe(false);
   });
 
   it("varied preamble with same 2-word prefix trips prefix cycle detector and retries", () => {

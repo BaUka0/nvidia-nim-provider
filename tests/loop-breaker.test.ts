@@ -37,6 +37,14 @@ describe("buildLoopBreakerNudge", () => {
     expect(nudge.content).not.toContain("[NIM_LOOP_BREAKER]");
     expect(nudge.content).toContain("without repeating");
   });
+
+  it("tells a reasoning-only loop that no answer was produced", () => {
+    const nudge = buildLoopBreakerNudge("repetition_loop", { reasoningOnly: true });
+    expect(nudge.role).toBe("user");
+    expect(nudge.content).toContain("thinking");
+    expect(nudge.content).not.toContain("without repeating");
+    expect(nudge.content).not.toContain("[NIM_LOOP_BREAKER]");
+  });
 });
 
 describe("detectHistoryLoop", () => {
@@ -80,6 +88,32 @@ describe("detectHistoryLoop", () => {
       { role: 1, content: [{ value: "Let me fix the formatting issue:" }] },
     ];
     expect(detectHistoryLoop(messages)).toBeUndefined();
+  });
+
+  it("ignores repeated thinking openings and reads the visible line", () => {
+    class LanguageModelThinkingPart {
+      constructor(public value: string) {}
+    }
+    const turn = (thinking: string, visible?: string) => ({
+      role: 2,
+      content: visible
+        ? [new LanguageModelThinkingPart(thinking), { value: visible }]
+        : [new LanguageModelThinkingPart(thinking)],
+    });
+    expect(
+      detectHistoryLoop([
+        turn("We need to read provider.ts before editing it."),
+        turn("We need to check the next call site."),
+        turn("We need to grep for ensureApiKey."),
+      ]),
+    ).toBeUndefined();
+    expect(
+      detectHistoryLoop([
+        turn("We need to inspect the file.", "Updated the resolver."),
+        turn("We need to inspect the tests.", "Tests cover the new class."),
+        turn("We need to inspect the docs.", "Docs mention the setting."),
+      ]),
+    ).toBeUndefined();
   });
 
   it("detects prefix N-gram loops where actions differ after 'Let me'", () => {

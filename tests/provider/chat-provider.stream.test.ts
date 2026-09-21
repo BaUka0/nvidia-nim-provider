@@ -522,6 +522,82 @@ describe("NimChatModelProvider", () => {
     expect(textContent).toBe("actual answer text");
   });
 
+  it("keeps a tool-turn plan in thinking when it arrives after reasoning", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    const plan =
+      "We have the api-key-manager.ts file as we created it earlier.\n\n" +
+      "Let's verify by searching for ensureApiKey in provider.ts.\n";
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Checking the call sites." } }] };
+      yield { choices: [{ delta: { content: plan.slice(0, 40) } }] };
+      yield { choices: [{ delta: { content: plan.slice(40) } }] };
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_grep",
+                  type: "function",
+                  function: {
+                    name: "grep_search",
+                    arguments: '{"query":"ensureApiKey"}',
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "nvidia/nemotron-3-super-120b-a12b",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Find ensureApiKey"),
+      makeChatOptions({
+        modelConfiguration: { reasoningMode: "high" },
+        tools: [
+          {
+            name: "grep_search",
+            description: "Search files",
+            inputSchema: {
+              type: "object",
+              properties: { query: { type: "string" } },
+              required: ["query"],
+            },
+          },
+        ],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    const allReports = progress.report.mock.calls.map((c) => c[0]);
+    const thinkingText = allReports
+      .filter((r) => r instanceof ThinkingPart)
+      .map((r) => r.value)
+      .join("");
+    const textContent = allReports
+      .filter((r) => r instanceof vscode.LanguageModelTextPart)
+      .map((r) => r.value)
+      .join("");
+    const toolCalls = allReports.filter((r) => r instanceof vscode.LanguageModelToolCallPart);
+
+    expect(toolCalls).toHaveLength(1);
+    expect(thinkingText).toContain("Checking the call sites.");
+    expect(thinkingText).toContain("Let's verify by searching");
+    expect(textContent).not.toContain("Let's verify");
+    expect(textContent).not.toContain("api-key-manager");
+  });
+
   it("extracts text-embedded tool call from reasoning_content and strips XML from thinking parts", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
@@ -2265,7 +2341,8 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(JSON.stringify(retryBody.messages)).toContain("repeating the previous output");
+    expect(JSON.stringify(retryBody.messages)).toContain("previous thinking repeated");
+    expect(JSON.stringify(retryBody.messages)).not.toContain("repeating the previous output");
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Here is the direct answer." }),
     );

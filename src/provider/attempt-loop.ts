@@ -22,6 +22,11 @@ export interface AttemptLoopState {
   timeoutContinueCount: number;
   invalidToolRetryCount: number;
   attemptCompleted: boolean;
+  /** Last attempt closed on a repetition loop, so the turn must not become empty_stream. */
+  repetitionClosedTurn: boolean;
+  /** Last attempt dropped its only tool call as a duplicate and produced no answer. */
+  duplicateStall: boolean;
+  duplicateStallTool: string;
 }
 
 export function createAttemptLoopState(): AttemptLoopState {
@@ -34,6 +39,9 @@ export function createAttemptLoopState(): AttemptLoopState {
     timeoutContinueCount: 0,
     invalidToolRetryCount: 0,
     attemptCompleted: false,
+    repetitionClosedTurn: false,
+    duplicateStall: false,
+    duplicateStallTool: "",
   };
 }
 

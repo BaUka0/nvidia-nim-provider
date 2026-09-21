@@ -25,10 +25,17 @@ import {
   ToolSchema,
 } from "../tools/parser";
 import { collectChoiceToolCalls } from "../tools/stream-tool-calls";
-import { RepetitionGuard } from "./repetition-guard";
+import { REASONING_REPETITION_OPTIONS, RepetitionGuard } from "./repetition-guard";
 import { ToolCallStreamAggregator } from "./tool-call-aggregator";
 
 const MAX_TRACKED_VISIBLE_CHARS = 8192;
+/**
+ * After reasoning has started, tool-turn prose is held out of the chat until
+ * a tool call arrives (then it joins thinking) or the turn ends as an answer.
+ * Long enough to cover a planning paragraph such as the 3.6k-character
+ * Nemotron tool-turn leak; a longer reply starts streaming as the answer.
+ */
+const PRE_TOOL_ANSWER_HOLD_CHARS = 8000;
 
 export type NimStreamUsage = {
   prompt_tokens?: number;
@@ -111,6 +118,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   });
   const reasoningGuard = new RepetitionGuard({
     maxRepeatedLines: input.maxRepeatedLines,
+    ...REASONING_REPETITION_OPTIONS,
   });
 
   const markFirstResponse = (): void => {
@@ -325,31 +333,84 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     processFilteredText(text);
   };
 
+  let heldAnswer = "";
+  let answerLane: "hold" | "text" = "hold";
+  const toolsOffered = (input.options.tools?.length ?? 0) > 0;
+
+  const showAnswerText = (text: string): void => {
+    if (!text) {
+      return;
+    }
+    processAnswerText(text);
+    flushPendingText();
+  };
+
+  const absorbThinking = (text: string): void => {
+    if (!text) {
+      return;
+    }
+    sawReasoning = true;
+    markFirstResponse();
+    let crossedThreshold = false;
+    if (!reasoningGuard.tripped) {
+      crossedThreshold = reasoningGuard.add(text);
+    }
+    processThinkingText(text);
+    if (crossedThreshold) {
+      debugLog("repetitionGuard", {
+        model: input.model.id,
+        trippedLine: reasoningGuard.trippedLine,
+        source: "reasoning",
+      });
+      outputLog(
+        "repetitionGuard",
+        `Stopped degenerate repeat loop in reasoning on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
+      );
+    }
+  };
+
+  const foldHeldAnswerIntoThinking = (): void => {
+    if (!heldAnswer) {
+      return;
+    }
+    const text = heldAnswer;
+    heldAnswer = "";
+    absorbThinking(text);
+  };
+
+  const releaseHeldAnswer = (): void => {
+    if (!heldAnswer) {
+      return;
+    }
+    const text = heldAnswer;
+    heldAnswer = "";
+    answerLane = "text";
+    showAnswerText(text);
+  };
+
+  const acceptAnswerText = (text: string): void => {
+    if (!text) {
+      return;
+    }
+    const holdAnswer =
+      answerLane === "hold" && toolsOffered && input.reasoningIsolationExpected && sawReasoning;
+    if (!holdAnswer) {
+      showAnswerText(text);
+      return;
+    }
+    heldAnswer += text;
+    if (heldAnswer.length > PRE_TOOL_ANSWER_HOLD_CHARS) {
+      releaseHeldAnswer();
+    }
+  };
+
   const router = new ReasoningStreamRouter({
     reasoningIsolationExpected: input.reasoningIsolationExpected,
     onThinking: (text) => {
-      sawReasoning = true;
-      markFirstResponse();
-      let crossedThreshold = false;
-      if (!reasoningGuard.tripped) {
-        crossedThreshold = reasoningGuard.add(text);
-      }
-      processThinkingText(text);
-      if (crossedThreshold) {
-        debugLog("repetitionGuard", {
-          model: input.model.id,
-          trippedLine: reasoningGuard.trippedLine,
-          source: "reasoning",
-        });
-        outputLog(
-          "repetitionGuard",
-          `Stopped degenerate repeat loop in reasoning on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
-        );
-      }
+      absorbThinking(text);
     },
     onText: (text) => {
-      processAnswerText(text);
-      flushPendingText();
+      acceptAnswerText(text);
     },
     onFirstResponse: () => {
       markFirstResponse();
@@ -419,6 +480,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       if (streamedToolCalls.length > 0) {
         markFirstResponse();
         sawToolCall = true;
+        foldHeldAnswerIntoThinking();
         getToolAggregator().handleToolCalls(streamedToolCalls);
         toolCallLoopKey ??= getToolAggregator().getToolCallLoop()?.key;
       }
@@ -488,6 +550,11 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   }
 
   router.flush();
+  if (lastFinishReason === "tool_calls") {
+    foldHeldAnswerIntoThinking();
+  } else {
+    releaseHeldAnswer();
+  }
 
   if (toolAggregator) {
     toolAggregator.flushRemaining();

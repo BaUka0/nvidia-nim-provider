@@ -54,6 +54,38 @@ describe("evaluateAttemptRetry", () => {
     expect(evaluation.retryReason).toBe("empty_stream");
   });
 
+  it("nudges instead of finishing when the only tool call repeats a completed read", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        sawToolCall: true,
+        sawReasoning: true,
+        reportedContent: true,
+        emittedToolCall: false,
+        reportedVisibleContent: false,
+        lastFinishReason: "tool_calls",
+        skippedToolCalls: [{ name: "read_file", required: [], reason: "duplicate" }],
+      }),
+    });
+    expect(evaluation.retryReason).toBe("tool_call_loop");
+  });
+
+  it("does not turn a suppressed duplicate read into an empty-stream failover", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      loopContinueCount: DEFAULT_GENERATION_CONFIG.maxLoopContinues,
+      result: result({
+        sawToolCall: true,
+        sawReasoning: true,
+        reportedContent: true,
+        emittedToolCall: false,
+        lastFinishReason: "tool_calls",
+        skippedToolCalls: [{ name: "read_file", required: [], reason: "duplicate" }],
+      }),
+    });
+    expect(evaluation.retryReason).toBeUndefined();
+  });
+
   it("retries an empty stream when reasoning was emitted but no visible text or tool was produced", () => {
     const evaluation = evaluateAttemptRetry({
       ...baseFacts,

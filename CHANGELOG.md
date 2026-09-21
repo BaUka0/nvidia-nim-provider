@@ -18,6 +18,11 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ### Fixed
 
+- A planning paragraph that a reasoning model writes just before a tool call stays in the thinking block. It is no longer printed into the chat as the answer.
+- Repeated sentence openings inside thinking no longer make the extension tell the model it is stuck on the same preamble. That notice is reserved for the visible answer.
+- When the model asks to read a file that was already read earlier in the chat, the turn no longer ends with nothing for Copilot to run. The model is asked to continue from the existing result, and if it does not, a short note is shown so the agent can keep going.
+- Thinking is no longer cut off because several reasoning lines start the same way ("We'll", "Let's", "We need"). A loop in thinking has to repeat the same line or a longer passage. A short phrase that merely comes up again while the model is working is left alone.
+- When those thinking retries are used up and there is still no answer, the turn stays on the current model. It is no longer reported as an empty response, which was switching to the backup model and compacting a long chat to fit a smaller context window.
 - Fixed an issue where XML tool calls following conversational text with contractions (such as "Let's" or "I'll") or quoted search terms were mistakenly treated as literal code strings and printed into the chat window instead of executing as tool calls.
 - Fixed stream handling for partial XML tags arriving across chunk boundaries so that in-flight tool calls are not prematurely flushed as plain text.
 - Fixed reasoning mode configuration so that unsupported reasoning modes (such as "on", "auto", or modes from different models) gracefully automap to the best matching active reasoning mode across all models rather than disabling thinking or leaking reasoning tokens into chat.

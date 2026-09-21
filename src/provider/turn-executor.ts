@@ -19,7 +19,12 @@ import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
 import { recordTurnReport, TurnReportOutcome } from "../shared/turn-report";
 import { NimChatRequest, NimTool } from "../types";
-import { AttemptRetryEvaluation, evaluateAttemptRetry, isLoopRetryReason } from "./attempt-retry";
+import {
+  AttemptRetryEvaluation,
+  evaluateAttemptRetry,
+  isLoopRetryReason,
+  isSuppressedDuplicateStall,
+} from "./attempt-retry";
 import {
   AttemptDispatch,
   AttemptLoopState,
@@ -348,6 +353,10 @@ export class ModelTurnExecutor {
       };
 
       let restartFromOverflow = true;
+      let repetitionClosedTurn = false;
+      let repetitionLoopContinues = 0;
+      let duplicateStall = false;
+      let duplicateStallTool = "";
       while (restartFromOverflow) {
         restartFromOverflow = false;
         const state = createAttemptLoopState();
@@ -539,10 +548,43 @@ export class ModelTurnExecutor {
         if (!state.attemptCompleted && state.lastTransientError) {
           throw state.lastTransientError;
         }
+        repetitionClosedTurn = state.repetitionClosedTurn;
+        repetitionLoopContinues = state.loopContinueCount;
+        duplicateStall = state.duplicateStall;
+        duplicateStallTool = state.duplicateStallTool;
         break;
       }
 
+      if (duplicateStall && !hasReportedVisibleContent) {
+        const toolName = duplicateStallTool || "tool";
+        progress.report(
+          new vscode.LanguageModelTextPart(
+            `The ${toolName} call was not run again because that same call already completed earlier in this chat. Use the existing result, call a different tool, or give the final answer.`,
+          ),
+        );
+        hasReportedVisibleContent = true;
+        reportState.hasReportedVisibleContent = true;
+        debugLog("duplicateTool", {
+          action: "visibleContinuation",
+          model: model.id,
+          tool: toolName,
+        });
+      }
+
       if (!hasReportedVisibleContent && !sawToolCallOverall) {
+        if (repetitionClosedTurn) {
+          debugLog("repetitionGuard", {
+            action: "closeWithoutFallback",
+            model: model.id,
+            loopContinueCount: repetitionLoopContinues,
+          });
+          outputLog(
+            "repetitionGuard",
+            `Repetition loop on ${model.id} used its continue budget with no answer. Staying on this model.`,
+          );
+          emitUsageAndStatus(finalUsage, activeRequestBody!);
+          return;
+        }
         const emptyError = buildEmptyStreamError({
           modelLabel: model.name ?? model.id,
           totalAttempts,
@@ -787,7 +829,11 @@ export class ModelTurnExecutor {
         state.loopContinueCount += 1;
       }
       retryReasonHistory.push(retryReason);
-      state.retryNudge = buildLoopBreakerNudge(retryReason);
+      const reasoningOnlyLoop =
+        retryReason === "repetition_loop" && result.sawReasoning && !result.reportedVisibleContent;
+      state.retryNudge = reasoningOnlyLoop
+        ? buildLoopBreakerNudge(retryReason, { reasoningOnly: true })
+        : buildLoopBreakerNudge(retryReason);
       logLoopAutoContinue({
         modelId: model.id,
         retryReason,
@@ -863,6 +909,11 @@ export class ModelTurnExecutor {
     }
 
     state.attemptCompleted = true;
+    state.repetitionClosedTurn = evaluation.isRepetitionLoop;
+    state.duplicateStall = isSuppressedDuplicateStall(result);
+    state.duplicateStallTool = state.duplicateStall
+      ? (result.skippedToolCalls.find((call) => call.reason === "duplicate")?.name ?? "")
+      : "";
     return { action: "complete", baselineRequestBody };
   }
 

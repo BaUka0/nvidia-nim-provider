@@ -1,6 +1,7 @@
 import { LanguageModelChatMessageRole } from "vscode";
 import { NvidiaApiError } from "../api/errors";
 import { stripFallbackNotices } from "../messages/converter";
+import { getThinkingPartValue } from "../messages/parts";
 import { extractPrefixGram } from "../shared/cycle-detection";
 import { debugLog, outputLog } from "../shared/logging";
 import { buildToolCallCanonicalKey, tryParseJsonValue } from "../tools/parser";
@@ -28,7 +29,17 @@ const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
     "The previous reply stalled before completing. Continue working from where you left off. Call a tool if needed or provide the final answer.",
 };
 
-export function buildLoopBreakerNudge(reason: LoopBreakerNudgeReason): NimChatMessage {
+export function buildLoopBreakerNudge(
+  reason: LoopBreakerNudgeReason,
+  options?: { reasoningOnly?: boolean },
+): NimChatMessage {
+  if (reason === "repetition_loop" && options?.reasoningOnly) {
+    return {
+      role: "user",
+      content:
+        "The previous thinking repeated and was cut off before an answer. Do not restate that plan. Call the required tool or provide the final answer now.",
+    };
+  }
   return { role: "user", content: LOOP_BREAKER_NUDGES[reason] };
 }
 
@@ -58,7 +69,11 @@ function countTrailingMatches(values: readonly string[], cap: number): number {
   return consecutive;
 }
 
-/** Extract the first non-empty text line from an assistant message. */
+/**
+ * First visible line of an assistant message. Thinking parts are skipped:
+ * Nemotron reuses openings like "We need" in reasoning on every tool turn,
+ * and counting those made the history breaker fire on a healthy session.
+ */
 function extractAssistantFirstLine(content: unknown): string | undefined {
   let fullText = "";
   if (typeof content === "string") {
@@ -67,6 +82,7 @@ function extractAssistantFirstLine(content: unknown): string | undefined {
     const parts: string[] = [];
     for (const part of content) {
       if (part == null || typeof part !== "object") continue;
+      if (getThinkingPartValue(part) !== undefined) continue;
       const p = part as Record<string, unknown>;
       if (typeof p.value === "string") {
         parts.push(p.value);
