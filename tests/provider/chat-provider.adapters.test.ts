@@ -912,6 +912,7 @@ describe("NimChatModelProvider", () => {
         id: "deepseek-ai/deepseek-v4-flash-0731",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128 },
       }),
       makeUserMessages("Inspect the workspace"),
       makeChatOptions({
@@ -976,6 +977,7 @@ describe("NimChatModelProvider", () => {
         id: "deepseek-ai/deepseek-v4-flash-0731",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128 },
       }),
       makeUserMessages("Inspect the workspace"),
       makeChatOptions({

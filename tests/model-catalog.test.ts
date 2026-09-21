@@ -16,7 +16,7 @@ describe("normalizeNvidiaModels", () => {
   it("keeps whitelisted models and applies overrides", () => {
     const raw: NvidiaModelSummary[] = [
       {
-        id: "deepseek-ai/deepseek-v4-flash-0731",
+        id: "moonshotai/kimi-k3",
       },
       {
         id: "unknown/model-that-should-be-filtered",
@@ -25,12 +25,12 @@ describe("normalizeNvidiaModels", () => {
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       {
-        id: "deepseek-ai/deepseek-v4-flash-0731",
-        displayName: "DeepSeek V4 Flash 0731",
+        id: "moonshotai/kimi-k3",
+        displayName: "Kimi K3",
         contextWindow: 1048576,
-        maxOutputTokens: 131072,
+        maxOutputTokens: 65536,
         supportsTools: true,
-        supportsVision: false,
+        supportsVision: true,
       },
     ]);
   });
@@ -160,11 +160,11 @@ describe("getFallbackModel", () => {
     supportsTools: true,
     supportsVision: true,
   };
-  const flash = {
-    id: "deepseek-ai/deepseek-v4-flash-0731",
-    displayName: "DeepSeek V4 Flash",
+  const glm = {
+    id: "z-ai/glm-5.3",
+    displayName: "GLM 5.3",
     contextWindow: 1048576,
-    maxOutputTokens: 131072,
+    maxOutputTokens: 65536,
     supportsTools: true,
     supportsVision: false,
   };
@@ -181,28 +181,28 @@ describe("getFallbackModel", () => {
   describe("priority list fallback (requiresVision: false)", () => {
     it("walks the priority list in order before the configured single model", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, flash, lightning, super120], {
+        getFallbackModel(kimi.id, [kimi, glm, lightning, super120], {
           configuredFallbackModelId: FALLBACK_MODEL_ID,
-          priorityList: ["deepseek-ai/deepseek-v4-flash-0731", "meta/muse-glimmer-30b"],
+          priorityList: ["z-ai/glm-5.3", "meta/muse-glimmer-30b"],
         }),
-      ).toEqual(flash);
+      ).toEqual(glm);
     });
 
     it("skips the currently failing model and already-tried ids", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, flash], {
+        getFallbackModel(kimi.id, [kimi, glm], {
           configuredFallbackModelId: FALLBACK_MODEL_ID,
-          triedModelIds: ["deepseek-ai/deepseek-v4-flash-0731"],
+          triedModelIds: ["z-ai/glm-5.3"],
         }),
       ).toBeUndefined();
     });
 
     it("last-resorts to another available text model when the configured fallback is missing", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, flash], {
+        getFallbackModel(kimi.id, [kimi, glm], {
           configuredFallbackModelId: FALLBACK_MODEL_ID,
         }),
-      ).toEqual(flash);
+      ).toEqual(glm);
     });
 
     it("last-resorts to Lightning when the configured fallback is missing", () => {
@@ -270,7 +270,7 @@ describe("getFallbackModel", () => {
 
     it("returns undefined if no vision models are available in the catalog", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, lightning, flash], {
+        getFallbackModel(kimi.id, [kimi, lightning, glm], {
           requiresVision: true,
         }),
       ).toBeUndefined();

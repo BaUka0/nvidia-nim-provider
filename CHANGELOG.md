@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Removed
+
+- Removed DeepSeek V4 Flash 0731 from the catalog following its removal from NVIDIA NIM upstream endpoints.
+
 ## [1.1.1] - 2026-09-18
 
 ### Added

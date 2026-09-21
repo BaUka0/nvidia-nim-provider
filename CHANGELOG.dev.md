@@ -4,6 +4,10 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Removed
+
+- **Removed DeepSeek V4 Flash 0731 (`src/models/catalog.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`, `tests/*`).** Removed `deepseek-ai/deepseek-v4-flash-0731` from `MODEL_LIST` and synced manifest enums and probe scripts following its removal from NVIDIA NIM `/v1/models` endpoints. Resolves #16.
+
 ## [1.1.1] - 2026-09-18
 
 ### Added

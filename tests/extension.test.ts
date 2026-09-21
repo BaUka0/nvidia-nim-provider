@@ -326,8 +326,8 @@ describe("activate", () => {
   it("refreshes cached models in the background on activation when an API key exists", async () => {
     const rawModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash-0731",
-        name: "DeepSeek V4 Flash",
+        id: "z-ai/glm-5.3",
+        name: "GLM 5.3",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -371,10 +371,10 @@ describe("activate", () => {
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.rawModels", rawModels);
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
-        id: "deepseek-ai/deepseek-v4-flash-0731",
-        displayName: "DeepSeek V4 Flash 0731",
+        id: "z-ai/glm-5.3",
+        displayName: "GLM 5.3",
         contextWindow: 1048576,
-        maxOutputTokens: 131072,
+        maxOutputTokens: 65536,
         supportsTools: true,
         supportsVision: false,
       },
@@ -386,8 +386,8 @@ describe("activate", () => {
   it("stores raw and normalized model caches when the refresh command succeeds", async () => {
     const rawModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash-0731",
-        name: "DeepSeek V4 Flash",
+        id: "z-ai/glm-5.3",
+        name: "GLM 5.3",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -429,10 +429,10 @@ describe("activate", () => {
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.rawModels", rawModels);
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
-        id: "deepseek-ai/deepseek-v4-flash-0731",
-        displayName: "DeepSeek V4 Flash 0731",
+        id: "z-ai/glm-5.3",
+        displayName: "GLM 5.3",
         contextWindow: 1048576,
-        maxOutputTokens: 131072,
+        maxOutputTokens: 65536,
         supportsTools: true,
         supportsVision: false,
       },
@@ -535,8 +535,8 @@ describe("activate", () => {
   it("rolls back the raw cache if normalized cache persistence fails", async () => {
     const rawModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash-0731",
-        name: "DeepSeek V4 Flash",
+        id: "z-ai/glm-5.3",
+        name: "GLM 5.3",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -597,10 +597,10 @@ describe("activate", () => {
     expect(update).toHaveBeenNthCalledWith(1, "nvidia-nim.rawModels", rawModels);
     expect(update).toHaveBeenNthCalledWith(2, "nvidia-nim.models", [
       {
-        id: "deepseek-ai/deepseek-v4-flash-0731",
-        displayName: "DeepSeek V4 Flash 0731",
+        id: "z-ai/glm-5.3",
+        displayName: "GLM 5.3",
         contextWindow: 1048576,
-        maxOutputTokens: 131072,
+        maxOutputTokens: 65536,
         supportsTools: true,
         supportsVision: false,
       },
@@ -614,8 +614,8 @@ describe("activate", () => {
   it("waits for an in-flight refresh before starting another refresh", async () => {
     const firstRawModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash-0731",
-        name: "DeepSeek V4 Flash",
+        id: "z-ai/glm-5.3",
+        name: "GLM 5.3",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -651,7 +651,7 @@ describe("activate", () => {
             (model) =>
               typeof model === "object" &&
               model !== null &&
-              (model as { id?: string }).id === "deepseek-ai/deepseek-v4-flash-0731",
+              (model as { id?: string }).id === "z-ai/glm-5.3",
           )
         ) {
           return firstModelsWrite.promise;
@@ -687,8 +687,8 @@ describe("activate", () => {
   it("preserves the normalized cache write error when rollback also fails", async () => {
     const rawModels = [
       {
-        id: "deepseek-ai/deepseek-v4-flash-0731",
-        name: "DeepSeek V4 Flash",
+        id: "z-ai/glm-5.3",
+        name: "GLM 5.3",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
