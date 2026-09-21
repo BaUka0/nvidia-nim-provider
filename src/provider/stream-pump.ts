@@ -218,25 +218,14 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     return (parsedToolSchemas ??= getToolSchemaMap(input.options));
   };
 
-  const processFilteredText = (text: string): void => {
-    if (!text) {
-      return;
-    }
-    if (input.parseEmbeddedToolText === false) {
-      pendingText += text;
-      return;
-    }
-
-    const { segments, incompleteText } = parseTextEmbeddedToolCalls(
-      pendingTextEmbeddedContent + text,
-      getToolSchemas(),
-    );
-    pendingTextEmbeddedContent =
-      incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : incompleteText;
-
+  const applyEmbeddedSegments = (
+    segments: ReturnType<typeof parseTextEmbeddedToolCalls>["segments"],
+    sink: (text: string) => void,
+    isThinking: boolean,
+  ): void => {
     for (const segment of segments) {
       if (segment.type === "text") {
-        pendingText += segment.text;
+        sink(segment.text);
         continue;
       }
 
@@ -247,9 +236,36 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       }
 
       sawToolCall = true;
-      getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args);
+      if (isThinking) {
+        getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args, undefined, {
+          isThinking: true,
+        });
+      } else {
+        getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args);
+      }
     }
     toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
+  };
+
+  const processFilteredText = (text: string): void => {
+    if (!text) {
+      return;
+    }
+    if (input.parseEmbeddedToolText === false) {
+      pendingText += text;
+      return;
+    }
+
+    const parsed = parseTextEmbeddedToolCalls(pendingTextEmbeddedContent + text, getToolSchemas());
+    pendingTextEmbeddedContent =
+      parsed.incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : parsed.incompleteText;
+    applyEmbeddedSegments(
+      parsed.segments,
+      (value) => {
+        pendingText += value;
+      },
+      false,
+    );
   };
 
   const processThinkingText = (text: string): void => {
@@ -261,31 +277,44 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       return;
     }
 
-    const { segments, incompleteText } = parseTextEmbeddedToolCalls(
+    const parsed = parseTextEmbeddedToolCalls(
       pendingThinkingEmbeddedContent + text,
       getToolSchemas(),
     );
     pendingThinkingEmbeddedContent =
-      incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : incompleteText;
+      parsed.incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : parsed.incompleteText;
+    applyEmbeddedSegments(parsed.segments, emitThinking, true);
+  };
 
-    for (const segment of segments) {
-      if (segment.type === "text") {
-        emitThinking(segment.text);
-        continue;
-      }
-
-      if (segment.type === "invalidToolCall") {
-        sawToolCall = true;
-        getToolAggregator().recordInvalidToolCall(segment.name);
-        continue;
-      }
-
-      sawToolCall = true;
-      getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args, undefined, {
-        isThinking: true,
-      });
+  const finalizeEmbeddedTail = (
+    pending: string,
+    sink: (text: string) => void,
+    isThinking: boolean,
+    truncatedLog: string,
+  ): void => {
+    if (!pending) {
+      return;
     }
-    toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
+    const parsed = parseTextEmbeddedToolCalls(pending, getToolSchemas(), { atStreamEnd: true });
+    applyEmbeddedSegments(parsed.segments, sink, isThinking);
+    if (!parsed.incompleteText) {
+      return;
+    }
+    const name = getIncompleteTextToolCallName(parsed.incompleteText, getToolSchemas());
+    if (name) {
+      sawToolCall = true;
+      const schema = getToolAggregator().getToolSchema(name);
+      skippedToolCalls.push({
+        name,
+        required: schema?.required ?? [],
+      });
+      debugLog(truncatedLog, { name });
+      return;
+    }
+    const stripped = stripKnownControlText(parsed.incompleteText);
+    if (stripped) {
+      sink(stripped);
+    }
   };
 
   const processAnswerText = (text: string): void => {
@@ -480,45 +509,23 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     }
   }
 
-  const incompleteTextToolName = getIncompleteTextToolCallName(
+  finalizeEmbeddedTail(
     pendingTextEmbeddedContent,
-    getToolSchemas(),
+    (value) => {
+      pendingText += value;
+    },
+    false,
+    "Skipped truncated text tool call",
   );
-  if (incompleteTextToolName) {
-    sawToolCall = true;
-    const schema = getToolAggregator().getToolSchema(incompleteTextToolName);
-    skippedToolCalls.push({
-      name: incompleteTextToolName,
-      required: schema?.required ?? [],
-    });
-    debugLog("Skipped truncated text tool call", { name: incompleteTextToolName });
-  } else if (pendingTextEmbeddedContent) {
-    const stripped = stripKnownControlText(pendingTextEmbeddedContent);
-    if (stripped) {
-      pendingText += stripped;
-    }
-    pendingTextEmbeddedContent = "";
-  }
+  pendingTextEmbeddedContent = "";
 
-  const incompleteThinkingToolName = getIncompleteTextToolCallName(
+  finalizeEmbeddedTail(
     pendingThinkingEmbeddedContent,
-    getToolSchemas(),
+    emitThinking,
+    true,
+    "Skipped truncated text tool call in thinking",
   );
-  if (incompleteThinkingToolName) {
-    sawToolCall = true;
-    const schema = getToolAggregator().getToolSchema(incompleteThinkingToolName);
-    skippedToolCalls.push({
-      name: incompleteThinkingToolName,
-      required: schema?.required ?? [],
-    });
-    debugLog("Skipped truncated text tool call in thinking", { name: incompleteThinkingToolName });
-  } else if (pendingThinkingEmbeddedContent) {
-    const stripped = stripKnownControlText(pendingThinkingEmbeddedContent);
-    if (stripped) {
-      emitThinking(stripped);
-    }
-    pendingThinkingEmbeddedContent = "";
-  }
+  pendingThinkingEmbeddedContent = "";
 
   if (pendingText) {
     flushPendingText();

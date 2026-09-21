@@ -102,6 +102,20 @@ export function isPlausibleJsonToolStart(
   return knownProperties.has(firstKey) || knownProperties.has(lowerKey);
 }
 
+function isJsonShapedConstruct(slice: string): boolean {
+  if (slice[0] !== "{" && slice[0] !== "[") {
+    return false;
+  }
+  const rest = slice.slice(1).trimStart();
+  if (rest.length === 0) {
+    return true;
+  }
+  if (slice[0] === "{") {
+    return rest[0] === '"';
+  }
+  return rest[0] === "{" || rest[0] === "[" || rest[0] === '"';
+}
+
 export function findJsonConstructStart(
   text: string,
   contextPrefix = "",
@@ -150,9 +164,13 @@ export function findJsonConstructStart(
       const balanced = readBalancedJsonObject(text, nextIndex);
       if (balanced && !("incomplete" in balanced)) {
         pos = balanced.end;
-      } else {
-        pos = nextIndex + 1;
+        continue;
       }
+      // Hold an unclosed JSON value whole. Stepping inside extracts a nested object as a tool call.
+      if (isJsonShapedConstruct(slice)) {
+        return { index: nextIndex, kind: "raw" };
+      }
+      pos = nextIndex + 1;
       continue;
     }
   }
@@ -323,6 +341,7 @@ export function scanJsonToolConstruct(
   text: string,
   toolSchemas: ReadonlyMap<string, ToolSchema> | undefined,
   isValidName: (name: string) => boolean,
+  atStreamEnd = false,
 ): JsonScanResult {
   let jsonStartIndex = 0;
   let isFenced = false;
@@ -367,20 +386,18 @@ export function scanJsonToolConstruct(
     const rest = text.slice(consumed);
     const closeMatch = rest.match(/^\s*```/);
     if (!closeMatch) {
-      return { status: "incomplete" };
+      // Keep waiting while the stream is open. At the end, a balanced value still commits.
+      if (!atStreamEnd) {
+        return { status: "incomplete" };
+      }
+    } else {
+      consumed += closeMatch[0].length;
     }
-    consumed += closeMatch[0].length;
-    if (text.slice(consumed).startsWith("\r\n")) {
-      consumed += 2;
-    } else if (text.slice(consumed).startsWith("\n")) {
-      consumed += 1;
-    }
-  } else {
-    if (text.slice(consumed).startsWith("\r\n")) {
-      consumed += 2;
-    } else if (text.slice(consumed).startsWith("\n")) {
-      consumed += 1;
-    }
+  }
+  if (text.slice(consumed).startsWith("\r\n")) {
+    consumed += 2;
+  } else if (text.slice(consumed).startsWith("\n")) {
+    consumed += 1;
   }
 
   let parsed: unknown;

@@ -158,6 +158,7 @@ export function parseDeepSeekTextEmbeddedToolCallContent(
 export function parseTextEmbeddedToolCalls(
   text: string,
   toolSchemas?: ReadonlyMap<string, ToolSchema>,
+  options?: { atStreamEnd?: boolean },
 ): ParsedTextToolCallResult {
   const beginToken = "<|tool_call_begin|>";
   const argBeginToken = "<|tool_call_argument_begin|>";
@@ -328,7 +329,12 @@ export function parseTextEmbeddedToolCalls(
     }
 
     if (nextTokenMatch.kind === "json") {
-      const scanned = scanJsonToolConstruct(remaining, toolSchemas, isValidToolIdentifier);
+      const scanned = scanJsonToolConstruct(
+        remaining,
+        toolSchemas,
+        isValidToolIdentifier,
+        options?.atStreamEnd === true,
+      );
       if (scanned.status === "incomplete") {
         incompleteText = remaining;
         break;

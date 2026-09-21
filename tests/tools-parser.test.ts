@@ -1899,6 +1899,57 @@ describe("tool argument parsing and validation", () => {
       expect(result.incompleteText).toBe("");
     });
 
+    it("holds an unclosed non-tool wrapper instead of executing the nested object", () => {
+      const open = '{"summary":"x","edit":{"filePath":"a.ts","code":"y"}';
+      const held = parseTextEmbeddedToolCalls(open, toolSchemas);
+      expect(held.segments.filter((segment) => segment.type === "toolCall")).toEqual([]);
+      expect(held.incompleteText).toBe(open);
+
+      const closed = parseTextEmbeddedToolCalls(`${held.incompleteText}}`, toolSchemas);
+      expect(closed.incompleteText).toBe("");
+      expect(closed.segments).toEqual([{ type: "text", text: `${open}}` }]);
+
+      const ended = parseTextEmbeddedToolCalls(open, toolSchemas, { atStreamEnd: true });
+      expect(ended.segments.filter((segment) => segment.type === "toolCall")).toEqual([]);
+      expect(getIncompleteTextToolCallName(open, toolSchemas)).toBeUndefined();
+    });
+
+    it("still extracts a tool call that follows a closed stray brace", () => {
+      const text = 'Use {braces} in prose {"filePath":"a.ts","code":"y"}';
+      const result = parseTextEmbeddedToolCalls(text, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        { type: "text", text: "Use {braces} in prose " },
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "insert_edit_into_file",
+            args: { filePath: "a.ts", code: "y" },
+          },
+        },
+      ]);
+    });
+
+    it("commits a complete fenced tool call when the stream ends without a closing fence", () => {
+      const fenced = '```json\n{"filePath":"a.ts","code":"y"}\nsome trailing text';
+      const midStream = parseTextEmbeddedToolCalls(fenced, toolSchemas);
+      expect(midStream.segments).toEqual([]);
+      expect(midStream.incompleteText).toBe(fenced);
+
+      const ended = parseTextEmbeddedToolCalls(fenced, toolSchemas, { atStreamEnd: true });
+      expect(ended.incompleteText).toBe("");
+      expect(ended.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "insert_edit_into_file",
+            args: { filePath: "a.ts", code: "y" },
+          },
+        },
+        { type: "text", text: "some trailing text" },
+      ]);
+    });
+
     it("waits for closing fence on fenced JSON payload", () => {
       const fencedPartial = '```json\n{"filePath":"a.ts","code":"y"}\nsome trailing text';
       const result = parseTextEmbeddedToolCalls(fencedPartial, toolSchemas);
