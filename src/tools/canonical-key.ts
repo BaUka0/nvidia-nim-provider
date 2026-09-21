@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import { LanguageModelChatMessage } from "vscode";
 import { ConfigManager, ToolsConfig } from "../shared/config";
 import { repairToolArguments } from "./argument-repair";
-import { ChatRequestContext } from "./request-context";
 import { isEditTool, isReadTool } from "./tool-kinds";
 import { ToolSchema } from "./tool-schema";
 
@@ -41,7 +40,6 @@ export function sortObjectKeys(value: unknown): unknown {
 
 export function getCompletedToolCallCounts(
   messages: readonly LanguageModelChatMessage[],
-  requestContext: ChatRequestContext | undefined,
   toolSchemas: ReadonlyMap<string, ToolSchema>,
   toolsConfig: ToolsConfig = ConfigManager.getToolsConfig(),
 ): Map<string, number> {
@@ -99,7 +97,6 @@ export function getCompletedToolCallCounts(
       const repairedArgs = repairToolArguments(
         toolCallPart.name,
         toolCallPart.input ?? {},
-        requestContext,
         toolSchemas.get(toolCallPart.name),
         toolsConfig,
       );
@@ -113,10 +110,9 @@ export function getCompletedToolCallCounts(
 
 export function getCompletedToolCallKeys(
   messages: readonly LanguageModelChatMessage[],
-  requestContext: ChatRequestContext | undefined,
   toolSchemas: ReadonlyMap<string, ToolSchema>,
   toolsConfig: ToolsConfig = ConfigManager.getToolsConfig(),
 ): Set<string> {
-  const counts = getCompletedToolCallCounts(messages, requestContext, toolSchemas, toolsConfig);
+  const counts = getCompletedToolCallCounts(messages, toolSchemas, toolsConfig);
   return new Set(counts.keys());
 }

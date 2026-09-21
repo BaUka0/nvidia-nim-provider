@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { chatCompletion } from "../../src/api/client";
-import { getModelAdapter } from "../../src/models/adapters";
-import { NimRequestBuilder } from "../../src/provider/request-builder";
+import { getModelAdapter, ModelAdapter } from "../../src/models/adapters";
+import { NimRequestBuilder, resolveReasoningMode } from "../../src/provider/request-builder";
 import { ConfigManager } from "../../src/shared/config";
 import { makeChatMessages, makeChatOptions, makeModel } from "../helpers/fakes";
 
@@ -208,7 +208,13 @@ describe("NimRequestBuilder context accounting", () => {
 });
 
 describe("NimRequestBuilder.convertMessagesWithProfile", () => {
-  const adapter = getModelAdapter("deepseek-ai/deepseek-v4-flash-0731");
+  const customAdapter = {
+    ...getModelAdapter("deepseek-ai/deepseek-v4-flash-0731"),
+    getProfile: () => ({
+      defaultTemperature: 1,
+      extraSystemMessages: ["Custom system directive", "Formatting rules"],
+    }),
+  } as unknown as ModelAdapter;
 
   it("consolidates extra system messages into a single system turn when input has no system message", () => {
     const inputMessages = makeChatMessages({
@@ -219,15 +225,15 @@ describe("NimRequestBuilder.convertMessagesWithProfile", () => {
     const result = NimRequestBuilder.convertMessagesWithProfile({
       messages: inputMessages,
       contextWindow: 128000,
-      adapter,
+      adapter: customAdapter,
       supportsVision: false,
       toolsEnabled: true,
     });
 
     const systemMessages = result.filter((m) => m.role === "system");
     expect(systemMessages).toHaveLength(1);
-    expect(systemMessages[0].content).toContain("invoke the required tool directly");
-    expect(systemMessages[0].content).toContain("Format user-facing replies in clean Markdown");
+    expect(systemMessages[0].content).toContain("Custom system directive");
+    expect(systemMessages[0].content).toContain("Formatting rules");
     expect(result[1].role).toBe("user");
   });
 
@@ -246,21 +252,21 @@ describe("NimRequestBuilder.convertMessagesWithProfile", () => {
     const result = NimRequestBuilder.convertMessagesWithProfile({
       messages: inputMessages,
       contextWindow: 128000,
-      adapter,
+      adapter: customAdapter,
       supportsVision: false,
       toolsEnabled: true,
     });
 
     const systemMessages = result.filter((m) => m.role === "system");
     expect(systemMessages).toHaveLength(1);
-    expect(systemMessages[0].content).toContain("invoke the required tool directly");
-    expect(systemMessages[0].content).toContain("Format user-facing replies in clean Markdown");
+    expect(systemMessages[0].content).toContain("Custom system directive");
+    expect(systemMessages[0].content).toContain("Formatting rules");
     expect(systemMessages[0].content).toContain("You are VS Code Copilot.");
     expect(result[0].role).toBe("system");
     expect(result[1].role).toBe("user");
   });
 
-  it("does not add extra system guidance when tools are disabled", () => {
+  it("does not add extra system guidance when adapter supplies no extra system messages", () => {
     const inputMessages = makeChatMessages({
       role: 1,
       content: [new vscode.LanguageModelTextPart("Hello")],
@@ -269,14 +275,167 @@ describe("NimRequestBuilder.convertMessagesWithProfile", () => {
     const result = NimRequestBuilder.convertMessagesWithProfile({
       messages: inputMessages,
       contextWindow: 128000,
-      adapter,
+      adapter: getModelAdapter("deepseek-ai/deepseek-v4-flash-0731"),
       supportsVision: false,
-      toolsEnabled: false,
+      toolsEnabled: true,
     });
 
     const systemMessages = result.filter((m) => m.role === "system");
     expect(systemMessages).toHaveLength(0);
-    expect(result).toHaveLength(1);
     expect(result[0].role).toBe("user");
+  });
+});
+
+describe("resolveReasoningMode", () => {
+  it("maps 'on' to the highest standard active mode when model does not explicitly declare 'on'", () => {
+    expect(resolveReasoningMode("on", ["none", "low", "high"])).toBe("high");
+    expect(resolveReasoningMode("on", ["none", "high", "max"])).toBe("high");
+    expect(resolveReasoningMode("on", ["none", "medium", "high", "xhigh"])).toBe("high");
+    expect(resolveReasoningMode("on", ["low", "max"])).toBe("low");
+  });
+
+  it("handles case-insensitivity and whitespace", () => {
+    expect(resolveReasoningMode("  ON  ", ["none", "low", "high"])).toBe("high");
+    expect(resolveReasoningMode("HIGH", ["none", "low", "high"])).toBe("high");
+    expect(resolveReasoningMode("None", ["none", "low", "high"])).toBe("none");
+    expect(resolveReasoningMode("Off", ["none", "low", "high"])).toBe("none");
+  });
+
+  it("maps 'auto' to the best active mode", () => {
+    expect(resolveReasoningMode("auto", ["none", "low", "high"])).toBe("high");
+    expect(resolveReasoningMode("auto", ["none", "medium", "high", "xhigh"])).toBe("high");
+    expect(resolveReasoningMode("auto", ["low", "max"])).toBe("low");
+  });
+
+  it("preserves exact supported modes", () => {
+    expect(resolveReasoningMode("low", ["none", "low", "high"])).toBe("low");
+    expect(resolveReasoningMode("high", ["none", "low", "high"])).toBe("high");
+    expect(resolveReasoningMode("none", ["none", "low", "high"])).toBe("none");
+    expect(resolveReasoningMode("on", ["none", "on"])).toBe("on");
+  });
+
+  it("maps 'medium' to 'low' or 'high' if medium is not present", () => {
+    expect(resolveReasoningMode("medium", ["none", "low", "high"])).toBe("low");
+    expect(resolveReasoningMode("medium", ["none", "high", "max"])).toBe("high");
+  });
+
+  it("maps 'max' to 'high' if max is not present", () => {
+    expect(resolveReasoningMode("max", ["none", "low", "high"])).toBe("high");
+  });
+
+  it("maps 'none' or 'off' to 'none' when available", () => {
+    expect(resolveReasoningMode("none", ["none", "low", "high"])).toBe("none");
+    expect(resolveReasoningMode("off", ["none", "low", "high"])).toBe("none");
+    expect(resolveReasoningMode("none", ["low", "high"])).toBe("low");
+    expect(resolveReasoningMode("off", ["low", "high"])).toBe("low");
+  });
+
+  it("maps unknown mode strings to the best active mode instead of disabling reasoning", () => {
+    expect(resolveReasoningMode("thinking", ["none", "low", "high"])).toBe("high");
+    expect(resolveReasoningMode("deep", ["none", "high", "max"])).toBe("high");
+    expect(resolveReasoningMode("custom", ["low", "max"])).toBe("low");
+  });
+
+  it("handles missing or empty supportedModes gracefully", () => {
+    expect(resolveReasoningMode("on", undefined)).toBe("on");
+    expect(resolveReasoningMode("on", [])).toBe("on");
+    expect(resolveReasoningMode(undefined, ["none", "low", "high"])).toBe("none");
+    expect(resolveReasoningMode(undefined, ["low", "high"])).toBe("low");
+  });
+
+  it("automaps configured reasoningMode in prepareRequest", async () => {
+    const deepseekModel = makeModel({
+      id: "deepseek-ai/deepseek-v4-flash-0731",
+      name: "DeepSeek V4 Flash",
+      maxInputTokens: 100000,
+      maxOutputTokens: 65536,
+    });
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: deepseekModel,
+      messages: makeChatMessages({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Hello")],
+      }),
+      options: makeChatOptions({
+        modelConfiguration: { reasoningMode: "on" },
+      }),
+      contextWindow: 128000,
+      supportsTools: true,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
+    });
+
+    expect(prepared.requestBody.chat_template_kwargs).toEqual({
+      thinking: true,
+      reasoning_effort: "high",
+    });
+    expect(prepared.reasoningIsolationExpected).toBe(true);
+  });
+
+  it("applies parallel_tool_calls: false and toolTemperature: 0.6 for Nemotron when tools are enabled", async () => {
+    const nemotronModel = makeModel({
+      id: "nvidia/nemotron-3-super-120b-a12b",
+      name: "Nemotron 3 Super 120B",
+      maxInputTokens: 100000,
+      maxOutputTokens: 16384,
+    });
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: nemotronModel,
+      messages: makeChatMessages({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Find files")],
+      }),
+      options: makeChatOptions({
+        tools: [
+          {
+            name: "find_files",
+            description: "Find files by pattern",
+            inputSchema: { type: "object" },
+          },
+        ],
+      }),
+      contextWindow: 131072,
+      supportsTools: true,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
+    });
+
+    expect(prepared.requestBody.tools).toHaveLength(1);
+    expect(prepared.requestBody.parallel_tool_calls).toBe(false);
+    expect(prepared.requestBody.temperature).toBe(0.6);
+  });
+
+  it("does not set parallel_tool_calls when tools are disabled for Nemotron", async () => {
+    const nemotronModel = makeModel({
+      id: "nvidia/nemotron-3-super-120b-a12b",
+      name: "Nemotron 3 Super 120B",
+      maxInputTokens: 100000,
+      maxOutputTokens: 16384,
+    });
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: nemotronModel,
+      messages: makeChatMessages({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart("Hello")],
+      }),
+      options: makeChatOptions(),
+      contextWindow: 131072,
+      supportsTools: true,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
+    });
+
+    expect(prepared.requestBody.tools).toBeUndefined();
+    expect(prepared.requestBody.parallel_tool_calls).toBeUndefined();
+    expect(prepared.requestBody.temperature).toBe(1);
   });
 });

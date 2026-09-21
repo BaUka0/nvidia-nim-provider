@@ -10,7 +10,6 @@ import {
   scanXmlToolConstruct,
 } from "./xml-tool-scanner";
 import { ToolSchema, FORBIDDEN_TOOL_IDENTIFIERS } from "./tool-schema";
-import { ChatRequestContext } from "./request-context";
 import {
   buildKnownPropertySet,
   findJsonConstructStart,
@@ -159,7 +158,6 @@ export function parseDeepSeekTextEmbeddedToolCallContent(
 export function parseTextEmbeddedToolCalls(
   text: string,
   toolSchemas?: ReadonlyMap<string, ToolSchema>,
-  requestContext?: ChatRequestContext,
 ): ParsedTextToolCallResult {
   const beginToken = "<|tool_call_begin|>";
   const argBeginToken = "<|tool_call_argument_begin|>";
@@ -194,7 +192,6 @@ export function parseTextEmbeddedToolCalls(
   ] as const;
 
   const knownProperties = buildKnownPropertySet(toolSchemas);
-  const extractedParams: Record<string, unknown> = {};
   const segments: ParsedTextSegment[] = [];
   let remaining = text;
   let incompleteText = "";
@@ -272,6 +269,7 @@ export function parseTextEmbeddedToolCalls(
       const partialBeginIndex = findTrailingTokenPrefixStartAny(remaining, partialTokens);
       if (
         partialBeginIndex === -1 ||
+        isInsideCodeFence(partialBeginIndex) ||
         isTokenInStringOrRegexLiteral(
           accumulatedSoFar + remaining,
           accumulatedSoFar.length + partialBeginIndex,
@@ -319,9 +317,6 @@ export function parseTextEmbeddedToolCalls(
         remaining = remaining.slice(scanned.skip);
         continue;
       }
-      if (scanned.extractedParams) {
-        Object.assign(extractedParams, scanned.extractedParams);
-      }
       if (scanned.toolCall) {
         segments.push({
           type: "toolCall",
@@ -333,12 +328,7 @@ export function parseTextEmbeddedToolCalls(
     }
 
     if (nextTokenMatch.kind === "json") {
-      const scanned = scanJsonToolConstruct(
-        remaining,
-        toolSchemas,
-        isValidToolIdentifier,
-        requestContext,
-      );
+      const scanned = scanJsonToolConstruct(remaining, toolSchemas, isValidToolIdentifier);
       if (scanned.status === "incomplete") {
         incompleteText = remaining;
         break;
@@ -428,7 +418,7 @@ export function parseTextEmbeddedToolCalls(
     }
   }
 
-  return { segments, incompleteText, extractedParams };
+  return { segments, incompleteText };
 }
 
 export function getIncompleteTextToolCallName(

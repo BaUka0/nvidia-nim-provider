@@ -238,14 +238,14 @@
         },
         "nvidia-nim.network.maxEmptyStreamRetries": {
           "type": "integer",
-          "default": 2,
+          "default": 3,
           "minimum": 0,
           "maximum": 5,
           "description": "Maximum retry attempts before failing or triggering fallback when a model returns no content."
         },
         "nvidia-nim.network.maxTotalFetchAttempts": {
           "type": "integer",
-          "default": 6,
+          "default": 8,
           "minimum": 2,
           "maximum": 30,
           "description": "Maximum cumulative HTTP fetch attempts across all retries, compact retries, and fallback model hops within a single Copilot turn."

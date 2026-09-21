@@ -37,6 +37,7 @@ export interface NimChatRequest {
   stop?: string | string[];
   tools?: NimTool[];
   tool_choice?: "auto" | "none" | "required" | { type: string; function: { name: string } };
+  parallel_tool_calls?: boolean;
   reasoning_effort?: string;
   enable_thinking?: boolean;
   chat_template_kwargs?: Record<string, unknown>;

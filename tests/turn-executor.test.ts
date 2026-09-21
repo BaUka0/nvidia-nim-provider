@@ -1,6 +1,6 @@
 import { createStructuredError, NvidiaApiError } from "../src/api/errors";
 import { ContextLimitStore } from "../src/provider/context-limit-store";
-import { buildLoopBreakerNudge, injectHistoryLoopBreaker } from "../src/provider/loop-breaker";
+import { buildLoopBreakerNudge } from "../src/provider/loop-breaker";
 import { buildOverflowRetryRequest } from "../src/provider/overflow-compactor";
 import { NimRequestBuilder } from "../src/provider/request-builder";
 import { runStreamAttempt, StreamAttemptResult } from "../src/provider/stream-pump";
@@ -19,7 +19,6 @@ jest.mock("../src/provider/request-builder", () => ({
   },
 }));
 jest.mock("../src/provider/loop-breaker", () => ({
-  injectHistoryLoopBreaker: jest.fn(({ requestBody }: { requestBody: unknown }) => requestBody),
   buildLoopBreakerNudge: jest.fn(),
 }));
 jest.mock("../src/provider/overflow-compactor", () => ({
@@ -37,7 +36,6 @@ jest.mock("../src/shared/logging", () => ({
 
 const prepareRequestMock = NimRequestBuilder.prepareRequest as jest.Mock;
 const runStreamAttemptMock = runStreamAttempt as jest.Mock;
-const injectLoopBreakerMock = injectHistoryLoopBreaker as jest.Mock;
 const buildNudgeMock = buildLoopBreakerNudge as jest.Mock;
 const overflowCompactionMock = buildOverflowRetryRequest as jest.Mock;
 
@@ -118,9 +116,6 @@ describe("ModelTurnExecutor.executeTurn", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prepareRequestMock.mockResolvedValue(makePrepared());
-    injectLoopBreakerMock.mockImplementation(
-      ({ requestBody }: { requestBody: unknown }) => requestBody,
-    );
   });
 
   it("finishes the turn when the stream reports visible content", async () => {
@@ -141,6 +136,48 @@ describe("ModelTurnExecutor.executeTurn", () => {
     await expect(executor().executeTurn(input)).resolves.toBeUndefined();
 
     expect(runStreamAttemptMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries an empty stream when reasoning was seen but no visible text or tool was produced", async () => {
+    runStreamAttemptMock
+      .mockResolvedValueOnce(
+        makeResult({
+          sawReasoning: true,
+          reportedContent: true,
+          reportedVisibleContent: false,
+          emittedToolCall: false,
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeResult({ reportedVisibleContent: true, lastVisibleText: "Hello!" }),
+      );
+
+    const input = makeInput(makeConfig({ maxEmptyStreamRetries: 3 }));
+    await expect(executor().executeTurn(input)).resolves.toBeUndefined();
+
+    expect(runStreamAttemptMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("resets empty stream retry counter when the model responds with visible text", async () => {
+    buildNudgeMock.mockReturnValue({ role: "user", content: "continue" });
+    runStreamAttemptMock
+      .mockResolvedValueOnce(makeResult())
+      .mockResolvedValueOnce(
+        makeResult({
+          reportedVisibleContent: true,
+          repetitionTripped: true,
+          lastVisibleText: "First part",
+        }),
+      )
+      .mockResolvedValueOnce(makeResult())
+      .mockResolvedValueOnce(
+        makeResult({ reportedVisibleContent: true, lastVisibleText: "Final part" }),
+      );
+
+    const input = makeInput(makeConfig({ maxEmptyStreamRetries: 2 }));
+    await expect(executor().executeTurn(input)).resolves.toBeUndefined();
+
+    expect(runStreamAttemptMock).toHaveBeenCalledTimes(4);
   });
 
   it("auto-continues after a repetition loop and appends the nudge", async () => {

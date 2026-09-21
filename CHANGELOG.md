@@ -10,12 +10,24 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ### Changed
 
-- Replaced negative prompt directives and leaked control token markers across DeepSeek, Kimi, Nemotron, GLM, and default model adapter system prompts with clear positive instructions for direct tool execution, eliminating prompt-induced hallucinations and repetitive conversational preambles.
+- Increased the default number of empty response retries before triggering fallback to 3, and increased the total connection attempt budget to 8.
+- Automatic retries now apply when a model emits reasoning without producing a final answer or tool call, preventing premature model switches. The retry counter resets as soon as the model responds with visible text or a tool call.
 - Consolidated leading system directives and user instructions into a single unified system turn, preventing multi-system message context pollution in Copilot Chat requests.
-- Softened duplicate read tool suppression: models are now permitted to re-read files for verification without immediate dropping, while protecting against runaway infinite loops on repeated identical reads. Intervening file edits immediately reset read counts.
+- Adjusted duplicate read tool suppression: models are permitted up to two identical read operations (allowing a verification re-read of the same file and range), while infinite repeat loops on the third identical call are suppressed. The counter automatically resets whenever file modifications or edits take place.
+- Calibrated Nemotron tool calling parameters: configured tool temperature to 0.6 and disabled parallel tool calls during tool execution turns, mitigating infinite reasoning and tool repetition loops while preserving standard temperature for general dialogue.
+
+### Fixed
+
+- Fixed an issue where XML tool calls following conversational text with contractions (such as "Let's" or "I'll") or quoted search terms were mistakenly treated as literal code strings and printed into the chat window instead of executing as tool calls.
+- Fixed stream handling for partial XML tags arriving across chunk boundaries so that in-flight tool calls are not prematurely flushed as plain text.
+- Fixed reasoning mode configuration so that unsupported reasoning modes (such as "on", "auto", or modes from different models) gracefully automap to the best matching active reasoning mode across all models rather than disabling thinking or leaking reasoning tokens into chat.
+- Fixed an issue where models that draft tool calls during their thinking process had raw tool call tags displayed in the thinking block and failed to execute the tool. Tool calls within reasoning are now parsed and executed directly, raw XML tags are stripped from thinking output, and duplicate calls repeated in the response text are suppressed.
 
 ### Removed
 
+- Removed custom adapter system prompts and hygiene directives. The provider no longer prepends synthetic tool or hygiene system instructions over Copilot's system prompt.
+- Removed chat text regex scraping and line number fabrication. Tool arguments are no longer mutated using heuristics parsed from conversation history text.
+- Removed aggressive retry shouting and scolding prompts in malformed tool call handling in favor of concise, neutral error descriptions.
 - Removed sampling penalties configuration (`nvidia-nim.generation.frequencyPenalty` and `nvidia-nim.generation.presencePenalty`). Sampling penalties are no longer sent to NVIDIA NIM models, avoiding compatibility issues with models that enforce immutable penalty defaults.
 
 ## [1.1.1] - 2026-09-18

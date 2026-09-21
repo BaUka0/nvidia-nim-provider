@@ -37,10 +37,10 @@ export const EXTENSION_VERSION: string = packageJson.version;
  * Total HTTP connection-attempt budget shared by every stream of a single
  * user-visible response (retries, overflow compaction, and fallback hops).
  */
-export const MAX_TOTAL_FETCH_ATTEMPTS = 6;
+export const MAX_TOTAL_FETCH_ATTEMPTS = 8;
 
 /** Per-`streamChatCompletion` slice of {@link MAX_TOTAL_FETCH_ATTEMPTS}. */
-export const MAX_FETCH_ATTEMPTS_PER_STREAM = 3;
+export const MAX_FETCH_ATTEMPTS_PER_STREAM = 4;
 
 /** Unfinished SSE line buffer cap (misbehaving servers must not grow this). */
 export const MAX_SSE_PARTIAL_BUFFER_BYTES = 1024 * 1024;
@@ -55,7 +55,7 @@ export const MAX_JSON_REPAIR_CHARS = 65_536;
  * Maximum `endLine - startLine + 1` span `repairToolArguments` will invent or
  * keep when filling missing line ranges on file tools.
  */
-export const MAX_REPAIRED_LINE_SPAN = 200;
+export const MAX_REPAIRED_LINE_SPAN = 2000;
 
 /** Concatenated native tool-call argument buffer cap. */
 export const MAX_TOOL_ARGUMENT_CHARS = 65_536;

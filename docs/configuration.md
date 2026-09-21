@@ -104,8 +104,8 @@ Timeout and retry settings for streaming and HTTP connections.
 | :--- | :--- | :---: | :--- |
 | `nvidia-nim.network.streamIdleTimeout` | `120` | `15`–`3600` | Maximum idle watchdog time in seconds between streamed chunks or tool calls before considering the connection stalled. Increase this for complex autonomous agent workflows. |
 | `nvidia-nim.network.maxHttpRetries` | `3` | `0`–`10` | Number of automatic retries on temporary connection drops (e.g. network blips). |
-| `nvidia-nim.network.maxEmptyStreamRetries` | `2` | `0`–`5` | Number of immediate retries if the server responds without emitting text chunks. |
-| `nvidia-nim.network.maxTotalFetchAttempts` | `6` | `2`–`30` | Maximum cumulative HTTP fetch attempts across all retries, compact retries, and fallback model hops within a single Copilot turn. |
+| `nvidia-nim.network.maxEmptyStreamRetries` | `3` | `0`–`5` | Number of immediate retries if the server responds without emitting text chunks. |
+| `nvidia-nim.network.maxTotalFetchAttempts` | `8` | `2`–`30` | Maximum cumulative HTTP fetch attempts across all retries, compact retries, and fallback model hops within a single Copilot turn. |
 
 ---
 

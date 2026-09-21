@@ -18,7 +18,6 @@ import { FetchAttemptBudget, httpAttemptsFromConfig } from "../shared/fetch-atte
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
 import { recordTurnReport, TurnReportOutcome } from "../shared/turn-report";
-import { extractPrefixGram } from "../shared/cycle-detection";
 import { NimChatRequest, NimTool } from "../types";
 import { AttemptRetryEvaluation, evaluateAttemptRetry, isLoopRetryReason } from "./attempt-retry";
 import {
@@ -32,7 +31,7 @@ import {
   StreamFailureOutcome,
 } from "./attempt-loop";
 import { ContextLimitStore } from "./context-limit-store";
-import { buildLoopBreakerNudge, injectHistoryLoopBreaker } from "./loop-breaker";
+import { buildLoopBreakerNudge } from "./loop-breaker";
 import { buildOverflowRetryRequest } from "./overflow-compactor";
 import { NimRequestBuilder } from "./request-builder";
 import { appendChatMessage, cloneNimChatRequest } from "./request-snapshot";
@@ -269,12 +268,7 @@ export class ModelTurnExecutor {
           safetyMarginPercent: nimConfig.context.safetyMarginPercent,
         });
 
-      let baselineRequestBody = injectHistoryLoopBreaker({
-        requestBody: cloneNimChatRequest(activeRequestBody),
-        historyMessages: messages,
-        modelId: model.id,
-        applyBudget,
-      });
+      let baselineRequestBody = cloneNimChatRequest(activeRequestBody);
       const retryReasonHistory: string[] = [];
       let requestPreparationDurationMs: number | undefined;
       let toolParsingStateInitDurationMs: number | undefined;
@@ -501,7 +495,6 @@ export class ModelTurnExecutor {
             maxInvalidToolRetries: MAX_INVALID_TOOL_RETRIES,
             fetchBudgetExhausted: fetchBudget.exhausted,
             knownToolNames: collectKnownToolNames(),
-            previousPreamblePrefixes: state.previousPreamblePrefixes,
           });
 
           const dispatch = this.dispatchAttemptOutcome({
@@ -740,6 +733,10 @@ export class ModelTurnExecutor {
     const { retryReason, retryMessage, skippedToolCallNames } = evaluation;
     let baselineRequestBody = input.baselineRequestBody;
 
+    if (result.reportedVisibleContent || result.emittedToolCall) {
+      state.emptyStreamRetryCount = 0;
+    }
+
     logAttemptTiming({
       attempt: input.attempt,
       totalAttempts: input.totalAttempts,
@@ -787,15 +784,8 @@ export class ModelTurnExecutor {
         loopContinueCount: state.loopContinueCount,
       });
 
-      if (!result.sawToolCall && !result.emittedToolCall && result.lastVisibleText) {
-        const prefix = extractPrefixGram(result.lastVisibleText, 2);
-        if (prefix && !state.previousPreamblePrefixes.includes(prefix)) {
-          state.previousPreamblePrefixes.push(prefix);
-        }
-      }
-
-      const isPreambleLoop = retryReason === "repetition_loop" || retryReason === "hanging_colon";
-      if (!isPreambleLoop && result.lastVisibleText.trim().length > 0) {
+      const shouldDiscardPartial = retryReason === "repetition_loop";
+      if (!shouldDiscardPartial && result.lastVisibleText.trim().length > 0) {
         baselineRequestBody = appendChatMessage(baselineRequestBody, {
           role: "assistant",
           content: result.lastVisibleText,

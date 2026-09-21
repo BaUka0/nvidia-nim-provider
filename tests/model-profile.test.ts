@@ -3,15 +3,15 @@ import { NimChatMessage, NimChatRequest } from "../src/types";
 
 describe("getModelAdapter", () => {
   it.each([
-    ["kimi-k3", 1, 1, "invoke tools via native function calls"],
-    ["nemotron-70b", 1, 1, "invoke the appropriate tool directly"],
+    ["kimi-k3", 1, 1, undefined],
+    ["nemotron-70b", 1, 0.6, false],
   ])(
     "returns a specialized tool-enabled profile for %s",
     (
       modelId: string,
       expectedDefaultTemperature: number,
       expectedToolTemperature: number,
-      expectedMessageSnippet: string,
+      expectedParallelToolCalls: boolean | undefined,
     ) => {
       const adapter = getModelAdapter(modelId);
       const profile = adapter.getProfile({ toolsEnabled: true });
@@ -19,12 +19,8 @@ describe("getModelAdapter", () => {
       expect(profile.defaultTemperature).toBe(expectedDefaultTemperature);
       expect(profile.toolTemperature).toBe(expectedToolTemperature);
       expect(profile.defaultTopP).toBe(0.95);
-      if (modelId.includes("nemotron")) {
-        expect(profile.extraSystemMessages[0]).toContain("invoke the appropriate tool directly");
-      }
-      expect(profile.extraSystemMessages).toEqual(
-        expect.arrayContaining([expect.stringContaining(expectedMessageSnippet)]),
-      );
+      expect(profile.parallelToolCalls).toBe(expectedParallelToolCalls);
+      expect(profile.extraSystemMessages).toEqual([]);
     },
   );
 
@@ -41,14 +37,7 @@ describe("getModelAdapter", () => {
     const profile = adapter.getProfile({ toolsEnabled: true });
 
     expect(profile.defaultTemperature).toBe(1);
-    expect(profile.extraSystemMessages[0]).toContain(
-      "You are an expert AI programming assistant. Provide correct, concise, production-ready code.",
-    );
-    expect(profile.extraSystemMessages).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("Format user-facing replies in clean Markdown"),
-      ]),
-    );
+    expect(profile.extraSystemMessages).toEqual([]);
   });
 
   it("does not add extra system guidance when tools are disabled for unknown models", () => {
@@ -137,7 +126,8 @@ describe("applyReasoningMode", () => {
 
     expect(adapter.supportedReasoningModes).toEqual(["none", "medium", "high", "xhigh"]);
     expect(adapter.getProfile({ toolsEnabled: true }).defaultTemperature).toBe(1);
-    expect(adapter.getProfile({ toolsEnabled: true }).toolTemperature).toBe(1);
+    expect(adapter.getProfile({ toolsEnabled: true }).toolTemperature).toBe(0.6);
+    expect(adapter.getProfile({ toolsEnabled: true }).parallelToolCalls).toBe(false);
 
     adapter.applyReasoningMode!(request, "medium");
     expect(request.chat_template_kwargs).toEqual({

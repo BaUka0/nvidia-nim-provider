@@ -88,6 +88,7 @@ export interface StreamAttemptResult {
 export async function runStreamAttempt(input: StreamAttemptInput): Promise<StreamAttemptResult> {
   const skippedToolCalls: SkippedToolCall[] = [];
   let pendingTextEmbeddedContent = "";
+  let pendingThinkingEmbeddedContent = "";
   let pendingText = "";
   let sawToolCall = false;
   let emittedToolCall = false;
@@ -225,26 +226,12 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       return;
     }
 
-    const { segments, incompleteText, extractedParams } = parseTextEmbeddedToolCalls(
+    const { segments, incompleteText } = parseTextEmbeddedToolCalls(
       pendingTextEmbeddedContent + text,
       getToolSchemas(),
     );
     pendingTextEmbeddedContent =
       incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : incompleteText;
-    if (extractedParams && Object.keys(extractedParams).length > 0) {
-      const named = segments.find(
-        (segment) => segment.type === "toolCall" || segment.type === "invalidToolCall",
-      );
-      const toolName =
-        named?.type === "toolCall"
-          ? named.toolCall.name
-          : named?.type === "invalidToolCall"
-            ? named.name
-            : undefined;
-      if (toolName) {
-        getToolAggregator().recordExtractedParameters(extractedParams, toolName);
-      }
-    }
 
     for (const segment of segments) {
       if (segment.type === "text") {
@@ -260,6 +247,42 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
 
       sawToolCall = true;
       getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args);
+    }
+    toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
+  };
+
+  const processThinkingText = (text: string): void => {
+    if (!text) {
+      return;
+    }
+    if (input.parseEmbeddedToolText === false) {
+      emitThinking(text);
+      return;
+    }
+
+    const { segments, incompleteText } = parseTextEmbeddedToolCalls(
+      pendingThinkingEmbeddedContent + text,
+      getToolSchemas(),
+    );
+    pendingThinkingEmbeddedContent =
+      incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : incompleteText;
+
+    for (const segment of segments) {
+      if (segment.type === "text") {
+        emitThinking(segment.text);
+        continue;
+      }
+
+      if (segment.type === "invalidToolCall") {
+        sawToolCall = true;
+        getToolAggregator().recordInvalidToolCall(segment.name);
+        continue;
+      }
+
+      sawToolCall = true;
+      getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args, undefined, {
+        isThinking: true,
+      });
     }
     toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
   };
@@ -281,7 +304,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       if (!reasoningGuard.tripped) {
         crossedThreshold = reasoningGuard.add(text);
       }
-      emitThinking(text);
+      processThinkingText(text);
       if (crossedThreshold) {
         debugLog("repetitionGuard", {
           model: input.model.id,
@@ -434,12 +457,12 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     );
   }
 
+  router.flush();
+
   if (toolAggregator) {
     toolAggregator.flushRemaining();
     toolCallLoopKey ??= toolAggregator.getToolCallLoop()?.key;
   }
-
-  router.flush();
 
   if (lastFinishReason === "tool_calls" && !emittedToolCall) {
     sawToolCall = true;
@@ -468,6 +491,20 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       required: schema?.required ?? [],
     });
     debugLog("Skipped truncated text tool call", { name: incompleteTextToolName });
+  }
+
+  const incompleteThinkingToolName = getIncompleteTextToolCallName(
+    pendingThinkingEmbeddedContent,
+    getToolSchemas(),
+  );
+  if (incompleteThinkingToolName) {
+    sawToolCall = true;
+    const schema = getToolAggregator().getToolSchema(incompleteThinkingToolName);
+    skippedToolCalls.push({
+      name: incompleteThinkingToolName,
+      required: schema?.required ?? [],
+    });
+    debugLog("Skipped truncated text tool call in thinking", { name: incompleteThinkingToolName });
   }
 
   if (pendingText) {

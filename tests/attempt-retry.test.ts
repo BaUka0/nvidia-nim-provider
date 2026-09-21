@@ -27,14 +27,14 @@ const baseFacts = {
   maxLoopContinues: DEFAULT_GENERATION_CONFIG.maxLoopContinues,
   invalidToolRetryCount: 0,
   emptyStreamRetryCount: 0,
-  maxEmptyStreamRetries: 2,
+  maxEmptyStreamRetries: 3,
   maxInvalidToolRetries: 2,
   fetchBudgetExhausted: false,
   knownToolNames: new Set<string>(["read_file"]),
 };
 
 describe("evaluateAttemptRetry", () => {
-  it("retries a hanging colon on the first attempt", () => {
+  it("does not treat text ending with a colon as a retryable loop", () => {
     const evaluation = evaluateAttemptRetry({
       ...baseFacts,
       result: result({
@@ -43,7 +43,7 @@ describe("evaluateAttemptRetry", () => {
         lastFinishReason: "stop",
       }),
     });
-    expect(evaluation.retryReason).toBe("hanging_colon");
+    expect(evaluation.retryReason).toBeUndefined();
   });
 
   it("retries an empty stream before the empty-stream budget is spent", () => {
@@ -54,10 +54,24 @@ describe("evaluateAttemptRetry", () => {
     expect(evaluation.retryReason).toBe("empty_stream");
   });
 
+  it("retries an empty stream when reasoning was emitted but no visible text or tool was produced", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        sawReasoning: true,
+        reportedContent: true,
+        reportedVisibleContent: false,
+        emittedToolCall: false,
+        lastFinishReason: "stop",
+      }),
+    });
+    expect(evaluation.retryReason).toBe("empty_stream");
+  });
+
   it("does not retry an empty stream after the budget is spent", () => {
     const evaluation = evaluateAttemptRetry({
       ...baseFacts,
-      emptyStreamRetryCount: 2,
+      emptyStreamRetryCount: 3,
       result: result({ lastFinishReason: null }),
     });
     expect(evaluation.retryReason).toBeUndefined();
@@ -90,7 +104,7 @@ describe("evaluateAttemptRetry", () => {
     expect(evaluation.retryReason).toBe("tool_call_loop");
   });
 
-  it("still auto-continues a hanging colon after an earlier empty-stream retry", () => {
+  it("does not treat text ending with a colon as a loop after an earlier empty-stream retry", () => {
     const evaluation = evaluateAttemptRetry({
       ...baseFacts,
       emptyStreamRetryCount: 1,
@@ -100,7 +114,7 @@ describe("evaluateAttemptRetry", () => {
         lastFinishReason: "stop",
       }),
     });
-    expect(evaluation.retryReason).toBe("hanging_colon");
+    expect(evaluation.retryReason).toBeUndefined();
   });
 
   it("auto-continues a second loop within the same-turn budget", () => {
@@ -210,7 +224,7 @@ describe("evaluateAttemptRetry", () => {
     expect(evaluation.retryReason).toBeUndefined();
   });
 
-  it("retries hanging ellipsis and em-dash as hanging punctuation", () => {
+  it("does not treat ellipsis and em-dash as hanging punctuation loops", () => {
     const evalDots = evaluateAttemptRetry({
       ...baseFacts,
       result: result({
@@ -219,7 +233,7 @@ describe("evaluateAttemptRetry", () => {
         lastFinishReason: "stop",
       }),
     });
-    expect(evalDots.retryReason).toBe("hanging_colon");
+    expect(evalDots.retryReason).toBeUndefined();
 
     const evalUnicodeDots = evaluateAttemptRetry({
       ...baseFacts,
@@ -229,7 +243,7 @@ describe("evaluateAttemptRetry", () => {
         lastFinishReason: "stop",
       }),
     });
-    expect(evalUnicodeDots.retryReason).toBe("hanging_colon");
+    expect(evalUnicodeDots.retryReason).toBeUndefined();
 
     const evalDash = evaluateAttemptRetry({
       ...baseFacts,
@@ -239,19 +253,18 @@ describe("evaluateAttemptRetry", () => {
         lastFinishReason: "stop",
       }),
     });
-    expect(evalDash.retryReason).toBe("hanging_colon");
+    expect(evalDash.retryReason).toBeUndefined();
   });
 
-  it("identifies a preamble loop across attempts via previousPreamblePrefixes even if ending with a period", () => {
+  it("allows natural language preambles without false-positive loop classification", () => {
     const evaluation = evaluateAttemptRetry({
       ...baseFacts,
-      previousPreamblePrefixes: ["let me"],
       result: result({
         reportedVisibleContent: true,
         lastVisibleText: "Let me read the page content to find the username and password fields.",
         lastFinishReason: "stop",
       }),
     });
-    expect(evaluation.retryReason).toBe("repetition_loop");
+    expect(evaluation.retryReason).toBeUndefined();
   });
 });

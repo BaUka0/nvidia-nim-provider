@@ -11,7 +11,12 @@ import {
   estimateToolsTokens,
   LegacyPart,
 } from "../messages/converter";
-import { getModelAdapter, ModelAdapter, isReasoningIsolationExpected } from "../models/adapters";
+import {
+  getModelAdapter,
+  ModelAdapter,
+  isReasoningIsolationExpected,
+  resolveReasoningMode,
+} from "../models/adapters";
 import { outputLog } from "../shared/logging";
 import { compactAndFit } from "../models/summarizer";
 import { createStructuredError } from "../api/errors";
@@ -62,6 +67,7 @@ function assignClamped(
     body[key] = clamp(value, min, max);
   }
 }
+export { resolveReasoningMode };
 
 export class NimRequestBuilder {
   public static calculateMaxToolResultChars(contextWindow: number): number {
@@ -349,19 +355,18 @@ export class NimRequestBuilder {
       responseOptions as { modelConfiguration?: { reasoningMode?: string } }
     ).modelConfiguration?.reasoningMode;
     const modes = adapter.supportedReasoningModes;
-    let reasoningMode = configuredReasoningMode;
-    if (reasoningMode === undefined && modes && modes.length > 0) {
-      reasoningMode = reasoningConfig.mode;
-    }
-    const defaultMode = modes?.includes("none") ? "none" : (modes?.[0] ?? "none");
-    reasoningMode ??= defaultMode;
-
-    if (modes && modes.length > 0 && !modes.includes(reasoningMode)) {
-      outputLog(
-        "reasoning",
-        `Requested reasoning mode "${reasoningMode}" is not supported by ${model.id} (supported: ${modes.join(", ")}). Sending ${defaultMode}.`,
-      );
-      reasoningMode = defaultMode;
+    let reasoningMode: string;
+    if (modes && modes.length > 0) {
+      const requestedReasoningMode = configuredReasoningMode ?? reasoningConfig.mode;
+      reasoningMode = resolveReasoningMode(requestedReasoningMode, modes);
+      if (requestedReasoningMode && !modes.includes(requestedReasoningMode)) {
+        outputLog(
+          "reasoning",
+          `Requested reasoning mode "${requestedReasoningMode}" is not directly supported by ${model.id} (supported: ${modes.join(", ")}). Automapped to "${reasoningMode}".`,
+        );
+      }
+    } else {
+      reasoningMode = configuredReasoningMode ?? reasoningConfig.mode ?? "none";
     }
 
     if (adapter.applyReasoningMode) {
@@ -393,6 +398,13 @@ export class NimRequestBuilder {
 
     if (toolConfig.tools) {
       requestBody.tools = toolConfig.tools;
+      const parallelToolCalls =
+        typeof modelOpts?.parallel_tool_calls === "boolean"
+          ? modelOpts.parallel_tool_calls
+          : requestProfile.parallelToolCalls;
+      if (parallelToolCalls !== undefined) {
+        requestBody.parallel_tool_calls = parallelToolCalls;
+      }
     }
     if (toolConfig.tool_choice) {
       requestBody.tool_choice = toolConfig.tool_choice;

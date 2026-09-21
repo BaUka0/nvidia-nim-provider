@@ -15,8 +15,6 @@ export {
   isToolCallInput,
 } from "./tool-schema";
 
-export { ChatRequestContext, extractChatRequestContext } from "./request-context";
-
 export { repairToolArguments } from "./argument-repair";
 
 export {
@@ -79,5 +77,4 @@ export type ParsedTextSegment =
 export interface ParsedTextToolCallResult {
   segments: ParsedTextSegment[];
   incompleteText: string;
-  extractedParams?: Record<string, unknown>;
 }

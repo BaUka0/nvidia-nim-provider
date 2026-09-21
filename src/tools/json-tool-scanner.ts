@@ -7,7 +7,6 @@ import {
   FORBIDDEN_TOOL_IDENTIFIERS,
 } from "./tool-schema";
 import { repairToolArguments, PROPERTY_ALIAS_GROUPS } from "./argument-repair";
-import { ChatRequestContext } from "./request-context";
 
 export interface JsonScannedToolCall {
   name: string;
@@ -178,7 +177,6 @@ function hasAliasInSchema(
 export function findBestMatchingTool(
   parsedArgs: Record<string, unknown>,
   toolSchemas: ReadonlyMap<string, ToolSchema>,
-  requestContext?: ChatRequestContext,
 ): { name: string; args: Record<string, unknown> } | undefined {
   const argKeys = Object.keys(parsedArgs).filter(
     (k) => !AUXILIARY_KEYS.has(k.toLowerCase()) && !FORBIDDEN_TOOL_IDENTIFIERS.has(k),
@@ -198,7 +196,7 @@ export function findBestMatchingTool(
     | undefined;
 
   for (const [toolName, schema] of toolSchemas.entries()) {
-    const repaired = repairToolArguments(toolName, parsedArgs, requestContext, schema);
+    const repaired = repairToolArguments(toolName, parsedArgs, schema);
     if (!isToolCallInput(repaired) || !hasRequiredToolArguments(repaired, schema)) {
       continue;
     }
@@ -264,7 +262,6 @@ function extractSingleToolCall(
   record: Record<string, unknown>,
   toolSchemas: ReadonlyMap<string, ToolSchema> | undefined,
   isValidName: (name: string) => boolean,
-  requestContext?: ChatRequestContext,
 ): JsonScannedToolCall | undefined {
   for (const key of EXPLICIT_TOOL_NAME_KEYS) {
     const val = record[key];
@@ -306,7 +303,7 @@ function extractSingleToolCall(
   }
 
   if (toolSchemas && toolSchemas.size > 0) {
-    const matched = findBestMatchingTool(record, toolSchemas, requestContext);
+    const matched = findBestMatchingTool(record, toolSchemas);
     if (matched) {
       return matched;
     }
@@ -319,7 +316,6 @@ export function scanJsonToolConstruct(
   text: string,
   toolSchemas: ReadonlyMap<string, ToolSchema> | undefined,
   isValidName: (name: string) => boolean,
-  requestContext?: ChatRequestContext,
 ): JsonScanResult {
   let jsonStartIndex = 0;
   let isFenced = false;
@@ -398,7 +394,7 @@ export function scanJsonToolConstruct(
     const toolCalls: JsonScannedToolCall[] = [];
     for (const item of parsed) {
       if (typeof item === "object" && item !== null) {
-        const extracted = extractSingleToolCall(item, toolSchemas, isValidName, requestContext);
+        const extracted = extractSingleToolCall(item, toolSchemas, isValidName);
         if (extracted) {
           toolCalls.push(extracted);
         }
@@ -432,7 +428,7 @@ export function scanJsonToolConstruct(
     }
   }
 
-  const single = extractSingleToolCall(record, toolSchemas, isValidName, requestContext);
+  const single = extractSingleToolCall(record, toolSchemas, isValidName);
   if (single) {
     return { status: "complete", consumed, toolCall: single };
   }

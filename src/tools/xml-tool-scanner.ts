@@ -64,6 +64,13 @@ export function isTokenInStringOrRegexLiteral(text: string, index: number): bool
   }
 
   const lineStart = text.lastIndexOf("\n", index - 1) + 1;
+  const linePrefix = text.slice(lineStart, index);
+
+  // Regex literal: e.g. `/^\s*<\/tool_calls>/` or `= /<tool_call>/`
+  if (/(?:^|[=:(,[{]\s*)\/(?:\^)?[^/\n]*$/.test(linePrefix)) {
+    return true;
+  }
+
   const scanFrom = Math.max(lineStart, index - 512);
   let inSingle = false;
   let inDouble = false;
@@ -74,15 +81,64 @@ export function isTokenInStringOrRegexLiteral(text: string, index: number): bool
     if (escaped) {
       continue;
     }
+
     if (!inDouble && !inTick && ch === "'") {
+      // Ignore English contractions and possessives: e.g. "Let's", "I'll", "don't", "it's", "user's"
+      const isWordContraction =
+        i > scanFrom &&
+        /[a-zA-Z]/.test(text[i - 1]) &&
+        i + 1 < text.length &&
+        /[a-zA-Z]/.test(text[i + 1]);
+      if (isWordContraction) {
+        continue;
+      }
+      // Possessive at word end in English prose: e.g. "users' "
+      if (i > scanFrom && /[a-zA-Z]/.test(text[i - 1]) && !inSingle) {
+        continue;
+      }
       inSingle = !inSingle;
     } else if (!inSingle && !inTick && ch === '"') {
+      if (!inDouble) {
+        // If this double quote is followed by sentence punctuation or whitespace before a tool tag,
+        // it is a closing quote from preceding prose or an earlier chunk, NOT an opening quote.
+        const isClosingQuoteFollowedByPunctuation =
+          i + 1 < index && /^[.,;:!?]\s+/.test(text.slice(i + 1, index));
+        if (isClosingQuoteFollowedByPunctuation) {
+          continue;
+        }
+      }
       inDouble = !inDouble;
     } else if (!inSingle && !inDouble && ch === "`") {
       inTick = !inTick;
     }
   }
-  return inSingle || inDouble || inTick;
+
+  if (!inSingle && !inDouble && !inTick) {
+    return false;
+  }
+
+  // If a quote appears to be open, verify that it's in a code context rather than prose.
+  // In code, string literals enclosing tool tokens either start with code syntax (=, :, (, [, {, ,, return)
+  // or close on the same line after index.
+  const codeDelimiterPattern = /(?:^|[=:(,[{]|\breturn)\s*["'`][^"'`\n]*$/;
+  if (codeDelimiterPattern.test(linePrefix)) {
+    return true;
+  }
+
+  // Check if the quote is closed after index on the same line (e.g. "  <tool_calls>  ")
+  const lineEnd = text.indexOf("\n", index);
+  const lineSuffix = text.slice(index, lineEnd === -1 ? undefined : lineEnd);
+  if (inSingle && lineSuffix.includes("'")) {
+    return true;
+  }
+  if (inDouble && lineSuffix.includes('"')) {
+    return true;
+  }
+  if (inTick && lineSuffix.includes("`")) {
+    return true;
+  }
+
+  return false;
 }
 
 export function indexOfUnquoted(text: string, token: string, from = 0, contextPrefix = ""): number {
@@ -140,8 +196,13 @@ function readXmlTag(text: string, index: number): ParsedXmlTag | undefined {
     return undefined;
   }
 
-  const kind = asToolKind(nameMatch[0]);
+  const nameLower = nameMatch[0].toLowerCase();
+  const kind = asToolKind(nameLower);
   if (!kind) {
+    const isAtEnd = cursor + nameMatch[0].length >= text.length;
+    if (isAtEnd && Array.from(TOOL_KINDS).some((k) => k.startsWith(nameLower))) {
+      return { kind: "tool_call", closing, rawLength: 0, incomplete: true };
+    }
     return undefined;
   }
   cursor += nameMatch[0].length;
