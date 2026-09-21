@@ -2592,10 +2592,10 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "deepseek-ai/deepseek-v4-flash-0731",
-              displayName: "DeepSeek V4 Flash 0731",
-              contextWindow: 128000,
-              maxOutputTokens: 8192,
+              id: "z-ai/glm-5.3",
+              displayName: "GLM 5.3",
+              contextWindow: 1048576,
+              maxOutputTokens: 65536,
               supportsTools: true,
               supportsVision: false,
             },
@@ -2610,7 +2610,7 @@ describe("NimChatModelProvider", () => {
 
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((key: string, defaultValue: unknown) => {
-        if (key === "fallback.model") return "deepseek-ai/deepseek-v4-flash-0731";
+        if (key === "fallback.model") return "z-ai/glm-5.3";
         if (key === "fallback.enabled") return true;
         if (key === "fallback.showNoticeInChat") return true;
         return defaultValue;
@@ -2624,7 +2624,7 @@ describe("NimChatModelProvider", () => {
       throw rateLimitError;
     };
     const fallbackStream = async function* () {
-      yield { choices: [{ delta: { content: "DeepSeek fallback answer" } }] };
+      yield { choices: [{ delta: { content: "GLM fallback answer" } }] };
     };
     (streamChatCompletion as jest.Mock)
       .mockImplementationOnce(() => capacityStream())
@@ -2648,10 +2648,10 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(fallbackRequest.model).toBe("deepseek-ai/deepseek-v4-flash-0731");
+    expect(fallbackRequest.model).toBe("z-ai/glm-5.3");
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({
-        value: expect.stringContaining("DeepSeek V4 Flash 0731"),
+        value: expect.stringContaining("GLM 5.3"),
       }),
     );
   });

@@ -40,6 +40,12 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
   - **Neutralized retry error messages**: Replaced aggressive, scolding instructions ("Do not emit malformed JSON", "Retry NOW") in `invalid-call-messages.ts` with clean, neutral guidance.
 - **Complete removal of sampling penalties (`package.json`, `src/types.ts`, `src/shared/config.ts`, `src/models/adapters/*`, `src/provider/request-builder.ts`, `src/shared/turn-report.ts`, `docs/configuration.md`, `tests/*`).** Removed `nvidia-nim.generation.frequencyPenalty` and `nvidia-nim.generation.presencePenalty` configuration properties from `package.json` and `src/shared/config.ts`. Removed `frequency_penalty`, `presence_penalty`, and `repetition_penalty` from `NimChatRequest`, `GenerationConfig`, and `TurnReport`. Removed adapter penalty capability flags (`supportsPresencePenalty`, `supportsFrequencyPenalty`, `supportsRepetitionPenalty`) and profile defaults (`defaultFrequencyPenalty`, `defaultPresencePenalty`). Removed all penalty clamping and forwarding logic from `NimRequestBuilder`, restricting `assignClamped` strictly to `top_p`.
 
+## [1.1.2] - 2026-09-21
+
+### Removed
+
+- **Removed DeepSeek V4 Flash 0731 (`src/models/catalog.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`, `tests/*`).** Removed `deepseek-ai/deepseek-v4-flash-0731` from `MODEL_LIST` and synced manifest enums and probe scripts following its removal from NVIDIA NIM `/v1/models` endpoints. Resolves #16.
+
 ## [1.1.1] - 2026-09-18
 
 ### Added

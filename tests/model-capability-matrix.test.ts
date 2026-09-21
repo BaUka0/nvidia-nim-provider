@@ -31,37 +31,7 @@ interface CapabilityMatrixCase {
   thinkTag: "think" | "mm:think";
 }
 
-const deepSeekReasoningCases: ReasoningModeCase[] = [
-  {
-    mode: "none",
-    expectedFields: { chat_template_kwargs: { thinking: false } },
-  },
-  {
-    mode: "high",
-    expectedFields: {
-      chat_template_kwargs: { thinking: true, reasoning_effort: "high" },
-    },
-  },
-  {
-    mode: "max",
-    expectedFields: {
-      chat_template_kwargs: { thinking: true, reasoning_effort: "max" },
-    },
-  },
-];
-
 const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
-  {
-    modelId: "deepseek-ai/deepseek-v4-flash-0731",
-    reasoningModes: ["none", "high", "max"],
-    reasoningCases: deepSeekReasoningCases,
-    reasoningParameterFormat: "chat_template_kwargs",
-    toolCallProtocol: "native-and-text",
-    reasoningRouting: "isolated",
-    contentOnlyMode: "none",
-    contentOnlyRouting: "text",
-    thinkTag: "think",
-  },
   {
     modelId: "moonshotai/kimi-k3",
     reasoningModes: ["none", "low", "high", "max"],
@@ -439,7 +409,7 @@ describe("curated model capability matrix", () => {
   it("uses curated capabilities instead of trusting an API capability default", () => {
     const normalized = normalizeNvidiaModels([
       {
-        id: "deepseek-ai/deepseek-v4-flash-0731",
+        id: "nvidia/nemotron-3-ultra-550b-a55b",
         capabilities: { tool_calling: false, vision: true },
       },
     ]);

@@ -46,7 +46,7 @@ describe("ConfigManager", () => {
 
     it("reads custom fallback settings", () => {
       mockStore["fallback.enabled"] = false;
-      mockStore["fallback.model"] = "deepseek-ai/deepseek-v4-flash-0731";
+      mockStore["fallback.model"] = "z-ai/glm-5.3";
       mockStore["fallback.visionModel"] = "moonshotai/kimi-k3";
       mockStore["fallback.onTimeout"] = false;
       mockStore["fallback.onFirstTokenTimeout"] = false;
@@ -57,7 +57,7 @@ describe("ConfigManager", () => {
 
       const config = ConfigManager.getFallbackConfig();
       expect(config.enabled).toBe(false);
-      expect(config.model).toBe("deepseek-ai/deepseek-v4-flash-0731");
+      expect(config.model).toBe("z-ai/glm-5.3");
       expect(config.visionModel).toBe("moonshotai/kimi-k3");
       expect(config.onTimeout).toBe(false);
       expect(config.onFirstTokenTimeout).toBe(false);
