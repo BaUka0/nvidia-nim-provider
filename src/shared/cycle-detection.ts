@@ -205,7 +205,7 @@ export function extractPrefixGram(text: string, gramWords = 2): string {
  */
 export function detectPrefixCycle(
   text: string,
-  options: { minRepeats?: number; gramWords?: number } = {},
+  options: { minRepeats?: number; gramWords?: number; splitSentences?: boolean } = {},
 ): string | undefined {
   if (!text) {
     return undefined;
@@ -213,8 +213,10 @@ export function detectPrefixCycle(
   const minRepeats = options.minRepeats ?? PREFIX_CYCLE_MIN_REPEATS;
   const gramWords = options.gramWords ?? PREFIX_CYCLE_GRAM_WORDS;
 
+  const splitter = options.splitSentences ? /(?:\r?\n|(?<=[^\d\s][.!?])\s+)/ : /\r?\n/;
+
   const segments = text
-    .split(/(?:\r?\n|(?<=[^\d\s][.!?])\s+)/)
+    .split(splitter)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 

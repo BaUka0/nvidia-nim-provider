@@ -31,7 +31,7 @@ import {
   StreamFailureOutcome,
 } from "./attempt-loop";
 import { ContextLimitStore } from "./context-limit-store";
-import { buildLoopBreakerNudge } from "./loop-breaker";
+import { buildLoopBreakerNudge, injectHistoryLoopBreaker } from "./loop-breaker";
 import { buildOverflowRetryRequest } from "./overflow-compactor";
 import { NimRequestBuilder } from "./request-builder";
 import { appendChatMessage, cloneNimChatRequest } from "./request-snapshot";
@@ -268,7 +268,12 @@ export class ModelTurnExecutor {
           safetyMarginPercent: nimConfig.context.safetyMarginPercent,
         });
 
-      let baselineRequestBody = cloneNimChatRequest(activeRequestBody);
+      let baselineRequestBody = injectHistoryLoopBreaker({
+        requestBody: activeRequestBody,
+        historyMessages: messages,
+        modelId: model.id,
+        applyBudget,
+      });
       const retryReasonHistory: string[] = [];
       let requestPreparationDurationMs: number | undefined;
       let toolParsingStateInitDurationMs: number | undefined;
@@ -489,6 +494,8 @@ export class ModelTurnExecutor {
             toolsEnabled,
             loopContinueCount: state.loopContinueCount,
             maxLoopContinues: MAX_LOOP_CONTINUES,
+            timeoutRetryCount: state.timeoutContinueCount,
+            maxTimeoutRetries: MAX_LOOP_CONTINUES,
             invalidToolRetryCount: state.invalidToolRetryCount,
             emptyStreamRetryCount: state.emptyStreamRetryCount,
             maxEmptyStreamRetries: MAX_EMPTY_STREAM_RETRIES,
@@ -774,14 +781,19 @@ export class ModelTurnExecutor {
     });
 
     if (isLoopRetryReason(retryReason)) {
-      state.loopContinueCount += 1;
+      if (retryReason === "stream_timeout") {
+        state.timeoutContinueCount += 1;
+      } else {
+        state.loopContinueCount += 1;
+      }
       retryReasonHistory.push(retryReason);
       state.retryNudge = buildLoopBreakerNudge(retryReason);
       logLoopAutoContinue({
         modelId: model.id,
         retryReason,
         result,
-        loopContinueCount: state.loopContinueCount,
+        loopContinueCount:
+          retryReason === "stream_timeout" ? state.timeoutContinueCount : state.loopContinueCount,
       });
 
       const shouldDiscardPartial = retryReason === "repetition_loop";

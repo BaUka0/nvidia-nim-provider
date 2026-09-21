@@ -253,7 +253,7 @@ describe("RepetitionGuard.add", () => {
   it("evicts tracked lines once MAX_TRACKED_LINES is exceeded", () => {
     const guard = new RepetitionGuard({ maxRepeatedLines: 2 });
     for (let i = 0; i < 4096; i += 1) {
-      expect(guard.add(`unique tracked line number ${i} here\n`)).toBe(false);
+      expect(guard.add(`line_${i} unique tracked content here\n`)).toBe(false);
     }
     expect(guard.add("brand new line after eviction xx\n")).toBe(false);
     expect(guard.add("brand new line after eviction xx\n")).toBe(true);

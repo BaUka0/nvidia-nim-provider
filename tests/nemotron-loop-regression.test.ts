@@ -2,6 +2,7 @@ import { evaluateAttemptRetry } from "../src/provider/attempt-retry";
 import { StreamAttemptResult } from "../src/provider/stream-pump";
 import { RepetitionGuard } from "../src/provider/repetition-guard";
 import { DEFAULT_GENERATION_CONFIG } from "../src/shared/config";
+import { detectHistoryLoop, injectHistoryLoopBreaker } from "../src/provider/loop-breaker";
 
 function result(overrides: Partial<StreamAttemptResult> = {}): StreamAttemptResult {
   return {
@@ -68,28 +69,23 @@ describe("nemotron loop regression (#7)", () => {
     expect(evaluation.retryReason).toBe("repetition_loop");
   });
 
-  it("GAP: varied preamble with same 2-word prefix does NOT trip without old prefix heuristic", () => {
-    // Old code (pre-314802f): extractPrefixGram(text,2)==="let me" across
-    // attempts + previousPreamblePrefixes tracked in turn-executor would
-    // classify this as repetition_loop even though no line repeats 4x and no
-    // 6-word gram repeats 3x. New code requires repetitionTripped=true.
+  it("varied preamble with same 2-word prefix trips prefix cycle detector and retries", () => {
     const guard = new RepetitionGuard({ maxRepeatedLines: 4 });
     guard.add("Let me check the file A\n");
     guard.add("Let me check the file B\n");
     guard.add("Let me check the file C\n");
-    expect(guard.tripped).toBe(false);
+    expect(guard.tripped).toBe(true);
 
     const evaluation = evaluateAttemptRetry({
       ...baseFacts,
       result: result({
-        repetitionTripped: false,
+        repetitionTripped: guard.tripped,
         reportedVisibleContent: true,
         lastVisibleText: "Let me check the file C",
         lastFinishReason: "stop",
       }),
     });
-    // Documents current behavior: no retry. Old behavior: repetition_loop retry.
-    expect(evaluation.retryReason).toBeUndefined();
+    expect(evaluation.retryReason).toBe("repetition_loop");
   });
 
   it("GAP: hanging colon preamble does NOT retry without hanging_colon heuristic", () => {
@@ -122,10 +118,7 @@ describe("nemotron loop regression (#7)", () => {
     expect(evaluation.retryReason).toBe("empty_stream");
   });
 
-  it("loop budget is shared: timeout consumes the same loopContinueCount as repetition", () => {
-    // stream_timeout and repetition_loop both gate on
-    // loopContinueCount < maxLoopContinues (attempt-retry.ts). Two stalls
-    // starve a later real loop.
+  it("loop budget fallback: when timeoutRetryCount is omitted, stalls consume loop budget", () => {
     const afterStalls = evaluateAttemptRetry({
       ...baseFacts,
       loopContinueCount: DEFAULT_GENERATION_CONFIG.maxLoopContinues,
@@ -136,6 +129,37 @@ describe("nemotron loop regression (#7)", () => {
       }),
     });
     expect(afterStalls.retryReason).toBeUndefined();
+  });
+
+  it("timeout retries do not starve repetition loop when timeoutRetryCount is tracked separately", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      loopContinueCount: 0,
+      timeoutRetryCount: 2,
+      maxTimeoutRetries: 2,
+      result: result({
+        repetitionTripped: true,
+        reportedVisibleContent: true,
+        lastVisibleText: "Let me fix it",
+      }),
+    });
+    expect(evaluation.retryReason).toBe("repetition_loop");
+  });
+
+  it("repetition loop does not fall through to empty_stream when loop budget is exhausted", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      loopContinueCount: DEFAULT_GENERATION_CONFIG.maxLoopContinues,
+      emptyStreamRetryCount: 0,
+      result: result({
+        repetitionTripped: true,
+        sawReasoning: true,
+        reportedContent: true,
+        reportedVisibleContent: false,
+        lastFinishReason: "stop",
+      }),
+    });
+    expect(evaluation.retryReason).toBeUndefined();
   });
 
   it("tool-call loop that already emitted calls stops instead of retrying", () => {
@@ -165,13 +189,8 @@ describe("nemotron loop regression (#7)", () => {
     expect(evaluation.retryReason).toBe("tool_call_loop");
   });
 
-  it("GAP: single-preamble-per-turn agent loop has no inter-turn guard", () => {
-    // Old injectHistoryLoopBreaker/detectHistoryLoop caught 3x identical
-    // first lines across assistant turns. Removed in 314802f with no
-    // replacement: one "Let me..." per attempt never reaches maxRepeatedLines=4
-    // and each attempt uses a fresh RepetitionGuard, so N turns of the same
-    // preamble never trigger repetitionTripped. This test locks the per-turn
-    // view: a single preamble is not a loop by itself.
+  it("inter-turn preamble loop across turns is caught and broken by injectHistoryLoopBreaker", () => {
+    // A single preamble does not trip per-attempt repetitionTripped by itself:
     const evaluation = evaluateAttemptRetry({
       ...baseFacts,
       result: result({
@@ -182,7 +201,28 @@ describe("nemotron loop regression (#7)", () => {
       }),
     });
     expect(evaluation.retryReason).toBeUndefined();
-    // The missing piece is cross-turn state: no function in the current
-    // codebase inspects history across provideLanguageModelChatResponse calls.
+
+    // But across turns, history loop detection catches repeated preambles and injects guidance:
+    const history = [
+      { role: 2, content: [{ value: "Let me fix the formatting issue:" }] },
+      { role: 2, content: [{ value: "Let me fix the formatting issue:" }] },
+      { role: 2, content: [{ value: "Let me fix the formatting issue:" }] },
+    ];
+    const loop = detectHistoryLoop(history);
+    expect(loop).toBeDefined();
+
+    const request = injectHistoryLoopBreaker({
+      requestBody: {
+        model: "nvidia/nemotron-3-super-120b-a12b",
+        messages: [{ role: "user", content: "proceed" }],
+      },
+      historyMessages: history,
+      modelId: "nvidia/nemotron-3-super-120b-a12b",
+      applyBudget: (b) => b,
+    });
+    expect(request.messages).toHaveLength(2);
+    expect(request.messages[1].role).toBe("user");
+    expect(request.messages[1].content).toContain("repeated the preamble");
+    expect(request.messages[1].content).not.toContain("[NIM_LOOP_BREAKER]");
   });
 });

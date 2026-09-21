@@ -32,6 +32,8 @@ export interface AttemptRetryFacts {
   maxInvalidToolRetries: number;
   fetchBudgetExhausted: boolean;
   knownToolNames: ReadonlySet<string>;
+  timeoutRetryCount?: number;
+  maxTimeoutRetries?: number;
 }
 
 export interface AttemptRetryEvaluation {
@@ -100,11 +102,15 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     !result.emittedToolCall &&
     facts.invalidToolRetryCount < facts.maxInvalidToolRetries &&
     Boolean(retryMessage);
+  const timeoutAutoContinueEligible =
+    typeof facts.timeoutRetryCount === "number" && typeof facts.maxTimeoutRetries === "number"
+      ? facts.timeoutRetryCount < facts.maxTimeoutRetries
+      : loopAutoContinueEligible;
   const willRetryStreamTimeout =
     Boolean(result.timedOut) &&
     !result.emittedToolCall &&
     !willRetryAfterInvalidToolCall &&
-    loopAutoContinueEligible;
+    timeoutAutoContinueEligible;
   const willRetryOnLoop =
     willRetryRepetitionLoop ||
     willRetryToolCallLoop ||
@@ -116,6 +122,8 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     !result.emittedToolCall &&
     result.skippedToolCalls.length === 0 &&
     !willRetryOnLoop &&
+    !isRepetitionLoop &&
+    !result.toolCallLoopTripped &&
     facts.emptyStreamRetryCount < facts.maxEmptyStreamRetries &&
     !facts.fetchBudgetExhausted;
 

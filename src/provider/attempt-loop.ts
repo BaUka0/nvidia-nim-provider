@@ -19,6 +19,7 @@ export interface AttemptLoopState {
   lastTransientError: unknown;
   emptyStreamRetryCount: number;
   loopContinueCount: number;
+  timeoutContinueCount: number;
   invalidToolRetryCount: number;
   attemptCompleted: boolean;
 }
@@ -30,6 +31,7 @@ export function createAttemptLoopState(): AttemptLoopState {
     lastTransientError: undefined,
     emptyStreamRetryCount: 0,
     loopContinueCount: 0,
+    timeoutContinueCount: 0,
     invalidToolRetryCount: 0,
     attemptCompleted: false,
   };

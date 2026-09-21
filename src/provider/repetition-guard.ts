@@ -11,6 +11,7 @@
 import {
   CYCLE_SCAN_CHARS,
   detectPhraseCycle,
+  detectPrefixCycle,
   detectRunawayCycle,
   normalizeForCycle,
 } from "../shared/cycle-detection";
@@ -199,7 +200,10 @@ export class RepetitionGuard {
     if (this.tripFromRunaway(candidate)) {
       return true;
     }
-    return this.tripFromPhrase(candidate);
+    if (this.tripFromPhrase(candidate)) {
+      return true;
+    }
+    return this.tripFromPrefix(candidate);
   }
 
   private tripFromRunaway(text: string): boolean {
@@ -217,6 +221,15 @@ export class RepetitionGuard {
       return false;
     }
     this.trippedLineValue = gram;
+    return true;
+  }
+
+  private tripFromPrefix(text: string): boolean {
+    const prefix = detectPrefixCycle(text);
+    if (!prefix) {
+      return false;
+    }
+    this.trippedLineValue = prefix;
     return true;
   }
 }

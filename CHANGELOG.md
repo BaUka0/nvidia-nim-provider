@@ -22,6 +22,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Fixed stream handling for partial XML tags arriving across chunk boundaries so that in-flight tool calls are not prematurely flushed as plain text.
 - Fixed reasoning mode configuration so that unsupported reasoning modes (such as "on", "auto", or modes from different models) gracefully automap to the best matching active reasoning mode across all models rather than disabling thinking or leaking reasoning tokens into chat.
 - Fixed an issue where models that draft tool calls during their thinking process had raw tool call tags displayed in the thinking block and failed to execute the tool. Tool calls within reasoning are now parsed and executed directly, raw XML tags are stripped from thinking output, and duplicate calls repeated in the response text are suppressed.
+- Fixed loop recovery to detect varied action preambles and cross-turn repetition loops without injecting synthetic prompt tags or scolding the model.
+- Fixed attempt retry routing so that repetition loops that exhaust their retry budget do not trigger unnecessary empty-response retries or premature model switches, and stream timeouts no longer consume loop retry budget.
 
 ### Removed
 

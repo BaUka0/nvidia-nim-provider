@@ -20,6 +20,7 @@ jest.mock("../src/provider/request-builder", () => ({
 }));
 jest.mock("../src/provider/loop-breaker", () => ({
   buildLoopBreakerNudge: jest.fn(),
+  injectHistoryLoopBreaker: jest.fn(({ requestBody }) => requestBody),
 }));
 jest.mock("../src/provider/overflow-compactor", () => ({
   buildOverflowRetryRequest: jest.fn(),
