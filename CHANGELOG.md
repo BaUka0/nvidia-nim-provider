@@ -24,6 +24,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Fixed an issue where models that draft tool calls during their thinking process had raw tool call tags displayed in the thinking block and failed to execute the tool. Tool calls within reasoning are now parsed and executed directly, raw XML tags are stripped from thinking output, and duplicate calls repeated in the response text are suppressed.
 - Fixed loop recovery to detect varied action preambles and cross-turn repetition loops without injecting synthetic prompt tags or scolding the model.
 - Fixed attempt retry routing so that repetition loops that exhaust their retry budget do not trigger unnecessary empty-response retries or premature model switches, and stream timeouts no longer consume loop retry budget.
+- Fixed line-range repair for read tools so that omitted line ranges are filled with declared default bounds, preventing file reading failures in Copilot Chat.
+- Fixed JSON text detection to ensure ordinary JSON examples and non-tool JSON objects remain intact in chat rather than being split or executed as tool calls.
+- Fixed stream cleanup so that partial non-tool text and thinking content held at the end of a response are flushed to chat rather than being discarded.
+- Fixed duplicate tool suppression so that models are not told their arguments were invalid when duplicate tool calls are suppressed.
 
 ### Removed
 

@@ -80,10 +80,6 @@ function schemaKeysMatching(schema: ToolSchema | undefined, aliases: readonly st
   );
 }
 
-function isKeyRequired(schema: ToolSchema | undefined, key: string): boolean {
-  return schema?.required?.some((r) => r.toLowerCase() === key.toLowerCase()) ?? false;
-}
-
 function fillReadToolLineRanges(
   repaired: Record<string, unknown>,
   schema: ToolSchema | undefined,
@@ -95,48 +91,18 @@ function fillReadToolLineRanges(
   }
 
   for (const key of startKeys) {
-    if (repaired[key] !== undefined && repaired[key] !== null && repaired[key] !== "") {
-      const coerced = coerceLineNumber(repaired[key]);
-      if (coerced !== undefined) {
-        repaired[key] = coerced;
-      }
-    }
-  }
-
-  for (const key of endKeys) {
-    if (repaired[key] !== undefined && repaired[key] !== null && repaired[key] !== "") {
-      const coerced = coerceLineNumber(repaired[key]);
-      if (coerced !== undefined) {
-        repaired[key] = coerced;
-      }
-    }
-  }
-
-  const existingEnd = endKeys
-    .map((key) => coerceLineNumber(repaired[key]))
-    .find((value) => value !== undefined);
-
-  // If start line is omitted: only fill if required by schema or if endLine was explicitly provided
-  for (const key of startKeys) {
-    if (repaired[key] === undefined || repaired[key] === null || repaired[key] === "") {
-      if (isKeyRequired(schema, key) || existingEnd !== undefined) {
-        repaired[key] = 1;
-      }
-    }
+    const coerced = coerceLineNumber(repaired[key]);
+    repaired[key] = coerced !== undefined ? coerced : 1;
   }
 
   const start =
     startKeys.map((key) => coerceLineNumber(repaired[key])).find((value) => value !== undefined) ??
     1;
 
-  // If end line is omitted: ONLY fill if strictly required by schema.
-  // When endLine is omitted and optional, leave it undefined so the whole file is read.
+  // Copilot's read_file rejects requests missing line bounds even when declared optional in schema.
   for (const key of endKeys) {
-    if (repaired[key] === undefined || repaired[key] === null || repaired[key] === "") {
-      if (isKeyRequired(schema, key)) {
-        repaired[key] = start + MAX_REPAIRED_LINE_SPAN - 1;
-      }
-    }
+    const coerced = coerceLineNumber(repaired[key]);
+    repaired[key] = coerced !== undefined ? coerced : start + MAX_REPAIRED_LINE_SPAN - 1;
   }
 
   for (const startKey of startKeys) {

@@ -302,6 +302,8 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports).toHaveLength(1);
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
+      startLine: 1,
+      endLine: 2000,
     });
   });
 

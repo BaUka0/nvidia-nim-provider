@@ -304,7 +304,7 @@
           "default": 2,
           "minimum": 0,
           "maximum": 8,
-          "description": "How many times in one turn to nudge the model after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. 0 disables auto-continue."
+          "description": "How many times in one turn to nudge the model after a loop, truncated reply, repeated tool call, or stalled stream. 0 disables auto-continue."
         },
         "nvidia-nim.tools.maxConsecutiveIdenticalCalls": {
           "type": "integer",

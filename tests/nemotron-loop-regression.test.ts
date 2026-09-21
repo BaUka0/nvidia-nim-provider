@@ -36,13 +36,7 @@ const baseFacts = {
 };
 
 /**
- * Regression lock for issue #7 (Nemotron infinite looping) after heuristic
- * removals in 314802f (hanging_colon, preamble prefix, history breaker) and
- * 92271e5 (sampling penalties).
- *
- * Tests that PASS document current (possibly weakened) behavior.
- * Tests marked as documenting a known gap assert the current output and
- * explain which old heuristic used to cover the case.
+ * Regression lock for issue #7 (Nemotron loop recovery and retry classification).
  */
 describe("nemotron loop regression (#7)", () => {
   it("verbatim Let me loop still trips the in-stream guard", () => {
@@ -157,6 +151,22 @@ describe("nemotron loop regression (#7)", () => {
         reportedContent: true,
         reportedVisibleContent: false,
         lastFinishReason: "stop",
+      }),
+    });
+    expect(evaluation.retryReason).toBeUndefined();
+  });
+
+  it("stream stall with exhausted timeout budget does not fall through to empty_stream", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      timeoutRetryCount: 2,
+      maxTimeoutRetries: 2,
+      emptyStreamRetryCount: 0,
+      result: result({
+        timedOut: true,
+        reportedVisibleContent: false,
+        reportedContent: false,
+        streamChunkCount: 0,
       }),
     });
     expect(evaluation.retryReason).toBeUndefined();

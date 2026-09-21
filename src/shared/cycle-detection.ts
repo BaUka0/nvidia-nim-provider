@@ -198,14 +198,14 @@ export function extractPrefixGram(text: string, gramWords = 2): string {
 }
 
 /**
- * Detects whether 3 or more non-list lines/sentences in a text block share the
- * same leading 2-word prefix (e.g. "let me", "давайте я", "lassen sie").
+ * Detects whether 3 or more non-list lines in a text block share the same leading
+ * 2-word prefix (e.g. "let me", "давайте я", "lassen sie").
  * Ignores markdown list items to prevent false positives on repetitive bullet points.
  * Language-agnostic, Unicode-aware, no hardcoded dictionaries.
  */
 export function detectPrefixCycle(
   text: string,
-  options: { minRepeats?: number; gramWords?: number; splitSentences?: boolean } = {},
+  options: { minRepeats?: number; gramWords?: number } = {},
 ): string | undefined {
   if (!text) {
     return undefined;
@@ -213,10 +213,8 @@ export function detectPrefixCycle(
   const minRepeats = options.minRepeats ?? PREFIX_CYCLE_MIN_REPEATS;
   const gramWords = options.gramWords ?? PREFIX_CYCLE_GRAM_WORDS;
 
-  const splitter = options.splitSentences ? /(?:\r?\n|(?<=[^\d\s][.!?])\s+)/ : /\r?\n/;
-
   const segments = text
-    .split(splitter)
+    .split(/\r?\n/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 

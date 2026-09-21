@@ -124,6 +124,7 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     !willRetryOnLoop &&
     !isRepetitionLoop &&
     !result.toolCallLoopTripped &&
+    !result.timedOut &&
     facts.emptyStreamRetryCount < facts.maxEmptyStreamRetries &&
     !facts.fetchBudgetExhausted;
 

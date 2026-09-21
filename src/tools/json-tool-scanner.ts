@@ -147,7 +147,12 @@ export function findJsonConstructStart(
       if (isPlausibleJsonToolStart(slice, knownProperties)) {
         return { index: nextIndex, kind: "raw" };
       }
-      pos = nextIndex + 1;
+      const balanced = readBalancedJsonObject(text, nextIndex);
+      if (balanced && !("incomplete" in balanced)) {
+        pos = balanced.end;
+      } else {
+        pos = nextIndex + 1;
+      }
       continue;
     }
   }
@@ -263,11 +268,15 @@ function extractSingleToolCall(
   toolSchemas: ReadonlyMap<string, ToolSchema> | undefined,
   isValidName: (name: string) => boolean,
 ): JsonScannedToolCall | undefined {
+  if (!toolSchemas || toolSchemas.size === 0) {
+    return undefined;
+  }
+
   for (const key of EXPLICIT_TOOL_NAME_KEYS) {
     const val = record[key];
     if (typeof val === "string" && isValidName(val.trim())) {
       const name = val.trim();
-      if (!toolSchemas || toolSchemas.size === 0 || toolSchemas.has(name)) {
+      if (toolSchemas.has(name)) {
         let args: Record<string, unknown> = {};
         const inner =
           typeof record.arguments === "object" && record.arguments !== null
@@ -302,11 +311,9 @@ function extractSingleToolCall(
     }
   }
 
-  if (toolSchemas && toolSchemas.size > 0) {
-    const matched = findBestMatchingTool(record, toolSchemas);
-    if (matched) {
-      return matched;
-    }
+  const matched = findBestMatchingTool(record, toolSchemas);
+  if (matched) {
+    return matched;
   }
 
   return undefined;
@@ -360,16 +367,13 @@ export function scanJsonToolConstruct(
     const rest = text.slice(consumed);
     const closeMatch = rest.match(/^\s*```/);
     if (!closeMatch) {
-      if (rest.trim().length === 0) {
-        return { status: "incomplete" };
-      }
-    } else {
-      consumed += closeMatch[0].length;
-      if (text.slice(consumed).startsWith("\r\n")) {
-        consumed += 2;
-      } else if (text.slice(consumed).startsWith("\n")) {
-        consumed += 1;
-      }
+      return { status: "incomplete" };
+    }
+    consumed += closeMatch[0].length;
+    if (text.slice(consumed).startsWith("\r\n")) {
+      consumed += 2;
+    } else if (text.slice(consumed).startsWith("\n")) {
+      consumed += 1;
     }
   } else {
     if (text.slice(consumed).startsWith("\r\n")) {
@@ -383,11 +387,11 @@ export function scanJsonToolConstruct(
   try {
     parsed = parseJsonOrRepair(balanced.json);
   } catch {
-    return { status: "not-a-tool", skip: isFenced ? fenceLength : 1 };
+    return { status: "not-a-tool", skip: consumed };
   }
 
   if (!parsed || typeof parsed !== "object") {
-    return { status: "not-a-tool", skip: isFenced ? fenceLength : 1 };
+    return { status: "not-a-tool", skip: consumed };
   }
 
   if (Array.isArray(parsed)) {
@@ -403,7 +407,7 @@ export function scanJsonToolConstruct(
     if (toolCalls.length > 0) {
       return { status: "complete", consumed, toolCalls };
     }
-    return { status: "not-a-tool", skip: isFenced ? fenceLength : 1 };
+    return { status: "not-a-tool", skip: consumed };
   }
 
   const record = parsed as Record<string, unknown>;
@@ -416,7 +420,7 @@ export function scanJsonToolConstruct(
         const func = itemRecord.function as Record<string, unknown> | undefined;
         const name = String(func?.name ?? itemRecord.name ?? "").trim();
         const rawArgs = func?.arguments ?? itemRecord.arguments ?? itemRecord.parameters ?? {};
-        if (name && isValidName(name)) {
+        if (name && isValidName(name) && toolSchemas?.has(name)) {
           const args =
             typeof rawArgs === "string" ? (tryParseJsonObjectOrRepair(rawArgs) ?? {}) : rawArgs;
           toolCalls.push({ name, args: args as Record<string, unknown> });
@@ -433,28 +437,30 @@ export function scanJsonToolConstruct(
     return { status: "complete", consumed, toolCall: single };
   }
 
-  return { status: "not-a-tool", skip: isFenced ? fenceLength : 1 };
+  return { status: "not-a-tool", skip: consumed };
 }
 
 export function getIncompleteJsonToolCallName(
   text: string,
   toolSchemas?: ReadonlyMap<string, ToolSchema>,
 ): string | undefined {
+  if (!toolSchemas || toolSchemas.size === 0) {
+    return undefined;
+  }
+
   const match = text.match(/"(?:name|tool|function|action|tool_name)"\s*:\s*"([a-zA-Z0-9_.-]+)"/);
   if (match) {
     const candidate = match[1].trim();
-    if (candidate && (!toolSchemas || toolSchemas.size === 0 || toolSchemas.has(candidate))) {
+    if (candidate && toolSchemas.has(candidate)) {
       return candidate;
     }
   }
 
-  if (toolSchemas && toolSchemas.size > 0) {
-    for (const [toolName, schema] of toolSchemas.entries()) {
-      for (const req of schema.required ?? []) {
-        if (text.includes(`"${req}"`)) {
-          return toolName;
-        }
-      }
+  const partial = tryParseJsonObjectOrRepair(text);
+  if (partial && typeof partial === "object" && !Array.isArray(partial)) {
+    const matched = findBestMatchingTool(partial as Record<string, unknown>, toolSchemas);
+    if (matched) {
+      return matched.name;
     }
   }
 

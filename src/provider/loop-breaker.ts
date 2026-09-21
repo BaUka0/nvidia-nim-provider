@@ -28,9 +28,6 @@ const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
     "The previous reply stalled before completing. Continue working from where you left off. Call a tool if needed or provide the final answer.",
 };
 
-/**
- * Builds a clean, neutral continuation nudge for a mid-stream retry attempt.
- */
 export function buildLoopBreakerNudge(reason: LoopBreakerNudgeReason): NimChatMessage {
   return { role: "user", content: LOOP_BREAKER_NUDGES[reason] };
 }

@@ -89,7 +89,7 @@ describe("tool argument parsing and validation", () => {
     expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
   });
 
-  it("leaves optional startLine/endLine omitted when not provided so the full file is read", () => {
+  it("auto-fills declared optional startLine/endLine when omitted so host does not reject", () => {
     const schema = getToolSchemaMap(
       makeChatOptions({
         tools: [
@@ -113,6 +113,8 @@ describe("tool argument parsing and validation", () => {
 
     expect(repaired).toEqual({
       filePath: "/tmp/example.md",
+      startLine: 1,
+      endLine: 2000,
     });
     expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
   });
@@ -1885,6 +1887,42 @@ describe("tool argument parsing and validation", () => {
 
       const partialImplicit = '{\n  "command": "npm run build';
       expect(getIncompleteTextToolCallName(partialImplicit, toolSchemas)).toBe("run_in_terminal");
+    });
+
+    it("keeps non-tool wrapper objects intact without extracting nested objects", () => {
+      const wrapperJson = JSON.stringify({
+        summary: "x",
+        edit: { filePath: "a.ts", code: "y" },
+      });
+      const result = parseTextEmbeddedToolCalls(wrapperJson, toolSchemas);
+      expect(result.segments).toEqual([{ type: "text", text: wrapperJson }]);
+      expect(result.incompleteText).toBe("");
+    });
+
+    it("waits for closing fence on fenced JSON payload", () => {
+      const fencedPartial = '```json\n{"filePath":"a.ts","code":"y"}\nsome trailing text';
+      const result = parseTextEmbeddedToolCalls(fencedPartial, toolSchemas);
+      expect(result.incompleteText).toBe(fencedPartial);
+      expect(result.segments).toEqual([]);
+    });
+
+    it("does not treat explicit name JSON as tool call when tools are disabled", () => {
+      const json = JSON.stringify({ name: "my-package", version: "1.0.0" });
+      const result = parseTextEmbeddedToolCalls(json, undefined);
+      expect(result.segments).toEqual([{ type: "text", text: json }]);
+    });
+
+    it("does not treat prose mentioning property names as incomplete tool calls", () => {
+      const prose = 'Note that "filePath" is a required parameter for reading files.';
+      expect(getIncompleteTextToolCallName(prose, toolSchemas)).toBeUndefined();
+    });
+  });
+
+  describe("buildInvalidToolCallRetryMessage with duplicates", () => {
+    it("returns undefined when all skipped calls have reason duplicate", () => {
+      const skipped = [{ name: "read_file", required: ["filePath"], reason: "duplicate" as const }];
+      expect(buildInvalidToolCallRetryMessage(skipped)).toBeUndefined();
+      expect(buildInvalidToolCallFallback(skipped)).toBeUndefined();
     });
   });
 });

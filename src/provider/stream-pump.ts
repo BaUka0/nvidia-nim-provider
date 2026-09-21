@@ -21,6 +21,7 @@ import {
   getToolSchemaMap,
   parseTextEmbeddedToolCalls,
   SkippedToolCall,
+  stripKnownControlText,
   ToolSchema,
 } from "../tools/parser";
 import { collectChoiceToolCalls } from "../tools/stream-tool-calls";
@@ -491,6 +492,12 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       required: schema?.required ?? [],
     });
     debugLog("Skipped truncated text tool call", { name: incompleteTextToolName });
+  } else if (pendingTextEmbeddedContent) {
+    const stripped = stripKnownControlText(pendingTextEmbeddedContent);
+    if (stripped) {
+      pendingText += stripped;
+    }
+    pendingTextEmbeddedContent = "";
   }
 
   const incompleteThinkingToolName = getIncompleteTextToolCallName(
@@ -505,6 +512,12 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       required: schema?.required ?? [],
     });
     debugLog("Skipped truncated text tool call in thinking", { name: incompleteThinkingToolName });
+  } else if (pendingThinkingEmbeddedContent) {
+    const stripped = stripKnownControlText(pendingThinkingEmbeddedContent);
+    if (stripped) {
+      emitThinking(stripped);
+    }
+    pendingThinkingEmbeddedContent = "";
   }
 
   if (pendingText) {
