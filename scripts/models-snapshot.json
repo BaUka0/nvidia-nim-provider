@@ -35,6 +35,11 @@
     "created": 735790403
   },
   {
+    "id": "deepseek-ai/deepseek-v4.1-flash",
+    "owned_by": "deepseek-ai",
+    "created": 735790403
+  },
+  {
     "id": "google/codegemma-1.1-7b",
     "owned_by": "google",
     "created": 735790403
