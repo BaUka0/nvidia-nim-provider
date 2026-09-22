@@ -4,6 +4,16 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-22
+
+### Added
+
+- **DeepSeek V4.1 Flash (`src/models/catalog.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`, `tests/model-capability-matrix.test.ts`).** Added `deepseek-ai/deepseek-v4.1-flash` to `MODEL_LIST`, synchronized configuration schemas in `package.json`, updated model probe script, and added capability matrix tests. Resolves #18.
+
+### Changed
+
+- **Artificial Analysis Intelligence Index v4.3.2 Updates (`README.md`, `docs/models.md`).** Updated benchmark capability scores to reflect the recalibrated Artificial Analysis Intelligence Index v4.3.2 composite across all curated models (GLM 5.3: 45, Kimi K3: 44, GLM 5.3 Flash: 42, DeepSeek V4.1 Flash: 39, Nemotron 3 Ultra 550B: 23, Muse Glimmer: 17, Nemotron 3.5 Lightning 30B: 13, Nemotron 3 Super 120B: 13).
+
 ## [1.1.2] - 2026-09-21
 
 ### Removed

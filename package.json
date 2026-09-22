@@ -3,7 +3,7 @@
   "publisher": "neuraldock",
   "displayName": "NVIDIA NIM Agent",
   "description": "Use NVIDIA NIM reasoning models in GitHub Copilot Chat for VS Code",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "license": "MIT",
   "homepage": "https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent",
   "bugs": {
@@ -145,6 +145,7 @@
         "nvidia-nim.fallback.model": {
           "type": "string",
           "enum": [
+            "deepseek-ai/deepseek-v4.1-flash",
             "meta/muse-glimmer-30b",
             "moonshotai/kimi-k3",
             "nvidia/nemotron-3-super-120b-a12b",
@@ -159,6 +160,7 @@
         "nvidia-nim.fallback.visionModel": {
           "type": "string",
           "enum": [
+            "deepseek-ai/deepseek-v4.1-flash",
             "meta/muse-glimmer-30b",
             "moonshotai/kimi-k3",
             "z-ai/glm-5.3-flash"
@@ -171,6 +173,7 @@
           "items": {
             "type": "string",
             "enum": [
+              "deepseek-ai/deepseek-v4.1-flash",
               "meta/muse-glimmer-30b",
               "moonshotai/kimi-k3",
               "nvidia/nemotron-3-super-120b-a12b",
@@ -334,6 +337,7 @@
         "nvidia-nim.context.summarizationModel": {
           "type": "string",
           "enum": [
+            "deepseek-ai/deepseek-v4.1-flash",
             "meta/muse-glimmer-30b",
             "moonshotai/kimi-k3",
             "nvidia/nemotron-3-super-120b-a12b",

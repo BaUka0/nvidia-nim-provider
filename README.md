@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Install](https://img.shields.io/badge/Install-Marketplace-007ACC?style=flat&logo=visual-studio-code&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
-[![Version](https://img.shields.io/badge/Version-1.1.2-76B900?logo=nvidia&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
+[![Version](https://img.shields.io/badge/Version-1.2.0-76B900?logo=nvidia&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent)
 [![Documentation](https://img.shields.io/badge/Docs-Configuration_Guide-green?style=flat&logo=markdown&logoColor=white)](docs/README.md)
 [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-Chat_Native-181717?style=flat&logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -54,13 +54,13 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | **GLM 5.3** | **45** | 1M | `Low`, `High`, `Max` | Yes | No | Flagship reasoning model, complex agentic coding |
 | **Kimi K3** | **44** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Long-context multimodal work, repo-scale jobs |
 | **GLM 5.3 Flash** | **42** | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
-| **DeepSeek V4 Flash 0731** | **35** | 1M | `None`, `High`, `Max` | Yes | No | Algorithm design, architecture, complex refactors |
+| **DeepSeek V4.1 Flash** | **39** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, agentic coding, architecture |
 | **Nemotron 3 Ultra 550B** | **23** | 1M | `None`, `Medium`, `High` | Yes | No | Heavy multi-step reasoning, technical docs |
-| **Muse Glimmer** | **18** | 131K | `None` to `XHigh` | Yes | Yes | Visual UX/UI work; default vision fallback |
-| **Nemotron 3 Super 120B** | **14** | 1M | `None`, `Low`, `High` | Yes | No | Workhorse for everyday coding; default text fallback |
-| **Nemotron 3.5 Lightning 30B** | **14** | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Fast agentic turns; compact 30B/3B-active MoE |
+| **Muse Glimmer** | **17** | 131K | `None` to `XHigh` | Yes | Yes | Visual UX/UI work; default vision fallback |
+| **Nemotron 3.5 Lightning 30B** | **13** | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Fast agentic turns; compact 30B/3B-active MoE |
+| **Nemotron 3 Super 120B** | **13** | 1M | `None`, `Low`, `High` | Yes | No | Workhorse for everyday coding; default text fallback |
 
-Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3 verified; see `CHANGELOG.md`).
+Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`).
 
 ---
 
