@@ -4,7 +4,7 @@ import { NimChatMessage, NimChatRequest } from "../src/types";
 describe("getModelAdapter", () => {
   it.each([
     ["kimi-k3", 1, 1, undefined],
-    ["nemotron-70b", 1, 0.6, false],
+    ["nemotron-70b", 1, 0.6, undefined],
   ])(
     "returns a specialized tool-enabled profile for %s",
     (
@@ -127,7 +127,7 @@ describe("applyReasoningMode", () => {
     expect(adapter.supportedReasoningModes).toEqual(["none", "medium", "high", "xhigh"]);
     expect(adapter.getProfile({ toolsEnabled: true }).defaultTemperature).toBe(1);
     expect(adapter.getProfile({ toolsEnabled: true }).toolTemperature).toBe(0.6);
-    expect(adapter.getProfile({ toolsEnabled: true }).parallelToolCalls).toBe(false);
+    expect(adapter.getProfile({ toolsEnabled: true }).parallelToolCalls).toBeUndefined();
 
     adapter.applyReasoningMode!(request, "medium");
     expect(request.chat_template_kwargs).toEqual({

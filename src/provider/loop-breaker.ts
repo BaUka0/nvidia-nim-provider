@@ -18,15 +18,15 @@ export type LoopBreakerNudgeReason =
 
 const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
   repetition_loop:
-    "Continue working without repeating the previous output. Directly call the required tool or provide the final answer.",
+    "Continue with the next step of your task without repeating the previous output. Call the next required tool or proceed with the implementation.",
   tool_call_loop:
-    "Continue working. Vary the arguments, call a different tool, or provide the final answer. Do not repeat the previous tool call.",
+    "Continue working. Use the existing findings, vary the arguments, or call a different tool to proceed with the task. Do not repeat the previous tool call.",
   output_truncated:
     "Your previous reply was cut off at the output token limit. Continue from where you left off. Call a tool if needed or finish the answer.",
   content_filter:
     "Your previous reply was stopped by the safety filter. Continue the answer without the blocked content. Call a tool if needed or finish the answer. Do not mention the filter.",
   stream_timeout:
-    "The previous reply stalled before completing. Continue working from where you left off. Call a tool if needed or provide the final answer.",
+    "The previous reply stalled before completing. Continue working from where you left off. Call the required tool or proceed with the task.",
 };
 
 export function buildLoopBreakerNudge(
@@ -37,7 +37,7 @@ export function buildLoopBreakerNudge(
     return {
       role: "user",
       content:
-        "The previous thinking repeated and was cut off before an answer. Do not restate that plan. Call the required tool or provide the final answer now.",
+        "The previous thinking repeated and was cut off before an answer. Do not restate that plan. Call the required tool or proceed with the implementation.",
     };
   }
   return { role: "user", content: LOOP_BREAKER_NUDGES[reason] };
@@ -210,12 +210,12 @@ export function buildHistoryLoopBreakerContent(
   const breakerNotices: string[] = [];
   if (historyLoopPreamble) {
     breakerNotices.push(
-      `You have repeated the preamble "${historyLoopPreamble.slice(0, 80)}" multiple times. Directly invoke the required tool or provide the final answer immediately without repeating the preamble.`,
+      `You have repeated the preamble "${historyLoopPreamble.slice(0, 80)}" multiple times. Continue with the next step of your task: invoke the required tool or proceed with the implementation without repeating the preamble.`,
     );
   }
   if (historyLoopTool) {
     breakerNotices.push(
-      `You have called the same tool "${historyLoopTool.slice(0, 120)}" multiple times consecutively with identical arguments. Vary the arguments, call a different tool, or provide the final answer.`,
+      `You have called the same tool "${historyLoopTool.slice(0, 120)}" multiple times consecutively with identical arguments. Use the existing results, call a different tool, or proceed with the next step of your task.`,
     );
   }
   if (breakerNotices.length === 0) {

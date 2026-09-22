@@ -375,7 +375,7 @@ describe("resolveReasoningMode", () => {
     expect(prepared.reasoningIsolationExpected).toBe(true);
   });
 
-  it("applies parallel_tool_calls: false and toolTemperature: 0.6 for Nemotron when tools are enabled", async () => {
+  it("applies toolTemperature: 0.6 for Nemotron when tools are enabled without forcing parallel_tool_calls", async () => {
     const nemotronModel = makeModel({
       id: "nvidia/nemotron-3-super-120b-a12b",
       name: "Nemotron 3 Super 120B",
@@ -407,7 +407,7 @@ describe("resolveReasoningMode", () => {
     });
 
     expect(prepared.requestBody.tools).toHaveLength(1);
-    expect(prepared.requestBody.parallel_tool_calls).toBe(false);
+    expect(prepared.requestBody.parallel_tool_calls).toBeUndefined();
     expect(prepared.requestBody.temperature).toBe(0.6);
   });
 

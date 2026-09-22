@@ -559,7 +559,7 @@ export class ModelTurnExecutor {
         const toolName = duplicateStallTool || "tool";
         progress.report(
           new vscode.LanguageModelTextPart(
-            `The ${toolName} call was not run again because that same call already completed earlier in this chat. Use the existing result, call a different tool, or give the final answer.`,
+            `The ${toolName} call was not run again because that same call already completed earlier in this chat. Use the existing result from earlier in the chat and proceed with the necessary changes or next steps.`,
           ),
         );
         hasReportedVisibleContent = true;

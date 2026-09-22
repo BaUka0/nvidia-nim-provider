@@ -998,7 +998,7 @@ describe("NimChatModelProvider", () => {
 
   it.each([
     ["moonshotai/kimi-k3", 1, undefined],
-    ["nvidia/nemotron-3-ultra-550b-a55b", 0.6, false],
+    ["nvidia/nemotron-3-ultra-550b-a55b", 0.6, undefined],
   ])(
     "applies the provider request profile for %s when tools are enabled",
     async (
