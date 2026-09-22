@@ -193,6 +193,7 @@ export function parseTextEmbeddedToolCalls(
   ] as const;
 
   const knownProperties = buildKnownPropertySet(toolSchemas);
+  const extractedParams: Record<string, unknown> = {};
   const segments: ParsedTextSegment[] = [];
   let remaining = text;
   let incompleteText = "";
@@ -318,6 +319,9 @@ export function parseTextEmbeddedToolCalls(
         remaining = remaining.slice(scanned.skip);
         continue;
       }
+      if (scanned.extractedParams) {
+        Object.assign(extractedParams, scanned.extractedParams);
+      }
       if (scanned.toolCall) {
         segments.push({
           type: "toolCall",
@@ -424,7 +428,7 @@ export function parseTextEmbeddedToolCalls(
     }
   }
 
-  return { segments, incompleteText };
+  return { segments, incompleteText, extractedParams };
 }
 
 export function getIncompleteTextToolCallName(

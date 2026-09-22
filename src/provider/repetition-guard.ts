@@ -3,7 +3,7 @@
  * Lines are normalized (NFKC, lowercased, punctuation collapsed) so cosmetic
  * variations of the same sentence accumulate toward the repetition limit.
  * Run-on paragraphs and planning loops split across newlines are caught by a
- * trailing 12-word passage window (the Super 120B #7 cycle). Markdown code fences
+ * trailing 6-word-gram window (the Super 120B #7 cycle). Markdown code fences
  * are tracked and ignored to avoid false positives on repetitive code generation.
  * Normalization is Unicode-aware so non-English loops (Cyrillic, CJK,
  * accented) are caught too.
@@ -11,25 +11,13 @@
 import {
   CYCLE_SCAN_CHARS,
   detectPhraseCycle,
-  detectPrefixCycle,
   detectRunawayCycle,
   normalizeForCycle,
 } from "../shared/cycle-detection";
 
 export interface RepetitionGuardOptions {
   readonly maxRepeatedLines: number;
-  /**
-   * Shared 2-word line openings ("Let me check A/B/C") count as a loop.
-   * Reasoning turns this off: chain-of-thought reuses "We need" / "We have"
-   * without degenerating. Contractions are already ignored by the detector.
-   */
-  readonly detectPrefixCycles?: boolean;
 }
-
-/** Reasoning CoT is not a visible preamble. Identical lines and long passages still count. */
-export const REASONING_REPETITION_OPTIONS = {
-  detectPrefixCycles: false,
-} as const;
 
 const MIN_NORMALIZED_LINE_LENGTH = 10;
 /** Cap the normalized key length so a single huge line cannot bloat the map. */
@@ -99,7 +87,7 @@ export class RepetitionGuard {
    * this call crossed the configured repetition limit. Text may be split at
    * arbitrary points; completed lines are counted on newline, and a trailing
    * visible window (completed lines plus `pendingLine`) is scanned for
-   * repeating passages so planning loops with newlines still trip.
+   * repeating 6-word grams so planning loops with newlines still trip.
    */
   add(text: string): boolean {
     const threshold = this.threshold;
@@ -178,7 +166,7 @@ export class RepetitionGuard {
   private appendVisible(rawLine: string): void {
     const key = normalizeLineForRepetition(rawLine);
     // Identical consecutive lines are owned by `maxRepeatedLines`. Folding
-    // them into the phrase window would trip a repeated line before that cap.
+    // them into the phrase window would trip a 6-word line at 3 copies.
     if (key.length > 0 && key === this.lastVisibleKey) {
       return;
     }
@@ -211,10 +199,7 @@ export class RepetitionGuard {
     if (this.tripFromRunaway(candidate)) {
       return true;
     }
-    if (this.tripFromPhrase(candidate)) {
-      return true;
-    }
-    return this.tripFromPrefix(candidate);
+    return this.tripFromPhrase(candidate);
   }
 
   private tripFromRunaway(text: string): boolean {
@@ -232,18 +217,6 @@ export class RepetitionGuard {
       return false;
     }
     this.trippedLineValue = gram;
-    return true;
-  }
-
-  private tripFromPrefix(text: string): boolean {
-    if (this.options.detectPrefixCycles === false) {
-      return false;
-    }
-    const prefix = detectPrefixCycle(text);
-    if (!prefix) {
-      return false;
-    }
-    this.trippedLineValue = prefix;
     return true;
   }
 }

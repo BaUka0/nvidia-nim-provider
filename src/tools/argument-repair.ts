@@ -1,9 +1,11 @@
 import { ConfigManager, ToolsConfig } from "../shared/config";
 import { MAX_REPAIRED_LINE_SPAN } from "../shared/constants";
 import { AUXILIARY_BOOLEAN_FIELDS } from "../shared/tool-fields";
-import { normalizeArguments, ToolSchema } from "./tool-schema";
+import { FORBIDDEN_TOOL_IDENTIFIERS } from "./embedded-parser";
 import { parseToolArguments } from "./json-args";
+import { ChatRequestContext } from "./request-context";
 import { isEditTool, isReadTool, isTerminalTool } from "./tool-kinds";
+import { normalizeArguments, ToolSchema } from "./tool-schema";
 
 const LINE_START_ALIASES = [
   "startLine",
@@ -99,7 +101,6 @@ function fillReadToolLineRanges(
     startKeys.map((key) => coerceLineNumber(repaired[key])).find((value) => value !== undefined) ??
     1;
 
-  // Copilot's read_file rejects requests missing line bounds even when declared optional in schema.
   for (const key of endKeys) {
     const coerced = coerceLineNumber(repaired[key]);
     repaired[key] = coerced !== undefined ? coerced : start + MAX_REPAIRED_LINE_SPAN - 1;
@@ -112,12 +113,8 @@ function fillReadToolLineRanges(
     }
     for (const endKey of endKeys) {
       const endValue = repaired[endKey];
-      if (typeof endValue === "number") {
-        if (endValue < startValue) {
-          repaired[endKey] = startValue;
-        } else if (endValue - startValue + 1 > MAX_REPAIRED_LINE_SPAN) {
-          repaired[endKey] = startValue + MAX_REPAIRED_LINE_SPAN - 1;
-        }
+      if (typeof endValue === "number" && endValue - startValue + 1 > MAX_REPAIRED_LINE_SPAN) {
+        repaired[endKey] = startValue + MAX_REPAIRED_LINE_SPAN - 1;
       }
     }
   }
@@ -280,6 +277,7 @@ function unwrapNestedArguments(
 export function repairToolArguments(
   toolName: string,
   args: unknown,
+  requestContext: ChatRequestContext | undefined,
   schema?: ToolSchema,
   _toolsConfig: ToolsConfig = ConfigManager.getToolsConfig(),
 ): Record<string, unknown> {
@@ -297,12 +295,34 @@ export function repairToolArguments(
   }
 
   const required = new Set(schema?.required ?? []);
-  const targetKeys = new Set<string>([...required, ...Object.keys(schema?.properties ?? {})]);
   const needsStringField = (value: unknown, field: string): boolean =>
     required.has(field) && (typeof value !== "string" || value.trim().length === 0);
+  const needsNumberField = (value: unknown, field: string): boolean =>
+    required.has(field) && typeof value !== "number";
 
-  // Resolve common property aliases when required or known schema properties are missing.
-  applyRequiredAliases(parsedArgs, targetKeys);
+  // 1. Merge extracted parameters from XML only when they belong to this tool
+  // (or the destination schema explicitly lists the key). Unscoped bags never
+  // fill file/command/content — that was a prompt-injection path.
+  if (
+    requestContext?.extractedParameters &&
+    requestContext.extractedParametersToolName === toolName
+  ) {
+    const schemaKeys = Object.keys(schema?.properties ?? {});
+    for (const [key, value] of Object.entries(requestContext.extractedParameters)) {
+      if (FORBIDDEN_TOOL_IDENTIFIERS.has(key)) {
+        continue;
+      }
+      if (schemaKeys.length > 0 && !schemaKeys.includes(key)) {
+        continue;
+      }
+      if (!(key in parsedArgs) || parsedArgs[key] === undefined || parsedArgs[key] === "") {
+        parsedArgs[key] = value;
+      }
+    }
+  }
+
+  // 2. Resolve common property aliases when required properties are missing.
+  applyRequiredAliases(parsedArgs, required);
 
   const repaired: Record<string, unknown> = normalizeArguments(parsedArgs, schema ?? {});
 
@@ -328,6 +348,23 @@ export function repairToolArguments(
 
   fillMissingAuxiliaryBooleans(repaired, schema);
 
+  const context = requestContext;
+  const currentFilePath =
+    typeof repaired.filePath === "string" && repaired.filePath.trim().length > 0
+      ? repaired.filePath
+      : typeof repaired.AbsolutePath === "string" && repaired.AbsolutePath.trim().length > 0
+        ? repaired.AbsolutePath
+        : typeof repaired.TargetFile === "string" && repaired.TargetFile.trim().length > 0
+          ? repaired.TargetFile
+          : undefined;
+
+  const isMatchingContextFile = Boolean(
+    context?.filePath &&
+    currentFilePath &&
+    (currentFilePath === context.filePath ||
+      currentFilePath.replace(/\\/g, "/") === context.filePath.replace(/\\/g, "/")),
+  );
+
   const clampLineSpan = (startKey: string, endKey: string): void => {
     const start = repaired[startKey];
     const end = repaired[endKey];
@@ -341,7 +378,7 @@ export function repairToolArguments(
   };
 
   if (isReadTool(toolName)) {
-    // Do not invent filePath from regex-extracted chat context.
+    // Do not invent filePath from regex-extracted chat context (prompt-injection).
     // Copilot's read_file often lists startLine/endLine in properties without
     // marking them required, then rejects the call at execution time.
     fillReadToolLineRanges(repaired, schema);
@@ -349,6 +386,22 @@ export function repairToolArguments(
       repaired.mode = schema?.enumValues?.mode?.[0] ?? "full";
     }
   } else if (isEditTool(toolName)) {
+    // Line ranges from editor selection apply only when the model already named
+    // the same file. Missing filePath is not filled from chat text.
+    if (isMatchingContextFile) {
+      if (needsNumberField(repaired.startLine, "startLine") && context?.startLine !== undefined) {
+        repaired.startLine = context.startLine;
+      }
+      if (needsNumberField(repaired.StartLine, "StartLine") && context?.startLine !== undefined) {
+        repaired.StartLine = context.startLine;
+      }
+      if (needsNumberField(repaired.endLine, "endLine") && context?.endLine !== undefined) {
+        repaired.endLine = context.endLine;
+      }
+      if (needsNumberField(repaired.EndLine, "EndLine") && context?.endLine !== undefined) {
+        repaired.EndLine = context.endLine;
+      }
+    }
     clampLineSpan("startLine", "endLine");
     clampLineSpan("StartLine", "EndLine");
   }

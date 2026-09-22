@@ -19,14 +19,9 @@ export interface AttemptLoopState {
   lastTransientError: unknown;
   emptyStreamRetryCount: number;
   loopContinueCount: number;
-  timeoutContinueCount: number;
   invalidToolRetryCount: number;
   attemptCompleted: boolean;
-  /** Last attempt closed on a repetition loop, so the turn must not become empty_stream. */
-  repetitionClosedTurn: boolean;
-  /** Last attempt dropped its only tool call as a duplicate and produced no answer. */
-  duplicateStall: boolean;
-  duplicateStallTool: string;
+  previousPreamblePrefixes: string[];
 }
 
 export function createAttemptLoopState(): AttemptLoopState {
@@ -36,12 +31,9 @@ export function createAttemptLoopState(): AttemptLoopState {
     lastTransientError: undefined,
     emptyStreamRetryCount: 0,
     loopContinueCount: 0,
-    timeoutContinueCount: 0,
     invalidToolRetryCount: 0,
     attemptCompleted: false,
-    repetitionClosedTurn: false,
-    duplicateStall: false,
-    duplicateStallTool: "",
+    previousPreamblePrefixes: [],
   };
 }
 
@@ -64,6 +56,7 @@ export interface AttemptDispatch {
 const LOOP_REASON_LABELS: Record<string, string> = {
   repetition_loop: "repetition loop",
   tool_call_loop: "repeated tool call",
+  hanging_colon: "hanging punctuation",
   content_filter: "content filter",
   stream_timeout: "stream stall",
 };
@@ -156,6 +149,7 @@ export function logAttemptTiming(input: {
     willRetryContentFilter: retryReason === "content_filter",
     skippedUnknownTool: input.evaluation.skippedUnknownTool,
     isRepetitionLoop: input.evaluation.isRepetitionLoop,
+    isHangingColon: input.evaluation.isHangingColon,
     loopContinueCount: input.loopContinueCount,
     emptyStreamRetryCount: input.emptyStreamRetryCount,
   });
@@ -186,6 +180,7 @@ export function logStreamFinished(input: {
     willRetryEmptyStream: retryReason === "empty_stream",
     willRetryOnLoop: isLoopRetryReason(retryReason),
     isRepetitionLoop: evaluation.isRepetitionLoop,
+    isHangingColon: evaluation.isHangingColon,
     isTruncatedLength: evaluation.isTruncatedLength,
     emptyStreamRetryCount: input.emptyStreamRetryCount,
   });

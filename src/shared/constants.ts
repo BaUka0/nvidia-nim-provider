@@ -37,10 +37,10 @@ export const EXTENSION_VERSION: string = packageJson.version;
  * Total HTTP connection-attempt budget shared by every stream of a single
  * user-visible response (retries, overflow compaction, and fallback hops).
  */
-export const MAX_TOTAL_FETCH_ATTEMPTS = 8;
+export const MAX_TOTAL_FETCH_ATTEMPTS = 6;
 
 /** Per-`streamChatCompletion` slice of {@link MAX_TOTAL_FETCH_ATTEMPTS}. */
-export const MAX_FETCH_ATTEMPTS_PER_STREAM = 4;
+export const MAX_FETCH_ATTEMPTS_PER_STREAM = 3;
 
 /** Unfinished SSE line buffer cap (misbehaving servers must not grow this). */
 export const MAX_SSE_PARTIAL_BUFFER_BYTES = 1024 * 1024;

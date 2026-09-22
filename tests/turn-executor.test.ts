@@ -1,6 +1,6 @@
 import { createStructuredError, NvidiaApiError } from "../src/api/errors";
 import { ContextLimitStore } from "../src/provider/context-limit-store";
-import { buildLoopBreakerNudge } from "../src/provider/loop-breaker";
+import { buildLoopBreakerNudge, injectHistoryLoopBreaker } from "../src/provider/loop-breaker";
 import { buildOverflowRetryRequest } from "../src/provider/overflow-compactor";
 import { NimRequestBuilder } from "../src/provider/request-builder";
 import { runStreamAttempt, StreamAttemptResult } from "../src/provider/stream-pump";
@@ -19,8 +19,8 @@ jest.mock("../src/provider/request-builder", () => ({
   },
 }));
 jest.mock("../src/provider/loop-breaker", () => ({
+  injectHistoryLoopBreaker: jest.fn(({ requestBody }: { requestBody: unknown }) => requestBody),
   buildLoopBreakerNudge: jest.fn(),
-  injectHistoryLoopBreaker: jest.fn(({ requestBody }) => requestBody),
 }));
 jest.mock("../src/provider/overflow-compactor", () => ({
   buildOverflowRetryRequest: jest.fn(),
@@ -37,6 +37,7 @@ jest.mock("../src/shared/logging", () => ({
 
 const prepareRequestMock = NimRequestBuilder.prepareRequest as jest.Mock;
 const runStreamAttemptMock = runStreamAttempt as jest.Mock;
+const injectLoopBreakerMock = injectHistoryLoopBreaker as jest.Mock;
 const buildNudgeMock = buildLoopBreakerNudge as jest.Mock;
 const overflowCompactionMock = buildOverflowRetryRequest as jest.Mock;
 
@@ -117,6 +118,9 @@ describe("ModelTurnExecutor.executeTurn", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prepareRequestMock.mockResolvedValue(makePrepared());
+    injectLoopBreakerMock.mockImplementation(
+      ({ requestBody }: { requestBody: unknown }) => requestBody,
+    );
   });
 
   it("finishes the turn when the stream reports visible content", async () => {
@@ -137,48 +141,6 @@ describe("ModelTurnExecutor.executeTurn", () => {
     await expect(executor().executeTurn(input)).resolves.toBeUndefined();
 
     expect(runStreamAttemptMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("retries an empty stream when reasoning was seen but no visible text or tool was produced", async () => {
-    runStreamAttemptMock
-      .mockResolvedValueOnce(
-        makeResult({
-          sawReasoning: true,
-          reportedContent: true,
-          reportedVisibleContent: false,
-          emittedToolCall: false,
-        }),
-      )
-      .mockResolvedValueOnce(
-        makeResult({ reportedVisibleContent: true, lastVisibleText: "Hello!" }),
-      );
-
-    const input = makeInput(makeConfig({ maxEmptyStreamRetries: 3 }));
-    await expect(executor().executeTurn(input)).resolves.toBeUndefined();
-
-    expect(runStreamAttemptMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("resets empty stream retry counter when the model responds with visible text", async () => {
-    buildNudgeMock.mockReturnValue({ role: "user", content: "continue" });
-    runStreamAttemptMock
-      .mockResolvedValueOnce(makeResult())
-      .mockResolvedValueOnce(
-        makeResult({
-          reportedVisibleContent: true,
-          repetitionTripped: true,
-          lastVisibleText: "First part",
-        }),
-      )
-      .mockResolvedValueOnce(makeResult())
-      .mockResolvedValueOnce(
-        makeResult({ reportedVisibleContent: true, lastVisibleText: "Final part" }),
-      );
-
-    const input = makeInput(makeConfig({ maxEmptyStreamRetries: 2 }));
-    await expect(executor().executeTurn(input)).resolves.toBeUndefined();
-
-    expect(runStreamAttemptMock).toHaveBeenCalledTimes(4);
   });
 
   it("auto-continues after a repetition loop and appends the nudge", async () => {
@@ -203,75 +165,6 @@ describe("ModelTurnExecutor.executeTurn", () => {
       role: "user",
       content: "continue now",
     });
-  });
-
-  it("stays on the model when a reasoning repetition loop exhausts its continue budget", async () => {
-    buildNudgeMock.mockReturnValue({ role: "user", content: "answer now" });
-    const reasoningLoop = makeResult({
-      sawReasoning: true,
-      reportedContent: true,
-      reportedVisibleContent: false,
-      repetitionTripped: true,
-      trippedLine: "we ll",
-    });
-    runStreamAttemptMock.mockResolvedValue(reasoningLoop);
-
-    await expect(executor().executeTurn(makeInput(makeConfig()))).resolves.toBeUndefined();
-
-    // Initial attempt plus the default continue budget of 2. No empty_stream throw.
-    expect(runStreamAttemptMock).toHaveBeenCalledTimes(3);
-    expect(buildNudgeMock).toHaveBeenCalledWith("repetition_loop", { reasoningOnly: true });
-    const thirdCall = runStreamAttemptMock.mock.calls[2][0];
-    expect(thirdCall.requestBody.messages.at(-1)).toEqual({
-      role: "user",
-      content: "answer now",
-    });
-  });
-
-  it("still throws empty_stream when reasoning produces no answer and no repetition loop", async () => {
-    runStreamAttemptMock.mockResolvedValue(
-      makeResult({
-        sawReasoning: true,
-        reportedContent: true,
-        reportedVisibleContent: false,
-      }),
-    );
-
-    await expect(
-      executor().executeTurn(makeInput(makeConfig({ maxEmptyStreamRetries: 0 }))),
-    ).rejects.toMatchObject({ kind: "empty_stream" });
-    expect(runStreamAttemptMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("continues visibly when a repeated read is suppressed and the continue budget is spent", async () => {
-    const config = makeConfig();
-    const stalled = makeResult({
-      sawToolCall: true,
-      sawReasoning: true,
-      reportedContent: true,
-      emittedToolCall: false,
-      reportedVisibleContent: false,
-      lastFinishReason: "tool_calls",
-      skippedToolCalls: [{ name: "read_file", required: [], reason: "duplicate" }],
-    });
-    runStreamAttemptMock.mockResolvedValue(stalled);
-    const progress = { report: jest.fn() };
-
-    await expect(
-      executor().executeTurn(
-        makeInput(
-          { ...config, generation: { ...config.generation, maxLoopContinues: 0 } },
-          { progress: progress as never },
-        ),
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(runStreamAttemptMock).toHaveBeenCalledTimes(1);
-    expect(progress.report).toHaveBeenCalledWith(
-      expect.objectContaining({
-        value: expect.stringContaining("read_file"),
-      }),
-    );
   });
 
   it("fails with a structured error when the model only emits unusable tool calls", async () => {

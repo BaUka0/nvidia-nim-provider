@@ -219,7 +219,7 @@ export function findBestMatchingTool(
     | undefined;
 
   for (const [toolName, schema] of toolSchemas.entries()) {
-    const repaired = repairToolArguments(toolName, parsedArgs, schema);
+    const repaired = repairToolArguments(toolName, parsedArgs, undefined, schema);
     if (!isToolCallInput(repaired) || !hasRequiredToolArguments(repaired, schema)) {
       continue;
     }

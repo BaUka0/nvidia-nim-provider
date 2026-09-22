@@ -129,8 +129,8 @@ describe("ConfigManager", () => {
       expect(config).toEqual(DEFAULT_NETWORK_CONFIG);
       expect(config.streamIdleTimeout).toBe(120);
       expect(config.maxHttpRetries).toBe(3);
-      expect(config.maxEmptyStreamRetries).toBe(3);
-      expect(config.maxTotalFetchAttempts).toBe(8);
+      expect(config.maxEmptyStreamRetries).toBe(2);
+      expect(config.maxTotalFetchAttempts).toBe(6);
     });
 
     it("clamps streamIdleTimeout within 15..3600", () => {

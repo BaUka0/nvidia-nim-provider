@@ -15,14 +15,14 @@ export {
   isToolCallInput,
 } from "./tool-schema";
 
+export { ChatRequestContext, extractChatRequestContext } from "./request-context";
+
 export { repairToolArguments } from "./argument-repair";
 
 export {
-  DEFAULT_MAX_DUPLICATE_READS,
   buildToolCallCanonicalKey,
   isDuplicateSuppressionEnabled,
   getCompletedToolCallKeys,
-  getCompletedToolCallCounts,
 } from "./canonical-key";
 
 export {
@@ -77,4 +77,5 @@ export type ParsedTextSegment =
 export interface ParsedTextToolCallResult {
   segments: ParsedTextSegment[];
   incompleteText: string;
+  extractedParams?: Record<string, unknown>;
 }

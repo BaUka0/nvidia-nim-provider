@@ -18,13 +18,9 @@ import { FetchAttemptBudget, httpAttemptsFromConfig } from "../shared/fetch-atte
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
 import { recordTurnReport, TurnReportOutcome } from "../shared/turn-report";
+import { extractPrefixGram } from "../shared/cycle-detection";
 import { NimChatRequest, NimTool } from "../types";
-import {
-  AttemptRetryEvaluation,
-  evaluateAttemptRetry,
-  isLoopRetryReason,
-  isSuppressedDuplicateStall,
-} from "./attempt-retry";
+import { AttemptRetryEvaluation, evaluateAttemptRetry, isLoopRetryReason } from "./attempt-retry";
 import {
   AttemptDispatch,
   AttemptLoopState,
@@ -274,7 +270,7 @@ export class ModelTurnExecutor {
         });
 
       let baselineRequestBody = injectHistoryLoopBreaker({
-        requestBody: activeRequestBody,
+        requestBody: cloneNimChatRequest(activeRequestBody),
         historyMessages: messages,
         modelId: model.id,
         applyBudget,
@@ -353,10 +349,6 @@ export class ModelTurnExecutor {
       };
 
       let restartFromOverflow = true;
-      let repetitionClosedTurn = false;
-      let repetitionLoopContinues = 0;
-      let duplicateStall = false;
-      let duplicateStallTool = "";
       while (restartFromOverflow) {
         restartFromOverflow = false;
         const state = createAttemptLoopState();
@@ -503,14 +495,13 @@ export class ModelTurnExecutor {
             toolsEnabled,
             loopContinueCount: state.loopContinueCount,
             maxLoopContinues: MAX_LOOP_CONTINUES,
-            timeoutRetryCount: state.timeoutContinueCount,
-            maxTimeoutRetries: MAX_LOOP_CONTINUES,
             invalidToolRetryCount: state.invalidToolRetryCount,
             emptyStreamRetryCount: state.emptyStreamRetryCount,
             maxEmptyStreamRetries: MAX_EMPTY_STREAM_RETRIES,
             maxInvalidToolRetries: MAX_INVALID_TOOL_RETRIES,
             fetchBudgetExhausted: fetchBudget.exhausted,
             knownToolNames: collectKnownToolNames(),
+            previousPreamblePrefixes: state.previousPreamblePrefixes,
           });
 
           const dispatch = this.dispatchAttemptOutcome({
@@ -548,43 +539,10 @@ export class ModelTurnExecutor {
         if (!state.attemptCompleted && state.lastTransientError) {
           throw state.lastTransientError;
         }
-        repetitionClosedTurn = state.repetitionClosedTurn;
-        repetitionLoopContinues = state.loopContinueCount;
-        duplicateStall = state.duplicateStall;
-        duplicateStallTool = state.duplicateStallTool;
         break;
       }
 
-      if (duplicateStall && !hasReportedVisibleContent) {
-        const toolName = duplicateStallTool || "tool";
-        progress.report(
-          new vscode.LanguageModelTextPart(
-            `The ${toolName} call was not run again because that same call already completed earlier in this chat. Use the existing result from earlier in the chat and proceed with the necessary changes or next steps.`,
-          ),
-        );
-        hasReportedVisibleContent = true;
-        reportState.hasReportedVisibleContent = true;
-        debugLog("duplicateTool", {
-          action: "visibleContinuation",
-          model: model.id,
-          tool: toolName,
-        });
-      }
-
       if (!hasReportedVisibleContent && !sawToolCallOverall) {
-        if (repetitionClosedTurn) {
-          debugLog("repetitionGuard", {
-            action: "closeWithoutFallback",
-            model: model.id,
-            loopContinueCount: repetitionLoopContinues,
-          });
-          outputLog(
-            "repetitionGuard",
-            `Repetition loop on ${model.id} used its continue budget with no answer. Staying on this model.`,
-          );
-          emitUsageAndStatus(finalUsage, activeRequestBody!);
-          return;
-        }
         const emptyError = buildEmptyStreamError({
           modelLabel: model.name ?? model.id,
           totalAttempts,
@@ -782,10 +740,6 @@ export class ModelTurnExecutor {
     const { retryReason, retryMessage, skippedToolCallNames } = evaluation;
     let baselineRequestBody = input.baselineRequestBody;
 
-    if (result.reportedVisibleContent || result.emittedToolCall) {
-      state.emptyStreamRetryCount = 0;
-    }
-
     logAttemptTiming({
       attempt: input.attempt,
       totalAttempts: input.totalAttempts,
@@ -823,27 +777,25 @@ export class ModelTurnExecutor {
     });
 
     if (isLoopRetryReason(retryReason)) {
-      if (retryReason === "stream_timeout") {
-        state.timeoutContinueCount += 1;
-      } else {
-        state.loopContinueCount += 1;
-      }
+      state.loopContinueCount += 1;
       retryReasonHistory.push(retryReason);
-      const reasoningOnlyLoop =
-        retryReason === "repetition_loop" && result.sawReasoning && !result.reportedVisibleContent;
-      state.retryNudge = reasoningOnlyLoop
-        ? buildLoopBreakerNudge(retryReason, { reasoningOnly: true })
-        : buildLoopBreakerNudge(retryReason);
+      state.retryNudge = buildLoopBreakerNudge(retryReason);
       logLoopAutoContinue({
         modelId: model.id,
         retryReason,
         result,
-        loopContinueCount:
-          retryReason === "stream_timeout" ? state.timeoutContinueCount : state.loopContinueCount,
+        loopContinueCount: state.loopContinueCount,
       });
 
-      const shouldDiscardPartial = retryReason === "repetition_loop";
-      if (!shouldDiscardPartial && result.lastVisibleText.trim().length > 0) {
+      if (!result.sawToolCall && !result.emittedToolCall && result.lastVisibleText) {
+        const prefix = extractPrefixGram(result.lastVisibleText, 2);
+        if (prefix && !state.previousPreamblePrefixes.includes(prefix)) {
+          state.previousPreamblePrefixes.push(prefix);
+        }
+      }
+
+      const isPreambleLoop = retryReason === "repetition_loop" || retryReason === "hanging_colon";
+      if (!isPreambleLoop && result.lastVisibleText.trim().length > 0) {
         baselineRequestBody = appendChatMessage(baselineRequestBody, {
           role: "assistant",
           content: result.lastVisibleText,
@@ -909,11 +861,6 @@ export class ModelTurnExecutor {
     }
 
     state.attemptCompleted = true;
-    state.repetitionClosedTurn = evaluation.isRepetitionLoop;
-    state.duplicateStall = isSuppressedDuplicateStall(result);
-    state.duplicateStallTool = state.duplicateStall
-      ? (result.skippedToolCalls.find((call) => call.reason === "duplicate")?.name ?? "")
-      : "";
     return { action: "complete", baselineRequestBody };
   }
 

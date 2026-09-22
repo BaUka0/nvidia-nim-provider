@@ -40,7 +40,7 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 
 ### Collapsible Thinking Blocks
 
-DeepSeek V4, Nemotron Super, Kimi K3, and GLM 5.3 / GLM 5.3 Flash produce an internal stream of logical thought before the final answer. The extension filters `<thought>`, `<think>`, and `[THINK]` tags and renders them via VS Code's `LanguageModelThinkingPart`. In Copilot Chat you see a collapsible **Thinking...** bar; click to expand and read the step-by-step reasoning, or leave it collapsed to focus on the response. A planning paragraph written just before a tool call stays in that block as well.
+DeepSeek V4, Nemotron Super, Kimi K3, and GLM 5.3 / GLM 5.3 Flash produce an internal stream of logical thought before the final answer. The extension filters `<thought>`, `<think>`, and `[THINK]` tags and renders them via VS Code's `LanguageModelThinkingPart`. In Copilot Chat you see a collapsible **Thinking...** bar; click to expand and read the step-by-step reasoning, or leave it collapsed to focus on the response.
 
 ### Controlling Reasoning Effort
 

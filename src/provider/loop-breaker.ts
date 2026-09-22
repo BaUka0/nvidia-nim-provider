@@ -1,55 +1,27 @@
-import { LanguageModelChatMessageRole } from "vscode";
 import { NvidiaApiError } from "../api/errors";
-import { stripFallbackNotices } from "../messages/converter";
-import { getThinkingPartValue } from "../messages/parts";
-import { extractPrefixGram } from "../shared/cycle-detection";
-import { debugLog, outputLog } from "../shared/logging";
-import { buildToolCallCanonicalKey, tryParseJsonValue } from "../tools/parser";
 import { NimChatMessage, NimChatRequest } from "../types";
+import { debugLog, outputLog } from "../shared/logging";
+import { LanguageModelChatMessageRole } from "vscode";
 import { normalizeLineForRepetition } from "./repetition-guard";
+import { buildToolCallCanonicalKey, tryParseJsonValue } from "../tools/parser";
 import { cloneNimChatRequest } from "./request-snapshot";
+import { BoundedMap } from "../shared/bounded-map";
+import { stripFallbackNotices } from "../messages/converter";
+import { extractPrefixGram } from "../shared/cycle-detection";
 
-export type LoopBreakerNudgeReason =
-  | "repetition_loop"
-  | "tool_call_loop"
-  | "output_truncated"
-  | "content_filter"
-  | "stream_timeout";
+const MAX_INJECTED_LOOPS_TRACKED = 128;
+const recentInjectedLoops = new BoundedMap<string, number>(MAX_INJECTED_LOOPS_TRACKED);
 
-const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
-  repetition_loop:
-    "Continue with the next step of your task without repeating the previous output. Call the next required tool or proceed with the implementation.",
-  tool_call_loop:
-    "Continue working. Use the existing findings, vary the arguments, or call a different tool to proceed with the task. Do not repeat the previous tool call.",
-  output_truncated:
-    "Your previous reply was cut off at the output token limit. Continue from where you left off. Call a tool if needed or finish the answer.",
-  content_filter:
-    "Your previous reply was stopped by the safety filter. Continue the answer without the blocked content. Call a tool if needed or finish the answer. Do not mention the filter.",
-  stream_timeout:
-    "The previous reply stalled before completing. Continue working from where you left off. Call the required tool or proceed with the task.",
-};
-
-export function buildLoopBreakerNudge(
-  reason: LoopBreakerNudgeReason,
-  options?: { reasoningOnly?: boolean },
-): NimChatMessage {
-  if (reason === "repetition_loop" && options?.reasoningOnly) {
-    return {
-      role: "user",
-      content:
-        "The previous thinking repeated and was cut off before an answer. Do not restate that plan. Call the required tool or proceed with the implementation.",
-    };
-  }
-  return { role: "user", content: LOOP_BREAKER_NUDGES[reason] };
+export function resetInjectedLoopsForTests(): void {
+  recentInjectedLoops.clear();
 }
 
 const MIN_NORMALIZED_LINE_LENGTH = 10;
 
-/** True for VS Code assistant roles (enum/number) and plain "assistant" strings. */
+/** True for VS Code assistant roles (enum) and plain "assistant" strings. */
 function isAssistantRole(role: unknown): boolean {
   return (
     role === LanguageModelChatMessageRole.Assistant ||
-    role === 2 ||
     role === "assistant" ||
     (typeof role === "string" && role.toLowerCase() === "assistant")
   );
@@ -69,11 +41,7 @@ function countTrailingMatches(values: readonly string[], cap: number): number {
   return consecutive;
 }
 
-/**
- * First visible line of an assistant message. Thinking parts are skipped:
- * Nemotron reuses openings like "We need" in reasoning on every tool turn,
- * and counting those made the history breaker fire on a healthy session.
- */
+/** Extract the first non-empty text line from an assistant message. */
 function extractAssistantFirstLine(content: unknown): string | undefined {
   let fullText = "";
   if (typeof content === "string") {
@@ -82,7 +50,6 @@ function extractAssistantFirstLine(content: unknown): string | undefined {
     const parts: string[] = [];
     for (const part of content) {
       if (part == null || typeof part !== "object") continue;
-      if (getThinkingPartValue(part) !== undefined) continue;
       const p = part as Record<string, unknown>;
       if (typeof p.value === "string") {
         parts.push(p.value);
@@ -104,7 +71,10 @@ function extractAssistantFirstLine(content: unknown): string | undefined {
 
 /**
  * Detects inter-turn preamble loops by inspecting recent assistant messages.
- * Returns the normalized repeated preamble or leading prefix if a loop is detected.
+ * Returns the normalized repeated preamble if a loop is detected, otherwise
+ * undefined. Looks at the last `windowSize` assistant messages and checks
+ * whether the same normalized first line appears `minRepeats` times
+ * consecutively from the end, or `threshold` times within the window.
  */
 export function detectHistoryLoop(
   messages: readonly { role: unknown; content: unknown }[],
@@ -159,7 +129,9 @@ export function detectHistoryLoop(
 }
 
 /**
- * Detects repeated identical tool calls in recent assistant history.
+ * Detects repeated identical tool calls in recent assistant history. Returns
+ * a canonical (key-order-insensitive) tool-call signature when the same call
+ * is emitted `minRepeats` times consecutively, otherwise undefined.
  */
 export function detectToolCallHistoryLoop(
   messages: readonly { role: unknown; content: unknown }[],
@@ -173,11 +145,12 @@ export function detectToolCallHistoryLoop(
     if (!isAssistantRole(msg.role)) {
       continue;
     }
-    if (!Array.isArray(msg.content)) {
+    const content = msg.content;
+    if (!Array.isArray(content)) {
       continue;
     }
-    for (const part of msg.content) {
-      if (!part || typeof part !== "object") {
+    for (const part of content) {
+      if (part == null || typeof part !== "object") {
         continue;
       }
       const p = part as Record<string, unknown>;
@@ -202,6 +175,94 @@ export function detectToolCallHistoryLoop(
   return undefined;
 }
 
+/**
+ * Stable marker embedded in inter-turn loop-breaker messages so duplicate
+ * injection can be detected exactly (a fragile substring prefix would both
+ * false-positive on natural text and miss previously injected breakers).
+ */
+export const LOOP_BREAKER_MARKER = "[NIM_LOOP_BREAKER]";
+export const LOOP_BREAKER_ESCALATION_MARKER = "[NIM_LOOP_BREAKER_GO]";
+
+export type LoopBreakerNudgeReason =
+  | "repetition_loop"
+  | "tool_call_loop"
+  | "hanging_colon"
+  | "output_truncated"
+  | "content_filter"
+  | "stream_timeout";
+
+const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
+  repetition_loop:
+    "Continue with the next step of your task without repeating the previous output. Call the next required tool or proceed with the implementation.",
+  tool_call_loop:
+    "Continue working. Use the existing findings, vary the arguments, or call a different tool to proceed with the task. Do not repeat the previous tool call.",
+  hanging_colon:
+    "The previous reply ended before the next action. Continue working and take that action.",
+  output_truncated:
+    "Your previous reply was cut off at the output token limit. Continue from where you left off. Call a tool if needed or finish the answer.",
+  content_filter:
+    "Your previous reply was stopped by the safety filter. Continue the answer without the blocked content. Call a tool if needed or finish the answer. Do not mention the filter.",
+  stream_timeout:
+    "The previous reply stalled before completing. Continue working from where you left off. Call the required tool or proceed with the task.",
+};
+
+const HISTORY_LOOP_ESCALATION_NUDGE =
+  "The same loop is still going after the previous correction. Continue working. Change the tool or arguments, or proceed with the next step. Do not repeat the previous preamble or tool call.";
+
+export function buildLoopBreakerNudge(reason: LoopBreakerNudgeReason): NimChatMessage {
+  return { role: "user", content: `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_NUDGES[reason]}` };
+}
+
+/** Return the textual content of a message part, if any. */
+function partTextValue(part: unknown): string | undefined {
+  if (typeof part === "string") {
+    return part;
+  }
+  if (part && typeof part === "object") {
+    const p = part as { value?: unknown; text?: unknown };
+    if (typeof p.value === "string") return p.value;
+    if (typeof p.text === "string") return p.text;
+  }
+  return undefined;
+}
+
+function messagesContainMarker(
+  requestMessages: readonly { role: string; content: unknown }[],
+  historyMessages: readonly { content: readonly unknown[] }[],
+  marker: string,
+): boolean {
+  for (const m of requestMessages) {
+    if (typeof m.content === "string" && m.content.includes(marker)) {
+      return true;
+    }
+  }
+  for (const m of historyMessages) {
+    for (const part of m.content) {
+      const text = partTextValue(part);
+      if (text && text.includes(marker)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** True when a loop-breaker message is already present in the request or history. */
+export function hasLoopBreaker(
+  requestMessages: readonly { role: string; content: unknown }[],
+  historyMessages: readonly { content: readonly unknown[] }[],
+): boolean {
+  return messagesContainMarker(requestMessages, historyMessages, LOOP_BREAKER_MARKER);
+}
+
+/** True when the stronger follow-up breaker has already been injected. */
+export function hasEscalatedLoopBreaker(
+  requestMessages: readonly { role: string; content: unknown }[],
+  historyMessages: readonly { content: readonly unknown[] }[],
+): boolean {
+  return messagesContainMarker(requestMessages, historyMessages, LOOP_BREAKER_ESCALATION_MARKER);
+}
+
 export function buildHistoryLoopBreakerContent(
   messages: readonly { role: unknown; content: unknown }[],
 ): string | undefined {
@@ -221,40 +282,56 @@ export function buildHistoryLoopBreakerContent(
   if (breakerNotices.length === 0) {
     return undefined;
   }
-  return breakerNotices.join(" ");
+  return `${LOOP_BREAKER_MARKER} ${breakerNotices.join(" ")}`;
 }
 
 /**
- * Injects a neutral history loop-breaker user turn when recent history is repeating.
+ * Inject a loop-breaker user turn when recent history is repeating.
+ * First detection injects the standard nudge; a still-looping transcript
+ * with a breaker already present gets one escalation. Returns the original
+ * body when no loop is detected, the escalation is already present, or the
+ * extra turn would exceed the token budget. Never aborts the Copilot turn.
  */
 export function injectHistoryLoopBreaker(options: {
   requestBody: NimChatRequest;
-  historyMessages: readonly { role: unknown; content: unknown }[];
+  historyMessages: readonly { role: unknown; content: readonly unknown[] }[];
   modelId: string;
   applyBudget: (body: NimChatRequest) => NimChatRequest;
 }): NimChatRequest {
-  const breakerContent = buildHistoryLoopBreakerContent(options.historyMessages);
-  if (!breakerContent) {
+  const historyLoopPreamble = detectHistoryLoop(options.historyMessages);
+  const historyLoopTool = detectToolCallHistoryLoop(options.historyMessages);
+  const loopContent = buildHistoryLoopBreakerContent(options.historyMessages);
+  if (!loopContent) {
     return options.requestBody;
   }
 
-  // Prevent duplicate injection if the last message is already a user message with the breaker notice
-  const lastMsg = options.requestBody.messages[options.requestBody.messages.length - 1];
-  if (
-    lastMsg &&
-    lastMsg.role === "user" &&
-    typeof lastMsg.content === "string" &&
-    lastMsg.content.includes(breakerContent)
-  ) {
+  const loopKey = historyLoopTool ?? historyLoopPreamble ?? loopContent;
+  const previousInjections = recentInjectedLoops.get(loopKey) ?? 0;
+  const hasEscalatedMarker = hasEscalatedLoopBreaker(
+    options.requestBody.messages,
+    options.historyMessages,
+  );
+  const hasMarker = hasLoopBreaker(options.requestBody.messages, options.historyMessages);
+
+  if (hasEscalatedMarker || (hasMarker && previousInjections >= 1) || previousInjections >= 2) {
     return options.requestBody;
   }
 
-  debugLog("repetitionGuard", { action: "injectHistoryBreaker", modelId: options.modelId });
+  const escalate = hasMarker || previousInjections >= 1;
+  const breakerContent = escalate
+    ? `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_ESCALATION_MARKER} ${HISTORY_LOOP_ESCALATION_NUDGE}`
+    : loopContent;
+
+  recentInjectedLoops.set(loopKey, previousInjections + 1);
+
+  debugLog("repetitionGuard", { action: escalate ? "injectBreakerEscalation" : "injectBreaker" });
   outputLog(
     "repetitionGuard",
-    `Detected inter-turn loop on ${options.modelId}, injecting history breaker`,
+    `Detected inter-turn loop on ${options.modelId}, injecting ${escalate ? "escalation breaker" : "breaker"}`,
   );
 
+  // Injected as a user turn (not a trailing system message) because some
+  // OpenAI-compatible backends reject or down-weight trailing system turns.
   const breakerTurn: NimChatMessage = {
     role: "user",
     content: breakerContent,

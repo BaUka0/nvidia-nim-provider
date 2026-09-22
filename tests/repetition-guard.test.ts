@@ -1,8 +1,9 @@
+import { RepetitionGuard, normalizeLineForRepetition } from "../src/provider/repetition-guard";
 import {
-  REASONING_REPETITION_OPTIONS,
-  RepetitionGuard,
-  normalizeLineForRepetition,
-} from "../src/provider/repetition-guard";
+  buildHistoryLoopBreakerContent,
+  detectHistoryLoop,
+  detectToolCallHistoryLoop,
+} from "../src/provider/loop-breaker";
 import {
   detectCharacterRunaway,
   detectCycleHint,
@@ -24,15 +25,6 @@ describe("detectPhraseCycle", () => {
     expect(
       detectPhraseCycle("Here is the refactored function. It now returns the parsed JSON payload."),
     ).toBeUndefined();
-    const topical = [
-      "Since the user is not available to answer, proceed with the safe default.",
-      "We need to perform a deep refactoring of the parser next.",
-      "Since the user is not available we should not block on questions.",
-      "We need to perform a deep refactoring without waiting.",
-      "Since the user is not available the open questions can be skipped.",
-      "We need to perform a deep refactoring in the stream parser.",
-    ].join(" ");
-    expect(detectPhraseCycle(topical)).toBeUndefined();
     expect(detectCycleHint("")).toBe(false);
     expect(detectCycleHint(ISSUE_7_SUPER_CYCLE.repeat(3))).toBe(true);
   });
@@ -85,32 +77,6 @@ describe("detectPrefixCycle", () => {
       "3. Add the user route",
     ].join("\n");
     expect(detectPrefixCycle(numberedList)).toBeUndefined();
-  });
-
-  it("ignores contraction openings that normalize into a fake second word", () => {
-    const well = [
-      "We'll first check the repository structure.",
-      "We'll examine the parser implementation.",
-      "We'll run the existing test suite.",
-    ].join("\n");
-    expect(detectPrefixCycle(well)).toBeUndefined();
-
-    const lets = [
-      "Let's inspect the fallback chain.",
-      "Let's compare the context windows.",
-      "Let's keep the turn on the same model.",
-    ].join("\n");
-    expect(detectPrefixCycle(lets)).toBeUndefined();
-    expect(detectPrefixCycle(lets.replaceAll("'", "’"))).toBeUndefined();
-  });
-
-  it("still detects a real two-word opening that is not a contraction", () => {
-    const text = [
-      "We need to read the parser.",
-      "We need to compare the tests.",
-      "We need to adjust the guard.",
-    ].join("\n");
-    expect(detectPrefixCycle(text)).toBe("we need");
   });
 });
 
@@ -292,7 +258,7 @@ describe("RepetitionGuard.add", () => {
   it("evicts tracked lines once MAX_TRACKED_LINES is exceeded", () => {
     const guard = new RepetitionGuard({ maxRepeatedLines: 2 });
     for (let i = 0; i < 4096; i += 1) {
-      expect(guard.add(`line_${i} unique tracked content here\n`)).toBe(false);
+      expect(guard.add(`unique tracked line number ${i} here\n`)).toBe(false);
     }
     expect(guard.add("brand new line after eviction xx\n")).toBe(false);
     expect(guard.add("brand new line after eviction xx\n")).toBe(true);
@@ -396,40 +362,6 @@ describe("RepetitionGuard.add", () => {
     expect(guard.tripped).toBe(true);
   });
 
-  it("does not treat reasoning sentence openings or a topical clause as a loop", () => {
-    const guard = new RepetitionGuard({
-      maxRepeatedLines: 4,
-      ...REASONING_REPETITION_OPTIONS,
-    });
-    const reasoning = [
-      "We'll first check the repository structure.",
-      "We need to see how the guard counts lines.",
-      "We'll examine the parser implementation.",
-      "Since the user is not available to answer, use the safe default and continue.",
-      "We have the context window sizes in the catalog.",
-      "We'll run the existing test suite.",
-      "We need to perform a deep refactoring of the parser next.",
-      "Let's inspect the fallback list before switching models.",
-      "Since the user is not available we should not block on questions.",
-      "We need to perform a deep refactoring without waiting for confirmation.",
-      "Since the user is not available the open questions can be skipped.",
-      "We need to perform a deep refactoring in the stream parser itself.",
-    ].join("\n");
-    expect(guard.add(reasoning)).toBe(false);
-    expect(guard.flush()).toBe(false);
-    expect(guard.tripped).toBe(false);
-  });
-
-  it("still trips a repeated paragraph when prefix cycles are disabled", () => {
-    const guard = new RepetitionGuard({
-      maxRepeatedLines: 4,
-      ...REASONING_REPETITION_OPTIONS,
-    });
-    expect(guard.add(ISSUE_7_SUPER_CYCLE.repeat(2))).toBe(false);
-    expect(guard.add(ISSUE_7_SUPER_CYCLE)).toBe(true);
-    expect(guard.tripped).toBe(true);
-  });
-
   it("does not trip on comment divider lines or markdown table separators", () => {
     const guard = new RepetitionGuard({ maxRepeatedLines: 4 });
     expect(guard.add("# " + "-".repeat(75) + "\n")).toBe(false);
@@ -438,5 +370,142 @@ describe("RepetitionGuard.add", () => {
     expect(guard.add("|---|---|---|---|---|---|---|---|---|---|\n")).toBe(false);
     expect(guard.flush()).toBe(false);
     expect(guard.tripped).toBe(false);
+  });
+});
+
+describe("RepetitionGuard.detectHistoryLoop", () => {
+  const assistant = (text: string) => ({ role: 2, content: [{ value: text }] });
+
+  it("detects 3 consecutive identical assistant preambles", () => {
+    const messages = [
+      assistant("Let me fix the formatting issue:"),
+      assistant("Let me fix the formatting issue:"),
+      assistant("Let me fix the formatting issue:"),
+    ];
+    expect(detectHistoryLoop(messages)).toBe(
+      normalizeLineForRepetition("Let me fix the formatting issue:"),
+    );
+  });
+
+  it("returns undefined below the repeat threshold", () => {
+    const messages = [
+      assistant("Let me fix the formatting issue:"),
+      assistant("Let me fix the formatting issue:"),
+      assistant("Something different entirely"),
+    ];
+    expect(detectHistoryLoop(messages)).toBeUndefined();
+  });
+
+  it("detects unicode preambles", () => {
+    const messages = [
+      assistant("Давайте исправим ошибку:"),
+      assistant("Давайте исправим ошибку:"),
+      assistant("Давайте исправим ошибку:"),
+    ];
+    expect(detectHistoryLoop(messages)).toBe(
+      normalizeLineForRepetition("Давайте исправим ошибку:"),
+    );
+  });
+
+  it("ignores non-assistant messages", () => {
+    const messages = [
+      { role: 1, content: [{ value: "Let me fix the formatting issue:" }] },
+      { role: 1, content: [{ value: "Let me fix the formatting issue:" }] },
+      { role: 1, content: [{ value: "Let me fix the formatting issue:" }] },
+    ];
+    expect(detectHistoryLoop(messages)).toBeUndefined();
+  });
+
+  it("accepts plain string content", () => {
+    const messages = [
+      { role: "assistant", content: "Let me fix the formatting issue:" },
+      { role: "assistant", content: "Let me fix the formatting issue:" },
+      { role: "assistant", content: "Let me fix the formatting issue:" },
+    ];
+    expect(detectHistoryLoop(messages)).toBe(
+      normalizeLineForRepetition("Let me fix the formatting issue:"),
+    );
+  });
+
+  it("detects Issue #13 prefix N-gram loops where actions differ after 'Let me'", () => {
+    const messages = [
+      assistant("Let me first check the current browser page to see if we're already on GitHub:"),
+      assistant("Let me take a screenshot to see where the Sign in button is:"),
+      assistant("Let me navigate directly to https://github.com/login using the browser:"),
+    ];
+    expect(detectHistoryLoop(messages)).toBe("let me");
+  });
+
+  it("detects Russian prefix N-gram loops in history", () => {
+    const messages = [
+      assistant("Давайте я проверю текущую страницу:"),
+      assistant("Давайте я сделаю снимок экрана:"),
+      assistant("Давайте я перейду по ссылке:"),
+    ];
+    expect(detectHistoryLoop(messages)).toBe("давайте я");
+  });
+
+  it("generates language-agnostic breaker notices without hardcoded English constraints", () => {
+    const messages = [
+      assistant("Давайте я проверю текущую страницу:"),
+      assistant("Давайте я сделаю снимок экрана:"),
+      assistant("Давайте я перейду по ссылке:"),
+    ];
+    const content = buildHistoryLoopBreakerContent(messages);
+    expect(content).toBeDefined();
+    expect(content).toContain('preamble "давайте я"');
+    expect(content).not.toContain("Let me fix");
+    expect(content).not.toContain("Let me run");
+  });
+});
+
+describe("RepetitionGuard.detectToolCallHistoryLoop", () => {
+  const toolCall = (name: string, input: unknown) => ({
+    role: 2,
+    content: [{ name, input }],
+  });
+
+  it("detects 3 identical consecutive tool calls", () => {
+    const messages = [
+      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
+      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
+      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
+    ];
+    expect(detectToolCallHistoryLoop(messages)).toBeDefined();
+  });
+
+  it("is insensitive to argument key order", () => {
+    const messages = [
+      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
+      toolCall("read_file", { startLine: 1, filePath: "/a.ts" }),
+      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
+    ];
+    expect(detectToolCallHistoryLoop(messages)).toBeDefined();
+  });
+
+  it("parses stringified arguments", () => {
+    const messages = [
+      toolCall("read_file", '{"filePath":"/a.ts","startLine":1}'),
+      toolCall("read_file", '{"startLine":1,"filePath":"/a.ts"}'),
+      toolCall("read_file", '{"filePath":"/a.ts","startLine":1}'),
+    ];
+    expect(detectToolCallHistoryLoop(messages)).toBeDefined();
+  });
+
+  it("returns undefined when arguments differ", () => {
+    const messages = [
+      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
+      toolCall("read_file", { filePath: "/a.ts", startLine: 2 }),
+      toolCall("read_file", { filePath: "/a.ts", startLine: 3 }),
+    ];
+    expect(detectToolCallHistoryLoop(messages)).toBeUndefined();
+  });
+
+  it("returns undefined below the repeat threshold", () => {
+    const messages = [
+      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
+      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
+    ];
+    expect(detectToolCallHistoryLoop(messages)).toBeUndefined();
   });
 });

@@ -1,12 +1,6 @@
-/**
- * Trailing window scanned for a repeated passage (issue #7 paragraphs).
- * The gram is 12 words, not 6: a 6-word topical clause ("since the user is
- * not available", "need to perform a deep refactoring") recurs in normal
- * reasoning without the surrounding words matching. Real loops repeat a
- * longer stretch. The planning-beat fixture normalizes to exactly 12.
- */
+/** Trailing window scanned for repeating 6-word grams (issue #7 paragraphs). */
 export const CYCLE_SCAN_CHARS = 4000;
-const CYCLE_GRAM_WORDS = 12;
+const CYCLE_GRAM_WORDS = 6;
 const CYCLE_MIN_GRAM_CHARS = 20;
 const CYCLE_MIN_REPEATS = 3;
 
@@ -152,9 +146,9 @@ export function normalizeForCycle(text: string): string {
 }
 
 /**
- * Returns the first repeated passage (`CYCLE_GRAM_WORDS` words) that appears
- * `CYCLE_MIN_REPEATS` times in a trailing window of `text`. Used by the live
- * guard (including answers with newlines) and by turn-report `cycleHint`.
+ * Returns the first 6-word gram that appears `CYCLE_MIN_REPEATS` times in a
+ * trailing window of `text`. Used by the live guard (including answers with
+ * newlines) and by turn-report `cycleHint`.
  */
 export function detectPhraseCycle(text: string): string | undefined {
   if (!text) {
@@ -187,16 +181,6 @@ const PREFIX_CYCLE_GRAM_WORDS = 2;
 const PREFIX_MIN_GRAM_CHARS = 4;
 
 /**
- * True when the line opens with a contraction (`We'll`, `Let's`).
- * `normalizeForCycle` splits the apostrophe, so the prefix gram becomes
- * `we ll` / `let s` — one word, not a repeated preamble.
- */
-function leadingTokenIsContraction(segment: string): boolean {
-  const first = segment.trim().split(/\s+/, 1)[0] ?? "";
-  return /['’ʼ＇]/u.test(first);
-}
-
-/**
  * Extracts a normalized leading prefix N-gram (default 2 words) from text.
  * Unicode-aware, lowercase, punctuation collapsed. Returns empty string if
  * fewer than gramWords words are present.
@@ -214,8 +198,8 @@ export function extractPrefixGram(text: string, gramWords = 2): string {
 }
 
 /**
- * Detects whether 3 or more non-list lines in a text block share the same leading
- * 2-word prefix (e.g. "let me", "давайте я", "lassen sie").
+ * Detects whether 3 or more non-list lines/sentences in a text block share the
+ * same leading 2-word prefix (e.g. "let me", "давайте я", "lassen sie").
  * Ignores markdown list items to prevent false positives on repetitive bullet points.
  * Language-agnostic, Unicode-aware, no hardcoded dictionaries.
  */
@@ -230,7 +214,7 @@ export function detectPrefixCycle(
   const gramWords = options.gramWords ?? PREFIX_CYCLE_GRAM_WORDS;
 
   const segments = text
-    .split(/\r?\n/)
+    .split(/(?:\r?\n|(?<=[^\d\s][.!?])\s+)/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
@@ -243,9 +227,6 @@ export function detectPrefixCycle(
     // Markdown list items (- item, * item, 1. item) are legitimate structures and
     // must not be treated as conversational preamble loops.
     if (/^\s*([*+-]|\d+[.)])\s+/.test(seg)) {
-      continue;
-    }
-    if (leadingTokenIsContraction(seg)) {
       continue;
     }
     const prefix = extractPrefixGram(seg, gramWords);

@@ -1,9 +1,18 @@
 import { StreamAttemptResult } from "./stream-pump";
 import { buildInvalidToolCallRetryMessage } from "../tools/parser";
+import { extractPrefixGram } from "../shared/cycle-detection";
+
+const HANGING_PUNCTUATION_SUFFIXES = [":", "...", "…", "—", "--"] as const;
+
+export function hasHangingPunctuation(text: string): boolean {
+  const trimmed = text.trimEnd();
+  return HANGING_PUNCTUATION_SUFFIXES.some((suffix) => trimmed.endsWith(suffix));
+}
 
 export type LoopRetryReason =
   | "repetition_loop"
   | "tool_call_loop"
+  | "hanging_colon"
   | "output_truncated"
   | "content_filter"
   | "stream_timeout";
@@ -12,6 +21,7 @@ export type RetryReason = LoopRetryReason | "invalid_tool_call" | "empty_stream"
 export const LOOP_RETRY_REASONS: ReadonlySet<RetryReason> = new Set([
   "repetition_loop",
   "tool_call_loop",
+  "hanging_colon",
   "output_truncated",
   "content_filter",
   "stream_timeout",
@@ -19,24 +29,6 @@ export const LOOP_RETRY_REASONS: ReadonlySet<RetryReason> = new Set([
 
 export function isLoopRetryReason(reason: RetryReason | undefined): reason is LoopRetryReason {
   return reason !== undefined && LOOP_RETRY_REASONS.has(reason);
-}
-
-/**
- * The only action in the attempt was a read that history already completed.
- * Nothing was emitted, so Copilot would otherwise see a finished turn with no
- * tool and no answer and stop the agent.
- */
-export function isSuppressedDuplicateStall(result: StreamAttemptResult): boolean {
-  const hasVisibleText = Boolean(
-    result.lastVisibleText && result.lastVisibleText.trim().length > 0,
-  );
-  return (
-    !result.emittedToolCall &&
-    !result.reportedVisibleContent &&
-    !hasVisibleText &&
-    result.skippedToolCalls.length > 0 &&
-    result.skippedToolCalls.every((call) => call.reason === "duplicate")
-  );
 }
 
 export interface AttemptRetryFacts {
@@ -50,12 +42,12 @@ export interface AttemptRetryFacts {
   maxInvalidToolRetries: number;
   fetchBudgetExhausted: boolean;
   knownToolNames: ReadonlySet<string>;
-  timeoutRetryCount?: number;
-  maxTimeoutRetries?: number;
+  previousPreamblePrefixes?: readonly string[];
 }
 
 export interface AttemptRetryEvaluation {
   isRepetitionLoop: boolean;
+  isHangingColon: boolean;
   isTruncatedLength: boolean;
   skippedUnknownTool: boolean;
   retryMessage: string | undefined;
@@ -70,12 +62,31 @@ export interface AttemptRetryEvaluation {
 
 /**
  * Classify a finished stream attempt: which retry class (if any) applies.
- * Pure — evaluates repetition loops, tool call loops, truncation, content filters, and timeouts.
+ * Pure — every branch and gate below mirrors the original inline predicates.
  */
 export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEvaluation {
   const { result } = facts;
 
-  const isRepetitionLoop = Boolean(result.repetitionTripped);
+  const currentPrefix = extractPrefixGram(result.lastVisibleText, 2);
+  const isPreamblePrefixLoop =
+    !result.sawToolCall &&
+    !result.emittedToolCall &&
+    facts.toolsEnabled &&
+    result.reportedVisibleContent &&
+    currentPrefix.length >= 4 &&
+    Boolean(facts.previousPreamblePrefixes?.includes(currentPrefix));
+
+  const isRepetitionLoop = Boolean(result.repetitionTripped) || isPreamblePrefixLoop;
+  const isHangingColon =
+    !isRepetitionLoop &&
+    !result.sawToolCall &&
+    !result.emittedToolCall &&
+    result.reportedVisibleContent &&
+    facts.toolsEnabled &&
+    hasHangingPunctuation(result.lastVisibleText) &&
+    (result.lastFinishReason === "stop" ||
+      result.lastFinishReason === null ||
+      result.lastFinishReason === undefined);
   const isTruncatedLength =
     result.lastFinishReason === "length" && !result.sawToolCall && !result.emittedToolCall;
 
@@ -85,15 +96,17 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
   const loopAutoContinueEligible = facts.loopContinueCount < facts.maxLoopContinues;
   const willRetryRepetitionLoop =
     isRepetitionLoop && loopAutoContinueEligible && (hasVisibleText || result.sawReasoning);
-  const suppressedDuplicateStall = isSuppressedDuplicateStall(result);
   const willRetryToolCallLoop =
     !willRetryRepetitionLoop &&
+    Boolean(result.toolCallLoopTripped) &&
     !result.emittedToolCall &&
-    loopAutoContinueEligible &&
-    (Boolean(result.toolCallLoopTripped) || suppressedDuplicateStall);
+    loopAutoContinueEligible;
+  const willRetryHangingColon =
+    !isRepetitionLoop && !willRetryToolCallLoop && isHangingColon && loopAutoContinueEligible;
   const willRetryTruncation =
-    !willRetryRepetitionLoop &&
+    !isRepetitionLoop &&
     !willRetryToolCallLoop &&
+    !isHangingColon &&
     isTruncatedLength &&
     loopAutoContinueEligible;
   const isContentFilterPartial =
@@ -102,8 +115,9 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     !result.emittedToolCall &&
     hasVisibleText;
   const willRetryContentFilter =
-    !willRetryRepetitionLoop &&
+    !isRepetitionLoop &&
     !willRetryToolCallLoop &&
+    !isHangingColon &&
     !isTruncatedLength &&
     isContentFilterPartial &&
     loopAutoContinueEligible;
@@ -121,29 +135,23 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     !result.emittedToolCall &&
     facts.invalidToolRetryCount < facts.maxInvalidToolRetries &&
     Boolean(retryMessage);
-  const timeoutAutoContinueEligible =
-    typeof facts.timeoutRetryCount === "number" && typeof facts.maxTimeoutRetries === "number"
-      ? facts.timeoutRetryCount < facts.maxTimeoutRetries
-      : loopAutoContinueEligible;
   const willRetryStreamTimeout =
     Boolean(result.timedOut) &&
     !result.emittedToolCall &&
     !willRetryAfterInvalidToolCall &&
-    timeoutAutoContinueEligible;
+    loopAutoContinueEligible;
   const willRetryOnLoop =
     willRetryRepetitionLoop ||
     willRetryToolCallLoop ||
+    willRetryHangingColon ||
     willRetryTruncation ||
     willRetryContentFilter ||
     willRetryStreamTimeout;
   const willRetryEmptyStream =
+    !result.sawReasoning &&
+    !result.sawToolCall &&
     !result.reportedVisibleContent &&
     !result.emittedToolCall &&
-    result.skippedToolCalls.length === 0 &&
-    !willRetryOnLoop &&
-    !isRepetitionLoop &&
-    !result.toolCallLoopTripped &&
-    !result.timedOut &&
     facts.emptyStreamRetryCount < facts.maxEmptyStreamRetries &&
     !facts.fetchBudgetExhausted;
 
@@ -152,11 +160,13 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
       ? "repetition_loop"
       : willRetryToolCallLoop
         ? "tool_call_loop"
-        : willRetryTruncation
-          ? "output_truncated"
-          : willRetryContentFilter
-            ? "content_filter"
-            : "stream_timeout"
+        : willRetryHangingColon
+          ? "hanging_colon"
+          : willRetryTruncation
+            ? "output_truncated"
+            : willRetryContentFilter
+              ? "content_filter"
+              : "stream_timeout"
     : willRetryAfterInvalidToolCall
       ? "invalid_tool_call"
       : willRetryEmptyStream
@@ -165,6 +175,7 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
 
   return {
     isRepetitionLoop,
+    isHangingColon,
     isTruncatedLength,
     skippedUnknownTool,
     retryMessage,

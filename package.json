@@ -3,7 +3,7 @@
   "publisher": "neuraldock",
   "displayName": "NVIDIA NIM Agent",
   "description": "Use NVIDIA NIM reasoning models in GitHub Copilot Chat for VS Code",
-  "version": "1.3.0-beta.1",
+  "version": "1.2.0",
   "license": "MIT",
   "homepage": "https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent",
   "bugs": {
@@ -239,14 +239,14 @@
         },
         "nvidia-nim.network.maxEmptyStreamRetries": {
           "type": "integer",
-          "default": 3,
+          "default": 2,
           "minimum": 0,
           "maximum": 5,
           "description": "Maximum retry attempts before failing or triggering fallback when a model returns no content."
         },
         "nvidia-nim.network.maxTotalFetchAttempts": {
           "type": "integer",
-          "default": 8,
+          "default": 6,
           "minimum": 2,
           "maximum": 30,
           "description": "Maximum cumulative HTTP fetch attempts across all retries, compact retries, and fallback model hops within a single Copilot turn."
@@ -305,7 +305,7 @@
           "default": 2,
           "minimum": 0,
           "maximum": 8,
-          "description": "How many times in one turn to nudge the model after a loop, truncated reply, repeated tool call, or stalled stream. 0 disables auto-continue."
+          "description": "How many times in one turn to nudge the model after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. 0 disables auto-continue."
         },
         "nvidia-nim.tools.maxConsecutiveIdenticalCalls": {
           "type": "integer",

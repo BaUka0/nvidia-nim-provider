@@ -8,11 +8,12 @@ import {
   getToolSchemaMap,
   hasRequiredToolArguments,
   missingRequiredToolArguments,
+  isDuplicateSuppressionEnabled,
   parseTextEmbeddedToolCalls,
+  ParsedTextSegment,
   parseToolArguments,
   repairToolArguments,
   stripKnownControlText,
-  ParsedTextSegment,
 } from "../src/tools/parser";
 import { ToolCallStreamAggregator } from "../src/provider/tool-call-aggregator";
 import { makeChatOptions } from "./helpers/fakes";
@@ -52,6 +53,7 @@ describe("tool argument parsing and validation", () => {
     const repaired = repairToolArguments(
       "read_file",
       { filePath: "/tmp/a.ts", startLine: "1", mode: "full", recursive: "true" },
+      undefined,
       schema,
     );
 
@@ -74,6 +76,7 @@ describe("tool argument parsing and validation", () => {
     const repaired = repairToolArguments(
       "read_file",
       { arguments: '{"filePath":"/tmp/a.ts","startLine":"2","mode":"selection"}' },
+      undefined,
       schema,
     );
 
@@ -83,13 +86,13 @@ describe("tool argument parsing and validation", () => {
 
   it("auto-fills required startLine and mode defaults when model supplies only filePath", () => {
     const schema = getToolSchemaMap(options).get("read_file");
-    const repaired = repairToolArguments("read_file", { filePath: "/tmp/a.ts" }, schema);
+    const repaired = repairToolArguments("read_file", { filePath: "/tmp/a.ts" }, undefined, schema);
 
     expect(repaired).toEqual({ filePath: "/tmp/a.ts", startLine: 1, mode: "full" });
     expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
   });
 
-  it("auto-fills declared optional startLine/endLine when omitted so host does not reject", () => {
+  it("auto-fills Copilot read_file line range when startLine/endLine are properties but not required", () => {
     const schema = getToolSchemaMap(
       makeChatOptions({
         tools: [
@@ -109,7 +112,12 @@ describe("tool argument parsing and validation", () => {
       }),
     ).get("read_file");
 
-    const repaired = repairToolArguments("read_file", { filePath: "/tmp/example.md" }, schema);
+    const repaired = repairToolArguments(
+      "read_file",
+      { filePath: "/tmp/example.md" },
+      undefined,
+      schema,
+    );
 
     expect(repaired).toEqual({
       filePath: "/tmp/example.md",
@@ -139,7 +147,12 @@ describe("tool argument parsing and validation", () => {
       }),
     ).get("read_file");
 
-    const repaired = repairToolArguments("read_file", { TargetFile: "/tmp/example.md" }, schema);
+    const repaired = repairToolArguments(
+      "read_file",
+      { TargetFile: "/tmp/example.md" },
+      undefined,
+      schema,
+    );
 
     expect(repaired).toEqual({
       TargetFile: "/tmp/example.md",
@@ -172,6 +185,7 @@ describe("tool argument parsing and validation", () => {
     const repaired = repairToolArguments(
       "read_resource",
       { uri: "file:///tmp/x", start: "cursor-a" },
+      undefined,
       schema,
     );
 
@@ -197,7 +211,7 @@ describe("tool argument parsing and validation", () => {
         ],
       }),
     ).get("read_file");
-    const repaired = repairToolArguments("read_file", {}, schema);
+    const repaired = repairToolArguments("read_file", {}, undefined, schema);
 
     expect(repaired).toEqual({ startLine: 1, endLine: 2000 });
     expect(missingRequiredToolArguments(repaired, schema)).toEqual(["filePath"]);
@@ -265,6 +279,7 @@ describe("tool argument parsing and validation", () => {
     const repaired = repairToolArguments(
       "run_query",
       { arguments: '{"query":"SELECT 1"}' },
+      undefined,
       schema,
     );
 
@@ -331,7 +346,7 @@ describe("tool argument parsing and validation", () => {
         '[{"id": 1, "title": "A", "status": "in-progress"}, {"id": 2, "title": "B", "status": "not-started"}, {"id": 4", "title": "C", "status": "not-started"}]',
     };
 
-    const repaired = repairToolArguments("manage_todo_list", rawArgs, todoSchema);
+    const repaired = repairToolArguments("manage_todo_list", rawArgs, undefined, todoSchema);
     expect(hasRequiredToolArguments(repaired, todoSchema)).toBe(true);
     expect(repaired).toEqual({
       todoList: [
@@ -349,7 +364,9 @@ describe("tool argument parsing and validation", () => {
   });
 
   it("preserves arguments for tools with an empty schema", () => {
-    expect(repairToolArguments("get_weather", { city: "Tokyo" }, { properties: {} })).toEqual({
+    expect(
+      repairToolArguments("get_weather", { city: "Tokyo" }, undefined, { properties: {} }),
+    ).toEqual({
       city: "Tokyo",
     });
   });
@@ -565,7 +582,7 @@ describe("tool argument parsing and validation", () => {
     expect(emitted[0].id.length).toBeGreaterThan(0);
   });
 
-  it("allows a second read for verification but suppresses a 3rd identical read", () => {
+  it("reports a completed duplicate instead of dropping it silently", () => {
     const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
     const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
     const aggregator = new ToolCallStreamAggregator({
@@ -591,7 +608,6 @@ describe("tool argument parsing and validation", () => {
       onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
     });
 
-    // 2nd call: allowed (verification pass)
     aggregator.handleToolCalls([
       {
         index: 0,
@@ -603,22 +619,9 @@ describe("tool argument parsing and validation", () => {
         },
       },
     ]);
-    expect(emitted).toHaveLength(1);
-    expect(skipped).toEqual([]);
+    aggregator.flushRemaining();
 
-    // 3rd call: suppressed as runaway duplicate
-    aggregator.handleToolCalls([
-      {
-        index: 1,
-        id: "read_file:2",
-        type: "function",
-        function: {
-          name: "read_file",
-          arguments: '{"filePath":"/tmp/a.ts","startLine":1,"mode":"full"}',
-        },
-      },
-    ]);
-    expect(emitted).toHaveLength(1);
+    expect(emitted).toEqual([]);
     expect(skipped).toEqual([{ name: "read_file", required: [], reason: "duplicate" }]);
   });
 
@@ -792,74 +795,6 @@ describe("tool argument parsing and validation", () => {
     expect(aggregator.getToolCallLoop()).toBeUndefined();
   });
 
-  it("emits tool call in thinking and suppresses duplicate tool call in content", () => {
-    const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
-    const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
-    const readArgs = { filePath: "src/message-parts.ts", startLine: 1, endLine: 2000 };
-    const aggregator = new ToolCallStreamAggregator({
-      options: makeChatOptions({
-        tools: [
-          {
-            name: "read_file",
-            inputSchema: {
-              type: "object",
-              properties: {
-                filePath: { type: "string" },
-                startLine: { type: "number" },
-                endLine: { type: "number" },
-              },
-              required: ["filePath"],
-            },
-          },
-        ],
-      }),
-      messages: [],
-      toolsConfig: ConfigManager.getToolsConfig(),
-      onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
-      onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
-    });
-
-    // 1. Emit tool call from thinking
-    const emittedThinking = aggregator.tryEmitText("read_file", readArgs, undefined, {
-      isThinking: true,
-    });
-    expect(emittedThinking).toBe(true);
-    expect(emitted).toHaveLength(1);
-    expect(emitted[0].name).toBe("read_file");
-    expect(emitted[0].args).toEqual(readArgs);
-
-    // 2. Repeat same tool call in thinking -> suppressed
-    const emittedThinkingRepeat = aggregator.tryEmitText("read_file", readArgs, undefined, {
-      isThinking: true,
-    });
-    expect(emittedThinkingRepeat).toBe(false);
-    expect(emitted).toHaveLength(1);
-    expect(skipped).toContainEqual({ name: "read_file", required: [], reason: "duplicate" });
-
-    // 3. Repeat same tool call in content via tryEmitText -> suppressed
-    const emittedContentText = aggregator.tryEmitText("read_file", readArgs);
-    expect(emittedContentText).toBe(false);
-    expect(emitted).toHaveLength(1);
-
-    // 4. Repeat same tool call in content via handleToolCalls (native) -> suppressed
-    aggregator.handleToolCalls([
-      {
-        index: 0,
-        id: "call_native_1",
-        type: "function",
-        function: { name: "read_file", arguments: JSON.stringify(readArgs) },
-      },
-    ]);
-    expect(emitted).toHaveLength(1);
-
-    // 5. Emit different tool call in content -> allowed
-    const otherArgs = { filePath: "src/tokenizer.ts", startLine: 1, endLine: 100 };
-    const emittedOther = aggregator.tryEmitText("read_file", otherArgs);
-    expect(emittedOther).toBe(true);
-    expect(emitted).toHaveLength(2);
-    expect(emitted[1].args).toEqual(otherArgs);
-  });
-
   it("defaults missing grep isRegexp to false so the call is not rejected", () => {
     const grepSchema = getToolSchemaMap(
       makeChatOptions({
@@ -879,7 +814,12 @@ describe("tool argument parsing and validation", () => {
       }),
     ).get("grep_search");
 
-    const repaired = repairToolArguments("grep_search", { query: "static fields" }, grepSchema);
+    const repaired = repairToolArguments(
+      "grep_search",
+      { query: "static fields" },
+      undefined,
+      grepSchema,
+    );
 
     expect(repaired).toEqual({ query: "static fields", isRegexp: false });
     expect(hasRequiredToolArguments(repaired, grepSchema)).toBe(true);
@@ -934,69 +874,7 @@ describe("tool argument parsing and validation", () => {
     expect(emitted).toEqual([{ id: "grep:1", name: "grep_search", args: grepArgs }]);
   });
 
-  it("suppresses duplicate read tool calls on the 3rd attempt and resets counter upon editing", () => {
-    const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
-    const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
-    const readArgs = { filePath: "provider.ts", startLine: 155, endLine: 750 };
-    const editArgs = { filePath: "provider.ts", content: "new code" };
-
-    const aggregator = new ToolCallStreamAggregator({
-      options: makeChatOptions({
-        tools: [
-          {
-            name: "read_file",
-            inputSchema: {
-              type: "object",
-              properties: {
-                filePath: { type: "string" },
-                startLine: { type: "number" },
-                endLine: { type: "number" },
-              },
-              required: ["filePath"],
-            },
-          },
-          {
-            name: "replace_file_content",
-            inputSchema: {
-              type: "object",
-              properties: {
-                filePath: { type: "string" },
-                content: { type: "string" },
-              },
-              required: ["filePath", "content"],
-            },
-          },
-        ],
-      }),
-      messages: [],
-      toolsConfig: ConfigManager.getToolsConfig(),
-      onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
-      onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
-    });
-
-    // 1st read: permitted
-    expect(aggregator.tryEmitText("read_file", readArgs)).toBe(true);
-    expect(emitted).toHaveLength(1);
-
-    // 2nd read (e.g. verification pass): permitted
-    expect(aggregator.tryEmitText("read_file", readArgs)).toBe(true);
-    expect(emitted).toHaveLength(2);
-
-    // 3rd read (loop!): suppressed
-    expect(aggregator.tryEmitText("read_file", readArgs)).toBe(false);
-    expect(emitted).toHaveLength(2);
-    expect(skipped).toContainEqual({ name: "read_file", required: [], reason: "duplicate" });
-
-    // Edit tool runs: resets read tool counts
-    expect(aggregator.tryEmitText("replace_file_content", editArgs)).toBe(true);
-    expect(emitted).toHaveLength(3);
-
-    // 4th read (after edit): permitted again!
-    expect(aggregator.tryEmitText("read_file", readArgs)).toBe(true);
-    expect(emitted).toHaveLength(4);
-  });
-
-  it("explains missing tool-call payloads in fallback text", () => {
+  it("explains missing tool-call payloads and duplicates in fallback text", () => {
     expect(
       buildInvalidToolCallFallback([
         { name: "tool_call", required: [], reason: "missing_payload" },
@@ -1006,7 +884,10 @@ describe("tool argument parsing and validation", () => {
       buildInvalidToolCallRetryMessage([
         { name: "tool_call", required: [], reason: "missing_payload" },
       ]),
-    ).toContain("no tool function arguments");
+    ).toContain("complete JSON arguments");
+    expect(
+      buildInvalidToolCallFallback([{ name: "read_file", required: [], reason: "duplicate" }]),
+    ).toContain("already completed");
   });
 
   it("parses Hermes/Nemotron XML tool calls and strips XML tags from text", () => {
@@ -1080,6 +961,77 @@ describe("tool argument parsing and validation", () => {
     expect(cleanText).toBe("I am preparing the code:\n\nLet us proceed.");
   });
 
+  it("fuses standalone XML parameters into native tool call arguments missing required fields", () => {
+    const createFileSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "create_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                content: { type: "string" },
+              },
+              required: ["filePath", "content"],
+            },
+          },
+        ],
+      }),
+    ).get("create_file");
+
+    // Native tool call received only content
+    const nativeArgs = { content: "export const x = 10;" };
+    const requestContext = {
+      extractedParameters: {
+        filePath: "/workspace/src/constants.ts",
+      },
+      extractedParametersToolName: "create_file",
+    };
+
+    const repaired = repairToolArguments(
+      "create_file",
+      nativeArgs,
+      requestContext,
+      createFileSchema,
+    );
+
+    expect(repaired).toEqual({
+      filePath: "/workspace/src/constants.ts",
+      content: "export const x = 10;",
+    });
+    expect(hasRequiredToolArguments(repaired, createFileSchema)).toBe(true);
+  });
+
+  it("does not fuse unscoped XML parameters into a later native tool call", () => {
+    const createFileSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "create_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                content: { type: "string" },
+              },
+              required: ["filePath", "content"],
+            },
+          },
+        ],
+      }),
+    ).get("create_file");
+
+    const repaired = repairToolArguments(
+      "create_file",
+      { content: "export const x = 10;" },
+      { extractedParameters: { filePath: "/etc/passwd" } },
+      createFileSchema,
+    );
+
+    expect(repaired.filePath).toBeUndefined();
+  });
+
   it("resolves common property aliases (file_path -> filePath, code -> content)", () => {
     const createFileSchema = getToolSchemaMap(
       makeChatOptions({
@@ -1100,7 +1052,7 @@ describe("tool argument parsing and validation", () => {
     ).get("create_file");
 
     const rawArgs = { file_path: "/workspace/main.py", code: 'print("hello")' };
-    const repaired = repairToolArguments("create_file", rawArgs, createFileSchema);
+    const repaired = repairToolArguments("create_file", rawArgs, undefined, createFileSchema);
 
     expect(repaired).toEqual({
       file_path: "/workspace/main.py",
@@ -1133,6 +1085,7 @@ describe("tool argument parsing and validation", () => {
     const repaired = repairToolArguments(
       "create_file",
       { path: "/etc/passwd", code: "x" },
+      { filePath: "/workspace/secret.ts" },
       createFileSchema,
     );
 
@@ -1267,6 +1220,381 @@ describe("tool argument parsing and validation", () => {
     ]);
   });
 
+  it("keeps literal </function> inside a standalone function parameter", () => {
+    const content = 'const close = "</function>";';
+    const text = `<function=edit_file><parameter=filePath>src/index.ts</parameter><parameter=content>${content}</parameter></function>`;
+
+    const result = parseTextEmbeddedToolCalls(text);
+
+    expect(result.incompleteText).toBe("");
+    expect(result.segments).toEqual([
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "edit_file",
+          args: {
+            filePath: "src/index.ts",
+            content,
+          },
+        },
+      },
+    ]);
+  });
+
+  it("keeps literal </tool_call> inside a Standard tool_parameter value", () => {
+    const fullCode = 'const end = "</tool_call>";';
+    const text = `<tool_call name="edit_file">\n<tool_parameter name="newString">${fullCode}</tool_parameter>\n</tool_call>`;
+
+    const result = parseTextEmbeddedToolCalls(text);
+
+    expect(result.incompleteText).toBe("");
+    expect(result.segments).toEqual([
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "edit_file",
+          args: {
+            newString: fullCode,
+          },
+        },
+      },
+    ]);
+  });
+
+  it("buffers a split newString that contains a quoted </tool_call> across chunks", () => {
+    const chunk1 =
+      '<tool_call>\n<function=edit_file>\n<parameter=filePath>src/parser.ts</parameter>\n<parameter=newString>\nconst toolCallEndToken = "</tool_';
+    const result1 = parseTextEmbeddedToolCalls(chunk1);
+
+    expect(result1.segments).toEqual([]);
+    expect(result1.incompleteText).toContain("<parameter=newString>");
+
+    const chunk2 = `${result1.incompleteText}call>";\n</parameter>\n</function>\n</tool_call>\nDone.`;
+    const result2 = parseTextEmbeddedToolCalls(chunk2);
+
+    expect(result2.incompleteText).toBe("");
+    expect(result2.segments).toEqual([
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "edit_file",
+          args: {
+            filePath: "src/parser.ts",
+            newString: 'const toolCallEndToken = "</tool_call>";',
+          },
+        },
+      },
+      { type: "text", text: "\nDone." },
+    ]);
+  });
+
+  it("copies explanation into a missing terminal goal and does not invent file payloads", () => {
+    const terminalSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "run_in_terminal",
+            inputSchema: {
+              type: "object",
+              properties: {
+                command: { type: "string" },
+                explanation: { type: "string" },
+                goal: { type: "string" },
+                mode: { type: "string", enum: ["sync", "terminal"] },
+              },
+              required: ["command", "explanation", "goal", "mode"],
+            },
+          },
+        ],
+      }),
+    ).get("run_in_terminal");
+
+    const repaired = repairToolArguments(
+      "run_in_terminal",
+      {
+        mode: "sync",
+        explanation: "Check if node_modules was created",
+        command: "cd /tmp && ls node_modules",
+      },
+      undefined,
+      terminalSchema,
+    );
+
+    expect(repaired).toEqual({
+      mode: "sync",
+      explanation: "Check if node_modules was created",
+      goal: "Check if node_modules was created",
+      command: "cd /tmp && ls node_modules",
+    });
+    expect(hasRequiredToolArguments(repaired, terminalSchema)).toBe(true);
+  });
+
+  it("does not invent missing file content so the call stays invalid", () => {
+    const createFileSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "create_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                content: { type: "string" },
+              },
+              required: ["filePath", "content"],
+            },
+          },
+        ],
+      }),
+    ).get("create_file");
+
+    const repaired = repairToolArguments(
+      "create_file",
+      { filePath: "src/a.ts" },
+      undefined,
+      createFileSchema,
+    );
+
+    expect(repaired).toEqual({ filePath: "src/a.ts" });
+    expect(hasRequiredToolArguments(repaired, createFileSchema)).toBe(false);
+  });
+
+  it("does not invent MCP rollback or empty collections to force schema success", () => {
+    const deploySchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "custom_mcp_service.deploy",
+            inputSchema: {
+              type: "object",
+              properties: {
+                environment: { type: "string", enum: ["staging", "production"] },
+                rollbackOnFailure: { type: "boolean" },
+                timeoutSeconds: { type: "integer" },
+                tags: { type: "array" },
+                metadata: { type: "object" },
+              },
+              required: ["environment", "rollbackOnFailure", "timeoutSeconds", "tags", "metadata"],
+            },
+          },
+        ],
+      }),
+    ).get("custom_mcp_service.deploy");
+
+    const repaired = repairToolArguments(
+      "custom_mcp_service.deploy",
+      { environment: "staging" },
+      undefined,
+      deploySchema,
+    );
+
+    expect(repaired).toEqual({ environment: "staging" });
+    expect(repaired.rollbackOnFailure).toBeUndefined();
+    expect(hasRequiredToolArguments(repaired, deploySchema)).toBe(false);
+  });
+
+  it("enables duplicate suppression only for read tools", () => {
+    expect(isDuplicateSuppressionEnabled("read_file")).toBe(true);
+    expect(isDuplicateSuppressionEnabled("view_file")).toBe(true);
+    expect(isDuplicateSuppressionEnabled("get_file_contents")).toBe(true);
+    expect(isDuplicateSuppressionEnabled("get_errors")).toBe(false);
+    expect(isDuplicateSuppressionEnabled("run_in_terminal")).toBe(false);
+    expect(isDuplicateSuppressionEnabled("edit_file")).toBe(false);
+    expect(isDuplicateSuppressionEnabled("list_dir")).toBe(false);
+  });
+
+  describe("Issue #8: cross-file line range scoping and read_file defaulting", () => {
+    const readFileSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "read_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "integer" },
+                endLine: { type: "integer" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      }),
+    ).get("read_file");
+
+    const editFileSchema = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "edit_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "integer" },
+                endLine: { type: "integer" },
+                content: { type: "string" },
+              },
+              required: ["filePath", "startLine", "endLine", "content"],
+            },
+          },
+        ],
+      }),
+    ).get("edit_file");
+
+    const requestContext = {
+      filePath: "/workspace/src/AutoroutePartHandler.cs",
+      startLine: 471,
+      endLine: 483,
+    };
+
+    it("does not pollute read_file on a secondary file with context selection line numbers", () => {
+      const repaired = repairToolArguments(
+        "read_file",
+        { filePath: "/workspace/test/AutoroutePartHandlerTests.cs" },
+        requestContext,
+        readFileSchema,
+      );
+
+      expect(repaired).toEqual({
+        filePath: "/workspace/test/AutoroutePartHandlerTests.cs",
+        startLine: 1,
+        endLine: 2000,
+      });
+      expect(hasRequiredToolArguments(repaired, readFileSchema)).toBe(true);
+    });
+
+    it("defaults read_file to start from line 1 even when reading the context file without startLine", () => {
+      const repaired = repairToolArguments(
+        "read_file",
+        { filePath: "/workspace/src/AutoroutePartHandler.cs" },
+        requestContext,
+        readFileSchema,
+      );
+
+      expect(repaired).toEqual({
+        filePath: "/workspace/src/AutoroutePartHandler.cs",
+        startLine: 1,
+        endLine: 2000,
+      });
+      expect(hasRequiredToolArguments(repaired, readFileSchema)).toBe(true);
+    });
+
+    it("preserves explicit startLine and defaults endLine to startLine + 1999 for read_file", () => {
+      const repaired = repairToolArguments(
+        "read_file",
+        { filePath: "/workspace/src/AutoroutePartHandler.cs", startLine: 50 },
+        requestContext,
+        readFileSchema,
+      );
+
+      expect(repaired).toEqual({
+        filePath: "/workspace/src/AutoroutePartHandler.cs",
+        startLine: 50,
+        endLine: 2049,
+      });
+    });
+
+    it("does not apply context selection line numbers to edit_file on a different file", () => {
+      const repaired = repairToolArguments(
+        "edit_file",
+        { filePath: "/workspace/test/OtherFile.cs", content: "new code" },
+        requestContext,
+        editFileSchema,
+      );
+
+      expect(repaired.filePath).toBe("/workspace/test/OtherFile.cs");
+      expect(repaired.startLine).toBeUndefined();
+      expect(repaired.endLine).toBeUndefined();
+      expect(hasRequiredToolArguments(repaired, editFileSchema)).toBe(false);
+    });
+
+    it("applies context selection line numbers to edit_file on the matching context file", () => {
+      const repaired = repairToolArguments(
+        "edit_file",
+        { filePath: "/workspace/src/AutoroutePartHandler.cs", content: "new code" },
+        requestContext,
+        editFileSchema,
+      );
+
+      expect(repaired).toEqual({
+        filePath: "/workspace/src/AutoroutePartHandler.cs",
+        startLine: 471,
+        endLine: 483,
+        content: "new code",
+      });
+      expect(hasRequiredToolArguments(repaired, editFileSchema)).toBe(true);
+    });
+
+    it("handles MCP-style view_file tool with AbsolutePath, StartLine, EndLine without line pollution", () => {
+      const viewFileSchema = getToolSchemaMap(
+        makeChatOptions({
+          tools: [
+            {
+              name: "view_file",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  AbsolutePath: { type: "string" },
+                  StartLine: { type: "integer" },
+                  EndLine: { type: "integer" },
+                },
+                required: ["AbsolutePath", "StartLine", "EndLine"],
+              },
+            },
+          ],
+        }),
+      ).get("view_file");
+
+      // Model calls view_file on another file supplying filePath instead of AbsolutePath and omitting lines
+      const repaired = repairToolArguments(
+        "view_file",
+        { filePath: "/workspace/test/AutoroutePartHandlerTests.cs" },
+        requestContext,
+        viewFileSchema,
+      );
+
+      expect(repaired).toEqual({
+        AbsolutePath: "/workspace/test/AutoroutePartHandlerTests.cs",
+        filePath: "/workspace/test/AutoroutePartHandlerTests.cs",
+        StartLine: 1,
+        EndLine: 2000,
+      });
+      expect(hasRequiredToolArguments(repaired, viewFileSchema)).toBe(true);
+    });
+
+    it("resolves bidirectional aliases for MCP write_to_file (TargetFile, CodeContent)", () => {
+      const writeToFileSchema = getToolSchemaMap(
+        makeChatOptions({
+          tools: [
+            {
+              name: "write_to_file",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  TargetFile: { type: "string" },
+                  CodeContent: { type: "string" },
+                },
+                required: ["TargetFile", "CodeContent"],
+              },
+            },
+          ],
+        }),
+      ).get("write_to_file");
+
+      const repaired = repairToolArguments(
+        "write_to_file",
+        { filePath: "/workspace/src/file.ts", content: "export const a = 1;" },
+        requestContext,
+        writeToFileSchema,
+      );
+
+      expect(repaired.TargetFile).toBe("/workspace/src/file.ts");
+      expect(repaired.CodeContent).toBe("export const a = 1;");
+      expect(hasRequiredToolArguments(repaired, writeToFileSchema)).toBe(true);
+    });
+  });
   it("keeps a tool tag inside return'...' as text", () => {
     const text =
       "return'hello <tool_call> <function=read_file> <parameter=filePath> /tmp/a.ts </parameter> </function> </tool_call>'";
@@ -1377,337 +1705,6 @@ describe("tool argument parsing and validation", () => {
       expect(textSegments).not.toContain("<tool_call>");
       expect(textSegments).not.toContain("</tool_call>");
     }
-  });
-
-  it("keeps literal </function> inside a standalone function parameter", () => {
-    const content = 'const close = "</function>";';
-    const text = `<function=edit_file><parameter=filePath>src/index.ts</parameter><parameter=content>${content}</parameter></function>`;
-
-    const result = parseTextEmbeddedToolCalls(text);
-
-    expect(result.incompleteText).toBe("");
-    expect(result.segments).toEqual([
-      {
-        type: "toolCall",
-        toolCall: {
-          name: "edit_file",
-          args: {
-            filePath: "src/index.ts",
-            content,
-          },
-        },
-      },
-    ]);
-  });
-
-  it("keeps literal </tool_call> inside a Standard tool_parameter value", () => {
-    const fullCode = 'const end = "</tool_call>";';
-    const text = `<tool_call name="edit_file">\n<tool_parameter name="newString">${fullCode}</tool_parameter>\n</tool_call>`;
-
-    const result = parseTextEmbeddedToolCalls(text);
-
-    expect(result.incompleteText).toBe("");
-    expect(result.segments).toEqual([
-      {
-        type: "toolCall",
-        toolCall: {
-          name: "edit_file",
-          args: {
-            newString: fullCode,
-          },
-        },
-      },
-    ]);
-  });
-
-  it("buffers a split newString that contains a quoted </tool_call> across chunks", () => {
-    const chunk1 =
-      '<tool_call>\n<function=edit_file>\n<parameter=filePath>src/parser.ts</parameter>\n<parameter=newString>\nconst toolCallEndToken = "</tool_';
-    const result1 = parseTextEmbeddedToolCalls(chunk1);
-
-    expect(result1.segments).toEqual([]);
-    expect(result1.incompleteText).toContain("<parameter=newString>");
-
-    const chunk2 = `${result1.incompleteText}call>";\n</parameter>\n</function>\n</tool_call>\nDone.`;
-    const result2 = parseTextEmbeddedToolCalls(chunk2);
-
-    expect(result2.incompleteText).toBe("");
-    expect(result2.segments).toEqual([
-      {
-        type: "toolCall",
-        toolCall: {
-          name: "edit_file",
-          args: {
-            filePath: "src/parser.ts",
-            newString: 'const toolCallEndToken = "</tool_call>";',
-          },
-        },
-      },
-      { type: "text", text: "\nDone." },
-    ]);
-  });
-
-  it("copies explanation into a missing terminal goal and does not invent file payloads", () => {
-    const terminalSchema = getToolSchemaMap(
-      makeChatOptions({
-        tools: [
-          {
-            name: "run_in_terminal",
-            inputSchema: {
-              type: "object",
-              properties: {
-                command: { type: "string" },
-                explanation: { type: "string" },
-                goal: { type: "string" },
-                mode: { type: "string", enum: ["sync", "terminal"] },
-              },
-              required: ["command", "explanation", "goal", "mode"],
-            },
-          },
-        ],
-      }),
-    ).get("run_in_terminal");
-
-    const repaired = repairToolArguments(
-      "run_in_terminal",
-      {
-        mode: "sync",
-        explanation: "Check if node_modules was created",
-        command: "cd /tmp && ls node_modules",
-      },
-      terminalSchema,
-    );
-
-    expect(repaired).toEqual({
-      mode: "sync",
-      explanation: "Check if node_modules was created",
-      goal: "Check if node_modules was created",
-      command: "cd /tmp && ls node_modules",
-    });
-    expect(hasRequiredToolArguments(repaired, terminalSchema)).toBe(true);
-  });
-
-  it("does not invent missing file content so the call stays invalid", () => {
-    const createFileSchema = getToolSchemaMap(
-      makeChatOptions({
-        tools: [
-          {
-            name: "create_file",
-            inputSchema: {
-              type: "object",
-              properties: {
-                filePath: { type: "string" },
-                content: { type: "string" },
-              },
-              required: ["filePath", "content"],
-            },
-          },
-        ],
-      }),
-    ).get("create_file");
-
-    const repaired = repairToolArguments("create_file", { filePath: "src/a.ts" }, createFileSchema);
-
-    expect(repaired).toEqual({ filePath: "src/a.ts" });
-    expect(hasRequiredToolArguments(repaired, createFileSchema)).toBe(false);
-  });
-
-  it("does not invent MCP rollback or empty collections to force schema success", () => {
-    const deploySchema = getToolSchemaMap(
-      makeChatOptions({
-        tools: [
-          {
-            name: "custom_mcp_service.deploy",
-            inputSchema: {
-              type: "object",
-              properties: {
-                environment: { type: "string", enum: ["staging", "production"] },
-                rollbackOnFailure: { type: "boolean" },
-                timeoutSeconds: { type: "integer" },
-                tags: { type: "array" },
-                metadata: { type: "object" },
-              },
-              required: ["environment", "rollbackOnFailure", "timeoutSeconds", "tags", "metadata"],
-            },
-          },
-        ],
-      }),
-    ).get("custom_mcp_service.deploy");
-
-    const repaired = repairToolArguments(
-      "custom_mcp_service.deploy",
-      { environment: "staging" },
-      deploySchema,
-    );
-
-    expect(repaired).toEqual({ environment: "staging" });
-    expect(repaired.rollbackOnFailure).toBeUndefined();
-    expect(hasRequiredToolArguments(repaired, deploySchema)).toBe(false);
-  });
-
-  describe("Issue #8: cross-file line range scoping and read_file defaulting", () => {
-    const readFileSchema = getToolSchemaMap(
-      makeChatOptions({
-        tools: [
-          {
-            name: "read_file",
-            inputSchema: {
-              type: "object",
-              properties: {
-                filePath: { type: "string" },
-                startLine: { type: "integer" },
-                endLine: { type: "integer" },
-              },
-              required: ["filePath", "startLine", "endLine"],
-            },
-          },
-        ],
-      }),
-    ).get("read_file");
-
-    const editFileSchema = getToolSchemaMap(
-      makeChatOptions({
-        tools: [
-          {
-            name: "edit_file",
-            inputSchema: {
-              type: "object",
-              properties: {
-                filePath: { type: "string" },
-                startLine: { type: "integer" },
-                endLine: { type: "integer" },
-                content: { type: "string" },
-              },
-              required: ["filePath", "startLine", "endLine", "content"],
-            },
-          },
-        ],
-      }),
-    ).get("edit_file");
-
-    it("does not pollute read_file on a secondary file with selection line numbers", () => {
-      const repaired = repairToolArguments(
-        "read_file",
-        { filePath: "/workspace/test/AutoroutePartHandlerTests.cs" },
-        readFileSchema,
-      );
-
-      expect(repaired).toEqual({
-        filePath: "/workspace/test/AutoroutePartHandlerTests.cs",
-        startLine: 1,
-        endLine: 2000,
-      });
-      expect(hasRequiredToolArguments(repaired, readFileSchema)).toBe(true);
-    });
-
-    it("defaults read_file to start from line 1 when reading a file without startLine", () => {
-      const repaired = repairToolArguments(
-        "read_file",
-        { filePath: "/workspace/src/AutoroutePartHandler.cs" },
-        readFileSchema,
-      );
-
-      expect(repaired).toEqual({
-        filePath: "/workspace/src/AutoroutePartHandler.cs",
-        startLine: 1,
-        endLine: 2000,
-      });
-      expect(hasRequiredToolArguments(repaired, readFileSchema)).toBe(true);
-    });
-
-    it("preserves explicit startLine and defaults endLine to startLine + 1999 for read_file", () => {
-      const repaired = repairToolArguments(
-        "read_file",
-        { filePath: "/workspace/src/AutoroutePartHandler.cs", startLine: 50 },
-        readFileSchema,
-      );
-
-      expect(repaired).toEqual({
-        filePath: "/workspace/src/AutoroutePartHandler.cs",
-        startLine: 50,
-        endLine: 2049,
-      });
-    });
-
-    it("does not fabricate line numbers for edit_file when omitted by the model", () => {
-      const repaired = repairToolArguments(
-        "edit_file",
-        { filePath: "/workspace/src/AutoroutePartHandler.cs", content: "new code" },
-        editFileSchema,
-      );
-
-      expect(repaired.filePath).toBe("/workspace/src/AutoroutePartHandler.cs");
-      expect(repaired.startLine).toBeUndefined();
-      expect(repaired.endLine).toBeUndefined();
-      expect(repaired.content).toBe("new code");
-      expect(hasRequiredToolArguments(repaired, editFileSchema)).toBe(false);
-    });
-
-    it("handles MCP-style view_file tool with AbsolutePath, StartLine, EndLine without line pollution", () => {
-      const viewFileSchema = getToolSchemaMap(
-        makeChatOptions({
-          tools: [
-            {
-              name: "view_file",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  AbsolutePath: { type: "string" },
-                  StartLine: { type: "integer" },
-                  EndLine: { type: "integer" },
-                },
-                required: ["AbsolutePath", "StartLine", "EndLine"],
-              },
-            },
-          ],
-        }),
-      ).get("view_file");
-
-      // Model calls view_file on another file supplying filePath instead of AbsolutePath and omitting lines
-      const repaired = repairToolArguments(
-        "view_file",
-        { filePath: "/workspace/test/AutoroutePartHandlerTests.cs" },
-        viewFileSchema,
-      );
-
-      expect(repaired).toEqual({
-        AbsolutePath: "/workspace/test/AutoroutePartHandlerTests.cs",
-        filePath: "/workspace/test/AutoroutePartHandlerTests.cs",
-        StartLine: 1,
-        EndLine: 2000,
-      });
-      expect(hasRequiredToolArguments(repaired, viewFileSchema)).toBe(true);
-    });
-
-    it("resolves bidirectional aliases for MCP write_to_file (TargetFile, CodeContent)", () => {
-      const writeToFileSchema = getToolSchemaMap(
-        makeChatOptions({
-          tools: [
-            {
-              name: "write_to_file",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  TargetFile: { type: "string" },
-                  CodeContent: { type: "string" },
-                },
-                required: ["TargetFile", "CodeContent"],
-              },
-            },
-          ],
-        }),
-      ).get("write_to_file");
-
-      const repaired = repairToolArguments(
-        "write_to_file",
-        { filePath: "/workspace/src/file.ts", content: "export const a = 1;" },
-        writeToFileSchema,
-      );
-
-      expect(repaired.TargetFile).toBe("/workspace/src/file.ts");
-      expect(repaired.CodeContent).toBe("export const a = 1;");
-      expect(hasRequiredToolArguments(repaired, writeToFileSchema)).toBe(true);
-    });
   });
 
   describe("text-embedded JSON tool fallback parsing (Issue #15)", () => {
@@ -2025,14 +2022,6 @@ describe("tool argument parsing and validation", () => {
     it("does not treat prose mentioning property names as incomplete tool calls", () => {
       const prose = 'Note that "filePath" is a required parameter for reading files.';
       expect(getIncompleteTextToolCallName(prose, toolSchemas)).toBeUndefined();
-    });
-  });
-
-  describe("buildInvalidToolCallRetryMessage with duplicates", () => {
-    it("returns undefined when all skipped calls have reason duplicate", () => {
-      const skipped = [{ name: "read_file", required: ["filePath"], reason: "duplicate" as const }];
-      expect(buildInvalidToolCallRetryMessage(skipped)).toBeUndefined();
-      expect(buildInvalidToolCallFallback(skipped)).toBeUndefined();
     });
   });
 });

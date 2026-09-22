@@ -104,8 +104,8 @@ Timeout and retry settings for streaming and HTTP connections.
 | :--- | :--- | :---: | :--- |
 | `nvidia-nim.network.streamIdleTimeout` | `120` | `15`–`3600` | Maximum idle watchdog time in seconds between streamed chunks or tool calls before considering the connection stalled. Increase this for complex autonomous agent workflows. |
 | `nvidia-nim.network.maxHttpRetries` | `3` | `0`–`10` | Number of automatic retries on temporary connection drops (e.g. network blips). |
-| `nvidia-nim.network.maxEmptyStreamRetries` | `3` | `0`–`5` | Number of immediate retries if the server responds without emitting text chunks. |
-| `nvidia-nim.network.maxTotalFetchAttempts` | `8` | `2`–`30` | Maximum cumulative HTTP fetch attempts across all retries, compact retries, and fallback model hops within a single Copilot turn. |
+| `nvidia-nim.network.maxEmptyStreamRetries` | `2` | `0`–`5` | Number of immediate retries if the server responds without emitting text chunks. |
+| `nvidia-nim.network.maxTotalFetchAttempts` | `6` | `2`–`30` | Maximum cumulative HTTP fetch attempts across all retries, compact retries, and fallback model hops within a single Copilot turn. |
 
 ---
 
@@ -118,8 +118,8 @@ Optional sampling parameters sent with each request.
 | `nvidia-nim.generation.temperature` | `null` | `0.0`–`2.0` | Controls response creativity. Lower values (e.g. `0.2`) make answers more focused and deterministic; higher values (e.g. `0.8`) make them more creative. `null` uses the model default. |
 | `nvidia-nim.generation.topP` | `null` | `0.0`–`1.0` | Alternative way to control response diversity. `null` uses the model default. |
 | `nvidia-nim.generation.maxOutputTokens` | `null` | `≥128` | Maximum length of generated responses in tokens. `null` allows the full model capacity. |
-| `nvidia-nim.generation.maxRepeatedLines` | `4` | `0`–`50` | Stops the response early if the model gets stuck repeating the same sentence or a longer passage. Ordinary repeated openings in thinking are left alone. `0` disables loop detection. |
-| `nvidia-nim.generation.maxLoopContinues` | `2` | `0`–`8` | How many times in one turn to nudge after a loop, truncated reply, repeated tool call, or stalled stream. `0` disables auto-continue. |
+| `nvidia-nim.generation.maxRepeatedLines` | `4` | `0`–`50` | Stops the response early if the model gets stuck repeating the same sentence or a paragraph with no line breaks. `0` disables loop detection. |
+| `nvidia-nim.generation.maxLoopContinues` | `2` | `0`–`8` | How many times in one turn to nudge after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. `0` disables auto-continue. |
 
 ---
 

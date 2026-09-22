@@ -102,8 +102,8 @@ export const DEFAULT_FALLBACK_CONFIG: FallbackConfig = {
 export const DEFAULT_NETWORK_CONFIG: NetworkConfig = {
   streamIdleTimeout: 120,
   maxHttpRetries: 3,
-  maxEmptyStreamRetries: 3,
-  maxTotalFetchAttempts: 8,
+  maxEmptyStreamRetries: 2,
+  maxTotalFetchAttempts: 6,
 };
 
 export const DEFAULT_REASONING_CONFIG: ReasoningConfig = {

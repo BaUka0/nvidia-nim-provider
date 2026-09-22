@@ -2,20 +2,20 @@ import { randomUUID } from "node:crypto";
 import type * as vscode from "vscode";
 import {
   getToolSchemaMap,
+  extractChatRequestContext,
+  getCompletedToolCallKeys,
   buildToolCallCanonicalKey,
   isDuplicateSuppressionEnabled,
-  DEFAULT_MAX_DUPLICATE_READS,
-  getCompletedToolCallCounts,
   isToolCallInput,
   hasRequiredToolArguments,
   missingRequiredToolArguments,
   parseToolArguments,
   parseToolArgumentsStrict,
   repairToolArguments,
+  ChatRequestContext,
   ToolSchema,
   SkippedToolCallReason,
 } from "../tools/parser";
-import { isEditTool, isReadTool } from "../tools/tool-kinds";
 import { debugLog } from "../shared/logging";
 import { MAX_TOOL_ARGUMENT_CHARS } from "../shared/constants";
 import {
@@ -27,7 +27,7 @@ import { ToolsConfig } from "../shared/config";
 
 export interface ToolCallStreamAggregatorOptions {
   options: vscode.ProvideLanguageModelChatResponseOptions;
-  messages?: readonly vscode.LanguageModelChatMessage[];
+  messages: readonly vscode.LanguageModelChatMessage[];
   toolsConfig: ToolsConfig;
   onEmitToolCall: (id: string, name: string, args: Record<string, unknown>) => void;
   onSkipToolCall: (name: string, required: string[], reason?: SkippedToolCallReason) => void;
@@ -36,6 +36,8 @@ export interface ToolCallStreamAggregatorOptions {
 export class ToolCallStreamAggregator {
   private toolSchemas: Map<string, ToolSchema>;
   private toolsConfig: ToolsConfig;
+  private requestContext: ChatRequestContext | undefined;
+  private emittedTextToolCallKeys: Set<string>;
   private onEmitToolCall: (id: string, name: string, args: Record<string, unknown>) => void;
   private onSkipToolCall: (
     name: string,
@@ -48,9 +50,6 @@ export class ToolCallStreamAggregator {
   private anonymousToolCallIndex: number | undefined;
   private nextAnonymousToolCallIndex = 0;
 
-  private emittedToolCallCounts: Map<string, number>;
-  private emittedCanonicalKeys = new Set<string>();
-  private emittedThinkingCanonicalKeys = new Set<string>();
   private sawToolCall = false;
   private emittedToolCall = false;
   private consecutiveToolCallKey: string | undefined;
@@ -61,8 +60,10 @@ export class ToolCallStreamAggregator {
   constructor(options: ToolCallStreamAggregatorOptions) {
     this.toolSchemas = getToolSchemaMap(options.options);
     this.toolsConfig = options.toolsConfig;
-    this.emittedToolCallCounts = getCompletedToolCallCounts(
-      options.messages ?? [],
+    this.requestContext = extractChatRequestContext(options.messages);
+    this.emittedTextToolCallKeys = getCompletedToolCallKeys(
+      options.messages,
+      this.requestContext,
       this.toolSchemas,
       this.toolsConfig,
     );
@@ -85,27 +86,43 @@ export class ToolCallStreamAggregator {
     return this.toolSchemas.get(name);
   }
 
-  public getToolSchemas(): ReadonlyMap<string, ToolSchema> {
-    return this.toolSchemas;
+  public recordExtractedParameters(params: Record<string, unknown>, toolName?: string): void {
+    if (!toolName) {
+      return;
+    }
+    if (!this.requestContext) {
+      this.requestContext = {};
+    }
+    const sameTool = this.requestContext.extractedParametersToolName === toolName;
+    this.requestContext.extractedParametersToolName = toolName;
+    this.requestContext.extractedParameters = {
+      ...(sameTool ? (this.requestContext.extractedParameters ?? {}) : {}),
+      ...params,
+    };
   }
 
   public tryEmitText(
     name: string,
     args: unknown,
     idPrefix: string = TEXT_EMBEDDED_TOOL_CALL_ID_PREFIX,
-    options?: { isThinking?: boolean },
   ): boolean {
     if (this.toolCallLoopKey) {
       return false;
     }
     this.sawToolCall = true;
     const schema = this.toolSchemas.get(name);
-    const repairedArgs = repairToolArguments(name, args, schema, this.toolsConfig);
+    const repairedArgs = repairToolArguments(
+      name,
+      args,
+      this.requestContext,
+      schema,
+      this.toolsConfig,
+    );
 
     if (isToolCallInput(repairedArgs) && hasRequiredToolArguments(repairedArgs, schema)) {
       debugLog("xml_tool_fallback", { name });
       const id = `${idPrefix}${randomUUID()}`;
-      return this.emitValidatedToolCall(name, repairedArgs, schema, id, options);
+      return this.emitValidatedToolCall(name, repairedArgs, schema, id);
     }
 
     this.onSkipToolCall(name, missingRequiredToolArguments(repairedArgs, schema));
@@ -120,34 +137,10 @@ export class ToolCallStreamAggregator {
   private emitValidatedToolCall(
     name: string,
     args: Record<string, unknown>,
-    _schema: ToolSchema | undefined,
+    schema: ToolSchema | undefined,
     id: string,
-    options?: { isThinking?: boolean },
   ): boolean {
     const canonicalKey = buildToolCallCanonicalKey(name, args);
-
-    if (!options?.isThinking && this.emittedThinkingCanonicalKeys.has(canonicalKey)) {
-      this.onSkipToolCall(name, [], "duplicate");
-      debugLog("Skipped duplicate tool call already emitted in thinking", { name, canonicalKey });
-      return false;
-    }
-
-    if (options?.isThinking && this.emittedCanonicalKeys.has(canonicalKey)) {
-      this.onSkipToolCall(name, [], "duplicate");
-      debugLog("Skipped duplicate tool call within thinking", { name, canonicalKey });
-      return false;
-    }
-
-    const currentCompleted = this.emittedToolCallCounts.get(canonicalKey) ?? 0;
-    if (
-      isDuplicateSuppressionEnabled(name, this.toolsConfig) &&
-      currentCompleted >= DEFAULT_MAX_DUPLICATE_READS
-    ) {
-      this.onSkipToolCall(name, [], "duplicate");
-      debugLog("Skipped duplicate tool call", { name, currentCompleted });
-      return false;
-    }
-
     if (canonicalKey === this.consecutiveToolCallKey) {
       this.consecutiveToolCallCount += 1;
     } else {
@@ -165,27 +158,18 @@ export class ToolCallStreamAggregator {
       });
       return false;
     }
-    this.emittedCanonicalKeys.add(canonicalKey);
-    if (options?.isThinking) {
-      this.emittedThinkingCanonicalKeys.add(canonicalKey);
+    if (
+      isDuplicateSuppressionEnabled(name, this.toolsConfig) &&
+      this.emittedTextToolCallKeys.has(canonicalKey)
+    ) {
+      this.onSkipToolCall(name, [], "duplicate");
+      debugLog("Skipped duplicate tool call", { name });
+      return false;
     }
     this.onEmitToolCall(id, name, args);
     this.emittedToolCall = true;
-    this.emittedToolCallCounts.set(canonicalKey, currentCompleted + 1);
-    if (isEditTool(name)) {
-      this.resetReadToolCounts();
-    }
+    this.emittedTextToolCallKeys.add(canonicalKey);
     return true;
-  }
-
-  private resetReadToolCounts(): void {
-    for (const key of Array.from(this.emittedToolCallCounts.keys())) {
-      const colonIndex = key.indexOf(":");
-      const tool = colonIndex !== -1 ? key.slice(0, colonIndex) : key;
-      if (isReadTool(tool)) {
-        this.emittedToolCallCounts.delete(key);
-      }
-    }
   }
 
   public recordInvalidToolCall(name: string): void {
@@ -291,7 +275,13 @@ export class ToolCallStreamAggregator {
         : buf.args
           ? parseToolArguments(buf.args)
           : {};
-      const args = repairToolArguments(buf.name ?? "", parsed, schema, this.toolsConfig);
+      const args = repairToolArguments(
+        buf.name ?? "",
+        parsed,
+        this.requestContext,
+        schema,
+        this.toolsConfig,
+      );
       if (buf.name && isToolCallInput(args) && hasRequiredToolArguments(args, schema)) {
         const id =
           buf.id && buf.id.length > 0 ? buf.id : `${NATIVE_TOOL_CALL_ID_PREFIX}${randomUUID()}`;

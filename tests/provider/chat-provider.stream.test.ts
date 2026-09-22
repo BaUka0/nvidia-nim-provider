@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { fetchModelsOrThrow, streamChatCompletion } from "../../src/api/client";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
+import { LOOP_BREAKER_MARKER } from "../../src/provider/loop-breaker";
 import { ApiErrorKind, NvidiaApiError } from "../../src/api/errors";
 import { getApiKeyFingerprint } from "../../src/api/key-resolver";
 import {
@@ -301,7 +302,7 @@ describe("NimChatModelProvider", () => {
       ),
     ).rejects.toThrow("[EMPTY_STREAM]");
 
-    expect(streamChatCompletion).toHaveBeenCalledTimes(4);
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
 
     const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
 
@@ -522,174 +523,6 @@ describe("NimChatModelProvider", () => {
     expect(textContent).toBe("actual answer text");
   });
 
-  it("keeps a tool-turn plan in thinking when it arrives after reasoning", async () => {
-    (secrets.get as jest.Mock).mockResolvedValue("test-key");
-    const plan =
-      "We have the api-key-manager.ts file as we created it earlier.\n\n" +
-      "Let's verify by searching for ensureApiKey in provider.ts.\n";
-    const mockStream = async function* () {
-      yield { choices: [{ delta: { reasoning_content: "Checking the call sites." } }] };
-      yield { choices: [{ delta: { content: plan.slice(0, 40) } }] };
-      yield { choices: [{ delta: { content: plan.slice(40) } }] };
-      yield {
-        choices: [
-          {
-            delta: {
-              tool_calls: [
-                {
-                  index: 0,
-                  id: "call_grep",
-                  type: "function",
-                  function: {
-                    name: "grep_search",
-                    arguments: '{"query":"ensureApiKey"}',
-                  },
-                },
-              ],
-            },
-            finish_reason: "tool_calls",
-          },
-        ],
-      };
-    };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
-
-    const progress = { report: jest.fn() };
-    await provider.provideLanguageModelChatResponse(
-      makeModel({
-        id: "nvidia/nemotron-3-super-120b-a12b",
-        maxInputTokens: 100000,
-        maxOutputTokens: 65536,
-      }),
-      makeUserMessages("Find ensureApiKey"),
-      makeChatOptions({
-        modelConfiguration: { reasoningMode: "high" },
-        tools: [
-          {
-            name: "grep_search",
-            description: "Search files",
-            inputSchema: {
-              type: "object",
-              properties: { query: { type: "string" } },
-              required: ["query"],
-            },
-          },
-        ],
-      }),
-      progress,
-      makeToken(),
-    );
-
-    const allReports = progress.report.mock.calls.map((c) => c[0]);
-    const thinkingText = allReports
-      .filter((r) => r instanceof ThinkingPart)
-      .map((r) => r.value)
-      .join("");
-    const textContent = allReports
-      .filter((r) => r instanceof vscode.LanguageModelTextPart)
-      .map((r) => r.value)
-      .join("");
-    const toolCalls = allReports.filter((r) => r instanceof vscode.LanguageModelToolCallPart);
-
-    expect(toolCalls).toHaveLength(1);
-    expect(thinkingText).toContain("Checking the call sites.");
-    expect(thinkingText).toContain("Let's verify by searching");
-    expect(textContent).not.toContain("Let's verify");
-    expect(textContent).not.toContain("api-key-manager");
-  });
-
-  it("extracts text-embedded tool call from reasoning_content and strips XML from thinking parts", async () => {
-    (secrets.get as jest.Mock).mockResolvedValue("test-key");
-
-    const reasoningWithToolCall =
-      "We have read the tokenizer.ts file. It's a small utility for token estimation.\n" +
-      "Now, let's look at the message-parts.ts to understand the LegacyPart.\n" +
-      "<tool_call> <function=read_file> <parameter=endLine> 2000 </parameter> <parameter=filePath> src/message-parts.ts </parameter> <parameter=startLine> 1 </parameter> </function> </tool_call>\n" +
-      "Let's wait for the file contents.";
-
-    const contentAnswer =
-      "We have read the tokenizer.ts file. It's a small utility for token estimation.\n" +
-      "Now, let's look at the message-parts.ts to understand the LegacyPart.";
-
-    const mockStream = async function* () {
-      yield {
-        choices: [
-          {
-            delta: { reasoning_content: reasoningWithToolCall },
-            finish_reason: null,
-          },
-        ],
-      };
-      yield {
-        choices: [
-          {
-            delta: { content: contentAnswer },
-            finish_reason: "stop",
-          },
-        ],
-      };
-    };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
-
-    const progress = { report: jest.fn() };
-    const token = makeToken();
-
-    await provider.provideLanguageModelChatResponse(
-      makeModel({
-        id: "deepseek-ai/deepseek-r1",
-        maxInputTokens: 100000,
-        maxOutputTokens: 65536,
-      }),
-      makeUserMessages("Read message-parts.ts"),
-      makeChatOptions({
-        tools: [
-          {
-            name: "read_file",
-            inputSchema: {
-              type: "object",
-              properties: {
-                filePath: { type: "string" },
-                startLine: { type: "number" },
-                endLine: { type: "number" },
-              },
-              required: ["filePath"],
-            },
-          },
-        ],
-      }),
-      progress,
-      token,
-    );
-
-    const allReports = progress.report.mock.calls.map((c) => c[0]);
-
-    // 1. Tool call was emitted as LanguageModelToolCallPart
-    const toolCallReports = allReports.filter((r) => r instanceof vscode.LanguageModelToolCallPart);
-    expect(toolCallReports).toHaveLength(1);
-    expect(toolCallReports[0].name).toBe("read_file");
-    expect(toolCallReports[0].input).toEqual({
-      filePath: "src/message-parts.ts",
-      startLine: 1,
-      endLine: 2000,
-    });
-
-    // 2. Thinking parts do NOT contain <tool_call> or </tool_call> XML
-    const thinkingText = allReports
-      .filter((r) => r instanceof ThinkingPart)
-      .map((r) => r.value)
-      .join("");
-    expect(thinkingText).not.toContain("<tool_call>");
-    expect(thinkingText).not.toContain("</tool_call>");
-    expect(thinkingText).not.toContain("<function=read_file>");
-    expect(thinkingText).toContain("We have read the tokenizer.ts file.");
-    expect(thinkingText).toContain("Let's wait for the file contents.");
-
-    // 3. Text parts contain the content answer
-    const textReports = allReports.filter((r) => r instanceof vscode.LanguageModelTextPart);
-    const textContent = textReports.map((r) => r.value).join("");
-    expect(textContent).toBe(contentAnswer);
-  });
-
   it("does not log stream chunks when debug is on unless logStreamChunks is enabled", async () => {
     process.env.NVIDIA_NIM_DEBUG = "1";
     setDeveloperLogOptions({ logStreamChunks: false });
@@ -848,7 +681,7 @@ describe("NimChatModelProvider", () => {
       ),
     ).rejects.toThrow("[EMPTY_STREAM]");
 
-    expect(streamChatCompletion).toHaveBeenCalledTimes(4);
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
 
     const allReports = progress.report.mock.calls.map((c) => c[0]);
     const thinkingText = allReports
@@ -948,11 +781,11 @@ describe("NimChatModelProvider", () => {
     );
   });
 
-  it("automaps unsupported reasoning mode into supported active mode instead of disabling it", async () => {
+  it("maps an unsupported reasoning mode onto the closest supported mode", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
-      yield { choices: [{ delta: { content: "Direct answer" } }] };
+      yield { choices: [{ delta: { content: "Direct answer without reasoning" } }] };
     };
     (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
 
@@ -977,7 +810,10 @@ describe("NimChatModelProvider", () => {
     expect(streamChatCompletion).toHaveBeenCalledWith(
       "test-key",
       expect.objectContaining({
-        chat_template_kwargs: expect.objectContaining({ thinking: true, reasoning_effort: "high" }),
+        chat_template_kwargs: expect.objectContaining({
+          thinking: true,
+          reasoning_effort: "high",
+        }),
       }),
       expect.any(AbortSignal),
       "test-ua",
@@ -987,7 +823,9 @@ describe("NimChatModelProvider", () => {
       (c) => c[0] instanceof vscode.LanguageModelTextPart,
     );
     expect(textReports).toHaveLength(1);
-    expect(textReports[0][0]).toEqual(expect.objectContaining({ value: "Direct answer" }));
+    expect(textReports[0][0]).toEqual(
+      expect.objectContaining({ value: "Direct answer without reasoning" }),
+    );
   });
 
   it("keeps content as the final answer when reasoning is enabled for a direct-content model", async () => {
@@ -2010,14 +1848,19 @@ describe("NimChatModelProvider", () => {
     inputSchema: { type: "object", properties: { filePath: { type: "string" } } },
   };
 
-  it("completes normally when output ends with a colon", async () => {
+  it("auto-continues when hanging colon is split across text parts", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
-    const stream = async function* () {
+    const hangingStream = async function* () {
       yield { choices: [{ delta: { content: "Let me inspect the file:" } }] };
       yield { choices: [{ delta: { content: " \n" }, finish_reason: "stop" }] };
     };
+    const continueStream = async function* () {
+      yield { choices: [{ delta: { content: "Calling the tool next." } }] };
+    };
     (streamChatCompletion as jest.Mock).mockReset();
-    (streamChatCompletion as jest.Mock).mockImplementationOnce(() => stream());
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => hangingStream())
+      .mockImplementationOnce(() => continueStream());
 
     const progress = { report: jest.fn() };
     await provider.provideLanguageModelChatResponse(
@@ -2033,9 +1876,12 @@ describe("NimChatModelProvider", () => {
       makeToken(),
     );
 
-    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(JSON.stringify(retryBody.messages)).toContain("next action");
     expect(progress.report).toHaveBeenCalledWith(
-      expect.objectContaining({ value: "Let me inspect the file:" }),
+      expect.objectContaining({ value: "Calling the tool next." }),
     );
   });
 
@@ -2074,6 +1920,7 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
     expect(JSON.stringify(retryBody.messages)).toContain("stalled");
     expect(JSON.stringify(retryBody.messages)).toContain("Working on the next change");
     expect(progress.report).toHaveBeenCalledWith(
@@ -2119,20 +1966,24 @@ describe("NimChatModelProvider", () => {
     );
   });
 
-  it("completes normally with a trailing colon after an empty-stream retry", async () => {
+  it("auto-continues a hanging colon after an empty-stream retry", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     const emptyStream = async function* () {
       yield { choices: [{ delta: {}, finish_reason: null }] };
     };
-    const responseStream = async function* () {
+    const hangingStream = async function* () {
       yield {
         choices: [{ delta: { content: "Let me inspect the file:" }, finish_reason: "stop" }],
       };
     };
+    const continueStream = async function* () {
+      yield { choices: [{ delta: { content: "Calling the tool next." } }] };
+    };
     (streamChatCompletion as jest.Mock).mockReset();
     (streamChatCompletion as jest.Mock)
       .mockImplementationOnce(() => emptyStream())
-      .mockImplementationOnce(() => responseStream());
+      .mockImplementationOnce(() => hangingStream())
+      .mockImplementationOnce(() => continueStream());
 
     const progress = { report: jest.fn() };
     await provider.provideLanguageModelChatResponse(
@@ -2148,9 +1999,11 @@ describe("NimChatModelProvider", () => {
       makeToken(),
     );
 
-    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    expect(streamChatCompletion).toHaveBeenCalledTimes(3);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[2][1];
+    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
     expect(progress.report).toHaveBeenCalledWith(
-      expect.objectContaining({ value: "Let me inspect the file:" }),
+      expect.objectContaining({ value: "Calling the tool next." }),
     );
   });
 
@@ -2270,6 +2123,7 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
     expect(JSON.stringify(retryBody.messages)).toContain("safety filter");
     expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: " world" }));
     expect(progress.report).not.toHaveBeenCalledWith(
@@ -2341,8 +2195,7 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(JSON.stringify(retryBody.messages)).toContain("previous thinking repeated");
-    expect(JSON.stringify(retryBody.messages)).not.toContain("repeating the previous output");
+    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Here is the direct answer." }),
     );
@@ -3836,7 +3689,7 @@ describe("NimChatModelProvider", () => {
       ),
     ).rejects.toThrow("[EMPTY_STREAM]");
 
-    expect(streamChatCompletion).toHaveBeenCalledTimes(4);
+    expect(streamChatCompletion).toHaveBeenCalledTimes(3);
     expect(progress.report).not.toHaveBeenCalled();
   });
 
@@ -3901,7 +3754,7 @@ describe("NimChatModelProvider", () => {
     expect(textReports.map((c) => c[0].value).join("")).toBe("Recovered answer");
   });
 
-  it("retries a reasoning-only stream before throwing empty_stream", async () => {
+  it("does not multi-retry a reasoning-only stream and throws empty_stream", async () => {
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((key: string, defaultValue: unknown) =>
         key === "fallback.enabled" ? false : defaultValue,
@@ -3932,7 +3785,7 @@ describe("NimChatModelProvider", () => {
       ),
     ).rejects.toThrow("[EMPTY_STREAM]");
 
-    expect(streamChatCompletion).toHaveBeenCalledTimes(4);
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
 
     const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     expect(thinkingReports).toHaveLength(1);

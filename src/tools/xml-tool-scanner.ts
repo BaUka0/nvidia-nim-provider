@@ -196,9 +196,9 @@ function readXmlTag(text: string, index: number): ParsedXmlTag | undefined {
     return undefined;
   }
 
-  const nameLower = nameMatch[0].toLowerCase();
-  const kind = asToolKind(nameLower);
+  const kind = asToolKind(nameMatch[0]);
   if (!kind) {
+    const nameLower = nameMatch[0].toLowerCase();
     const isAtEnd = cursor + nameMatch[0].length >= text.length;
     if (isAtEnd && Array.from(TOOL_KINDS).some((k) => k.startsWith(nameLower))) {
       return { kind: "tool_call", closing, rawLength: 0, incomplete: true };

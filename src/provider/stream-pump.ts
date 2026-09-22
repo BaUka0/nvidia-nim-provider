@@ -21,21 +21,12 @@ import {
   getToolSchemaMap,
   parseTextEmbeddedToolCalls,
   SkippedToolCall,
-  stripKnownControlText,
-  ToolSchema,
 } from "../tools/parser";
 import { collectChoiceToolCalls } from "../tools/stream-tool-calls";
-import { REASONING_REPETITION_OPTIONS, RepetitionGuard } from "./repetition-guard";
+import { RepetitionGuard } from "./repetition-guard";
 import { ToolCallStreamAggregator } from "./tool-call-aggregator";
 
 const MAX_TRACKED_VISIBLE_CHARS = 8192;
-/**
- * After reasoning has started, tool-turn prose is held out of the chat until
- * a tool call arrives (then it joins thinking) or the turn ends as an answer.
- * Long enough to cover a planning paragraph such as the 3.6k-character
- * Nemotron tool-turn leak; a longer reply starts streaming as the answer.
- */
-const PRE_TOOL_ANSWER_HOLD_CHARS = 8000;
 
 export type NimStreamUsage = {
   prompt_tokens?: number;
@@ -96,7 +87,6 @@ export interface StreamAttemptResult {
 export async function runStreamAttempt(input: StreamAttemptInput): Promise<StreamAttemptResult> {
   const skippedToolCalls: SkippedToolCall[] = [];
   let pendingTextEmbeddedContent = "";
-  let pendingThinkingEmbeddedContent = "";
   let pendingText = "";
   let sawToolCall = false;
   let emittedToolCall = false;
@@ -118,7 +108,6 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   });
   const reasoningGuard = new RepetitionGuard({
     maxRepeatedLines: input.maxRepeatedLines,
-    ...REASONING_REPETITION_OPTIONS,
   });
 
   const markFirstResponse = (): void => {
@@ -218,41 +207,12 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     return toolAggregator;
   };
 
-  let parsedToolSchemas: Map<string, ToolSchema> | undefined;
-  const getToolSchemas = (): Map<string, ToolSchema> | undefined => {
+  let parsedToolSchemas: ReturnType<typeof getToolSchemaMap> | undefined;
+  const getToolSchemas = (): ReturnType<typeof getToolSchemaMap> | undefined => {
     if (!input.options.tools || input.options.tools.length === 0) {
       return undefined;
     }
     return (parsedToolSchemas ??= getToolSchemaMap(input.options));
-  };
-
-  const applyEmbeddedSegments = (
-    segments: ReturnType<typeof parseTextEmbeddedToolCalls>["segments"],
-    sink: (text: string) => void,
-    isThinking: boolean,
-  ): void => {
-    for (const segment of segments) {
-      if (segment.type === "text") {
-        sink(segment.text);
-        continue;
-      }
-
-      if (segment.type === "invalidToolCall") {
-        sawToolCall = true;
-        getToolAggregator().recordInvalidToolCall(segment.name);
-        continue;
-      }
-
-      sawToolCall = true;
-      if (isThinking) {
-        getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args, undefined, {
-          isThinking: true,
-        });
-      } else {
-        getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args);
-      }
-    }
-    toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
   };
 
   const processFilteredText = (text: string): void => {
@@ -264,65 +224,43 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       return;
     }
 
-    const parsed = parseTextEmbeddedToolCalls(pendingTextEmbeddedContent + text, getToolSchemas());
-    pendingTextEmbeddedContent =
-      parsed.incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : parsed.incompleteText;
-    applyEmbeddedSegments(
-      parsed.segments,
-      (value) => {
-        pendingText += value;
-      },
-      false,
-    );
-  };
-
-  const processThinkingText = (text: string): void => {
-    if (!text) {
-      return;
-    }
-    if (input.parseEmbeddedToolText === false) {
-      emitThinking(text);
-      return;
-    }
-
-    const parsed = parseTextEmbeddedToolCalls(
-      pendingThinkingEmbeddedContent + text,
+    const { segments, incompleteText, extractedParams } = parseTextEmbeddedToolCalls(
+      pendingTextEmbeddedContent + text,
       getToolSchemas(),
     );
-    pendingThinkingEmbeddedContent =
-      parsed.incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : parsed.incompleteText;
-    applyEmbeddedSegments(parsed.segments, emitThinking, true);
-  };
+    pendingTextEmbeddedContent =
+      incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : incompleteText;
+    if (extractedParams && Object.keys(extractedParams).length > 0) {
+      const named = segments.find(
+        (segment) => segment.type === "toolCall" || segment.type === "invalidToolCall",
+      );
+      const toolName =
+        named?.type === "toolCall"
+          ? named.toolCall.name
+          : named?.type === "invalidToolCall"
+            ? named.name
+            : undefined;
+      if (toolName) {
+        getToolAggregator().recordExtractedParameters(extractedParams, toolName);
+      }
+    }
 
-  const finalizeEmbeddedTail = (
-    pending: string,
-    sink: (text: string) => void,
-    isThinking: boolean,
-    truncatedLog: string,
-  ): void => {
-    if (!pending) {
-      return;
-    }
-    const parsed = parseTextEmbeddedToolCalls(pending, getToolSchemas(), { atStreamEnd: true });
-    applyEmbeddedSegments(parsed.segments, sink, isThinking);
-    if (!parsed.incompleteText) {
-      return;
-    }
-    const name = getIncompleteTextToolCallName(parsed.incompleteText, getToolSchemas());
-    if (name) {
+    for (const segment of segments) {
+      if (segment.type === "text") {
+        pendingText += segment.text;
+        continue;
+      }
+
+      if (segment.type === "invalidToolCall") {
+        sawToolCall = true;
+        getToolAggregator().recordInvalidToolCall(segment.name);
+        continue;
+      }
+
       sawToolCall = true;
-      const schema = getToolAggregator().getToolSchema(name);
-      skippedToolCalls.push({
-        name,
-        required: schema?.required ?? [],
-      });
-      debugLog(truncatedLog, { name });
-      return;
+      getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args);
     }
-    const stripped = stripKnownControlText(parsed.incompleteText);
-    if (stripped) {
-      sink(stripped);
-    }
+    toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
   };
 
   const processAnswerText = (text: string): void => {
@@ -333,84 +271,31 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     processFilteredText(text);
   };
 
-  let heldAnswer = "";
-  let answerLane: "hold" | "text" = "hold";
-  const toolsOffered = (input.options.tools?.length ?? 0) > 0;
-
-  const showAnswerText = (text: string): void => {
-    if (!text) {
-      return;
-    }
-    processAnswerText(text);
-    flushPendingText();
-  };
-
-  const absorbThinking = (text: string): void => {
-    if (!text) {
-      return;
-    }
-    sawReasoning = true;
-    markFirstResponse();
-    let crossedThreshold = false;
-    if (!reasoningGuard.tripped) {
-      crossedThreshold = reasoningGuard.add(text);
-    }
-    processThinkingText(text);
-    if (crossedThreshold) {
-      debugLog("repetitionGuard", {
-        model: input.model.id,
-        trippedLine: reasoningGuard.trippedLine,
-        source: "reasoning",
-      });
-      outputLog(
-        "repetitionGuard",
-        `Stopped degenerate repeat loop in reasoning on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
-      );
-    }
-  };
-
-  const foldHeldAnswerIntoThinking = (): void => {
-    if (!heldAnswer) {
-      return;
-    }
-    const text = heldAnswer;
-    heldAnswer = "";
-    absorbThinking(text);
-  };
-
-  const releaseHeldAnswer = (): void => {
-    if (!heldAnswer) {
-      return;
-    }
-    const text = heldAnswer;
-    heldAnswer = "";
-    answerLane = "text";
-    showAnswerText(text);
-  };
-
-  const acceptAnswerText = (text: string): void => {
-    if (!text) {
-      return;
-    }
-    const holdAnswer =
-      answerLane === "hold" && toolsOffered && input.reasoningIsolationExpected && sawReasoning;
-    if (!holdAnswer) {
-      showAnswerText(text);
-      return;
-    }
-    heldAnswer += text;
-    if (heldAnswer.length > PRE_TOOL_ANSWER_HOLD_CHARS) {
-      releaseHeldAnswer();
-    }
-  };
-
   const router = new ReasoningStreamRouter({
     reasoningIsolationExpected: input.reasoningIsolationExpected,
     onThinking: (text) => {
-      absorbThinking(text);
+      sawReasoning = true;
+      markFirstResponse();
+      let crossedThreshold = false;
+      if (!reasoningGuard.tripped) {
+        crossedThreshold = reasoningGuard.add(text);
+      }
+      emitThinking(text);
+      if (crossedThreshold) {
+        debugLog("repetitionGuard", {
+          model: input.model.id,
+          trippedLine: reasoningGuard.trippedLine,
+          source: "reasoning",
+        });
+        outputLog(
+          "repetitionGuard",
+          `Stopped degenerate repeat loop in reasoning on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
+        );
+      }
     },
     onText: (text) => {
-      acceptAnswerText(text);
+      processAnswerText(text);
+      flushPendingText();
     },
     onFirstResponse: () => {
       markFirstResponse();
@@ -480,7 +365,6 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       if (streamedToolCalls.length > 0) {
         markFirstResponse();
         sawToolCall = true;
-        foldHeldAnswerIntoThinking();
         getToolAggregator().handleToolCalls(streamedToolCalls);
         toolCallLoopKey ??= getToolAggregator().getToolCallLoop()?.key;
       }
@@ -549,17 +433,12 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     );
   }
 
-  router.flush();
-  if (lastFinishReason === "tool_calls") {
-    foldHeldAnswerIntoThinking();
-  } else {
-    releaseHeldAnswer();
-  }
-
   if (toolAggregator) {
     toolAggregator.flushRemaining();
     toolCallLoopKey ??= toolAggregator.getToolCallLoop()?.key;
   }
+
+  router.flush();
 
   if (lastFinishReason === "tool_calls" && !emittedToolCall) {
     sawToolCall = true;
@@ -576,23 +455,53 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     }
   }
 
-  finalizeEmbeddedTail(
-    pendingTextEmbeddedContent,
-    (value) => {
-      pendingText += value;
-    },
-    false,
-    "Skipped truncated text tool call",
-  );
-  pendingTextEmbeddedContent = "";
-
-  finalizeEmbeddedTail(
-    pendingThinkingEmbeddedContent,
-    emitThinking,
-    true,
-    "Skipped truncated text tool call in thinking",
-  );
-  pendingThinkingEmbeddedContent = "";
+  if (pendingTextEmbeddedContent) {
+    const parsed = parseTextEmbeddedToolCalls(pendingTextEmbeddedContent, getToolSchemas(), {
+      atStreamEnd: true,
+    });
+    pendingTextEmbeddedContent = "";
+    if (parsed.extractedParams && Object.keys(parsed.extractedParams).length > 0) {
+      const named = parsed.segments.find(
+        (segment) => segment.type === "toolCall" || segment.type === "invalidToolCall",
+      );
+      const toolName =
+        named?.type === "toolCall"
+          ? named.toolCall.name
+          : named?.type === "invalidToolCall"
+            ? named.name
+            : undefined;
+      if (toolName) {
+        getToolAggregator().recordExtractedParameters(parsed.extractedParams, toolName);
+      }
+    }
+    for (const segment of parsed.segments) {
+      if (segment.type === "text") {
+        pendingText += segment.text;
+        continue;
+      }
+      if (segment.type === "invalidToolCall") {
+        sawToolCall = true;
+        getToolAggregator().recordInvalidToolCall(segment.name);
+        continue;
+      }
+      sawToolCall = true;
+      getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args);
+    }
+    toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
+    const incompleteTextToolName = getIncompleteTextToolCallName(
+      parsed.incompleteText,
+      getToolSchemas(),
+    );
+    if (incompleteTextToolName) {
+      sawToolCall = true;
+      const schema = getToolAggregator().getToolSchema(incompleteTextToolName);
+      skippedToolCalls.push({
+        name: incompleteTextToolName,
+        required: schema?.required ?? [],
+      });
+      debugLog("Skipped truncated text tool call", { name: incompleteTextToolName });
+    }
+  }
 
   if (pendingText) {
     flushPendingText();

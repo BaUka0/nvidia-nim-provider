@@ -4,44 +4,22 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
-### Added
-
-- Added text-embedded JSON tool fallback parsing. When models (such as Nemotron 120B under heavy tool catalogs) emit tool arguments as JSON text or fenced markdown blocks instead of native wire protocol parts, the extension now detects the intended tool from schema matching or explicit name fields and executes it directly as a tool call rather than dumping raw JSON text into chat.
-
 ### Changed
 
-- Increased the default number of empty response retries before triggering fallback to 3, and increased the total connection attempt budget to 8.
-- Automatic retries now apply when a model emits reasoning without producing a final answer or tool call, preventing premature model switches. The retry counter resets as soon as the model responds with visible text or a tool call.
-- Consolidated leading system directives and user instructions into a single unified system turn, preventing multi-system message context pollution in Copilot Chat requests.
-- Adjusted duplicate read tool suppression: models are permitted up to two identical read operations (allowing a verification re-read of the same file and range), while infinite repeat loops on the third identical call are suppressed. The counter automatically resets whenever file modifications or edits take place.
-- Calibrated Nemotron tool calling parameters: configured tool temperature to 0.6 and disabled parallel tool calls during tool execution turns, mitigating infinite reasoning and tool repetition loops while preserving standard temperature for general dialogue.
+- Nemotron tool turns use a temperature of 0.6. Parallel tool calls stay available.
+- A reasoning mode the model does not support, including "on" and "auto", maps to the closest mode that model does support.
+- A read that omits a line range now covers up to 2000 lines from the start line.
+- Loop reminders and invalid-tool retries ask the model to continue the task. They no longer open with "hey you got stuck" or "Retry NOW".
 
 ### Fixed
 
-- A planning paragraph that a reasoning model writes just before a tool call stays in the thinking block. It is no longer printed into the chat as the answer.
-- Repeated sentence openings inside thinking no longer make the extension tell the model it is stuck on the same preamble. That notice is reserved for the visible answer.
-- When the model asks to read a file that was already read earlier in the chat, the turn no longer ends with nothing for Copilot to run. The model is asked to continue from the existing result, and if it does not, a short note is shown so the agent can keep going.
-- Thinking is no longer cut off because several reasoning lines start the same way ("We'll", "Let's", "We need"). A loop in thinking has to repeat the same line or a longer passage. A short phrase that merely comes up again while the model is working is left alone.
-- When those thinking retries are used up and there is still no answer, the turn stays on the current model. It is no longer reported as an empty response, which was switching to the backup model and compacting a long chat to fit a smaller context window.
-- Fixed an issue where XML tool calls following conversational text with contractions (such as "Let's" or "I'll") or quoted search terms were mistakenly treated as literal code strings and printed into the chat window instead of executing as tool calls.
-- Fixed stream handling for partial XML tags arriving across chunk boundaries so that in-flight tool calls are not prematurely flushed as plain text.
-- Fixed reasoning mode configuration so that unsupported reasoning modes (such as "on", "auto", or modes from different models) gracefully automap to the best matching active reasoning mode across all models rather than disabling thinking or leaking reasoning tokens into chat.
-- Fixed an issue where models that draft tool calls during their thinking process had raw tool call tags displayed in the thinking block and failed to execute the tool. Tool calls within reasoning are now parsed and executed directly, raw XML tags are stripped from thinking output, and duplicate calls repeated in the response text are suppressed.
-- Fixed loop recovery to detect varied action preambles and cross-turn repetition loops without injecting synthetic prompt tags or scolding the model.
-- Fixed attempt retry routing so that repetition loops that exhaust their retry budget do not trigger unnecessary empty-response retries or premature model switches, and stream timeouts no longer consume loop retry budget.
-- Fixed line-range repair for read tools so that omitted line ranges are filled with declared default bounds, preventing file reading failures in Copilot Chat.
-- Fixed JSON text detection so ordinary JSON examples and non-tool objects stay intact in chat, including an unfinished wrapper around a nested tool-shaped object. A fenced tool call still runs when the reply ends before its closing fence.
-- Fixed stream cleanup so that partial non-tool text and thinking content held at the end of a response are flushed to chat rather than being discarded.
-- Fixed duplicate tool suppression so that models are not told their arguments were invalid when duplicate tool calls are suppressed.
-- Fixed JSON tool fallback so internal field names such as constructor are not forwarded as tool arguments.
-- Fixed code snippets written as return'...' so a tool tag inside that string is left as text. Contractions such as "Let's" and possessives such as "users'" still allow the following tool call to run.
+- A tool call written as JSON text, or inside a json code fence, is executed. Ordinary JSON stays in the chat, including an unfinished wrapper around a nested object that looks like a tool call. A fenced tool call still runs when the reply ends before the closing fence.
+- "Let's", "I'll", and "users'" no longer hide the following XML tool call. A snippet written as return'...' stays text.
 
 ### Removed
 
-- Removed custom adapter system prompts and hygiene directives. The provider no longer prepends synthetic tool or hygiene system instructions over Copilot's system prompt.
-- Removed chat text regex scraping and line number fabrication. Tool arguments are no longer mutated using heuristics parsed from conversation history text.
-- Removed aggressive retry shouting and scolding prompts in malformed tool call handling in favor of concise, neutral error descriptions.
-- Removed sampling penalties configuration (`nvidia-nim.generation.frequencyPenalty` and `nvidia-nim.generation.presencePenalty`). Sampling penalties are no longer sent to NVIDIA NIM models, avoiding compatibility issues with models that enforce immutable penalty defaults.
+- Sampling penalty settings are gone, and those penalties are no longer sent with a request.
+- The extension no longer adds its own tool or formatting instructions on top of Copilot's system prompt.
 
 ## [1.2.0] - 2026-09-22
 
