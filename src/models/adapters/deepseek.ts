@@ -3,7 +3,7 @@ import { BaseModelAdapter, ensureChatTemplateKwargs, resolveReasoningMode } from
 export class DeepSeekAdapter extends BaseModelAdapter {
   readonly idPattern = /(^|[\/_-])deepseek([\/_-]|$)/i;
 
-  readonly supportedReasoningModes = ["none", "high", "max"];
+  readonly supportedReasoningModes = ["none", "low", "high", "max"];
   readonly reasoningParameterFormat = "chat_template_kwargs" as const;
   // NVIDIA currently prefers native tool_calls for DeepSeek, but the provider
   // deliberately accepts DSML/text control-token fallbacks as a recovery path.

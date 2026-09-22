@@ -44,6 +44,16 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
   - **Neutralized retry error messages**: Replaced aggressive, scolding instructions ("Do not emit malformed JSON", "Retry NOW") in `invalid-call-messages.ts` with clean, neutral guidance.
 - **Complete removal of sampling penalties (`package.json`, `src/types.ts`, `src/shared/config.ts`, `src/models/adapters/*`, `src/provider/request-builder.ts`, `src/shared/turn-report.ts`, `docs/configuration.md`, `tests/*`).** Removed `nvidia-nim.generation.frequencyPenalty` and `nvidia-nim.generation.presencePenalty` configuration properties from `package.json` and `src/shared/config.ts`. Removed `frequency_penalty`, `presence_penalty`, and `repetition_penalty` from `NimChatRequest`, `GenerationConfig`, and `TurnReport`. Removed adapter penalty capability flags (`supportsPresencePenalty`, `supportsFrequencyPenalty`, `supportsRepetitionPenalty`) and profile defaults (`defaultFrequencyPenalty`, `defaultPresencePenalty`). Removed all penalty clamping and forwarding logic from `NimRequestBuilder`, restricting `assignClamped` strictly to `top_p`.
 
+## [1.2.0] - 2026-09-22
+
+### Added
+
+- **DeepSeek V4.1 Flash (`src/models/catalog.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`, `tests/model-capability-matrix.test.ts`).** Added `deepseek-ai/deepseek-v4.1-flash` to `MODEL_LIST`, synchronized configuration schemas in `package.json`, updated model probe script, and added capability matrix tests. Resolves #18.
+
+### Changed
+
+- **Artificial Analysis Intelligence Index v4.3.2 Updates (`README.md`, `docs/models.md`).** Updated benchmark capability scores to reflect the recalibrated Artificial Analysis Intelligence Index v4.3.2 composite across all curated models (GLM 5.3: 45, Kimi K3: 44, GLM 5.3 Flash: 42, DeepSeek V4.1 Flash: 39, Nemotron 3 Ultra 550B: 23, Muse Glimmer: 17, Nemotron 3.5 Lightning 30B: 13, Nemotron 3 Super 120B: 13).
+
 ## [1.1.2] - 2026-09-21
 
 ### Removed

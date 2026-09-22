@@ -10,7 +10,7 @@ NVIDIA provides free inference credits to developers on its Build platform.
 
 1. Open [build.nvidia.com/explore/discover](https://build.nvidia.com/explore/discover).
 2. Click **Log In** (top-right). Sign in with Google, GitHub, or email.
-3. Click any model (e.g. DeepSeek V4 Pro 0813, Nemotron 3 Super 120B).
+3. Click any model (e.g. DeepSeek V4.1 Flash, Nemotron 3 Super 120B).
 4. Click **Get API Key** or **Generate API Key**.
 5. Copy the key. It starts with `nvapi-...`. Treat it like a password.
 
@@ -50,7 +50,7 @@ The key is encrypted inside the OS-native credential vault via VS Code `SecretSt
 ## Step 4: Select a Model and Start Chatting
 
 1. In Copilot Chat, open the model selector dropdown.
-2. Pick a model under the **NVIDIA NIM** group (e.g. DeepSeek V4 Pro 0813, Nemotron 3 Super 120B, or Muse Glimmer).
+2. Pick a model under the **NVIDIA NIM** group (e.g. DeepSeek V4.1 Flash, Nemotron 3 Super 120B, or Muse Glimmer).
 3. Send a message.
 
 ---

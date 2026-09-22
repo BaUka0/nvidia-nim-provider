@@ -43,6 +43,16 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Removed aggressive retry shouting and scolding prompts in malformed tool call handling in favor of concise, neutral error descriptions.
 - Removed sampling penalties configuration (`nvidia-nim.generation.frequencyPenalty` and `nvidia-nim.generation.presencePenalty`). Sampling penalties are no longer sent to NVIDIA NIM models, avoiding compatibility issues with models that enforce immutable penalty defaults.
 
+## [1.2.0] - 2026-09-22
+
+### Added
+
+- Added DeepSeek V4.1 Flash to the curated model catalog with 1M context window, tool calling, vision support, and reasoning modes.
+
+### Changed
+
+- Updated Artificial Analysis Intelligence Index scores across the curated catalog to the v4.3.2 benchmark release.
+
 ## [1.1.2] - 2026-09-21
 
 ### Removed

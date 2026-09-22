@@ -31,7 +31,43 @@ interface CapabilityMatrixCase {
   thinkTag: "think" | "mm:think";
 }
 
+const deepSeekReasoningCases: ReasoningModeCase[] = [
+  {
+    mode: "none",
+    expectedFields: { chat_template_kwargs: { thinking: false } },
+  },
+  {
+    mode: "low",
+    expectedFields: {
+      chat_template_kwargs: { thinking: true, reasoning_effort: "low" },
+    },
+  },
+  {
+    mode: "high",
+    expectedFields: {
+      chat_template_kwargs: { thinking: true, reasoning_effort: "high" },
+    },
+  },
+  {
+    mode: "max",
+    expectedFields: {
+      chat_template_kwargs: { thinking: true, reasoning_effort: "max" },
+    },
+  },
+];
+
 const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
+  {
+    modelId: "deepseek-ai/deepseek-v4.1-flash",
+    reasoningModes: ["none", "low", "high", "max"],
+    reasoningCases: deepSeekReasoningCases,
+    reasoningParameterFormat: "chat_template_kwargs",
+    toolCallProtocol: "native-and-text",
+    reasoningRouting: "isolated",
+    contentOnlyMode: "none",
+    contentOnlyRouting: "text",
+    thinkTag: "think",
+  },
   {
     modelId: "moonshotai/kimi-k3",
     reasoningModes: ["none", "low", "high", "max"],
