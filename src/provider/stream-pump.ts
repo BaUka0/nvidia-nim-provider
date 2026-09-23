@@ -23,7 +23,11 @@ import {
   SkippedToolCall,
 } from "../tools/parser";
 import { collectChoiceToolCalls } from "../tools/stream-tool-calls";
-import { RepetitionGuard } from "./repetition-guard";
+import {
+  REASONING_REPETITION_OPTIONS,
+  RepetitionDetector,
+  RepetitionGuard,
+} from "./repetition-guard";
 import { ToolCallStreamAggregator } from "./tool-call-aggregator";
 
 const MAX_TRACKED_VISIBLE_CHARS = 8192;
@@ -70,6 +74,7 @@ export interface StreamAttemptResult {
   skippedToolCalls: SkippedToolCall[];
   repetitionTripped: boolean;
   trippedLine?: string;
+  trippedDetector?: RepetitionDetector;
   toolCallLoopTripped: boolean;
   toolCallLoopKey?: string;
   streamChunkCount: number;
@@ -87,7 +92,9 @@ export interface StreamAttemptResult {
 export async function runStreamAttempt(input: StreamAttemptInput): Promise<StreamAttemptResult> {
   const skippedToolCalls: SkippedToolCall[] = [];
   let pendingTextEmbeddedContent = "";
+  let pendingThinkingEmbeddedContent = "";
   let pendingText = "";
+  let heldAnswer = "";
   let sawToolCall = false;
   let emittedToolCall = false;
   let reportedContent = false;
@@ -108,6 +115,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   });
   const reasoningGuard = new RepetitionGuard({
     maxRepeatedLines: input.maxRepeatedLines,
+    ...REASONING_REPETITION_OPTIONS,
   });
 
   const markFirstResponse = (): void => {
@@ -160,12 +168,13 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       debugLog("repetitionGuard", {
         model: input.model.id,
         trippedLine: repetitionGuard.trippedLine,
+        detector: repetitionGuard.trippedDetector,
         action: willAutoContinue ? "autoContinue" : "stopWithoutChatNotice",
       });
       if (!willAutoContinue) {
         outputLog(
           "repetitionGuard",
-          `Stopped degenerate repeat loop on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
+          `Stopped degenerate repeat loop (${repetitionGuard.trippedDetector}) on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
         );
       }
     }
@@ -215,21 +224,34 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     return (parsedToolSchemas ??= getToolSchemaMap(input.options));
   };
 
-  const processFilteredText = (text: string): void => {
+  const toolsOffered = (input.options.tools?.length ?? 0) > 0;
+  const shouldHoldAnswer = (): boolean =>
+    toolsOffered && input.reasoningIsolationExpected && sawReasoning;
+
+  const processFilteredText = (text: string, isThinking: boolean): void => {
     if (!text) {
       return;
     }
     if (input.parseEmbeddedToolText === false) {
-      pendingText += text;
+      if (isThinking) {
+        emitThinking(text);
+      } else {
+        pendingText += text;
+      }
       return;
     }
 
+    const pending = isThinking ? pendingThinkingEmbeddedContent : pendingTextEmbeddedContent;
     const { segments, incompleteText, extractedParams } = parseTextEmbeddedToolCalls(
-      pendingTextEmbeddedContent + text,
+      pending + text,
       getToolSchemas(),
     );
-    pendingTextEmbeddedContent =
-      incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : incompleteText;
+    const nextPending = incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : incompleteText;
+    if (isThinking) {
+      pendingThinkingEmbeddedContent = nextPending;
+    } else {
+      pendingTextEmbeddedContent = nextPending;
+    }
     if (extractedParams && Object.keys(extractedParams).length > 0) {
       const named = segments.find(
         (segment) => segment.type === "toolCall" || segment.type === "invalidToolCall",
@@ -247,55 +269,102 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
 
     for (const segment of segments) {
       if (segment.type === "text") {
-        pendingText += segment.text;
+        if (isThinking) {
+          emitThinking(segment.text);
+        } else {
+          pendingText += segment.text;
+        }
         continue;
       }
 
       if (segment.type === "invalidToolCall") {
         sawToolCall = true;
-        getToolAggregator().recordInvalidToolCall(segment.name);
+        if (!isThinking) {
+          getToolAggregator().recordInvalidToolCall(segment.name);
+        }
         continue;
       }
 
       sawToolCall = true;
-      getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args);
+      getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args, undefined, {
+        isThinking,
+      });
     }
     toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
   };
 
-  const processAnswerText = (text: string): void => {
+  const showAnswerText = (text: string): void => {
+    processFilteredText(text, false);
+    flushPendingText();
+  };
+
+  const absorbThinking = (text: string): void => {
+    if (!text) {
+      return;
+    }
+    sawReasoning = true;
+    markFirstResponse();
+    let crossedThreshold = false;
+    if (!reasoningGuard.tripped) {
+      crossedThreshold = reasoningGuard.add(text);
+    }
+    processFilteredText(text, true);
+    if (crossedThreshold) {
+      debugLog("repetitionGuard", {
+        model: input.model.id,
+        trippedLine: reasoningGuard.trippedLine,
+        detector: reasoningGuard.trippedDetector,
+        source: "reasoning",
+      });
+      outputLog(
+        "repetitionGuard",
+        `Stopped degenerate repeat loop in reasoning (${reasoningGuard.trippedDetector}) on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
+      );
+    }
+  };
+
+  const foldHeldAnswerIntoThinking = (): void => {
+    if (!heldAnswer) {
+      return;
+    }
+    const text = heldAnswer;
+    heldAnswer = "";
+    const savedThinkingTail = pendingThinkingEmbeddedContent;
+    pendingThinkingEmbeddedContent = "";
+    absorbThinking(text);
+    if (savedThinkingTail) {
+      pendingThinkingEmbeddedContent = savedThinkingTail + pendingThinkingEmbeddedContent;
+    }
+  };
+
+  const releaseHeldAnswer = (): void => {
+    if (!heldAnswer) {
+      return;
+    }
+    const text = heldAnswer;
+    heldAnswer = "";
+    showAnswerText(text);
+  };
+
+  const acceptAnswerText = (text: string): void => {
     if (!text) {
       return;
     }
     markFirstResponse();
-    processFilteredText(text);
+    if (!shouldHoldAnswer()) {
+      showAnswerText(text);
+      return;
+    }
+    heldAnswer += text;
   };
 
   const router = new ReasoningStreamRouter({
     reasoningIsolationExpected: input.reasoningIsolationExpected,
     onThinking: (text) => {
-      sawReasoning = true;
-      markFirstResponse();
-      let crossedThreshold = false;
-      if (!reasoningGuard.tripped) {
-        crossedThreshold = reasoningGuard.add(text);
-      }
-      emitThinking(text);
-      if (crossedThreshold) {
-        debugLog("repetitionGuard", {
-          model: input.model.id,
-          trippedLine: reasoningGuard.trippedLine,
-          source: "reasoning",
-        });
-        outputLog(
-          "repetitionGuard",
-          `Stopped degenerate repeat loop in reasoning on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
-        );
-      }
+      absorbThinking(text);
     },
     onText: (text) => {
-      processAnswerText(text);
-      flushPendingText();
+      acceptAnswerText(text);
     },
     onFirstResponse: () => {
       markFirstResponse();
@@ -365,6 +434,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       if (streamedToolCalls.length > 0) {
         markFirstResponse();
         sawToolCall = true;
+        foldHeldAnswerIntoThinking();
         getToolAggregator().handleToolCalls(streamedToolCalls);
         toolCallLoopKey ??= getToolAggregator().getToolCallLoop()?.key;
       }
@@ -411,12 +481,13 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     debugLog("repetitionGuard", {
       model: input.model.id,
       trippedLine: repetitionGuard.trippedLine,
+      detector: repetitionGuard.trippedDetector,
       action: willAutoContinue ? "flushTrippedAutoContinue" : "flushTrippedStopWithoutChatNotice",
     });
     if (!willAutoContinue) {
       outputLog(
         "repetitionGuard",
-        `Stopped degenerate repeat loop on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
+        `Stopped degenerate repeat loop (${repetitionGuard.trippedDetector}) on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
       );
     }
   }
@@ -425,11 +496,12 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     debugLog("repetitionGuard", {
       model: input.model.id,
       trippedLine: reasoningGuard.trippedLine,
+      detector: reasoningGuard.trippedDetector,
       source: "reasoningFlush",
     });
     outputLog(
       "repetitionGuard",
-      `Stopped degenerate repeat loop in reasoning on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
+      `Stopped degenerate repeat loop in reasoning (${reasoningGuard.trippedDetector}) on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
     );
   }
 
@@ -439,6 +511,18 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   }
 
   router.flush();
+
+  if (heldAnswer) {
+    const preview = parseTextEmbeddedToolCalls(heldAnswer, getToolSchemas(), { atStreamEnd: true });
+    const heldHasTool = preview.segments.some(
+      (segment) => segment.type === "toolCall" || segment.type === "invalidToolCall",
+    );
+    if (heldHasTool || emittedToolCall || sawToolCall || lastFinishReason === "tool_calls") {
+      foldHeldAnswerIntoThinking();
+    } else {
+      releaseHeldAnswer();
+    }
+  }
 
   if (lastFinishReason === "tool_calls" && !emittedToolCall) {
     sawToolCall = true;
@@ -503,6 +587,29 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     }
   }
 
+  if (pendingThinkingEmbeddedContent) {
+    const parsed = parseTextEmbeddedToolCalls(pendingThinkingEmbeddedContent, getToolSchemas(), {
+      atStreamEnd: true,
+    });
+    pendingThinkingEmbeddedContent = "";
+    for (const segment of parsed.segments) {
+      if (segment.type === "text") {
+        emitThinking(segment.text);
+        continue;
+      }
+      if (segment.type === "toolCall") {
+        sawToolCall = true;
+        getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args, undefined, {
+          isThinking: true,
+        });
+      }
+    }
+    if (parsed.incompleteText) {
+      emitThinking(parsed.incompleteText);
+    }
+    toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
+  }
+
   if (pendingText) {
     flushPendingText();
   }
@@ -511,11 +618,12 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     debugLog("repetitionGuard", {
       model: input.model.id,
       trippedLine: repetitionGuard.trippedLine,
+      detector: repetitionGuard.trippedDetector,
       source: "textFlush",
     });
     outputLog(
       "repetitionGuard",
-      `Stopped degenerate repeat loop on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
+      `Stopped degenerate repeat loop (${repetitionGuard.trippedDetector}) on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
     );
   }
 
@@ -531,6 +639,9 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     skippedToolCalls,
     repetitionTripped: repetitionGuard.tripped || reasoningGuard.tripped,
     trippedLine: repetitionGuard.trippedLine ?? reasoningGuard.trippedLine,
+    trippedDetector: repetitionGuard.tripped
+      ? repetitionGuard.trippedDetector
+      : reasoningGuard.trippedDetector,
     toolCallLoopTripped: toolCallLoopKey !== undefined,
     ...(toolCallLoopKey ? { toolCallLoopKey } : {}),
     streamChunkCount,

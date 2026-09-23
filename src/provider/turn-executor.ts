@@ -12,7 +12,7 @@ import { getApiKeyFingerprint } from "../api/key-resolver";
 import { estimateNimMessagesTokensByCategory, estimateToolsTokens } from "../messages/converter";
 import { getModelAdapter } from "../models/adapters";
 import { NimConfig } from "../shared/config";
-import { isCancellation, waitForBackoff } from "../shared/cancellation";
+import { exponentialRetryDelayMs, isCancellation, waitForBackoff } from "../shared/cancellation";
 import { DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 import { FetchAttemptBudget, httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
@@ -132,6 +132,7 @@ function recordAttemptTurn(options: {
     lastVisibleText: options.result?.lastVisibleText,
     durationMs: options.durationMs,
     repetitionTripped: options.result?.repetitionTripped,
+    trippedDetector: options.result?.trippedDetector,
     autoContinueFired: options.autoContinueFired,
     retryReasonHistory: options.retryReasonHistory,
     errorKind,
@@ -645,7 +646,13 @@ export class ModelTurnExecutor {
             "Your previous response was interrupted by a network error. Please start over and provide a complete response.",
         };
       }
-      const retryDelayMs = Math.min(1000 * Math.pow(2, state.transientRetryCount - 1), 5000);
+      const retryStatus = streamErr instanceof NvidiaApiError ? streamErr.status : undefined;
+      const retryDelayMs = exponentialRetryDelayMs(
+        1000,
+        state.transientRetryCount - 1,
+        5000,
+        retryStatus,
+      );
       try {
         await waitForBackoff(retryDelayMs, abortController.signal);
       } catch (backoffErr) {

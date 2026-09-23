@@ -6,6 +6,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ### Changed
 
+- A 503 from NVIDIA now waits about three times longer before the next try, so a brief overload has time to clear. A dropped connection and a rate limit keep the shorter pause.
 - Nemotron tool turns use a temperature of 0.6. Parallel tool calls stay available.
 - A reasoning mode the model does not support, including "on" and "auto", maps to the closest mode that model does support.
 - A read that omits a line range now covers up to 2000 lines from the start line.
@@ -14,6 +15,9 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 ### Fixed
 
 - A tool call written as JSON text, or inside a json code fence, is executed. Ordinary JSON stays in the chat, including an unfinished wrapper around a nested object that looks like a tool call. A fenced tool call still runs when the reply ends before the closing fence.
+- A plan that a reasoning model writes around a tool call stays in the thinking block, including the text after that call. The call itself still runs. A reply with no tool call is still shown in the chat.
+- Reasoning is no longer cut off because a short phrase, such as the name of a tool, comes up a few times. The stream still stops when the same paragraph comes back with different words, or when one sentence repeats many times. The visible answer is unchanged.
+- A report that repeats a short section label, such as "Specific Issues" or "Recommendations", is no longer treated as a loop. The same label printed again and again on consecutive lines still stops the stream. A code signature quoted a few times in reasoning no longer restarts that reasoning; the same line printed in a row still does.
 - "Let's", "I'll", and "users'" no longer hide the following XML tool call. A snippet written as return'...' stays text.
 
 ### Removed

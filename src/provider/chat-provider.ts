@@ -44,7 +44,7 @@ import {
   shouldRestartFailoverChain,
 } from "./fallback-orchestrator";
 import { ChatRuntimeInfo, ModelTurnExecutor, ModelTurnReportState } from "./turn-executor";
-import { isCancellation, waitForBackoff } from "../shared/cancellation";
+import { exponentialRetryDelayMs, isCancellation, waitForBackoff } from "../shared/cancellation";
 
 const MAX_RUNTIME_INFO_CACHE_SIZE = 64;
 
@@ -395,7 +395,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         "fallback",
         `Failover chain exhausted (${label}), retrying from ${originalModel.id} (restart ${chainState.chainRestarts}/${maxRestarts}).`,
       );
-      const backoffMs = Math.min(1000 * Math.pow(2, chainState.chainRestarts), 10000);
+      const retryStatus = err instanceof NvidiaApiError ? err.status : undefined;
+      const backoffMs = exponentialRetryDelayMs(1000, chainState.chainRestarts, 10000, retryStatus);
       try {
         await waitForBackoff(backoffMs, signal);
       } catch (backoffErr) {

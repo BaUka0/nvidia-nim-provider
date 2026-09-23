@@ -160,6 +160,37 @@ describe("turn-report", () => {
     expect(report.cycleHint).toBe(false);
   });
 
+  it("keeps the tripped detector field for guard audit trails", () => {
+    const report = recordTurnReport({
+      outcome: "retry",
+      modelId: "nvidia/nemotron-3-super-120b-a12b",
+      lastVisibleText: "- **Specific Issues**:\n",
+      repetitionTripped: true,
+      trippedDetector: "lineCounter",
+      autoContinueFired: true,
+      recordedAt: "2026-08-29T12:00:00.000Z",
+    });
+    expect(report.repetitionTripped).toBe(true);
+    expect(report.trippedDetector).toBe("lineCounter");
+
+    const payload = JSON.parse(formatTurnReportsPayload() ?? "{}") as {
+      turns: { repetitionTripped: boolean; trippedDetector?: string }[];
+    };
+    const saved = payload.turns.at(-1);
+    expect(saved?.repetitionTripped).toBe(true);
+    expect(saved?.trippedDetector).toBe("lineCounter");
+
+    // A clean turn without a trip must not carry the field.
+    const clean = recordTurnReport({
+      outcome: "ok",
+      modelId: "nvidia/nemotron-3-super-120b-a12b",
+      lastVisibleText: "Done.",
+      repetitionTripped: false,
+      recordedAt: "2026-08-29T12:00:01.000Z",
+    });
+    expect(clean.trippedDetector).toBeUndefined();
+  });
+
   it("builds a Downloads path and timestamped filename", () => {
     expect(resolveDownloadsDir("/home/dev")).toBe(path.join("/home/dev", "Downloads"));
     expect(buildTurnReportFilename(new Date(2026, 7, 29, 15, 4, 9))).toBe(

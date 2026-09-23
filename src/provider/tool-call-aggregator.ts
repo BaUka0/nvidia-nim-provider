@@ -38,6 +38,8 @@ export class ToolCallStreamAggregator {
   private toolsConfig: ToolsConfig;
   private requestContext: ChatRequestContext | undefined;
   private emittedTextToolCallKeys: Set<string>;
+  private emittedCanonicalKeys = new Set<string>();
+  private emittedThinkingCanonicalKeys = new Set<string>();
   private onEmitToolCall: (id: string, name: string, args: Record<string, unknown>) => void;
   private onSkipToolCall: (
     name: string,
@@ -105,6 +107,7 @@ export class ToolCallStreamAggregator {
     name: string,
     args: unknown,
     idPrefix: string = TEXT_EMBEDDED_TOOL_CALL_ID_PREFIX,
+    options?: { isThinking?: boolean },
   ): boolean {
     if (this.toolCallLoopKey) {
       return false;
@@ -122,10 +125,12 @@ export class ToolCallStreamAggregator {
     if (isToolCallInput(repairedArgs) && hasRequiredToolArguments(repairedArgs, schema)) {
       debugLog("xml_tool_fallback", { name });
       const id = `${idPrefix}${randomUUID()}`;
-      return this.emitValidatedToolCall(name, repairedArgs, schema, id);
+      return this.emitValidatedToolCall(name, repairedArgs, schema, id, options);
     }
 
-    this.onSkipToolCall(name, missingRequiredToolArguments(repairedArgs, schema));
+    if (!options?.isThinking) {
+      this.onSkipToolCall(name, missingRequiredToolArguments(repairedArgs, schema));
+    }
     debugLog("Skipped invalid text tool call", { name, args });
     return false;
   }
@@ -139,8 +144,17 @@ export class ToolCallStreamAggregator {
     args: Record<string, unknown>,
     schema: ToolSchema | undefined,
     id: string,
+    options?: { isThinking?: boolean },
   ): boolean {
     const canonicalKey = buildToolCallCanonicalKey(name, args);
+    if (options?.isThinking && this.emittedCanonicalKeys.has(canonicalKey)) {
+      debugLog("Ignoring duplicate tool call within thinking", { name, canonicalKey });
+      return false;
+    }
+    if (!options?.isThinking && this.emittedThinkingCanonicalKeys.has(canonicalKey)) {
+      debugLog("Ignoring native tool call already emitted in thinking", { name, canonicalKey });
+      return false;
+    }
     if (canonicalKey === this.consecutiveToolCallKey) {
       this.consecutiveToolCallCount += 1;
     } else {
@@ -168,7 +182,11 @@ export class ToolCallStreamAggregator {
     }
     this.onEmitToolCall(id, name, args);
     this.emittedToolCall = true;
+    this.emittedCanonicalKeys.add(canonicalKey);
     this.emittedTextToolCallKeys.add(canonicalKey);
+    if (options?.isThinking) {
+      this.emittedThinkingCanonicalKeys.add(canonicalKey);
+    }
     return true;
   }
 

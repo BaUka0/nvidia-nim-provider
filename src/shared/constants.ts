@@ -87,6 +87,13 @@ export const MAX_RETRY_DELAY_MS = 30000;
 export const BASE_RETRY_DELAY_MS = 1000;
 
 /**
+ * HTTP 503 waits this many times longer than the shared retry schedule.
+ * NIM overload often outlasts a 1s pause; 429, 502, 504, and network errors
+ * stay on the short schedule.
+ */
+export const UNAVAILABLE_RETRY_MULTIPLIER = 3;
+
+/**
  * Bounds for the adaptive stream idle timeout. These match the declared
  * `nvidia-nim.network.streamIdleTimeout` schema range (15..3600 s) so a user's
  * configured value is never silently promoted or clamped to a different band.

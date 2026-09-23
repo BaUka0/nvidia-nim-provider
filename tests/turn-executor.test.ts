@@ -7,6 +7,7 @@ import { runStreamAttempt, StreamAttemptResult } from "../src/provider/stream-pu
 import { ModelTurnExecutor, ModelTurnInput } from "../src/provider/turn-executor";
 import { ConfigManager, NimConfig } from "../src/shared/config";
 import { FetchAttemptBudget } from "../src/shared/fetch-attempt-budget";
+import { getTurnReports, resetTurnReportsForTests } from "../src/shared/turn-report";
 import { makeToken } from "./helpers/fakes";
 
 jest.mock("../src/provider/stream-pump", () => ({ runStreamAttempt: jest.fn() }));
@@ -117,6 +118,7 @@ function executor(): ModelTurnExecutor {
 describe("ModelTurnExecutor.executeTurn", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetTurnReportsForTests();
     prepareRequestMock.mockResolvedValue(makePrepared());
     injectLoopBreakerMock.mockImplementation(
       ({ requestBody }: { requestBody: unknown }) => requestBody,
@@ -150,6 +152,7 @@ describe("ModelTurnExecutor.executeTurn", () => {
         makeResult({
           reportedVisibleContent: true,
           repetitionTripped: true,
+          trippedDetector: "lineCounter",
           lastVisibleText: "Let me check the file",
         }),
       )
@@ -164,6 +167,12 @@ describe("ModelTurnExecutor.executeTurn", () => {
     expect(secondCall.requestBody.messages[1]).toEqual({
       role: "user",
       content: "continue now",
+    });
+    expect(getTurnReports()[0]).toMatchObject({
+      outcome: "retry",
+      repetitionTripped: true,
+      trippedDetector: "lineCounter",
+      autoContinueFired: true,
     });
   });
 

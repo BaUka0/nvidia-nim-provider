@@ -4,6 +4,7 @@ import {
   fetchWithRetry,
   streamChatCompletion,
 } from "../src/api/client";
+import { exponentialRetryDelayMs } from "../src/shared/cancellation";
 import { classifyApiError, NvidiaApiError } from "../src/api/errors";
 import { NvidiaModelSummary, NimStreamResponse } from "../src/types";
 import { makeAbortSignal, makeFetchResponse } from "./helpers/fakes";
@@ -190,6 +191,44 @@ describe("fetchWithRetry", () => {
       "Action: Check your network connection and try again.",
     );
   });
+
+  it("waits three times longer before retrying HTTP 503 than HTTP 429", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(Math, "random").mockReturnValue(1);
+    const body = { cancel: jest.fn().mockResolvedValue(undefined) };
+
+    async function retryOnce(status: number): Promise<void> {
+      const fetchMock = jest.fn();
+      global.fetch = fetchMock;
+      fetchMock
+        .mockResolvedValueOnce(
+          makeFetchResponse({
+            ok: false,
+            status,
+            statusText: status === 503 ? "Service Unavailable" : "Too Many Requests",
+            headers: { get: () => null },
+            body,
+          }),
+        )
+        .mockResolvedValueOnce(makeFetchResponse({ ok: true, status: 200, statusText: "OK" }));
+
+      const pending = fetchWithRetry("https://example.test", { method: "GET" }, 2);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      const delay = status === 503 ? 3000 : 1000;
+      await jest.advanceTimersByTimeAsync(delay - 1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1);
+      await pending;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    }
+
+    await retryOnce(429);
+    await retryOnce(503);
+  });
 });
 
 describe("classifyApiError", () => {
@@ -341,6 +380,7 @@ describe("fetchModelsOrThrow", () => {
   });
 
   it("retries on 503 then succeeds", async () => {
+    jest.spyOn(Math, "random").mockReturnValue(0);
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce(
@@ -443,6 +483,20 @@ describe("fetchModelsOrThrow", () => {
       code: "AUTH_FAILED",
       operation: "models",
     });
+  });
+});
+
+describe("exponentialRetryDelayMs", () => {
+  it("triples a 503 pause and leaves other statuses on the short schedule", () => {
+    expect(exponentialRetryDelayMs(1000, 0, 5000, 503)).toBe(3000);
+    expect(exponentialRetryDelayMs(1000, 1, 5000, 503)).toBe(6000);
+    expect(exponentialRetryDelayMs(1000, 2, 5000, 503)).toBe(12000);
+    expect(exponentialRetryDelayMs(1000, 3, 5000, 503)).toBe(15000);
+    expect(exponentialRetryDelayMs(1000, 1, 10000, 503)).toBe(6000);
+    expect(exponentialRetryDelayMs(1000, 4, 10000, 503)).toBe(30000);
+    expect(exponentialRetryDelayMs(1000, 0, 5000)).toBe(1000);
+    expect(exponentialRetryDelayMs(1000, 1, 5000, 502)).toBe(2000);
+    expect(exponentialRetryDelayMs(1000, 1, 10000, 429)).toBe(2000);
   });
 });
 

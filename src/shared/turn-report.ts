@@ -47,6 +47,7 @@ export interface TurnReport {
   readonly visibleChars: number;
   readonly durationMs?: number;
   readonly repetitionTripped: boolean;
+  readonly trippedDetector?: "lineCounter" | "phrase" | "paragraph" | "runaway";
   readonly autoContinueFired?: boolean;
   readonly retryReasonHistory?: string[];
   readonly lastVisibleTextHead: string;
@@ -68,6 +69,7 @@ export interface TurnReportInput {
   readonly lastVisibleText?: string;
   readonly durationMs?: number;
   readonly repetitionTripped?: boolean;
+  readonly trippedDetector?: "lineCounter" | "phrase" | "paragraph" | "runaway";
   readonly autoContinueFired?: boolean;
   readonly retryReasonHistory?: readonly string[];
   readonly errorKind?: string;
@@ -226,6 +228,7 @@ export function recordTurnReport(input: TurnReportInput): TurnReport {
     visibleChars: visible.length,
     durationMs: input.durationMs,
     repetitionTripped: Boolean(input.repetitionTripped),
+    ...(input.trippedDetector ? { trippedDetector: input.trippedDetector } : {}),
     autoContinueFired: input.autoContinueFired,
     retryReasonHistory: input.retryReasonHistory ? [...input.retryReasonHistory] : undefined,
     lastVisibleTextHead: head,

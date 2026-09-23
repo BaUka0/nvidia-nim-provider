@@ -9,6 +9,7 @@ import {
   MAX_SSE_PARTIAL_BUFFER_BYTES,
   STREAM_IDLE_TIMEOUT_MAX_MS,
   STREAM_IDLE_TIMEOUT_MIN_MS,
+  UNAVAILABLE_RETRY_MULTIPLIER,
 } from "../shared/constants";
 import { httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
 import { debugLog } from "../shared/logging";
@@ -45,15 +46,17 @@ function getRetryAfterMs(response: Response): number | undefined {
  * Calculate delay with exponential backoff and full jitter.
  * This prevents thundering herd when multiple clients retry simultaneously.
  */
-function calculateRetryDelay(attempt: number, retryAfter?: number): number {
+function calculateRetryDelay(attempt: number, retryAfter?: number, status?: number): number {
+  const scale = status === 503 ? UNAVAILABLE_RETRY_MULTIPLIER : 1;
+  const maxDelay = MAX_RETRY_DELAY_MS * scale;
   if (retryAfter !== undefined && retryAfter > 0) {
     // Add jitter to server-provided retry-after (±25%)
     const jitter = retryAfter * 0.25 * (Math.random() * 2 - 1);
-    return Math.min(Math.max(Math.round(retryAfter + jitter), 0), MAX_RETRY_DELAY_MS);
+    return Math.min(Math.max(Math.round(retryAfter + jitter), 0), maxDelay);
   }
 
-  const exponentialDelay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
-  const cappedDelay = Math.min(exponentialDelay, MAX_RETRY_DELAY_MS);
+  const exponentialDelay = BASE_RETRY_DELAY_MS * scale * Math.pow(2, attempt);
+  const cappedDelay = Math.min(exponentialDelay, maxDelay);
   // Full jitter: random delay between 0 and cappedDelay
   return Math.round(Math.random() * cappedDelay);
 }
@@ -305,7 +308,7 @@ export async function fetchWithRetry(
         lastError = new Error(`HTTP ${response.status} ${response.statusText}`);
         await discardResponseBody(response);
         const retryAfter = getRetryAfterMs(response);
-        const delay = calculateRetryDelay(i, retryAfter);
+        const delay = calculateRetryDelay(i, retryAfter, response.status);
         debugLog(
           "fetchWithRetry",
           `Attempt ${i + 1} failed with ${response.status}, retrying after ${delay}ms`,

@@ -196,6 +196,7 @@ export function logLoopAutoContinue(input: {
   debugLog("repetitionGuard", {
     action: "autoContinue",
     trippedLine: result.trippedLine,
+    detector: result.trippedDetector,
     lastVisibleText: result.lastVisibleText,
     reason: retryReason,
     loopContinueCount: input.loopContinueCount,
