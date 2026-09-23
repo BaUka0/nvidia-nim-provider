@@ -324,10 +324,22 @@ export function injectHistoryLoopBreaker(options: {
 
   recentInjectedLoops.set(loopKey, previousInjections + 1);
 
-  debugLog("repetitionGuard", { action: escalate ? "injectBreakerEscalation" : "injectBreaker" });
+  const trippedLine = historyLoopTool ?? historyLoopPreamble;
+  debugLog("repetitionGuard", {
+    action: escalate ? "injectBreakerEscalation" : "injectBreaker",
+    model: options.modelId,
+    detector:
+      historyLoopTool !== undefined
+        ? "toolCallLoop"
+        : historyLoopPreamble !== undefined
+          ? "preamble"
+          : undefined,
+    ...(trippedLine !== undefined ? { trippedLine } : {}),
+    escalate,
+  });
   outputLog(
     "repetitionGuard",
-    `Detected inter-turn loop on ${options.modelId}, injecting ${escalate ? "escalation breaker" : "breaker"}`,
+    `Detected inter-turn loop (${historyLoopTool ? "toolCallLoop" : "preamble"}) on ${options.modelId}, injecting ${escalate ? "escalation breaker" : "breaker"}`,
   );
 
   // Injected as a user turn (not a trailing system message) because some

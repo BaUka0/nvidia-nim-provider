@@ -7,6 +7,7 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 ### Added
 
 - **Text-embedded JSON tool calls (`src/tools/json-tool-scanner.ts`, `src/tools/embedded-parser.ts`, `src/provider/stream-pump.ts`).** `scanJsonToolConstruct` and `findBestMatchingTool` recover a tool call from a standalone JSON object, an OpenAI-style payload, an array, or a fenced ` ```json ` block in `delta.content` when no native tool part arrives. `findJsonConstructStart` holds an unclosed JSON value, so a nested tool-shaped object inside an open non-tool wrapper is not executed. At stream end, `parseTextEmbeddedToolCalls(..., { atStreamEnd: true })` commits a balanced fenced tool call whose closing fence never arrived. Ordinary JSON stays chat text. Resolves #15.
+- **Inter-turn breaker trip details (`src/provider/loop-breaker.ts`).** `injectBreaker` and `injectBreakerEscalation` debug events now carry `model`, `detector` (`preamble` or `toolCallLoop`), `trippedLine` (the repeated normalized preamble or the canonical tool-call key), and an `escalate` flag, so inter-turn loop audits no longer require inferring the loop from attempt outcomes. The human-readable `outputLog` line names the detector as well.
 
 ### Changed
 
