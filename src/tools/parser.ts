@@ -33,6 +33,14 @@ export {
   getIncompleteTextToolCallName,
 } from "./embedded-parser";
 
+export { PROPERTY_ALIAS_GROUPS } from "./argument-repair";
+
+export {
+  findBestMatchingTool,
+  scanJsonToolConstruct,
+  buildKnownPropertySet,
+} from "./json-tool-scanner";
+
 export type SkippedToolCallReason = "invalid" | "duplicate" | "missing_payload";
 
 export interface SkippedToolCall {

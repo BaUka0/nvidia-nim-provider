@@ -2,8 +2,10 @@ import {
   chatCompletion,
   fetchModelsOrThrow,
   fetchWithRetry,
+  StreamDroppedError,
   streamChatCompletion,
 } from "../src/api/client";
+import { exponentialRetryDelayMs } from "../src/shared/cancellation";
 import { classifyApiError, NvidiaApiError } from "../src/api/errors";
 import { NvidiaModelSummary, NimStreamResponse } from "../src/types";
 import { makeAbortSignal, makeFetchResponse } from "./helpers/fakes";
@@ -190,6 +192,44 @@ describe("fetchWithRetry", () => {
       "Action: Check your network connection and try again.",
     );
   });
+
+  it("waits three times longer before retrying HTTP 503 than HTTP 429", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(Math, "random").mockReturnValue(1);
+    const body = { cancel: jest.fn().mockResolvedValue(undefined) };
+
+    async function retryOnce(status: number): Promise<void> {
+      const fetchMock = jest.fn();
+      global.fetch = fetchMock;
+      fetchMock
+        .mockResolvedValueOnce(
+          makeFetchResponse({
+            ok: false,
+            status,
+            statusText: status === 503 ? "Service Unavailable" : "Too Many Requests",
+            headers: { get: () => null },
+            body,
+          }),
+        )
+        .mockResolvedValueOnce(makeFetchResponse({ ok: true, status: 200, statusText: "OK" }));
+
+      const pending = fetchWithRetry("https://example.test", { method: "GET" }, 2);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      const delay = status === 503 ? 3000 : 1000;
+      await jest.advanceTimersByTimeAsync(delay - 1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1);
+      await pending;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    }
+
+    await retryOnce(429);
+    await retryOnce(503);
+  });
 });
 
 describe("classifyApiError", () => {
@@ -341,6 +381,7 @@ describe("fetchModelsOrThrow", () => {
   });
 
   it("retries on 503 then succeeds", async () => {
+    jest.spyOn(Math, "random").mockReturnValue(0);
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce(
@@ -446,6 +487,20 @@ describe("fetchModelsOrThrow", () => {
   });
 });
 
+describe("exponentialRetryDelayMs", () => {
+  it("triples a 503 pause and leaves other statuses on the short schedule", () => {
+    expect(exponentialRetryDelayMs(1000, 0, 5000, 503)).toBe(3000);
+    expect(exponentialRetryDelayMs(1000, 1, 5000, 503)).toBe(6000);
+    expect(exponentialRetryDelayMs(1000, 2, 5000, 503)).toBe(12000);
+    expect(exponentialRetryDelayMs(1000, 3, 5000, 503)).toBe(15000);
+    expect(exponentialRetryDelayMs(1000, 1, 10000, 503)).toBe(6000);
+    expect(exponentialRetryDelayMs(1000, 4, 10000, 503)).toBe(30000);
+    expect(exponentialRetryDelayMs(1000, 0, 5000)).toBe(1000);
+    expect(exponentialRetryDelayMs(1000, 1, 5000, 502)).toBe(2000);
+    expect(exponentialRetryDelayMs(1000, 1, 10000, 429)).toBe(2000);
+  });
+});
+
 describe("streamChatCompletion", () => {
   beforeEach(() => {
     delete (globalThis as Record<string, unknown>).fetch;
@@ -486,6 +541,72 @@ describe("streamChatCompletion", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].choices[0].delta.content).toBe("Hello");
+  });
+
+  it("completes without error when the [DONE] sentinel arrives", async () => {
+    const chunk: NimStreamResponse = {
+      id: "1",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: "kimi-k2.6",
+      choices: [{ index: 0, delta: { content: "Hello" }, finish_reason: null }],
+    };
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: stream,
+      }),
+    );
+
+    const results: NimStreamResponse[] = [];
+    for await (const item of streamChatCompletion("key", {
+      model: "kimi-k2.6",
+      messages: [],
+      stream: true,
+    })) {
+      results.push(item);
+    }
+
+    expect(results).toHaveLength(1);
+  });
+
+  it("throws a dropped-stream error when the body ends without [DONE]", async () => {
+    const chunk: NimStreamResponse = {
+      id: "1",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: "kimi-k2.6",
+      choices: [{ index: 0, delta: { content: "Hello" }, finish_reason: null }],
+    };
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+        controller.close();
+      },
+    });
+
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: stream,
+      }),
+    );
+
+    const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
+    const first = await gen.next();
+    expect(first.done).toBe(false);
+    expect(first.value?.choices[0].delta.content).toBe("Hello");
+    await expect(gen.next()).rejects.toThrow(StreamDroppedError);
   });
 
   it("throws on non-ok response", async () => {

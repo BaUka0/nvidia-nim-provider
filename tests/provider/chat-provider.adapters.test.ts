@@ -849,7 +849,7 @@ describe("NimChatModelProvider", () => {
         expect.arrayContaining([
           expect.objectContaining({
             role: "user",
-            content: expect.stringContaining("Do not emit malformed JSON or empty arguments."),
+            content: expect.stringContaining("Provide a complete, valid JSON arguments object."),
           }),
         ]),
       );
@@ -937,14 +937,7 @@ describe("NimChatModelProvider", () => {
 
     expect(requestBody.temperature).toBe(1);
     expect(requestBody.top_p).toBe(0.95);
-    expect(requestBody.messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: "system",
-          content: expect.stringContaining("Do not reveal internal control tokens"),
-        }),
-      ]),
-    );
+    expect(requestBody.messages[0].role).toBe("user");
   });
 
   it("keeps explicit temperature overrides for DeepSeek request profiles", async () => {
@@ -1004,11 +997,15 @@ describe("NimChatModelProvider", () => {
   });
 
   it.each([
-    ["moonshotai/kimi-k3", 1, "Do not reveal chain-of-thought"],
-    ["nvidia/nemotron-3-ultra-550b-a55b", 1, "Do not wrap tool arguments in markdown fences"],
+    ["moonshotai/kimi-k3", 1, undefined],
+    ["nvidia/nemotron-3-ultra-550b-a55b", 0.6, undefined],
   ])(
     "applies the provider request profile for %s when tools are enabled",
-    async (modelId: string, expectedTemperature: number, expectedMessageSnippet: string) => {
+    async (
+      modelId: string,
+      expectedTemperature: number,
+      expectedParallelToolCalls: boolean | undefined,
+    ) => {
       (secrets.get as jest.Mock).mockResolvedValue("test-key");
       (globalState.get as jest.Mock).mockImplementation((key: string) =>
         key === "nvidia-nim.models"
@@ -1067,14 +1064,8 @@ describe("NimChatModelProvider", () => {
       const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
 
       expect(requestBody.temperature).toBe(expectedTemperature);
-      expect(requestBody.messages).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            role: "system",
-            content: expect.stringContaining(expectedMessageSnippet),
-          }),
-        ]),
-      );
+      expect(requestBody.parallel_tool_calls).toBe(expectedParallelToolCalls);
+      expect(requestBody.messages[0].role).toBe("user");
     },
   );
 

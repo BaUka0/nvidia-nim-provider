@@ -9,6 +9,15 @@ import {
   isTokenInStringOrRegexLiteral,
   scanXmlToolConstruct,
 } from "./xml-tool-scanner";
+import { ToolSchema, FORBIDDEN_TOOL_IDENTIFIERS } from "./tool-schema";
+import {
+  buildKnownPropertySet,
+  findJsonConstructStart,
+  getIncompleteJsonToolCallName,
+  scanJsonToolConstruct,
+} from "./json-tool-scanner";
+
+export { FORBIDDEN_TOOL_IDENTIFIERS } from "./tool-schema";
 
 /** Case-sensitive trailing prefix — tool control tokens are exact. */
 export function findTrailingTokenPrefixStart(text: string, token: string): number {
@@ -24,8 +33,6 @@ export function unwrapJsonCodeFence(text: string): string {
   const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   return fencedMatch ? fencedMatch[1].trim() : trimmed;
 }
-
-export const FORBIDDEN_TOOL_IDENTIFIERS = new Set(["__proto__", "prototype", "constructor"]);
 
 export function isValidToolIdentifier(name: string): boolean {
   const trimmed = name.trim();
@@ -148,7 +155,11 @@ export function parseDeepSeekTextEmbeddedToolCallContent(
   };
 }
 
-export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResult {
+export function parseTextEmbeddedToolCalls(
+  text: string,
+  toolSchemas?: ReadonlyMap<string, ToolSchema>,
+  options?: { atStreamEnd?: boolean },
+): ParsedTextToolCallResult {
   const beginToken = "<|tool_call_begin|>";
   const argBeginToken = "<|tool_call_argument_begin|>";
   const endToken = "<|tool_call_end|>";
@@ -177,8 +188,11 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
     "<|start_header_id|>",
     "<|im_start|>",
     "[gMASK]",
+    "```",
+    "```json",
   ] as const;
 
+  const knownProperties = buildKnownPropertySet(toolSchemas);
   const extractedParams: Record<string, unknown> = {};
   const segments: ParsedTextSegment[] = [];
   let remaining = text;
@@ -203,6 +217,7 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
   while (remaining.length > 0) {
     const accumulatedSoFar = textContextPrefix();
     const xmlStartIndex = findXmlConstructStart(remaining, accumulatedSoFar);
+    const jsonStart = findJsonConstructStart(remaining, accumulatedSoFar, knownProperties);
 
     const isInsideCodeFence = (offset: number): boolean => {
       const textUpToOffset = accumulatedSoFar + remaining.slice(0, offset);
@@ -244,6 +259,9 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
       ...(xmlStartIndex !== -1
         ? [{ kind: "xml" as const, token: remaining[xmlStartIndex], index: xmlStartIndex }]
         : []),
+      ...(jsonStart
+        ? [{ kind: "json" as const, token: remaining[jsonStart.index], index: jsonStart.index }]
+        : []),
     ].filter((match) => match.index !== -1 && !isInsideCodeFence(match.index));
 
     tokenMatches.sort((left, right) => left.index - right.index);
@@ -253,6 +271,7 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
       const partialBeginIndex = findTrailingTokenPrefixStartAny(remaining, partialTokens);
       if (
         partialBeginIndex === -1 ||
+        isInsideCodeFence(partialBeginIndex) ||
         isTokenInStringOrRegexLiteral(
           accumulatedSoFar + remaining,
           accumulatedSoFar.length + partialBeginIndex,
@@ -307,6 +326,44 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
         segments.push({
           type: "toolCall",
           toolCall: scanned.toolCall,
+        });
+      }
+      remaining = remaining.slice(scanned.consumed);
+      continue;
+    }
+
+    if (nextTokenMatch.kind === "json") {
+      const scanned = scanJsonToolConstruct(
+        remaining,
+        toolSchemas,
+        isValidToolIdentifier,
+        options?.atStreamEnd === true,
+      );
+      if (scanned.status === "incomplete") {
+        incompleteText = remaining;
+        break;
+      }
+      if (scanned.status === "not-a-tool") {
+        appendText(remaining.slice(0, scanned.skip));
+        remaining = remaining.slice(scanned.skip);
+        continue;
+      }
+      if (scanned.toolCalls && scanned.toolCalls.length > 0) {
+        for (const tc of scanned.toolCalls) {
+          segments.push({
+            type: "toolCall",
+            toolCall: tc,
+          });
+        }
+      } else if (scanned.toolCall) {
+        segments.push({
+          type: "toolCall",
+          toolCall: scanned.toolCall,
+        });
+      } else if (scanned.invalidToolCall) {
+        segments.push({
+          type: "invalidToolCall",
+          name: scanned.invalidToolCall.name,
         });
       }
       remaining = remaining.slice(scanned.consumed);
@@ -374,7 +431,10 @@ export function parseTextEmbeddedToolCalls(text: string): ParsedTextToolCallResu
   return { segments, incompleteText, extractedParams };
 }
 
-export function getIncompleteTextToolCallName(text: string): string | undefined {
+export function getIncompleteTextToolCallName(
+  text: string,
+  toolSchemas?: ReadonlyMap<string, ToolSchema>,
+): string | undefined {
   const openaiBeginToken = "<|tool_call_begin|>";
   const openaiArgumentToken = "<|tool_call_argument_begin|>";
   const openaiBeginIndex = text.indexOf(openaiBeginToken);
@@ -416,6 +476,11 @@ export function getIncompleteTextToolCallName(text: string): string | undefined 
   const xmlFunctionMatch = text.match(/<function=([a-zA-Z0-9_.-]+)/i);
   if (xmlFunctionMatch) {
     return isValidToolIdentifier(xmlFunctionMatch[1]) ? xmlFunctionMatch[1].trim() : undefined;
+  }
+
+  const jsonName = getIncompleteJsonToolCallName(text, toolSchemas);
+  if (jsonName) {
+    return jsonName;
   }
 
   return undefined;

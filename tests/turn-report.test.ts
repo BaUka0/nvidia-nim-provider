@@ -127,7 +127,6 @@ describe("turn-report", () => {
       messages: [],
       temperature: 1,
       top_p: 0.95,
-      repetition_penalty: 1.05,
       tool_choice: "auto",
       chat_template_kwargs: { enable_thinking: true, low_effort: true },
       tools: [{ type: "function", function: { name: "read_file" } }],
@@ -159,6 +158,37 @@ describe("turn-report", () => {
     expect(report.errorMessage).toContain("Bearer [REDACTED]");
     expect(report.errorMessage).not.toContain("super-secret-token-value");
     expect(report.cycleHint).toBe(false);
+  });
+
+  it("keeps the tripped detector field for guard audit trails", () => {
+    const report = recordTurnReport({
+      outcome: "retry",
+      modelId: "nvidia/nemotron-3-super-120b-a12b",
+      lastVisibleText: "- **Specific Issues**:\n",
+      repetitionTripped: true,
+      trippedDetector: "lineCounter",
+      autoContinueFired: true,
+      recordedAt: "2026-08-29T12:00:00.000Z",
+    });
+    expect(report.repetitionTripped).toBe(true);
+    expect(report.trippedDetector).toBe("lineCounter");
+
+    const payload = JSON.parse(formatTurnReportsPayload() ?? "{}") as {
+      turns: { repetitionTripped: boolean; trippedDetector?: string }[];
+    };
+    const saved = payload.turns.at(-1);
+    expect(saved?.repetitionTripped).toBe(true);
+    expect(saved?.trippedDetector).toBe("lineCounter");
+
+    // A clean turn without a trip must not carry the field.
+    const clean = recordTurnReport({
+      outcome: "ok",
+      modelId: "nvidia/nemotron-3-super-120b-a12b",
+      lastVisibleText: "Done.",
+      repetitionTripped: false,
+      recordedAt: "2026-08-29T12:00:01.000Z",
+    });
+    expect(clean.trippedDetector).toBeUndefined();
   });
 
   it("builds a Downloads path and timestamped filename", () => {

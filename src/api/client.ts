@@ -9,6 +9,7 @@ import {
   MAX_SSE_PARTIAL_BUFFER_BYTES,
   STREAM_IDLE_TIMEOUT_MAX_MS,
   STREAM_IDLE_TIMEOUT_MIN_MS,
+  UNAVAILABLE_RETRY_MULTIPLIER,
 } from "../shared/constants";
 import { httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
 import { debugLog } from "../shared/logging";
@@ -45,15 +46,17 @@ function getRetryAfterMs(response: Response): number | undefined {
  * Calculate delay with exponential backoff and full jitter.
  * This prevents thundering herd when multiple clients retry simultaneously.
  */
-function calculateRetryDelay(attempt: number, retryAfter?: number): number {
+function calculateRetryDelay(attempt: number, retryAfter?: number, status?: number): number {
+  const scale = status === 503 ? UNAVAILABLE_RETRY_MULTIPLIER : 1;
+  const maxDelay = MAX_RETRY_DELAY_MS * scale;
   if (retryAfter !== undefined && retryAfter > 0) {
     // Add jitter to server-provided retry-after (±25%)
     const jitter = retryAfter * 0.25 * (Math.random() * 2 - 1);
-    return Math.min(Math.max(Math.round(retryAfter + jitter), 0), MAX_RETRY_DELAY_MS);
+    return Math.min(Math.max(Math.round(retryAfter + jitter), 0), maxDelay);
   }
 
-  const exponentialDelay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
-  const cappedDelay = Math.min(exponentialDelay, MAX_RETRY_DELAY_MS);
+  const exponentialDelay = BASE_RETRY_DELAY_MS * scale * Math.pow(2, attempt);
+  const cappedDelay = Math.min(exponentialDelay, maxDelay);
   // Full jitter: random delay between 0 and cappedDelay
   return Math.round(Math.random() * cappedDelay);
 }
@@ -141,11 +144,27 @@ function streamTimeoutError(kind: StreamTimeoutKind, idleSeconds: number): Strea
   return new StreamTimeoutError(kind, idleSeconds);
 }
 
+/**
+ * Thrown when the response body ends before the terminal SSE `[DONE]` sentinel
+ * arrives: NVIDIA dropped the connection mid-stream. Consumers keep whatever
+ * was already streamed and continue the turn instead of accepting a truncated
+ * reply as a finished one.
+ */
+export class StreamDroppedError extends Error {
+  constructor(model: string) {
+    super(
+      `NVIDIA NIM stream ended before the [DONE] sentinel on ${model}; the connection was dropped.`,
+    );
+    this.name = "StreamDroppedError";
+  }
+}
+
 /** Drop oversized lines and parse `data:` payloads from completed SSE lines. */
 function* parseSseLines(
   lines: string[],
   model: string,
-): Generator<NimStreamResponse, void, unknown> {
+): Generator<NimStreamResponse, boolean, unknown> {
+  let sawDone = false;
   for (const line of lines) {
     if (Buffer.byteLength(line, "utf8") > MAX_SSE_LINE_BYTES) {
       debugLog("sse", "dropping oversized SSE line");
@@ -154,12 +173,16 @@ function* parseSseLines(
     const trimmed = line.trim();
     if (!trimmed.startsWith("data: ")) continue;
     const data = trimmed.slice(6);
-    if (data === "[DONE]") continue;
+    if (data === "[DONE]") {
+      sawDone = true;
+      continue;
+    }
     const parsed = parseSseDataLine(data, model);
     if (parsed) {
       yield parsed;
     }
   }
+  return sawDone;
 }
 
 /** Reject buffers that grew past the partial-line cap (misbehaving servers). */
@@ -305,7 +328,7 @@ export async function fetchWithRetry(
         lastError = new Error(`HTTP ${response.status} ${response.statusText}`);
         await discardResponseBody(response);
         const retryAfter = getRetryAfterMs(response);
-        const delay = calculateRetryDelay(i, retryAfter);
+        const delay = calculateRetryDelay(i, retryAfter, response.status);
         debugLog(
           "fetchWithRetry",
           `Attempt ${i + 1} failed with ${response.status}, retrying after ${delay}ms`,
@@ -587,6 +610,7 @@ export async function* streamChatCompletion(
   let buffer = "";
   let lastChunkTime = Date.now();
   let streamCompleted = false;
+  let sawDone = false;
 
   function readWithTimeout() {
     if (signal?.aborted) {
@@ -669,15 +693,26 @@ export async function* streamChatCompletion(
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
 
-      yield* parseSseLines(lines, requestBody.model);
+      if (yield* parseSseLines(lines, requestBody.model)) {
+        sawDone = true;
+      }
     }
 
     // Flush decoder internal state and process any remaining lines
     const remaining = decoder.decode();
     buffer += remaining;
     assertSsePartialBufferWithinLimit(buffer, requestBody.model);
-    yield* parseSseLines(buffer.split("\n"), requestBody.model);
+    if (yield* parseSseLines(buffer.split("\n"), requestBody.model)) {
+      sawDone = true;
+    }
+
+    if (!sawDone) {
+      throw new StreamDroppedError(requestBody.model);
+    }
   } catch (error) {
+    if (error instanceof StreamDroppedError) {
+      throw error;
+    }
     if (error instanceof Error && error.name === "TimeoutError") {
       const idleSec = Math.round((Date.now() - lastChunkTime) / 1000);
       const kind =

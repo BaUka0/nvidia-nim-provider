@@ -55,7 +55,7 @@ export const MAX_JSON_REPAIR_CHARS = 65_536;
  * Maximum `endLine - startLine + 1` span `repairToolArguments` will invent or
  * keep when filling missing line ranges on file tools.
  */
-export const MAX_REPAIRED_LINE_SPAN = 200;
+export const MAX_REPAIRED_LINE_SPAN = 2000;
 
 /** Concatenated native tool-call argument buffer cap. */
 export const MAX_TOOL_ARGUMENT_CHARS = 65_536;
@@ -85,6 +85,13 @@ export const MAX_RETRY_DELAY_MS = 30000;
 
 /** Base retry delay in milliseconds */
 export const BASE_RETRY_DELAY_MS = 1000;
+
+/**
+ * HTTP 503 waits this many times longer than the shared retry schedule.
+ * NIM overload often outlasts a 1s pause; 429, 502, 504, and network errors
+ * stay on the short schedule.
+ */
+export const UNAVAILABLE_RETRY_MULTIPLIER = 3;
 
 /**
  * Bounds for the adaptive stream idle timeout. These match the declared

@@ -37,9 +37,6 @@ export interface TurnReport {
   readonly toolNames: string[];
   readonly temperature?: number;
   readonly topP?: number;
-  readonly frequencyPenalty?: number;
-  readonly presencePenalty?: number;
-  readonly repetitionPenalty?: number;
   readonly toolChoice?: NimChatRequest["tool_choice"];
   readonly chatTemplateKwargs?: Record<string, unknown>;
   readonly sawToolCall: boolean;
@@ -50,6 +47,7 @@ export interface TurnReport {
   readonly visibleChars: number;
   readonly durationMs?: number;
   readonly repetitionTripped: boolean;
+  readonly trippedDetector?: "lineCounter" | "phrase" | "paragraph" | "runaway";
   readonly autoContinueFired?: boolean;
   readonly retryReasonHistory?: string[];
   readonly lastVisibleTextHead: string;
@@ -71,6 +69,7 @@ export interface TurnReportInput {
   readonly lastVisibleText?: string;
   readonly durationMs?: number;
   readonly repetitionTripped?: boolean;
+  readonly trippedDetector?: "lineCounter" | "phrase" | "paragraph" | "runaway";
   readonly autoContinueFired?: boolean;
   readonly retryReasonHistory?: readonly string[];
   readonly errorKind?: string;
@@ -216,9 +215,6 @@ export function recordTurnReport(input: TurnReportInput): TurnReport {
     toolNames: toolNamesFromRequest(input.requestBody),
     temperature: input.requestBody?.temperature,
     topP: input.requestBody?.top_p,
-    frequencyPenalty: input.requestBody?.frequency_penalty,
-    presencePenalty: input.requestBody?.presence_penalty,
-    repetitionPenalty: input.requestBody?.repetition_penalty,
     toolChoice: input.requestBody?.tool_choice,
     chatTemplateKwargs: pickTemplateKwargs(input.requestBody?.chat_template_kwargs),
     sawToolCall: Boolean(input.sawToolCall),
@@ -232,6 +228,7 @@ export function recordTurnReport(input: TurnReportInput): TurnReport {
     visibleChars: visible.length,
     durationMs: input.durationMs,
     repetitionTripped: Boolean(input.repetitionTripped),
+    ...(input.trippedDetector ? { trippedDetector: input.trippedDetector } : {}),
     autoContinueFired: input.autoContinueFired,
     retryReasonHistory: input.retryReasonHistory ? [...input.retryReasonHistory] : undefined,
     lastVisibleTextHead: head,
