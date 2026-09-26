@@ -144,11 +144,27 @@ function streamTimeoutError(kind: StreamTimeoutKind, idleSeconds: number): Strea
   return new StreamTimeoutError(kind, idleSeconds);
 }
 
+/**
+ * Thrown when the response body ends before the terminal SSE `[DONE]` sentinel
+ * arrives: NVIDIA dropped the connection mid-stream. Consumers keep whatever
+ * was already streamed and continue the turn instead of accepting a truncated
+ * reply as a finished one.
+ */
+export class StreamDroppedError extends Error {
+  constructor(model: string) {
+    super(
+      `NVIDIA NIM stream ended before the [DONE] sentinel on ${model}; the connection was dropped.`,
+    );
+    this.name = "StreamDroppedError";
+  }
+}
+
 /** Drop oversized lines and parse `data:` payloads from completed SSE lines. */
 function* parseSseLines(
   lines: string[],
   model: string,
-): Generator<NimStreamResponse, void, unknown> {
+): Generator<NimStreamResponse, boolean, unknown> {
+  let sawDone = false;
   for (const line of lines) {
     if (Buffer.byteLength(line, "utf8") > MAX_SSE_LINE_BYTES) {
       debugLog("sse", "dropping oversized SSE line");
@@ -157,12 +173,16 @@ function* parseSseLines(
     const trimmed = line.trim();
     if (!trimmed.startsWith("data: ")) continue;
     const data = trimmed.slice(6);
-    if (data === "[DONE]") continue;
+    if (data === "[DONE]") {
+      sawDone = true;
+      continue;
+    }
     const parsed = parseSseDataLine(data, model);
     if (parsed) {
       yield parsed;
     }
   }
+  return sawDone;
 }
 
 /** Reject buffers that grew past the partial-line cap (misbehaving servers). */
@@ -590,6 +610,7 @@ export async function* streamChatCompletion(
   let buffer = "";
   let lastChunkTime = Date.now();
   let streamCompleted = false;
+  let sawDone = false;
 
   function readWithTimeout() {
     if (signal?.aborted) {
@@ -672,15 +693,26 @@ export async function* streamChatCompletion(
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
 
-      yield* parseSseLines(lines, requestBody.model);
+      if (yield* parseSseLines(lines, requestBody.model)) {
+        sawDone = true;
+      }
     }
 
     // Flush decoder internal state and process any remaining lines
     const remaining = decoder.decode();
     buffer += remaining;
     assertSsePartialBufferWithinLimit(buffer, requestBody.model);
-    yield* parseSseLines(buffer.split("\n"), requestBody.model);
+    if (yield* parseSseLines(buffer.split("\n"), requestBody.model)) {
+      sawDone = true;
+    }
+
+    if (!sawDone) {
+      throw new StreamDroppedError(requestBody.model);
+    }
   } catch (error) {
+    if (error instanceof StreamDroppedError) {
+      throw error;
+    }
     if (error instanceof Error && error.name === "TimeoutError") {
       const idleSec = Math.round((Date.now() - lastChunkTime) / 1000);
       const kind =

@@ -210,6 +210,71 @@ describe("evaluateAttemptRetry", () => {
     expect(evaluation.retryReason).toBeUndefined();
   });
 
+  it("auto-continues a dropped stream after visible text", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        streamDropped: true,
+        lastFinishReason: null,
+        reportedContent: true,
+        reportedVisibleContent: true,
+        lastVisibleText: "Now let's run the tests to verify the fixes work.",
+      }),
+    });
+    expect(evaluation.retryReason).toBe("stream_dropped");
+  });
+
+  it("auto-continues a dropped stream that only produced reasoning", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        streamDropped: true,
+        lastFinishReason: null,
+        sawReasoning: true,
+        reportedContent: true,
+        reportedVisibleContent: false,
+      }),
+    });
+    expect(evaluation.retryReason).toBe("stream_dropped");
+  });
+
+  it("does not auto-continue a dropped stream after a tool call was already emitted", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        streamDropped: true,
+        lastFinishReason: null,
+        sawToolCall: true,
+        emittedToolCall: true,
+        reportedContent: true,
+        reportedVisibleContent: true,
+      }),
+    });
+    expect(evaluation.retryReason).toBeUndefined();
+  });
+
+  it("stops auto-continuing a dropped stream after the same-turn loop budget is spent", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      loopContinueCount: DEFAULT_GENERATION_CONFIG.maxLoopContinues,
+      result: result({
+        streamDropped: true,
+        lastFinishReason: null,
+        reportedVisibleContent: true,
+        lastVisibleText: "Now let's run the tests to verify the fixes work.",
+      }),
+    });
+    expect(evaluation.retryReason).toBeUndefined();
+  });
+
+  it("keeps the empty-stream retry for a dropped stream that produced nothing", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({ streamDropped: true, lastFinishReason: null }),
+    });
+    expect(evaluation.retryReason).toBe("empty_stream");
+  });
+
   it("retries hanging ellipsis and em-dash as hanging punctuation", () => {
     const evalDots = evaluateAttemptRetry({
       ...baseFacts,

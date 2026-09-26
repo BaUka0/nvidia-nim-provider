@@ -83,6 +83,12 @@ export interface StreamAttemptResult {
   toolParsingStateInitDurationMs?: number;
   /** True when the SSE idle/first-token deadline fired after partial output. */
   timedOut?: boolean;
+  /**
+   * True when the SSE body ended without a finish_reason and without the
+   * `[DONE]` sentinel: NVIDIA dropped the connection mid-response and the
+   * partial reply must not be accepted as a finished turn.
+   */
+  streamDropped?: boolean;
 }
 
 /**
@@ -109,6 +115,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   let toolCallLoopKey: string | undefined;
   let toolParsingStateInitDurationMs: number | undefined;
   let timedOut = false;
+  let streamDropped = false;
 
   const repetitionGuard = new RepetitionGuard({
     maxRepeatedLines: input.maxRepeatedLines,
@@ -451,6 +458,8 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     const isTimeout =
       (streamErr instanceof NvidiaApiError && streamErr.kind === "timeout") ||
       (streamErr instanceof Error && streamErr.name === "TimeoutError");
+    // Matched by name so a module-mocked client in tests cannot break the check.
+    const isDroppedStream = streamErr instanceof Error && streamErr.name === "StreamDroppedError";
     const hasPartialProgress =
       reportedVisibleContent ||
       reportedContent ||
@@ -458,22 +467,43 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       sawToolCall ||
       lastVisibleText.length > 0 ||
       pendingText.length > 0;
-    if (!isTimeout || !hasPartialProgress) {
+    if (isDroppedStream) {
+      if (lastFinishReason == null) {
+        // No finish_reason and no [DONE]: the backend cut the connection
+        // mid-response. Keep the partial output and let the caller continue.
+        streamDropped = true;
+        debugLog("streamRetry", {
+          action: "droppedStream",
+          model: input.model.id,
+          streamChunkCount,
+          visibleChars: lastVisibleText.length,
+          sawReasoning,
+        });
+      } else {
+        // A finish_reason arrived but [DONE] never did; tolerate the quirk.
+        debugLog("streamRetry", {
+          action: "missingDoneSentinel",
+          model: input.model.id,
+          lastFinishReason,
+        });
+      }
+    } else if (!isTimeout || !hasPartialProgress) {
       throw streamErr;
+    } else {
+      timedOut = true;
+      debugLog("streamTimeout", {
+        action: "returnPartial",
+        model: input.model.id,
+        reportedVisibleContent,
+        sawReasoning,
+        sawToolCall,
+        visibleChars: lastVisibleText.length,
+      });
+      outputLog(
+        "streamTimeout",
+        `Stream stalled on ${input.model.id} after partial output; keeping the turn open for auto-continue.`,
+      );
     }
-    timedOut = true;
-    debugLog("streamTimeout", {
-      action: "returnPartial",
-      model: input.model.id,
-      reportedVisibleContent,
-      sawReasoning,
-      sawToolCall,
-      visibleChars: lastVisibleText.length,
-    });
-    outputLog(
-      "streamTimeout",
-      `Stream stalled on ${input.model.id} after partial output; keeping the turn open for auto-continue.`,
-    );
   }
 
   if (!repetitionGuard.tripped && repetitionGuard.flush()) {
@@ -649,5 +679,6 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     firstToolCallAtMs,
     toolParsingStateInitDurationMs,
     timedOut,
+    streamDropped,
   };
 }

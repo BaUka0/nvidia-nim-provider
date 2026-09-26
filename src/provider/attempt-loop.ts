@@ -59,6 +59,7 @@ const LOOP_REASON_LABELS: Record<string, string> = {
   hanging_colon: "hanging punctuation",
   content_filter: "content filter",
   stream_timeout: "stream stall",
+  stream_dropped: "dropped stream",
 };
 
 export function logAttemptTiming(input: {

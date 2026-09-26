@@ -2,6 +2,7 @@ import {
   chatCompletion,
   fetchModelsOrThrow,
   fetchWithRetry,
+  StreamDroppedError,
   streamChatCompletion,
 } from "../src/api/client";
 import { exponentialRetryDelayMs } from "../src/shared/cancellation";
@@ -540,6 +541,72 @@ describe("streamChatCompletion", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].choices[0].delta.content).toBe("Hello");
+  });
+
+  it("completes without error when the [DONE] sentinel arrives", async () => {
+    const chunk: NimStreamResponse = {
+      id: "1",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: "kimi-k2.6",
+      choices: [{ index: 0, delta: { content: "Hello" }, finish_reason: null }],
+    };
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: stream,
+      }),
+    );
+
+    const results: NimStreamResponse[] = [];
+    for await (const item of streamChatCompletion("key", {
+      model: "kimi-k2.6",
+      messages: [],
+      stream: true,
+    })) {
+      results.push(item);
+    }
+
+    expect(results).toHaveLength(1);
+  });
+
+  it("throws a dropped-stream error when the body ends without [DONE]", async () => {
+    const chunk: NimStreamResponse = {
+      id: "1",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: "kimi-k2.6",
+      choices: [{ index: 0, delta: { content: "Hello" }, finish_reason: null }],
+    };
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+        controller.close();
+      },
+    });
+
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: true,
+        body: stream,
+      }),
+    );
+
+    const gen = streamChatCompletion("key", { model: "kimi-k2.6", messages: [], stream: true });
+    const first = await gen.next();
+    expect(first.done).toBe(false);
+    expect(first.value?.choices[0].delta.content).toBe("Hello");
+    await expect(gen.next()).rejects.toThrow(StreamDroppedError);
   });
 
   it("throws on non-ok response", async () => {

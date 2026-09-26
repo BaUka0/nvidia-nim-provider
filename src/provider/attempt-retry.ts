@@ -15,7 +15,8 @@ export type LoopRetryReason =
   | "hanging_colon"
   | "output_truncated"
   | "content_filter"
-  | "stream_timeout";
+  | "stream_timeout"
+  | "stream_dropped";
 export type RetryReason = LoopRetryReason | "invalid_tool_call" | "empty_stream";
 
 export const LOOP_RETRY_REASONS: ReadonlySet<RetryReason> = new Set([
@@ -25,6 +26,7 @@ export const LOOP_RETRY_REASONS: ReadonlySet<RetryReason> = new Set([
   "output_truncated",
   "content_filter",
   "stream_timeout",
+  "stream_dropped",
 ]);
 
 export function isLoopRetryReason(reason: RetryReason | undefined): reason is LoopRetryReason {
@@ -140,13 +142,21 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     !result.emittedToolCall &&
     !willRetryAfterInvalidToolCall &&
     loopAutoContinueEligible;
+  const willRetryStreamDropped =
+    Boolean(result.streamDropped) &&
+    !result.timedOut &&
+    !result.emittedToolCall &&
+    !willRetryAfterInvalidToolCall &&
+    loopAutoContinueEligible &&
+    (hasVisibleText || result.sawReasoning);
   const willRetryOnLoop =
     willRetryRepetitionLoop ||
     willRetryToolCallLoop ||
     willRetryHangingColon ||
     willRetryTruncation ||
     willRetryContentFilter ||
-    willRetryStreamTimeout;
+    willRetryStreamTimeout ||
+    willRetryStreamDropped;
   const willRetryEmptyStream =
     !result.sawReasoning &&
     !result.sawToolCall &&
@@ -166,7 +176,9 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
             ? "output_truncated"
             : willRetryContentFilter
               ? "content_filter"
-              : "stream_timeout"
+              : willRetryStreamDropped
+                ? "stream_dropped"
+                : "stream_timeout"
     : willRetryAfterInvalidToolCall
       ? "invalid_tool_call"
       : willRetryEmptyStream

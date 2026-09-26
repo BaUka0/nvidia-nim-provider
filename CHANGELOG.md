@@ -14,6 +14,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ### Fixed
 
+- A reply cut off by a dropped connection now continues instead of ending the turn. If NVIDIA closes the stream before sending its completion marker, the extension keeps what was already written and asks the model to pick up from there.
 - A tool call written as JSON text, or inside a json code fence, is executed. Ordinary JSON stays in the chat, including an unfinished wrapper around a nested object that looks like a tool call. A fenced tool call still runs when the reply ends before the closing fence.
 - A plan that a reasoning model writes around a tool call stays in the thinking block, including the text after that call. The call itself still runs. A reply with no tool call is still shown in the chat.
 - Reasoning is no longer cut off because a short phrase, such as the name of a tool, comes up a few times. The stream still stops when the same paragraph comes back with different words, or when one sentence repeats many times. The visible answer is unchanged.

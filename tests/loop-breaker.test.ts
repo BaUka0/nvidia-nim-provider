@@ -278,9 +278,7 @@ describe("injectHistoryLoopBreaker", () => {
     expect(event).toBeDefined();
     const value = event?.value as Record<string, unknown>;
     expect(value.detector).toBe("toolCallLoop");
-    expect(value.trippedLine).toBe(
-      'run_in_terminal:{"command":"npm run compile","mode":"sync"}',
-    );
+    expect(value.trippedLine).toBe('run_in_terminal:{"command":"npm run compile","mode":"sync"}');
     expect(value.escalate).toBe(false);
   });
 

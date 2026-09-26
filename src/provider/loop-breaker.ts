@@ -189,7 +189,8 @@ export type LoopBreakerNudgeReason =
   | "hanging_colon"
   | "output_truncated"
   | "content_filter"
-  | "stream_timeout";
+  | "stream_timeout"
+  | "stream_dropped";
 
 const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
   repetition_loop:
@@ -204,6 +205,8 @@ const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
     "Your previous reply was stopped by the safety filter. Continue the answer without the blocked content. Call a tool if needed or finish the answer. Do not mention the filter.",
   stream_timeout:
     "The previous reply stalled before completing. Continue working from where you left off. Call the required tool or proceed with the task.",
+  stream_dropped:
+    "The connection dropped before your previous reply finished. Continue from where you left off: call the required tool or finish the answer.",
 };
 
 const HISTORY_LOOP_ESCALATION_NUDGE =

@@ -2067,6 +2067,60 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("auto-continues when the connection drops before the reply finishes", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.enabled") return false;
+        return defaultValue;
+      }),
+    }));
+    const droppedStream = async function* () {
+      yield {
+        choices: [{ delta: { content: "Now let's run the tests to verify the fixes work." } }],
+      };
+      const dropped = new Error("NVIDIA NIM stream ended before the [DONE] sentinel");
+      dropped.name = "StreamDroppedError";
+      throw dropped;
+    };
+    const continueStream = async function* () {
+      yield { choices: [{ delta: { content: " Running them now." } }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => droppedStream())
+      .mockImplementationOnce(() => continueStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(JSON.stringify(retryBody.messages)).toContain("connection dropped");
+    expect(JSON.stringify(retryBody.messages)).toContain("Now let's run the tests");
+    expect(getTurnReports()[0]).toMatchObject({
+      outcome: "retry",
+      autoContinueFired: true,
+    });
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Now let's run the tests to verify the fixes work." }),
+    );
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: " Running them now." }),
+    );
+  });
+
   it("keeps a partial answer when a stream stalls and auto-continue is disabled", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
