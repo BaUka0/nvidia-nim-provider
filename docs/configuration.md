@@ -118,9 +118,7 @@ Optional sampling parameters sent with each request.
 | `nvidia-nim.generation.temperature` | `null` | `0.0`–`2.0` | Controls response creativity. Lower values (e.g. `0.2`) make answers more focused and deterministic; higher values (e.g. `0.8`) make them more creative. `null` uses the model default. |
 | `nvidia-nim.generation.topP` | `null` | `0.0`–`1.0` | Alternative way to control response diversity. `null` uses the model default. |
 | `nvidia-nim.generation.maxOutputTokens` | `null` | `≥128` | Maximum length of generated responses in tokens. `null` allows the full model capacity. |
-| `nvidia-nim.generation.frequencyPenalty` | `null` | `-2`–`2` | Discourages the model from repeating words. `null` omits the parameter. |
-| `nvidia-nim.generation.presencePenalty` | `null` | `-2`–`2` | Encourages the model to introduce new topics. `null` omits the parameter. |
-| `nvidia-nim.generation.maxRepeatedLines` | `4` | `0`–`50` | Stops the response early if the model gets stuck repeating the same sentence or a paragraph with no line breaks. `0` disables loop detection. |
+| `nvidia-nim.generation.maxRepeatedLines` | `4` | `0`–`50` | Stops the response early if the model gets stuck repeating the same sentence. A short section label can repeat across a report, and it only counts as a loop when that same label is printed again and again in a row. Reasoning also stops when the same paragraph comes back with different words, and a short phrase there can repeat a few more times. `0` disables loop detection. |
 | `nvidia-nim.generation.maxLoopContinues` | `2` | `0`–`8` | How many times in one turn to nudge after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. `0` disables auto-continue. |
 
 ---

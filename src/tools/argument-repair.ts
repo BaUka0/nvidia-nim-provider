@@ -151,7 +151,7 @@ export function fillMissingAuxiliaryBooleans(
  * Alias groups used to recover a required argument from a sibling the model
  * named instead (for example `file_path` for a required `filePath`).
  */
-const PROPERTY_ALIAS_GROUPS: readonly (readonly string[])[] = [
+export const PROPERTY_ALIAS_GROUPS: readonly (readonly string[])[] = [
   [
     "filePath",
     "targetFile",

@@ -59,6 +59,7 @@ const LOOP_REASON_LABELS: Record<string, string> = {
   hanging_colon: "hanging punctuation",
   content_filter: "content filter",
   stream_timeout: "stream stall",
+  stream_dropped: "dropped stream",
 };
 
 export function logAttemptTiming(input: {
@@ -196,6 +197,7 @@ export function logLoopAutoContinue(input: {
   debugLog("repetitionGuard", {
     action: "autoContinue",
     trippedLine: result.trippedLine,
+    detector: result.trippedDetector,
     lastVisibleText: result.lastVisibleText,
     reason: retryReason,
     loopContinueCount: input.loopContinueCount,

@@ -1,4 +1,5 @@
 import { CancellationToken } from "vscode";
+import { UNAVAILABLE_RETRY_MULTIPLIER } from "./constants";
 
 /** AbortError used by fetch/stream cancellation so classifiers see a user abort. */
 export function createAbortError(): Error {
@@ -14,6 +15,20 @@ export function createAbortError(): Error {
  */
 export function isCancellation(err: unknown, token: CancellationToken): boolean {
   return token.isCancellationRequested || (err instanceof Error && err.name === "AbortError");
+}
+
+/**
+ * Exponential pause before a retry. HTTP 503 uses {@link UNAVAILABLE_RETRY_MULTIPLIER};
+ * every other status keeps `baseMs` and `capMs` as given.
+ */
+export function exponentialRetryDelayMs(
+  baseMs: number,
+  exponent: number,
+  capMs: number,
+  status?: number,
+): number {
+  const scale = status === 503 ? UNAVAILABLE_RETRY_MULTIPLIER : 1;
+  return Math.min(baseMs * scale * Math.pow(2, exponent), capMs * scale);
 }
 
 /**

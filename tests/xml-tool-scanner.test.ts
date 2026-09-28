@@ -1,7 +1,26 @@
 import {
-  scanXmlToolConstruct,
   extractStandaloneXmlParameters,
+  isTokenInStringOrRegexLiteral,
+  scanXmlToolConstruct,
 } from "../src/tools/xml-tool-scanner";
+
+describe("isTokenInStringOrRegexLiteral", () => {
+  it("treats a tool tag inside return'...' as a string", () => {
+    const text = "return'hello <tool_call>'";
+    expect(isTokenInStringOrRegexLiteral(text, text.indexOf("<tool_call>"))).toBe(true);
+  });
+
+  it("does not treat a tool tag after a contraction or plural possessive as a string", () => {
+    const contraction = "Let's <tool_call>";
+    const possessive = "users' <tool_call>";
+    expect(isTokenInStringOrRegexLiteral(contraction, contraction.indexOf("<tool_call>"))).toBe(
+      false,
+    );
+    expect(isTokenInStringOrRegexLiteral(possessive, possessive.indexOf("<tool_call>"))).toBe(
+      false,
+    );
+  });
+});
 
 describe("scanXmlToolConstruct", () => {
   const parseValue = (raw: string): unknown => raw.trim();

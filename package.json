@@ -3,7 +3,7 @@
   "publisher": "neuraldock",
   "displayName": "NVIDIA NIM Agent",
   "description": "Use NVIDIA NIM reasoning models in GitHub Copilot Chat for VS Code",
-  "version": "1.2.0",
+  "version": "1.3.0-beta.3",
   "license": "MIT",
   "homepage": "https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent",
   "bugs": {
@@ -293,32 +293,12 @@
           "maximum": 131072,
           "description": "Override maximum output tokens limit per response (null uses model maximum)."
         },
-        "nvidia-nim.generation.frequencyPenalty": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "default": null,
-          "minimum": -2,
-          "maximum": 2,
-          "description": "Frequency penalty reduces repetition of tokens that already appeared (higher = less verbatim repetition). Null disables custom penalty."
-        },
-        "nvidia-nim.generation.presencePenalty": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "default": null,
-          "minimum": -2,
-          "maximum": 2,
-          "description": "Presence penalty discourages the model from repeating the same topics. Null disables custom penalty."
-        },
         "nvidia-nim.generation.maxRepeatedLines": {
           "type": "integer",
           "default": 4,
           "minimum": 0,
           "maximum": 50,
-          "description": "Stop the response early when the same normalized line is repeated this many times (guards against degenerate 'Let me...' loops). 0 disables the guard. Code fences are ignored to avoid false positives on repetitive code."
+          "description": "Stop the response early when the same line is repeated this many times. A short section label can repeat across a report and only counts when that same label is printed again and again in a row. Reasoning also stops when the same paragraph comes back with different words, and it allows a short phrase to repeat a few more times than the visible answer. 0 disables the guard. Code fences are ignored."
         },
         "nvidia-nim.generation.maxLoopContinues": {
           "type": "integer",

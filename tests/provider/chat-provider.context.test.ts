@@ -235,7 +235,7 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
       startLine: 1,
-      endLine: 200,
+      endLine: 2000,
     });
   });
 
@@ -303,7 +303,7 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
       startLine: 1,
-      endLine: 200,
+      endLine: 2000,
     });
   });
 
@@ -437,7 +437,7 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
       startLine: 1,
-      endLine: 200,
+      endLine: 2000,
     });
   });
 
@@ -639,7 +639,7 @@ describe("NimChatModelProvider", () => {
     expect(toolCallReports[0][0].input).toEqual({
       filePath: "/tmp/example.md",
       startLine: 1,
-      endLine: 200,
+      endLine: 2000,
     });
   });
 

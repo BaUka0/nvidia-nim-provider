@@ -211,8 +211,6 @@ describe("ConfigManager", () => {
       expect(config.temperature).toBeNull();
       expect(config.topP).toBeNull();
       expect(config.maxOutputTokens).toBeNull();
-      expect(config.frequencyPenalty).toBeNull();
-      expect(config.presencePenalty).toBeNull();
       expect(config.maxRepeatedLines).toBe(4);
       expect(config.maxLoopContinues).toBe(2);
     });
@@ -232,27 +230,6 @@ describe("ConfigManager", () => {
 
       mockStore["generation.maxOutputTokens"] = 4096;
       expect(ConfigManager.getGenerationConfig().maxOutputTokens).toBe(4096);
-    });
-
-    it("clamps frequency and presence penalties", () => {
-      mockStore["generation.frequencyPenalty"] = 5;
-      expect(ConfigManager.getGenerationConfig().frequencyPenalty).toBe(2);
-      mockStore["generation.frequencyPenalty"] = -5;
-      expect(ConfigManager.getGenerationConfig().frequencyPenalty).toBe(-2);
-      mockStore["generation.frequencyPenalty"] = 0.7;
-      expect(ConfigManager.getGenerationConfig().frequencyPenalty).toBe(0.7);
-
-      mockStore["generation.presencePenalty"] = 3;
-      expect(ConfigManager.getGenerationConfig().presencePenalty).toBe(2);
-      mockStore["generation.presencePenalty"] = -3;
-      expect(ConfigManager.getGenerationConfig().presencePenalty).toBe(-2);
-    });
-
-    it("rejects non-finite penalties as null", () => {
-      mockStore["generation.frequencyPenalty"] = Number.NaN;
-      expect(ConfigManager.getGenerationConfig().frequencyPenalty).toBeNull();
-      mockStore["generation.presencePenalty"] = Number.POSITIVE_INFINITY;
-      expect(ConfigManager.getGenerationConfig().presencePenalty).toBeNull();
     });
 
     it("clamps generation.maxRepeatedLines into the 0..50 range", () => {

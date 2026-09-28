@@ -1,4 +1,8 @@
-import { RepetitionGuard, normalizeLineForRepetition } from "../src/provider/repetition-guard";
+import {
+  REASONING_REPETITION_OPTIONS,
+  RepetitionGuard,
+  normalizeLineForRepetition,
+} from "../src/provider/repetition-guard";
 import {
   buildHistoryLoopBreakerContent,
   detectHistoryLoop,
@@ -7,6 +11,7 @@ import {
 import {
   detectCharacterRunaway,
   detectCycleHint,
+  detectParagraphEcho,
   detectPeriodicCycle,
   detectPhraseCycle,
   detectPrefixCycle,
@@ -170,6 +175,69 @@ describe("RepetitionGuard.add", () => {
     expect(guard.add(`${line}\n`)).toBe(true);
     expect(guard.tripped).toBe(true);
     expect(guard.trippedLine).toBe(normalizeLineForRepetition(line));
+    expect(guard.trippedDetector).toBe("lineCounter");
+  });
+
+  it("does not treat a section label repeated across a report as a loop", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 4 });
+    const sections = [
+      [
+        "### provider.ts",
+        "The chat method validates the key, prepares the body, and streams the reply.",
+        "Split that method into a key check and a stream loop.",
+      ],
+      [
+        "### api.ts",
+        "Retry, timeout, and server-sent events share one function.",
+        "Move the retry policy into its own helper.",
+      ],
+      [
+        "### catalog.ts",
+        "A large override table sits next to the normalization logic.",
+        "Keep the table in a data file.",
+      ],
+      [
+        "### extension.ts",
+        "Activation registers commands and also refreshes the model list.",
+        "Leave registration in the entry point.",
+      ],
+      [
+        "### utils.ts",
+        "Think-tag filtering mutates a buffer while scanning.",
+        "Return the next buffer instead of editing the input.",
+      ],
+      [
+        "### tools.ts",
+        "One tool is constructed inside the registration function.",
+        "A registry can own construction.",
+      ],
+    ];
+    const report = sections
+      .map(([heading, issue, recommendation]) =>
+        [
+          heading,
+          "- **Specific Issues**:",
+          issue,
+          "- **Recommendations**:",
+          recommendation,
+          "",
+        ].join("\n"),
+      )
+      .join("\n");
+    expect(guard.add(report)).toBe(false);
+    expect(guard.flush()).toBe(false);
+    expect(guard.tripped).toBe(false);
+  });
+
+  it("stops when the same section label is printed back to back", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 4 });
+    const label = "- **Specific Issues**:\n\n";
+    expect(guard.add(label)).toBe(false);
+    expect(guard.add(label)).toBe(false);
+    expect(guard.add(label)).toBe(false);
+    expect(guard.add(label)).toBe(true);
+    expect(guard.trippedDetector).toBe("lineCounter");
+    expect(guard.trippedLine).toBe("specific issues");
   });
 
   it("does not trip below the threshold", () => {
@@ -325,6 +393,7 @@ describe("RepetitionGuard.add", () => {
     expect(guard.add(beat)).toBe(false);
     expect(guard.add(beat)).toBe(true);
     expect(guard.tripped).toBe(true);
+    expect(guard.trippedDetector).toBe("phrase");
   });
 
   it("still ignores Super 120B text inside a code fence", () => {
@@ -354,12 +423,92 @@ describe("RepetitionGuard.add", () => {
     expect(guard.add("!".repeat(10))).toBe(true);
     expect(guard.tripped).toBe(true);
     expect(guard.trippedLine).toContain("!");
+    expect(guard.trippedDetector).toBe("runaway");
   });
 
   it("trips on short periodic cycles without newlines", () => {
     const guard = new RepetitionGuard({ maxRepeatedLines: 4 });
     expect(guard.add("!?".repeat(25))).toBe(true);
     expect(guard.tripped).toBe(true);
+  });
+
+  it("does not cut reasoning on a repeated tool-name phrase", () => {
+    const guard = new RepetitionGuard({
+      maxRepeatedLines: 4,
+      ...REASONING_REPETITION_OPTIONS,
+    });
+    const line = "Use the replace_string_in_file.\n";
+    for (let i = 0; i < 5; i += 1) {
+      expect(guard.add(line)).toBe(false);
+    }
+    expect(guard.tripped).toBe(false);
+    expect(guard.add(line)).toBe(true);
+  });
+
+  it("cuts reasoning when the same paragraph returns with different words", () => {
+    const guard = new RepetitionGuard({
+      maxRepeatedLines: 4,
+      ...REASONING_REPETITION_OPTIONS,
+    });
+    const copies = [
+      "The edit should go through replace_string_in_file because the function body in stream pump still checks the previous repetition threshold before emitting the tool call and the old string is the current guard invocation.",
+      "The change ought to go through replace_string_in_file because the method body in stream pump still verifies the previous repetition threshold before sending the tool call and the prior string is the current guard invocation.",
+      "The patch needs to go through replace_string_in_file because the routine body in stream pump still tests the previous repetition threshold before dispatching the tool call and the former string is the current guard invocation.",
+    ];
+    expect(guard.add(`${copies[0]}\n\n`)).toBe(false);
+    expect(guard.add(`${copies[1]}\n\n`)).toBe(false);
+    expect(guard.add(`${copies[2]}\n\n`)).toBe(true);
+    expect(guard.trippedDetector).toBe("paragraph");
+    expect(detectParagraphEcho(copies.join("\n\n"))).toEqual(expect.any(String));
+  });
+
+  it("does not cut reasoning when a signature is quoted between sentences", () => {
+    const guard = new RepetitionGuard({
+      maxRepeatedLines: 4,
+      ...REASONING_REPETITION_OPTIONS,
+    });
+    const notes = [
+      "The field stays optional on the constructor.",
+      "The factory passes undefined when the secret is missing.",
+      "The resolver reads the same field from global state.",
+      "A test stubs the field with an empty string.",
+      "The provider copies the field into the request.",
+      "Logging prints the field only after redaction.",
+      "The fallback path leaves the field unset.",
+      "The cache stores the field beside the user agent.",
+    ];
+    for (const note of notes) {
+      expect(guard.add(`apiKey?: string;\n${note}\n`)).toBe(false);
+    }
+    expect(guard.tripped).toBe(false);
+  });
+
+  it("cuts reasoning when the same signature is printed in a row", () => {
+    const guard = new RepetitionGuard({
+      maxRepeatedLines: 4,
+      ...REASONING_REPETITION_OPTIONS,
+    });
+    const line = "apiKey?: string;\n";
+    for (let i = 0; i < 7; i += 1) {
+      expect(guard.add(line)).toBe(false);
+    }
+    expect(guard.add(line)).toBe(true);
+    expect(guard.trippedDetector).toBe("lineCounter");
+    expect(guard.trippedLine).toBe("apikey string");
+  });
+
+  it("does not treat separate reasoning paragraphs that share a filename as one loop", () => {
+    const guard = new RepetitionGuard({
+      maxRepeatedLines: 4,
+      ...REASONING_REPETITION_OPTIONS,
+    });
+    const parts = [
+      "Open package json and list the scripts section so the test command is visible. Record which script launches the compiler and which script launches the suite.",
+      "Read the stream pump around the reasoning router and note where content becomes a visible answer. Leave the router alone until the tool call path is understood.",
+      "Inspect the catalog entry for nemotron super and confirm the context window plus the reasoning modes. Do not change sampling while reading that entry.",
+    ];
+    expect(guard.add(parts.join("\n\n"))).toBe(false);
+    expect(guard.tripped).toBe(false);
   });
 
   it("does not trip on comment divider lines or markdown table separators", () => {
@@ -453,7 +602,7 @@ describe("RepetitionGuard.detectHistoryLoop", () => {
     ];
     const content = buildHistoryLoopBreakerContent(messages);
     expect(content).toBeDefined();
-    expect(content).toContain('preamble pattern "давайте я"');
+    expect(content).toContain('preamble "давайте я"');
     expect(content).not.toContain("Let me fix");
     expect(content).not.toContain("Let me run");
   });

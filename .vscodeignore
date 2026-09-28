@@ -40,3 +40,5 @@ images/*.mp4
 package-lock.json
 coverage/**
 out/**/*.map
+nvidia-nim-session-*.json
+nvidia-nim-turn-report-*.json

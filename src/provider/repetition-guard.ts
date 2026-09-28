@@ -6,20 +6,53 @@
  * trailing 6-word-gram window (the Super 120B #7 cycle). Markdown code fences
  * are tracked and ignored to avoid false positives on repetitive code generation.
  * Normalization is Unicode-aware so non-English loops (Cyrillic, CJK,
- * accented) are caught too.
+ * accented) are caught too. A one- or two-word line (a section label such as
+ * "Specific Issues") only counts when it repeats back to back. A code-like
+ * line outside a fence needs more consecutive copies than a prose sentence.
  */
 import {
   CYCLE_SCAN_CHARS,
+  detectParagraphEcho,
   detectPhraseCycle,
   detectRunawayCycle,
   normalizeForCycle,
 } from "../shared/cycle-detection";
 
+/** Which check stopped the stream. Logged so a later audit can see the cause. */
+export type RepetitionDetector = "lineCounter" | "phrase" | "paragraph" | "runaway";
+
 export interface RepetitionGuardOptions {
   readonly maxRepeatedLines: number;
+  /** Exact phrase length. The visible answer keeps the 6-word default. */
+  readonly phraseCycleGramWords?: number;
+  /**
+   * Floor for identical-line repeats. Reasoning uses this so a planning
+   * sentence can appear a few times before the line counter trips.
+   */
+  readonly minRepeatedLines?: number;
+  /** Catch a paragraph that returns with synonyms. Off for visible answers. */
+  readonly detectParagraphEcho?: boolean;
 }
 
+/** Reasoning-only loosening. Visible answers keep the caller's line threshold. */
+export const REASONING_REPETITION_OPTIONS = {
+  phraseCycleGramWords: 12,
+  minRepeatedLines: 6,
+  detectParagraphEcho: true,
+} as const satisfies Omit<RepetitionGuardOptions, "maxRepeatedLines">;
+
 const MIN_NORMALIZED_LINE_LENGTH = 10;
+/**
+ * A normalized line of at most this many words is a section label, not a
+ * sentence. "specific issues" is two words. It must not accumulate across a
+ * report. Back-to-back copies still trip at the normal line threshold.
+ */
+const SHORT_LABEL_MAX_WORDS = 2;
+/**
+ * The same code line outside a fence. Higher than a prose sentence so a
+ * quoted signature can show up more than once. Back-to-back copies still trip.
+ */
+const CODE_LINE_MIN_REPEATS = 8;
 /** Cap the normalized key length so a single huge line cannot bloat the map. */
 const MAX_KEY_LENGTH = 200;
 /**
@@ -56,9 +89,32 @@ function isCodeFenceMarker(line: string): boolean {
   return true;
 }
 
+function wordCount(normalized: string): number {
+  if (!normalized) {
+    return 0;
+  }
+  return normalized.split(/\s+/).length;
+}
+
+/** A statement or signature quoted outside a fence, not an English sentence. */
+function isCodeLikeLine(rawLine: string): boolean {
+  const trimmed = rawLine.trim();
+  if (!trimmed || trimmed.length > 400) {
+    return false;
+  }
+  if (/[{}]|::|=>|->|\?:/.test(trimmed)) {
+    return true;
+  }
+  return /;\s*$/.test(trimmed);
+}
+
 export class RepetitionGuard {
   private readonly lineCounts = new Map<string, number>();
   private trippedLineValue: string | undefined;
+  private trippedDetectorValue: RepetitionDetector | undefined;
+  /** Back-to-back copies of a short label or a code line. Blank lines do not break the run. */
+  private consecutiveKey = "";
+  private consecutiveCount = 0;
   private inCodeFence = false;
   private fenceSkippedLines = 0;
   /** Buffers a partial line split across streamed chunks. */
@@ -78,8 +134,45 @@ export class RepetitionGuard {
     return this.trippedLineValue;
   }
 
+  get trippedDetector(): RepetitionDetector | undefined {
+    return this.trippedDetectorValue;
+  }
+
+  private trip(detector: RepetitionDetector, line: string): void {
+    this.trippedDetectorValue = detector;
+    this.trippedLineValue = line;
+  }
+
+  /**
+   * Count another copy of a short label or code line. A different non-empty
+   * line starts a new run. Returns the length of the current run.
+   */
+  private countConsecutive(key: string): number {
+    if (key === this.consecutiveKey) {
+      this.consecutiveCount += 1;
+    } else {
+      this.consecutiveKey = key;
+      this.consecutiveCount = 1;
+    }
+    return this.consecutiveCount;
+  }
+
+  /** A real sentence between labels ends the back-to-back run. A blank line does not. */
+  private breakConsecutive(key: string): void {
+    if (key.length === 0 || key === this.consecutiveKey) {
+      return;
+    }
+    this.consecutiveKey = "";
+    this.consecutiveCount = 0;
+  }
+
   private get threshold(): number {
-    return Math.max(0, Math.floor(this.options.maxRepeatedLines));
+    const configured = Math.max(0, Math.floor(this.options.maxRepeatedLines));
+    if (configured === 0) {
+      return 0;
+    }
+    const floor = this.options.minRepeatedLines ?? configured;
+    return Math.max(configured, floor);
   }
 
   /**
@@ -148,19 +241,45 @@ export class RepetitionGuard {
     }
     this.appendVisible(rawLine);
     const key = normalizeLineForRepetition(rawLine);
-    if (key.length >= MIN_NORMALIZED_LINE_LENGTH) {
-      if (this.lineCounts.size >= MAX_TRACKED_LINES && !this.lineCounts.has(key)) {
-        // Predictable memory bound: reset counts rather than grow without limit.
-        this.lineCounts.clear();
-      }
-      const count = (this.lineCounts.get(key) ?? 0) + 1;
-      this.lineCounts.set(key, count);
-      if (count >= threshold) {
-        this.trippedLineValue = key;
-        return true;
-      }
+    if (
+      key.length >= MIN_NORMALIZED_LINE_LENGTH &&
+      this.observeRepeatedLine(rawLine, key, threshold)
+    ) {
+      return true;
+    }
+    if (key.length < MIN_NORMALIZED_LINE_LENGTH) {
+      this.breakConsecutive(key);
     }
     return this.scanVisibleCycle();
+  }
+
+  /**
+   * Short labels and code lines only trip back to back. Every other line
+   * accumulates across the answer, which is what catches "Let me fix…".
+   */
+  private observeRepeatedLine(rawLine: string, key: string, threshold: number): boolean {
+    const codeLike = isCodeLikeLine(rawLine);
+    const shortLabel = !codeLike && wordCount(key) <= SHORT_LABEL_MAX_WORDS;
+    if (codeLike || shortLabel) {
+      const limit = codeLike ? Math.max(threshold, CODE_LINE_MIN_REPEATS) : threshold;
+      if (this.countConsecutive(key) >= limit) {
+        this.trip("lineCounter", key);
+        return true;
+      }
+      return false;
+    }
+    this.breakConsecutive(key);
+    if (this.lineCounts.size >= MAX_TRACKED_LINES && !this.lineCounts.has(key)) {
+      // Predictable memory bound: reset counts rather than grow without limit.
+      this.lineCounts.clear();
+    }
+    const count = (this.lineCounts.get(key) ?? 0) + 1;
+    this.lineCounts.set(key, count);
+    if (count >= threshold) {
+      this.trip("lineCounter", key);
+      return true;
+    }
+    return false;
   }
 
   private appendVisible(rawLine: string): void {
@@ -199,7 +318,10 @@ export class RepetitionGuard {
     if (this.tripFromRunaway(candidate)) {
       return true;
     }
-    return this.tripFromPhrase(candidate);
+    if (this.tripFromPhrase(candidate)) {
+      return true;
+    }
+    return this.tripFromParagraph(candidate);
   }
 
   private tripFromRunaway(text: string): boolean {
@@ -207,16 +329,30 @@ export class RepetitionGuard {
     if (!runaway) {
       return false;
     }
-    this.trippedLineValue = runaway;
+    this.trip("runaway", runaway);
     return true;
   }
 
   private tripFromPhrase(text: string): boolean {
-    const gram = detectPhraseCycle(text);
+    const gram = detectPhraseCycle(text, {
+      gramWords: this.options.phraseCycleGramWords,
+    });
     if (!gram) {
       return false;
     }
-    this.trippedLineValue = gram;
+    this.trip("phrase", gram);
+    return true;
+  }
+
+  private tripFromParagraph(text: string): boolean {
+    if (!this.options.detectParagraphEcho) {
+      return false;
+    }
+    const echo = detectParagraphEcho(text);
+    if (!echo) {
+      return false;
+    }
+    this.trip("paragraph", echo);
     return true;
   }
 }

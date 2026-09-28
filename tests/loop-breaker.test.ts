@@ -7,10 +7,12 @@ import {
 } from "../src/provider/loop-breaker";
 import { NimChatRequest } from "../src/types";
 import { createStructuredError } from "../src/api/errors";
+import { getSessionEvents, resetSessionLogsForTests } from "../src/shared/logging";
 
 describe("injectHistoryLoopBreaker", () => {
   beforeEach(() => {
     resetInjectedLoopsForTests();
+    resetSessionLogsForTests();
   });
 
   const requestBody: NimChatRequest = {
@@ -217,6 +219,102 @@ describe("injectHistoryLoopBreaker", () => {
     });
     expect(turn3.messages).toHaveLength(1);
     expect(turn3.messages[0]?.content).toBe("hi");
+  });
+
+  it("logs trippedLine and detector when injecting a preamble breaker", () => {
+    const history = [
+      { role: 2, content: [{ value: "Let me fix the formatting issue:" }] },
+      { role: 2, content: [{ value: "Let me fix the formatting issue:" }] },
+      { role: 2, content: [{ value: "Let me fix the formatting issue:" }] },
+    ];
+
+    injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: history,
+      modelId: "test-model",
+      applyBudget: (body) => body,
+    });
+
+    const event = getSessionEvents().find(
+      (e) =>
+        e.label === "repetitionGuard" &&
+        typeof e.value === "object" &&
+        e.value !== null &&
+        (e.value as { action?: unknown }).action === "injectBreaker",
+    );
+    expect(event).toBeDefined();
+    const value = event?.value as Record<string, unknown>;
+    expect(value.detector).toBe("preamble");
+    expect(value.trippedLine).toBe("let me fix the formatting issue");
+    expect(value.escalate).toBe(false);
+    expect(value.model).toBe("test-model");
+  });
+
+  it("logs trippedLine and detector when injecting a tool-call breaker", () => {
+    const history = Array.from({ length: 4 }, () => ({
+      role: 2,
+      content: [
+        {
+          name: "run_in_terminal",
+          input: { command: "npm run compile", mode: "sync" },
+        },
+      ],
+    }));
+
+    injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: history,
+      modelId: "test-model",
+      applyBudget: (body) => body,
+    });
+
+    const event = getSessionEvents().find(
+      (e) =>
+        e.label === "repetitionGuard" &&
+        typeof e.value === "object" &&
+        e.value !== null &&
+        (e.value as { action?: unknown }).action === "injectBreaker",
+    );
+    expect(event).toBeDefined();
+    const value = event?.value as Record<string, unknown>;
+    expect(value.detector).toBe("toolCallLoop");
+    expect(value.trippedLine).toBe('run_in_terminal:{"command":"npm run compile","mode":"sync"}');
+    expect(value.escalate).toBe(false);
+  });
+
+  it("logs detector and escalate flag on escalation injections", () => {
+    const history = Array.from({ length: 4 }, () => ({
+      role: 2,
+      content: [{ value: "Let me fix the formatting issue:" }],
+    }));
+
+    // Turn 1: standard breaker.
+    injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: history,
+      modelId: "test-model",
+      applyBudget: (body) => body,
+    });
+    // Turn 2: same loop persists -> escalation.
+    injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: history,
+      modelId: "test-model",
+      applyBudget: (body) => body,
+    });
+
+    const event = getSessionEvents().find(
+      (e) =>
+        e.label === "repetitionGuard" &&
+        typeof e.value === "object" &&
+        e.value !== null &&
+        (e.value as { action?: unknown }).action === "injectBreakerEscalation",
+    );
+    expect(event).toBeDefined();
+    const value = event?.value as Record<string, unknown>;
+    expect(value.detector).toBe("preamble");
+    expect(value.trippedLine).toBe("let me fix the formatting issue");
+    expect(value.escalate).toBe(true);
   });
 });
 

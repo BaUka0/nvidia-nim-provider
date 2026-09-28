@@ -10,6 +10,7 @@ import {
   missingRequiredToolArguments,
   isDuplicateSuppressionEnabled,
   parseTextEmbeddedToolCalls,
+  ParsedTextSegment,
   parseToolArguments,
   repairToolArguments,
   stripKnownControlText,
@@ -121,7 +122,7 @@ describe("tool argument parsing and validation", () => {
     expect(repaired).toEqual({
       filePath: "/tmp/example.md",
       startLine: 1,
-      endLine: 200,
+      endLine: 2000,
     });
     expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
   });
@@ -156,7 +157,7 @@ describe("tool argument parsing and validation", () => {
     expect(repaired).toEqual({
       TargetFile: "/tmp/example.md",
       StartLine: 1,
-      EndLine: 200,
+      EndLine: 2000,
     });
     expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
   });
@@ -212,7 +213,7 @@ describe("tool argument parsing and validation", () => {
     ).get("read_file");
     const repaired = repairToolArguments("read_file", {}, undefined, schema);
 
-    expect(repaired).toEqual({ startLine: 1, endLine: 200 });
+    expect(repaired).toEqual({ startLine: 1, endLine: 2000 });
     expect(missingRequiredToolArguments(repaired, schema)).toEqual(["filePath"]);
 
     const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
@@ -883,7 +884,7 @@ describe("tool argument parsing and validation", () => {
       buildInvalidToolCallRetryMessage([
         { name: "tool_call", required: [], reason: "missing_payload" },
       ]),
-    ).toContain("empty tool_calls array");
+    ).toContain("complete JSON arguments");
     expect(
       buildInvalidToolCallFallback([{ name: "read_file", required: [], reason: "duplicate" }]),
     ).toContain("already completed");
@@ -1459,7 +1460,7 @@ describe("tool argument parsing and validation", () => {
       expect(repaired).toEqual({
         filePath: "/workspace/test/AutoroutePartHandlerTests.cs",
         startLine: 1,
-        endLine: 200,
+        endLine: 2000,
       });
       expect(hasRequiredToolArguments(repaired, readFileSchema)).toBe(true);
     });
@@ -1475,12 +1476,12 @@ describe("tool argument parsing and validation", () => {
       expect(repaired).toEqual({
         filePath: "/workspace/src/AutoroutePartHandler.cs",
         startLine: 1,
-        endLine: 200,
+        endLine: 2000,
       });
       expect(hasRequiredToolArguments(repaired, readFileSchema)).toBe(true);
     });
 
-    it("preserves explicit startLine and defaults endLine to startLine + 199 for read_file", () => {
+    it("preserves explicit startLine and defaults endLine to startLine + 1999 for read_file", () => {
       const repaired = repairToolArguments(
         "read_file",
         { filePath: "/workspace/src/AutoroutePartHandler.cs", startLine: 50 },
@@ -1491,7 +1492,7 @@ describe("tool argument parsing and validation", () => {
       expect(repaired).toEqual({
         filePath: "/workspace/src/AutoroutePartHandler.cs",
         startLine: 50,
-        endLine: 249,
+        endLine: 2049,
       });
     });
 
@@ -1558,7 +1559,7 @@ describe("tool argument parsing and validation", () => {
         AbsolutePath: "/workspace/test/AutoroutePartHandlerTests.cs",
         filePath: "/workspace/test/AutoroutePartHandlerTests.cs",
         StartLine: 1,
-        EndLine: 200,
+        EndLine: 2000,
       });
       expect(hasRequiredToolArguments(repaired, viewFileSchema)).toBe(true);
     });
@@ -1592,6 +1593,435 @@ describe("tool argument parsing and validation", () => {
       expect(repaired.TargetFile).toBe("/workspace/src/file.ts");
       expect(repaired.CodeContent).toBe("export const a = 1;");
       expect(hasRequiredToolArguments(repaired, writeToFileSchema)).toBe(true);
+    });
+  });
+  it("keeps a tool tag inside return'...' as text", () => {
+    const text =
+      "return'hello <tool_call> <function=read_file> <parameter=filePath> /tmp/a.ts </parameter> </function> </tool_call>'";
+    const result = parseTextEmbeddedToolCalls(text);
+    expect(result.segments.filter((segment) => segment.type === "toolCall")).toEqual([]);
+    const visible = result.segments
+      .filter((segment): segment is { type: "text"; text: string } => segment.type === "text")
+      .map((segment) => segment.text)
+      .join("");
+    expect(visible).toContain("<tool_call>");
+  });
+
+  it("still executes a tool call after a plural possessive", () => {
+    const text =
+      "users' <tool_call> <function=read_file> <parameter=filePath> /tmp/a.ts </parameter> </function> </tool_call>";
+    const result = parseTextEmbeddedToolCalls(text);
+    const toolCalls = result.segments.filter((segment) => segment.type === "toolCall");
+    expect(toolCalls).toEqual([
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "read_file",
+          args: { filePath: "/tmp/a.ts" },
+        },
+      },
+    ]);
+  });
+
+  it("parses single-line XML tool call with preceding reasoning prose and apostrophe", () => {
+    const text =
+      "Let's start with getApiKeyFromConfiguration.\n\nI need to find where getApiKeyFromConfiguration is defined and replace its body with a delegation.\n\nLet's locate the function. I'll search for \"function getApiKeyFromConfiguration\". <tool_call> <function=grep_search> <parameter=includePattern> src/provider.ts </parameter> <parameter=query> function getApiKeyFromConfiguration </parameter> <parameter=isRegexp> false </parameter> </function> </tool_call>\n\nNow I need to replace the API key related functions with calls to the apiKeyManager.";
+
+    for (const chunkSize of [1, 5, 13, text.length]) {
+      let pending = "";
+      const allSegments: ParsedTextSegment[] = [];
+      for (let i = 0; i < text.length; i += chunkSize) {
+        const chunk = text.slice(i, i + chunkSize);
+        const res = parseTextEmbeddedToolCalls(pending + chunk);
+        pending = res.incompleteText;
+        allSegments.push(...res.segments);
+      }
+      if (pending) {
+        const finalRes = parseTextEmbeddedToolCalls(pending);
+        allSegments.push(...finalRes.segments);
+      }
+
+      const toolCalls = allSegments.filter(
+        (
+          s,
+        ): s is {
+          type: "toolCall";
+          toolCall: { name: string; args: Record<string, unknown> };
+        } => s.type === "toolCall",
+      );
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0].toolCall).toEqual({
+        name: "grep_search",
+        args: {
+          includePattern: "src/provider.ts",
+          query: "function getApiKeyFromConfiguration",
+          isRegexp: false,
+        },
+      });
+
+      const textSegments = allSegments
+        .filter((s): s is { type: "text"; text: string } => s.type === "text")
+        .map((s) => s.text)
+        .join("");
+      expect(textSegments).not.toContain("<tool_call>");
+      expect(textSegments).not.toContain("</tool_call>");
+      expect(textSegments).not.toContain("<function");
+      expect(textSegments).not.toContain("</function>");
+      expect(textSegments).not.toContain("<parameter");
+      expect(textSegments).toContain("Let's start with getApiKeyFromConfiguration.");
+      expect(textSegments).toContain("Now I need to replace the API key related functions");
+    }
+  });
+
+  it("parses screenshot text with read_file XML tool call", () => {
+    const text =
+      "We have read the tokenizer.ts file. It's a small utility for token estimation.\n\nNow, let's look at the message-parts.ts to understand the LegacyPart.\n<tool_call> <function=read_file> <parameter=endLine> 2000 </parameter> <parameter=filePath> c:\\Users\\bauir\\source\\project\\nvidia-nim-provider by hidenobunagai\\src\\message-parts.ts </parameter> <parameter=startLine> 1 </parameter> </function> </tool_call>";
+
+    for (const chunkSize of [1, 5, 13, text.length]) {
+      let pending = "";
+      const allSegments: ParsedTextSegment[] = [];
+      for (let i = 0; i < text.length; i += chunkSize) {
+        const chunk = text.slice(i, i + chunkSize);
+        const res = parseTextEmbeddedToolCalls(pending + chunk);
+        pending = res.incompleteText;
+        allSegments.push(...res.segments);
+      }
+      if (pending) {
+        const finalRes = parseTextEmbeddedToolCalls(pending);
+        allSegments.push(...finalRes.segments);
+      }
+
+      const toolCalls = allSegments.filter(
+        (s): s is { type: "toolCall"; toolCall: { name: string; args: Record<string, unknown> } } =>
+          s.type === "toolCall",
+      );
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0].toolCall.name).toBe("read_file");
+
+      const textSegments = allSegments
+        .filter((s): s is { type: "text"; text: string } => s.type === "text")
+        .map((s) => s.text)
+        .join("");
+      expect(textSegments).not.toContain("<tool_call>");
+      expect(textSegments).not.toContain("</tool_call>");
+    }
+  });
+
+  describe("text-embedded JSON tool fallback parsing (Issue #15)", () => {
+    const multiToolOptions = makeChatOptions({
+      tools: [
+        {
+          name: "read_file",
+          inputSchema: {
+            type: "object",
+            properties: {
+              filePath: { type: "string" },
+              startLine: { type: "integer" },
+              endLine: { type: "integer" },
+            },
+            required: ["filePath"],
+          },
+        },
+        {
+          name: "insert_edit_into_file",
+          inputSchema: {
+            type: "object",
+            properties: {
+              filePath: { type: "string" },
+              code: { type: "string" },
+              explanation: { type: "string" },
+            },
+            required: ["filePath", "code"],
+          },
+        },
+        {
+          name: "run_in_terminal",
+          inputSchema: {
+            type: "object",
+            properties: {
+              command: { type: "string" },
+              explanation: { type: "string" },
+            },
+            required: ["command"],
+          },
+        },
+      ],
+    });
+    const toolSchemas = getToolSchemaMap(multiToolOptions);
+
+    it("recovers Nemotron raw JSON tool call matching insert_edit_into_file without native wrapper (Issue #15)", () => {
+      const rawText = JSON.stringify(
+        {
+          filePath: "/home/rdp/code/blue-forks/mwmbl/mwmbl/crawler/stats.py",
+          code: "\nfrom mwmbl.crawler.urls import URLDatabase",
+          explanation: "Add import for URLDatabase from mwmbl.crawler.urls",
+        },
+        null,
+        2,
+      );
+
+      const result = parseTextEmbeddedToolCalls(rawText, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "insert_edit_into_file",
+            args: {
+              filePath: "/home/rdp/code/blue-forks/mwmbl/mwmbl/crawler/stats.py",
+              code: "\nfrom mwmbl.crawler.urls import URLDatabase",
+              explanation: "Add import for URLDatabase from mwmbl.crawler.urls",
+            },
+          },
+        },
+      ]);
+    });
+
+    it("parses fenced ```json tool call block and strips fences from text", () => {
+      const text = [
+        "I will update stats.py now:",
+        "```json",
+        JSON.stringify(
+          {
+            filePath: "/home/rdp/code/blue-forks/mwmbl/mwmbl/crawler/stats.py",
+            code: "\nfrom mwmbl.crawler.urls import URLDatabase",
+          },
+          null,
+          2,
+        ),
+        "```",
+        "Done updating.",
+      ].join("\n");
+
+      const result = parseTextEmbeddedToolCalls(text, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        { type: "text", text: "I will update stats.py now:\n" },
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "insert_edit_into_file",
+            args: {
+              filePath: "/home/rdp/code/blue-forks/mwmbl/mwmbl/crawler/stats.py",
+              code: "\nfrom mwmbl.crawler.urls import URLDatabase",
+            },
+          },
+        },
+        { type: "text", text: "Done updating." },
+      ]);
+    });
+
+    it("drops forbidden keys copied from a flat JSON tool call", () => {
+      const rawText =
+        '{"name":"read_file","filePath":"/tmp/a.ts","constructor":"nope","prototype":"nope","__proto__":{"polluted":true}}';
+      const result = parseTextEmbeddedToolCalls(rawText, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "read_file",
+            args: { filePath: "/tmp/a.ts" },
+          },
+        },
+      ]);
+    });
+
+    it("drops forbidden keys nested in a JSON arguments object", () => {
+      const rawText =
+        '{"name":"read_file","arguments":{"filePath":"/tmp/a.ts","constructor":"nope","__proto__":{"polluted":true}}}';
+      const result = parseTextEmbeddedToolCalls(rawText, toolSchemas);
+      expect(result.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "read_file",
+            args: { filePath: "/tmp/a.ts" },
+          },
+        },
+      ]);
+    });
+
+    it("parses explicit tool call with name and arguments", () => {
+      const rawText =
+        '{"name": "read_file", "arguments": {"filePath": "/tmp/a.ts", "startLine": 1}}';
+      const result = parseTextEmbeddedToolCalls(rawText, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "read_file",
+            args: { filePath: "/tmp/a.ts", startLine: 1 },
+          },
+        },
+      ]);
+    });
+
+    it("parses explicit tool call with tool and parameters keys", () => {
+      const rawText = '{"tool": "run_in_terminal", "parameters": {"command": "npm test"}}';
+      const result = parseTextEmbeddedToolCalls(rawText, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "run_in_terminal",
+            args: { command: "npm test" },
+          },
+        },
+      ]);
+    });
+
+    it("parses array of tool calls in JSON", () => {
+      const rawText = JSON.stringify([
+        { name: "read_file", arguments: { filePath: "/tmp/a.ts" } },
+        { name: "read_file", arguments: { filePath: "/tmp/b.ts" } },
+      ]);
+      const result = parseTextEmbeddedToolCalls(rawText, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "read_file",
+            args: { filePath: "/tmp/a.ts" },
+          },
+        },
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "read_file",
+            args: { filePath: "/tmp/b.ts" },
+          },
+        },
+      ]);
+    });
+
+    it("does not treat normal user JSON as a tool call", () => {
+      const normalJson = JSON.stringify(
+        {
+          name: "my-package",
+          version: "1.0.0",
+          description: "A test package",
+        },
+        null,
+        2,
+      );
+
+      const result = parseTextEmbeddedToolCalls(normalJson, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([{ type: "text", text: normalJson }]);
+    });
+
+    it("buffers incomplete JSON tool calls across stream chunks", () => {
+      const chunk1 = '{\n  "filePath": "/workspace/stats.py",\n  "co';
+      const chunk2 = 'de": "import os"\n}';
+
+      const res1 = parseTextEmbeddedToolCalls(chunk1, toolSchemas);
+      expect(res1.segments).toEqual([]);
+      expect(res1.incompleteText).toBe(chunk1);
+
+      const res2 = parseTextEmbeddedToolCalls(res1.incompleteText + chunk2, toolSchemas);
+      expect(res2.incompleteText).toBe("");
+      expect(res2.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "insert_edit_into_file",
+            args: { filePath: "/workspace/stats.py", code: "import os" },
+          },
+        },
+      ]);
+    });
+
+    it("identifies incomplete JSON tool name from partial stream", () => {
+      const partialExplicit = '{\n  "name": "insert_edit_into_file",\n  "arguments": {';
+      expect(getIncompleteTextToolCallName(partialExplicit, toolSchemas)).toBe(
+        "insert_edit_into_file",
+      );
+
+      const partialImplicit = '{\n  "command": "npm run build';
+      expect(getIncompleteTextToolCallName(partialImplicit, toolSchemas)).toBe("run_in_terminal");
+    });
+
+    it("keeps non-tool wrapper objects intact without extracting nested objects", () => {
+      const wrapperJson = JSON.stringify({
+        summary: "x",
+        edit: { filePath: "a.ts", code: "y" },
+      });
+      const result = parseTextEmbeddedToolCalls(wrapperJson, toolSchemas);
+      expect(result.segments).toEqual([{ type: "text", text: wrapperJson }]);
+      expect(result.incompleteText).toBe("");
+    });
+
+    it("holds an unclosed non-tool wrapper instead of executing the nested object", () => {
+      const open = '{"summary":"x","edit":{"filePath":"a.ts","code":"y"}';
+      const held = parseTextEmbeddedToolCalls(open, toolSchemas);
+      expect(held.segments.filter((segment) => segment.type === "toolCall")).toEqual([]);
+      expect(held.incompleteText).toBe(open);
+
+      const closed = parseTextEmbeddedToolCalls(`${held.incompleteText}}`, toolSchemas);
+      expect(closed.incompleteText).toBe("");
+      expect(closed.segments).toEqual([{ type: "text", text: `${open}}` }]);
+
+      const ended = parseTextEmbeddedToolCalls(open, toolSchemas, { atStreamEnd: true });
+      expect(ended.segments.filter((segment) => segment.type === "toolCall")).toEqual([]);
+      expect(getIncompleteTextToolCallName(open, toolSchemas)).toBeUndefined();
+    });
+
+    it("still extracts a tool call that follows a closed stray brace", () => {
+      const text = 'Use {braces} in prose {"filePath":"a.ts","code":"y"}';
+      const result = parseTextEmbeddedToolCalls(text, toolSchemas);
+      expect(result.incompleteText).toBe("");
+      expect(result.segments).toEqual([
+        { type: "text", text: "Use {braces} in prose " },
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "insert_edit_into_file",
+            args: { filePath: "a.ts", code: "y" },
+          },
+        },
+      ]);
+    });
+
+    it("commits a complete fenced tool call when the stream ends without a closing fence", () => {
+      const fenced = '```json\n{"filePath":"a.ts","code":"y"}\nsome trailing text';
+      const midStream = parseTextEmbeddedToolCalls(fenced, toolSchemas);
+      expect(midStream.segments).toEqual([]);
+      expect(midStream.incompleteText).toBe(fenced);
+
+      const ended = parseTextEmbeddedToolCalls(fenced, toolSchemas, { atStreamEnd: true });
+      expect(ended.incompleteText).toBe("");
+      expect(ended.segments).toEqual([
+        {
+          type: "toolCall",
+          toolCall: {
+            name: "insert_edit_into_file",
+            args: { filePath: "a.ts", code: "y" },
+          },
+        },
+        { type: "text", text: "some trailing text" },
+      ]);
+    });
+
+    it("waits for closing fence on fenced JSON payload", () => {
+      const fencedPartial = '```json\n{"filePath":"a.ts","code":"y"}\nsome trailing text';
+      const result = parseTextEmbeddedToolCalls(fencedPartial, toolSchemas);
+      expect(result.incompleteText).toBe(fencedPartial);
+      expect(result.segments).toEqual([]);
+    });
+
+    it("does not treat explicit name JSON as tool call when tools are disabled", () => {
+      const json = JSON.stringify({ name: "my-package", version: "1.0.0" });
+      const result = parseTextEmbeddedToolCalls(json, undefined);
+      expect(result.segments).toEqual([{ type: "text", text: json }]);
+    });
+
+    it("does not treat prose mentioning property names as incomplete tool calls", () => {
+      const prose = 'Note that "filePath" is a required parameter for reading files.';
+      expect(getIncompleteTextToolCallName(prose, toolSchemas)).toBeUndefined();
     });
   });
 });

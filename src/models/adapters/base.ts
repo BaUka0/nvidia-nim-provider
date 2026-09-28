@@ -17,8 +17,7 @@ export interface NvidiaModelRequestProfile {
   defaultTemperature: number;
   toolTemperature?: number;
   defaultTopP?: number;
-  defaultFrequencyPenalty?: number;
-  defaultPresencePenalty?: number;
+  parallelToolCalls?: boolean;
   extraSystemMessages: string[];
 }
 
@@ -33,9 +32,6 @@ export interface ModelAdapter {
   readonly reasoningParameterFormat?: ReasoningParameterFormat;
   readonly toolCallProtocol?: ToolCallProtocol;
   readonly isolateUntaggedReasoning?: boolean;
-  readonly supportsPresencePenalty?: boolean;
-  readonly supportsFrequencyPenalty?: boolean;
-  readonly supportsRepetitionPenalty?: boolean;
 
   getCapabilityContract(): ModelAdapterCapabilityContract;
 }
@@ -43,12 +39,68 @@ export interface ModelAdapter {
 export const DEFAULT_TEMPERATURE = 1.0;
 export const DEFAULT_TOP_P = 0.95;
 
+export function resolveReasoningMode(
+  requested: string | undefined,
+  supportedModes: readonly string[] | undefined,
+): string {
+  if (!supportedModes || supportedModes.length === 0) {
+    return requested ?? "none";
+  }
+
+  const defaultMode = supportedModes.includes("none") ? "none" : supportedModes[0];
+  if (!requested) {
+    return defaultMode;
+  }
+
+  const normalized = requested.toLowerCase().trim();
+  const matched = supportedModes.find((m) => m.toLowerCase() === normalized);
+  if (matched) {
+    return matched;
+  }
+
+  const nonNoneModes = supportedModes.filter(
+    (m) => m.toLowerCase() !== "none" && m.toLowerCase() !== "off",
+  );
+
+  if (normalized === "none" || normalized === "off") {
+    return (
+      supportedModes.find((m) => m.toLowerCase() === "none") ??
+      supportedModes.find((m) => m.toLowerCase() === "off") ??
+      defaultMode
+    );
+  }
+
+  const candidatePreferences: Record<string, string[]> = {
+    on: ["high", "medium", "low", "max", "xhigh"],
+    auto: ["high", "medium", "low", "max", "xhigh"],
+    high: ["high", "max", "xhigh", "medium", "low"],
+    max: ["max", "xhigh", "high", "medium", "low"],
+    xhigh: ["xhigh", "max", "high", "medium", "low"],
+    medium: ["medium", "low", "high", "max", "xhigh"],
+    low: ["low", "medium", "high", "max", "xhigh"],
+  };
+
+  const preferences = candidatePreferences[normalized] ?? ["high", "medium", "low", "max", "xhigh"];
+  for (const pref of preferences) {
+    const found = supportedModes.find((m) => m.toLowerCase() === pref);
+    if (found) {
+      return found;
+    }
+  }
+
+  if (nonNoneModes.length > 0) {
+    return nonNoneModes[0];
+  }
+
+  return defaultMode;
+}
+
 export function assignReasoningEffort(
   request: import("../../types").NimChatRequest,
   mode: string,
   supportedModes: readonly string[],
 ): void {
-  request.reasoning_effort = supportedModes.includes(mode) ? mode : "none";
+  request.reasoning_effort = resolveReasoningMode(mode, supportedModes);
 }
 
 export function ensureChatTemplateKwargs(
@@ -57,10 +109,6 @@ export function ensureChatTemplateKwargs(
   request.chat_template_kwargs = request.chat_template_kwargs ?? {};
   return request.chat_template_kwargs;
 }
-
-/** Shared visible-reply hygiene. Prefer this over growing the stream sanitizer. */
-export const VISIBLE_REPLY_HYGIENE_MESSAGE =
-  "Visible replies must be markdown only. Do not emit XML section wrappers such as <steps>, <suggested_fix>, <next_steps>, <analysis>, or <plan>. Do not emit _vscodecontentref_ URLs or markdown links to them; write plain file names.";
 
 /**
  * Single source of the reasoning-isolation routing rule used by the request
@@ -89,12 +137,10 @@ export abstract class BaseModelAdapter implements ModelAdapter {
   readonly defaultTemperature: number = DEFAULT_TEMPERATURE;
   readonly toolTemperature?: number = DEFAULT_TEMPERATURE;
   readonly defaultTopP?: number = DEFAULT_TOP_P;
+  readonly parallelToolCalls?: boolean;
   readonly toolSystemMessage?: string;
   readonly supportedReasoningModes?: string[];
   readonly isolateUntaggedReasoning?: boolean;
-  readonly supportsPresencePenalty?: boolean;
-  readonly supportsFrequencyPenalty?: boolean;
-  readonly supportsRepetitionPenalty?: boolean;
   readonly reasoningParameterFormat: ReasoningParameterFormat = "none";
   readonly toolCallProtocol: ToolCallProtocol = "native-and-text";
 
@@ -107,22 +153,13 @@ export abstract class BaseModelAdapter implements ModelAdapter {
     };
   }
 
-  readonly defaultFrequencyPenalty?: number;
-  readonly defaultPresencePenalty?: number;
-
   getProfile(options: { toolsEnabled?: boolean }): NvidiaModelRequestProfile {
     return {
       defaultTemperature: this.defaultTemperature,
       toolTemperature: this.toolTemperature,
       defaultTopP: this.defaultTopP,
-      defaultFrequencyPenalty: this.defaultFrequencyPenalty,
-      defaultPresencePenalty: this.defaultPresencePenalty,
-      extraSystemMessages: options.toolsEnabled
-        ? [
-            ...(this.toolSystemMessage ? [this.toolSystemMessage] : []),
-            VISIBLE_REPLY_HYGIENE_MESSAGE,
-          ]
-        : [],
+      parallelToolCalls: options.toolsEnabled ? this.parallelToolCalls : undefined,
+      extraSystemMessages: [],
     };
   }
 

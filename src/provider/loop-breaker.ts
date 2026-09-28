@@ -189,25 +189,28 @@ export type LoopBreakerNudgeReason =
   | "hanging_colon"
   | "output_truncated"
   | "content_filter"
-  | "stream_timeout";
+  | "stream_timeout"
+  | "stream_dropped";
 
 const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
   repetition_loop:
-    "hey you got stuck repeating the same output — continue working without repeating the preamble. Directly call the required tool or provide the final answer.",
+    "Continue with the next step of your task without repeating the previous output. Call the next required tool or proceed with the implementation.",
   tool_call_loop:
-    "hey you got stuck calling the same tool with the same arguments — continue working. Vary the arguments, call a different tool, or provide the final answer. Do not repeat the previous tool call.",
+    "Continue working. Use the existing findings, vary the arguments, or call a different tool to proceed with the task. Do not repeat the previous tool call.",
   hanging_colon:
-    'hey you got stuck — your previous turn ended with ":" with no tool call but a next action was expected. Continue working and take the next action.',
+    "The previous reply ended before the next action. Continue working and take that action.",
   output_truncated:
-    "your previous reply was cut off at the output token limit. Continue from where you left off. Call a tool if needed or finish the answer.",
+    "Your previous reply was cut off at the output token limit. Continue from where you left off. Call a tool if needed or finish the answer.",
   content_filter:
-    "your previous reply was stopped by the safety filter. Continue the answer without the blocked content. Call a tool if needed or finish the answer. Do not mention the filter.",
+    "Your previous reply was stopped by the safety filter. Continue the answer without the blocked content. Call a tool if needed or finish the answer. Do not mention the filter.",
   stream_timeout:
-    "hey you got stuck — the previous reply stalled before a tool call or final answer. Continue working from where you left off. Call a tool if needed or provide the final answer. Do not repeat the stalled preamble.",
+    "The previous reply stalled before completing. Continue working from where you left off. Call the required tool or proceed with the task.",
+  stream_dropped:
+    "The connection dropped before your previous reply finished. Continue from where you left off: call the required tool or finish the answer.",
 };
 
 const HISTORY_LOOP_ESCALATION_NUDGE =
-  "hey you got stuck again after a previous correction — continue working. Change the tool or arguments, or give the final answer. Do not repeat the previous preamble or tool call.";
+  "The same loop is still going after the previous correction. Continue working. Change the tool or arguments, or proceed with the next step. Do not repeat the previous preamble or tool call.";
 
 export function buildLoopBreakerNudge(reason: LoopBreakerNudgeReason): NimChatMessage {
   return { role: "user", content: `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_NUDGES[reason]}` };
@@ -271,12 +274,12 @@ export function buildHistoryLoopBreakerContent(
   const breakerNotices: string[] = [];
   if (historyLoopPreamble) {
     breakerNotices.push(
-      `You have repeated the preamble pattern "${historyLoopPreamble.slice(0, 80)}" multiple times without calling a tool or making progress. Stop narrating actions. Directly invoke the required tool with correct arguments, or provide the final answer immediately without a preamble.`,
+      `You have repeated the preamble "${historyLoopPreamble.slice(0, 80)}" multiple times. Continue with the next step of your task: invoke the required tool or proceed with the implementation without repeating the preamble.`,
     );
   }
   if (historyLoopTool) {
     breakerNotices.push(
-      `You have called the same tool "${historyLoopTool.slice(0, 120)}" multiple times consecutively with identical arguments without progress. Vary the arguments (e.g. a different file range or query) or stop and summarize the result instead of looping.`,
+      `You have called the same tool "${historyLoopTool.slice(0, 120)}" multiple times consecutively with identical arguments. Use the existing results, call a different tool, or proceed with the next step of your task.`,
     );
   }
   if (breakerNotices.length === 0) {
@@ -324,10 +327,22 @@ export function injectHistoryLoopBreaker(options: {
 
   recentInjectedLoops.set(loopKey, previousInjections + 1);
 
-  debugLog("repetitionGuard", { action: escalate ? "injectBreakerEscalation" : "injectBreaker" });
+  const trippedLine = historyLoopTool ?? historyLoopPreamble;
+  debugLog("repetitionGuard", {
+    action: escalate ? "injectBreakerEscalation" : "injectBreaker",
+    model: options.modelId,
+    detector:
+      historyLoopTool !== undefined
+        ? "toolCallLoop"
+        : historyLoopPreamble !== undefined
+          ? "preamble"
+          : undefined,
+    ...(trippedLine !== undefined ? { trippedLine } : {}),
+    escalate,
+  });
   outputLog(
     "repetitionGuard",
-    `Detected inter-turn loop on ${options.modelId}, injecting ${escalate ? "escalation breaker" : "breaker"}`,
+    `Detected inter-turn loop (${historyLoopTool ? "toolCallLoop" : "preamble"}) on ${options.modelId}, injecting ${escalate ? "escalation breaker" : "breaker"}`,
   );
 
   // Injected as a user turn (not a trailing system message) because some

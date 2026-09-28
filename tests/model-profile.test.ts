@@ -3,15 +3,15 @@ import { NimChatMessage, NimChatRequest } from "../src/types";
 
 describe("getModelAdapter", () => {
   it.each([
-    ["kimi-k3", 1, 1, "Do not reveal chain-of-thought"],
-    ["nemotron-70b", 1, 1, "Do not wrap tool arguments in markdown fences"],
+    ["kimi-k3", 1, 1, undefined],
+    ["nemotron-70b", 1, 0.6, undefined],
   ])(
     "returns a specialized tool-enabled profile for %s",
     (
       modelId: string,
       expectedDefaultTemperature: number,
       expectedToolTemperature: number,
-      expectedMessageSnippet: string,
+      expectedParallelToolCalls: boolean | undefined,
     ) => {
       const adapter = getModelAdapter(modelId);
       const profile = adapter.getProfile({ toolsEnabled: true });
@@ -19,16 +19,8 @@ describe("getModelAdapter", () => {
       expect(profile.defaultTemperature).toBe(expectedDefaultTemperature);
       expect(profile.toolTemperature).toBe(expectedToolTemperature);
       expect(profile.defaultTopP).toBe(0.95);
-      if (modelId.includes("nemotron")) {
-        expect(profile.defaultFrequencyPenalty).toBeUndefined();
-        expect(profile.defaultPresencePenalty).toBeUndefined();
-        expect(profile.extraSystemMessages[0]).toContain(
-          'NEVER start your response with "Let me fix"',
-        );
-      }
-      expect(profile.extraSystemMessages).toEqual(
-        expect.arrayContaining([expect.stringContaining(expectedMessageSnippet)]),
-      );
+      expect(profile.parallelToolCalls).toBe(expectedParallelToolCalls);
+      expect(profile.extraSystemMessages).toEqual([]);
     },
   );
 
@@ -45,12 +37,7 @@ describe("getModelAdapter", () => {
     const profile = adapter.getProfile({ toolsEnabled: true });
 
     expect(profile.defaultTemperature).toBe(1);
-    expect(profile.extraSystemMessages[0]).toContain(
-      "You are an expert AI programming assistant. Provide correct, concise, production-ready code.",
-    );
-    expect(profile.extraSystemMessages).toEqual(
-      expect.arrayContaining([expect.stringContaining("Do not emit XML section wrappers")]),
-    );
+    expect(profile.extraSystemMessages).toEqual([]);
   });
 
   it("does not add extra system guidance when tools are disabled for unknown models", () => {
@@ -86,12 +73,6 @@ describe("applyReasoningMode", () => {
 
     adapter.applyReasoningMode!(request, "none");
     expect(request.reasoning_effort).toBe("none");
-  });
-
-  it("marks Kimi adapter with supportsPresencePenalty = false and supportsFrequencyPenalty = false", () => {
-    const adapter = getModelAdapter("moonshotai/kimi-k3");
-    expect(adapter.supportsPresencePenalty).toBe(false);
-    expect(adapter.supportsFrequencyPenalty).toBe(false);
   });
 
   it("exposes Muse Glimmer reasoning effort modes and sends the selected mode", () => {
@@ -133,8 +114,6 @@ describe("applyReasoningMode", () => {
     adapter.applyReasoningMode!(request, "none");
     expect(request.reasoning_effort).toBe("low");
 
-    expect(adapter.supportsPresencePenalty).toBe(false);
-    expect(adapter.supportsFrequencyPenalty).toBe(false);
     expect(getModelAdapter("z-ai/glm-5.3")).toBe(adapter);
   });
 
@@ -147,7 +126,8 @@ describe("applyReasoningMode", () => {
 
     expect(adapter.supportedReasoningModes).toEqual(["none", "medium", "high", "xhigh"]);
     expect(adapter.getProfile({ toolsEnabled: true }).defaultTemperature).toBe(1);
-    expect(adapter.getProfile({ toolsEnabled: true }).toolTemperature).toBe(1);
+    expect(adapter.getProfile({ toolsEnabled: true }).toolTemperature).toBe(0.6);
+    expect(adapter.getProfile({ toolsEnabled: true }).parallelToolCalls).toBeUndefined();
 
     adapter.applyReasoningMode!(request, "medium");
     expect(request.chat_template_kwargs).toEqual({

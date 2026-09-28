@@ -52,8 +52,6 @@ export interface GenerationConfig {
   readonly temperature: number | null;
   readonly topP: number | null;
   readonly maxOutputTokens: number | null;
-  readonly frequencyPenalty: number | null;
-  readonly presencePenalty: number | null;
   readonly maxRepeatedLines: number;
   readonly maxLoopContinues: number;
 }
@@ -116,8 +114,6 @@ export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
   temperature: null,
   topP: null,
   maxOutputTokens: null,
-  frequencyPenalty: null,
-  presencePenalty: null,
   maxRepeatedLines: 4,
   maxLoopContinues: 2,
 };
@@ -294,18 +290,6 @@ export class ConfigManager {
         ? Math.min(131072, Math.round(rawMaxTokens))
         : null;
 
-    const rawFrequencyPenalty = config.get<number | null>("generation.frequencyPenalty", null);
-    const frequencyPenalty =
-      typeof rawFrequencyPenalty === "number" && Number.isFinite(rawFrequencyPenalty)
-        ? Math.max(-2, Math.min(2, rawFrequencyPenalty))
-        : null;
-
-    const rawPresencePenalty = config.get<number | null>("generation.presencePenalty", null);
-    const presencePenalty =
-      typeof rawPresencePenalty === "number" && Number.isFinite(rawPresencePenalty)
-        ? Math.max(-2, Math.min(2, rawPresencePenalty))
-        : null;
-
     const rawMaxRepeatedLines = config.get<number>(
       "generation.maxRepeatedLines",
       DEFAULT_GENERATION_CONFIG.maxRepeatedLines,
@@ -328,8 +312,6 @@ export class ConfigManager {
       temperature,
       topP,
       maxOutputTokens,
-      frequencyPenalty,
-      presencePenalty,
       maxRepeatedLines,
       maxLoopContinues,
     };

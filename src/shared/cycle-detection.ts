@@ -150,28 +150,108 @@ export function normalizeForCycle(text: string): string {
  * trailing window of `text`. Used by the live guard (including answers with
  * newlines) and by turn-report `cycleHint`.
  */
-export function detectPhraseCycle(text: string): string | undefined {
+export function detectPhraseCycle(
+  text: string,
+  options: { gramWords?: number; minRepeats?: number } = {},
+): string | undefined {
   if (!text) {
     return undefined;
   }
+  const gramWords = options.gramWords ?? CYCLE_GRAM_WORDS;
+  const minRepeats = options.minRepeats ?? CYCLE_MIN_REPEATS;
   const normalized = normalizeForCycle(text);
   const window =
     normalized.length > CYCLE_SCAN_CHARS ? normalized.slice(-CYCLE_SCAN_CHARS) : normalized;
   const words = window.split(/\s+/).filter((word) => word.length > 0);
-  if (words.length < CYCLE_GRAM_WORDS * CYCLE_MIN_REPEATS) {
+  if (words.length < gramWords * minRepeats) {
     return undefined;
   }
   const counts = new Map<string, number>();
-  for (let i = 0; i <= words.length - CYCLE_GRAM_WORDS; i += 1) {
-    const gram = words.slice(i, i + CYCLE_GRAM_WORDS).join(" ");
+  for (let i = 0; i <= words.length - gramWords; i += 1) {
+    const gram = words.slice(i, i + gramWords).join(" ");
     if (gram.length < CYCLE_MIN_GRAM_CHARS) {
       continue;
     }
     const count = (counts.get(gram) ?? 0) + 1;
-    if (count >= CYCLE_MIN_REPEATS) {
+    if (count >= minRepeats) {
       return gram;
     }
     counts.set(gram, count);
+  }
+  return undefined;
+}
+
+const PARAGRAPH_MIN_TOKENS = 20;
+const PARAGRAPH_MIN_REPEATS = 3;
+const PARAGRAPH_MIN_SIMILARITY = 0.62;
+const PARAGRAPH_MIN_INTERSECTION = 14;
+const PARAGRAPH_TOKEN_MIN_CHARS = 4;
+
+function intersectionSize(left: readonly string[], right: readonly string[]): number {
+  const rightSet = new Set(right);
+  let shared = 0;
+  for (const token of left) {
+    if (rightSet.has(token)) {
+      shared += 1;
+    }
+  }
+  return shared;
+}
+
+function significantWords(text: string): string[] {
+  return normalizeForCycle(text)
+    .split(/\s+/)
+    .filter((word) => word.length >= PARAGRAPH_TOKEN_MIN_CHARS);
+}
+
+/**
+ * Detects a paragraph that comes back with different wording. Exact 6-word
+ * grams miss a synonym rewrite and also trip on a short tool-name phrase.
+ * A block is one paragraph or a run of sentences with enough longer words.
+ * A later block joins it only when they share a large slice of those words.
+ */
+export function detectParagraphEcho(text: string): string | undefined {
+  if (!text) {
+    return undefined;
+  }
+  const window = text.length > CYCLE_SCAN_CHARS ? text.slice(-CYCLE_SCAN_CHARS) : text;
+  const pieces = window.split(/\n\s*\n|(?<=[.!?])\s+/);
+  const blocks: string[][] = [];
+  let pending: string[] = [];
+  const closePending = (): void => {
+    const unique = [...new Set(pending)].sort();
+    pending = [];
+    if (unique.length >= PARAGRAPH_MIN_TOKENS) {
+      blocks.push(unique);
+    }
+  };
+  for (const piece of pieces) {
+    pending.push(...significantWords(piece));
+    if (new Set(pending).size >= PARAGRAPH_MIN_TOKENS) {
+      closePending();
+    }
+  }
+
+  const clusters: Array<{ tokens: string[]; count: number }> = [];
+  for (const tokens of blocks) {
+    let matched: { tokens: string[]; count: number } | undefined;
+    for (const cluster of clusters) {
+      const shared = intersectionSize(tokens, cluster.tokens);
+      const union = tokens.length + cluster.tokens.length - shared;
+      const similarity = union === 0 ? 0 : shared / union;
+      if (shared >= PARAGRAPH_MIN_INTERSECTION && similarity >= PARAGRAPH_MIN_SIMILARITY) {
+        matched = cluster;
+        break;
+      }
+    }
+    if (!matched) {
+      clusters.push({ tokens, count: 1 });
+      continue;
+    }
+    matched.count += 1;
+    if (matched.count >= PARAGRAPH_MIN_REPEATS) {
+      return matched.tokens.slice(0, 8).join(" ");
+    }
   }
   return undefined;
 }
