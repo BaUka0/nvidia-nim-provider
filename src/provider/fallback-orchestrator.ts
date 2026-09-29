@@ -140,7 +140,9 @@ export function buildFallbackModelInfo(
     toolCalling: fallbackModel.supportsTools ? 128 : false,
     imageInput: fallbackModel.supportsVision,
   };
-  const info: LanguageModelChatInformation = {
+  // The spread copies the source model's window; overwrite it so the hop
+  // never reports the failing model's context size.
+  const info: LanguageModelChatInformation & { maxContextWindowTokens?: number } = {
     ...source,
     id: fallbackModel.id,
     name: fallbackModel.displayName,
@@ -151,6 +153,7 @@ export function buildFallbackModelInfo(
         calculateSafetyMargin(fallbackModel.contextWindow, safetyMarginPercent),
     ),
     maxOutputTokens: fallbackModel.maxOutputTokens,
+    maxContextWindowTokens: fallbackModel.contextWindow,
     capabilities: fallbackCapabilities,
   };
   copyModelKeyBinding(source, info);

@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Added
+
+- The model picker shows each NVIDIA NIM model's full context window. Before, it showed a slightly smaller number with the extension's safety reserve taken off. The context usage indicator in the chat measures against the same full window.
+
 ### Changed
 
 - A 503 from NVIDIA now waits about three times longer before the next try, so a brief overload has time to clear. A dropped connection and a rate limit keep the shorter pause.

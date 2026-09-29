@@ -106,6 +106,10 @@ describe("NimChatModelProvider", () => {
       }),
     ]);
     expect(infos[0]).not.toHaveProperty("apiKey");
+    // The picker and the context-usage indicator read the full window, not
+    // maxInputTokens + maxOutputTokens (which excludes the safety margin).
+    expect(infos[0].maxContextWindowTokens).toBe(1048576);
+    expect(infos[0].maxInputTokens + infos[0].maxOutputTokens).toBeLessThan(1048576);
   });
 
   it("provideLanguageModelChatInformation uses the VS Code model configuration API key", async () => {
@@ -868,6 +872,30 @@ describe("NimChatModelProvider", () => {
     expect(cacheHarness.runtimeInfoCache.size).toBe(64);
     expect(cacheHarness.runtimeInfoCache.has("model-0")).toBe(false);
     expect(cacheHarness.runtimeInfoCache.has("model-64")).toBe(true);
+  });
+
+  it("uses a declared maxContextWindowTokens for an uncached selected model", async () => {
+    (globalState.get as jest.Mock).mockReturnValue(undefined);
+    const resolver = provider as unknown as {
+      resolveChatModelRuntimeInfo(
+        model: vscode.LanguageModelChatInformation,
+      ): Promise<{ contextWindow: number; runtimeMetadataSource: string }>;
+    };
+    const selected = {
+      id: "vendor/uncatalogued-model",
+      name: "Uncatalogued",
+      family: "other",
+      version: "1.0.0",
+      maxInputTokens: 800000,
+      maxOutputTokens: 131072,
+      maxContextWindowTokens: 1048576,
+      capabilities: { toolCalling: true, imageInput: false },
+    } as vscode.LanguageModelChatInformation;
+
+    const runtimeInfo = await resolver.resolveChatModelRuntimeInfo(selected);
+
+    expect(runtimeInfo.runtimeMetadataSource).toBe("selected-model");
+    expect(runtimeInfo.contextWindow).toBe(1048576);
   });
 
   it("clears runtime model-info metadata after a successful model refresh event", () => {

@@ -34,6 +34,12 @@ export interface NvidiaConfigurationSchema {
 export interface NvidiaLanguageModelChatInformation extends vscode.LanguageModelChatInformation {
   readonly id: string;
   readonly contextWindow: number;
+  /**
+   * Full context window (input + output) from the proposed `chatProvider` API.
+   * VS Code passes it through without a proposal check and uses it for the
+   * model picker's "Context" value and the chat context-usage indicator.
+   */
+  readonly maxContextWindowTokens?: number;
   readonly maxOutputTokens: number;
   isUserSelectable: boolean;
   configurationSchema?: NvidiaConfigurationSchema;
@@ -215,6 +221,7 @@ export class NvidiaModelDiscoveryService {
         ),
         maxOutputTokens: model.maxOutputTokens,
         contextWindow: model.contextWindow,
+        maxContextWindowTokens: model.contextWindow,
         isUserSelectable: true,
         capabilities: {
           toolCalling: model.supportsTools ? 128 : false,

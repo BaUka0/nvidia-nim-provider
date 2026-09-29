@@ -355,4 +355,21 @@ describe("buildFallbackModelInfo", () => {
     const customProps = result as unknown as Record<string, unknown>;
     expect(customProps["__nvidiaNimRuntimeKeyBinding"]).toBeUndefined();
   });
+
+  it("reports the fallback model's context window instead of the source window", () => {
+    const source = {
+      id: "moonshotai/kimi-k3",
+      name: "Kimi K3",
+      family: "nvidia-nim",
+      version: "1.0.0",
+      maxInputTokens: 900000,
+      maxOutputTokens: 65536,
+      maxContextWindowTokens: 1048576,
+      capabilities: {},
+    } as vscode.LanguageModelChatInformation;
+
+    const result = buildFallbackModelInfo(source, fallbackModel);
+
+    expect((result as { maxContextWindowTokens?: number }).maxContextWindowTokens).toBe(1000000);
+  });
 });
