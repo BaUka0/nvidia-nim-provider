@@ -313,7 +313,9 @@ export function activate(context: vscode.ExtensionContext) {
       if (
         e.affectsConfiguration("nvidia-nim.fallback") ||
         e.affectsConfiguration("nvidia-nim.network") ||
-        e.affectsConfiguration("nvidia-nim.context")
+        e.affectsConfiguration("nvidia-nim.context") ||
+        // The reasoning setting is the model picker's default reasoning mode.
+        e.affectsConfiguration("nvidia-nim.reasoning")
       ) {
         _provider?.fireModelInfoChanged({ invalidateModelCache: false });
       }

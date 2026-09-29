@@ -168,6 +168,39 @@ describe("activate", () => {
     deactivate();
   });
 
+  it("refreshes model info when the reasoning setting changes", async () => {
+    const context = {
+      secrets: {
+        get: jest.fn(async () => undefined),
+        store: jest.fn(),
+        delete: jest.fn(),
+        onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
+      },
+      globalState: {
+        get: jest.fn((_key: string, fallback?: unknown) => fallback),
+        update: jest.fn(async () => undefined),
+      },
+      subscriptions: [] as Array<{ dispose(): void }>,
+    };
+
+    const vscode = await import("vscode");
+    const { activate, deactivate } = await import("../src/extension");
+    activate(context as never);
+    const listener = (vscode.workspace.onDidChangeConfiguration as jest.Mock).mock.calls.at(
+      -1,
+    )?.[0] as (event: { affectsConfiguration(section: string): boolean }) => void;
+    providerInstance!.fireModelInfoChanged.mockClear();
+
+    // The setting is the model picker's default reasoning mode, so the
+    // picker must re-read model info when it changes.
+    listener({ affectsConfiguration: (section) => section === "nvidia-nim.reasoning" });
+
+    expect(providerInstance!.fireModelInfoChanged).toHaveBeenCalledWith({
+      invalidateModelCache: false,
+    });
+    deactivate();
+  });
+
   it("migrates a legacy API key into the VS Code language model provider group on activation", async () => {
     const secrets = {
       get: jest.fn(async (key: string) => (key === "nvidia-nim.apiKey" ? "test-key" : undefined)),

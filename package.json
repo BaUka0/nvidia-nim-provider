@@ -260,8 +260,8 @@
             "high",
             "max"
           ],
-          "default": "none",
-          "description": "Configure the default reasoning effort mode sent to supported models."
+          "default": "high",
+          "description": "Default reasoning mode for NVIDIA NIM models, shown as the preselected Reasoning Mode in the model picker. A mode you pick for one model in the picker overrides this. A model without the chosen mode uses its closest one. Nemotron 3.5 Lightning uses medium until you set this."
         },
         "nvidia-nim.generation.temperature": {
           "type": [

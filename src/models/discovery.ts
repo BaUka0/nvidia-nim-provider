@@ -11,7 +11,7 @@ import { ConfigManager, calculateSafetyMargin } from "../shared/config";
 import { fetchCuratedModels } from "./fetch-curated";
 import { MODEL_LIST, isNormalizedNvidiaModel, NormalizedNvidiaModel } from "./catalog";
 import { outputLog } from "../shared/logging";
-import { getModelAdapter } from "./adapters";
+import { getModelAdapter, resolveDefaultReasoningMode } from "./adapters";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver";
 import { runSerializedModelCacheOperation } from "./cache";
 
@@ -19,8 +19,9 @@ export interface NvidiaConfigurationProperty {
   type: "string" | "number" | "boolean" | "object" | "array";
   title?: string;
   description?: string;
-  enum?: readonly string[];
+  enum?: readonly (string | number)[];
   enumItemLabels?: readonly string[];
+  enumDescriptions?: readonly string[];
   group?: string;
   default?: string | number | boolean;
   [key: string]: unknown;
@@ -34,9 +35,64 @@ export interface NvidiaConfigurationSchema {
 export interface NvidiaLanguageModelChatInformation extends vscode.LanguageModelChatInformation {
   readonly id: string;
   readonly contextWindow: number;
+  /**
+   * Full context window (input + output) from the proposed `chatProvider` API.
+   * VS Code passes it through without a proposal check and uses it for the
+   * model picker's "Context" value and the chat context-usage indicator.
+   */
+  readonly maxContextWindowTokens?: number;
   readonly maxOutputTokens: number;
   isUserSelectable: boolean;
   configurationSchema?: NvidiaConfigurationSchema;
+}
+
+/** Smaller "Context Size" picker tiers, in input tokens. */
+export const CONTEXT_SIZE_TIERS = [128_000, 256_000, 512_000] as const;
+
+/** Same rounding as Copilot's own "Context Size" labels. */
+export function formatContextSizeLabel(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    const floored = Math.floor((tokens / 1_000_000) * 10) / 10;
+    return floored % 1 === 0 ? `${floored.toFixed(0)}M` : `${floored.toFixed(1)}M`;
+  }
+  if (tokens > 900_000) {
+    return "1M";
+  }
+  if (tokens >= 1000) {
+    return `${Math.round(tokens / 1000)}K`;
+  }
+  return String(tokens);
+}
+
+/**
+ * "Context Size" option in the model picker, following Copilot's
+ * `contextSize` convention: values are input-token budgets, and Copilot clamps
+ * its prompt to the picked value. The full budget is the default, so a user
+ * who never opens the option keeps today's behavior. Returns undefined when no
+ * tier is smaller than the model's input budget.
+ */
+export function buildContextSizeProperty(
+  maxInputTokens: number,
+): NvidiaConfigurationProperty | undefined {
+  const tiers = CONTEXT_SIZE_TIERS.filter((tier) => tier < maxInputTokens);
+  if (tiers.length === 0) {
+    return undefined;
+  }
+  const values = [...tiers, maxInputTokens];
+  return {
+    type: "number",
+    title: "Context Size",
+    description:
+      "Input budget for this model. A smaller size keeps requests faster; Copilot summarizes the conversation sooner.",
+    enum: values,
+    enumItemLabels: values.map(formatContextSizeLabel),
+    enumDescriptions: [
+      ...tiers.map(() => "Faster requests; history is summarized sooner"),
+      "Full context window; longer sessions",
+    ],
+    default: maxInputTokens,
+    group: "tokens",
+  };
 }
 
 function isCachedCuratedModel(value: unknown): value is NormalizedNvidiaModel {
@@ -173,7 +229,16 @@ export class NvidiaModelDiscoveryService {
         continue;
       }
       const adapter = getModelAdapter(model.id);
-      let configurationSchema: NvidiaConfigurationSchema | undefined;
+      const maxInputTokens = Math.max(
+        1,
+        model.contextWindow -
+          model.maxOutputTokens -
+          calculateSafetyMargin(
+            model.contextWindow,
+            ConfigManager.getContextConfig().safetyMarginPercent,
+          ),
+      );
+      const properties: Record<string, NvidiaConfigurationProperty> = {};
 
       if (adapter.applyReasoningMode && (adapter.supportedReasoningModes?.length ?? 0) > 0) {
         const enumValues = adapter.supportedReasoningModes ?? [];
@@ -181,20 +246,25 @@ export class NvidiaModelDiscoveryService {
           v === "none" ? "None" : v.charAt(0).toUpperCase() + v.slice(1),
         );
 
-        configurationSchema = {
-          properties: {
-            reasoningMode: {
-              type: "string",
-              title: "Reasoning Mode",
-              description: "Configure the reasoning effort mode sent to supported models.",
-              enum: enumValues,
-              enumItemLabels: enumItemLabels,
-              group: "navigation",
-              default: enumValues.includes("none") ? "none" : (enumValues[0] ?? "none"),
-            },
-          },
+        properties.reasoningMode = {
+          type: "string",
+          title: "Reasoning Mode",
+          description: "Configure the reasoning effort mode sent to supported models.",
+          enum: enumValues,
+          enumItemLabels: enumItemLabels,
+          group: "navigation",
+          // VS Code injects this default into every request, so it must carry
+          // the nvidia-nim.reasoning.mode setting rather than a fixed value.
+          default: resolveDefaultReasoningMode(adapter, ConfigManager.getReasoningConfig()),
         };
       }
+
+      const contextSize = buildContextSizeProperty(maxInputTokens);
+      if (contextSize) {
+        properties.contextSize = contextSize;
+      }
+      const configurationSchema: NvidiaConfigurationSchema | undefined =
+        Object.keys(properties).length > 0 ? { properties } : undefined;
 
       const pickerName = model.displayName;
       info.push({
@@ -204,17 +274,10 @@ export class NvidiaModelDiscoveryService {
         tooltip: `${PROVIDER_DISPLAY_NAME} ${pickerName}`,
         family: PROVIDER_VENDOR,
         version: "1.0.0",
-        maxInputTokens: Math.max(
-          1,
-          model.contextWindow -
-            model.maxOutputTokens -
-            calculateSafetyMargin(
-              model.contextWindow,
-              ConfigManager.getContextConfig().safetyMarginPercent,
-            ),
-        ),
+        maxInputTokens,
         maxOutputTokens: model.maxOutputTokens,
         contextWindow: model.contextWindow,
+        maxContextWindowTokens: model.contextWindow,
         isUserSelectable: true,
         capabilities: {
           toolCalling: model.supportsTools ? 128 : false,

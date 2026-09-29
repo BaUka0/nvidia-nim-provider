@@ -26,6 +26,9 @@ export class NemotronLightningAdapter extends NemotronFamilyAdapter {
   readonly idPattern = /(^|[\/_-])nemotron-3\.5-lightning([\/_-]|$)/i;
 
   readonly supportedReasoningModes = ["none", "medium", "high", "xhigh"];
+  // Reasoning shares max_tokens here; medium keeps half of the 32K output for
+  // the answer and tool calls, close to NVIDIA's default 16384 budget.
+  readonly defaultReasoningMode = "medium";
   readonly reasoningParameterFormat = "chat_template_kwargs" as const;
 
   applyReasoningMode(request: import("../../types").NimChatRequest, mode: string): void {

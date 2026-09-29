@@ -1,4 +1,5 @@
 import { BoundedMap } from "../../shared/bounded-map";
+import { NimChatRequest } from "../../types";
 import { CatalogAdapterId, MODEL_LIST } from "../catalog";
 import { ModelAdapter, BaseModelAdapter, ModelAdapterCapabilityContract } from "./base";
 import { DeepSeekAdapter } from "./deepseek";
@@ -18,6 +19,7 @@ export {
   ToolCallProtocol,
   ReasoningRouting,
   isReasoningIsolationExpected,
+  resolveDefaultReasoningMode,
   resolveReasoningMode,
 } from "./base";
 
@@ -76,6 +78,18 @@ export function getModelAdapter(modelId: string): ModelAdapter {
   const result = matched ?? DEFAULT_ADAPTER;
   adapterCache.set(modelId, result);
   return result;
+}
+
+/**
+ * Turn reasoning off (or to the model's lowest effort when it always thinks)
+ * for internal single-shot calls such as summarization and image analysis.
+ * Without it the endpoint's own default applies, which is high or max for
+ * every curated model, and the reasoning trace can use up the small
+ * `max_tokens` budget of those calls before any answer is written.
+ */
+export function withReasoningOff(request: NimChatRequest): NimChatRequest {
+  getModelAdapter(request.model).applyReasoningMode?.(request, "none");
+  return request;
 }
 
 export function getModelCapabilityContract(modelId: string): ModelAdapterCapabilityContract {

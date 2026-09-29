@@ -46,6 +46,12 @@ export interface NetworkConfig {
 
 export interface ReasoningConfig {
   readonly mode: "none" | "on" | "medium" | "high" | "max";
+  /**
+   * True when the user set `nvidia-nim.reasoning.mode` at any scope. A model
+   * with its own default (Nemotron 3.5 Lightning uses medium) keeps that
+   * default until the user picks a mode explicitly.
+   */
+  readonly explicit: boolean;
 }
 
 export interface GenerationConfig {
@@ -107,7 +113,8 @@ export const DEFAULT_NETWORK_CONFIG: NetworkConfig = {
 };
 
 export const DEFAULT_REASONING_CONFIG: ReasoningConfig = {
-  mode: "none",
+  mode: "high",
+  explicit: false,
 };
 
 export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
@@ -261,12 +268,23 @@ export class ConfigManager {
     const config = this.getConfiguration();
     const rawMode = config.get<string>("reasoning.mode", DEFAULT_REASONING_CONFIG.mode);
     const validModes: Array<ReasoningConfig["mode"]> = ["none", "on", "medium", "high", "max"];
-    const mode = validModes.includes(rawMode as ReasoningConfig["mode"])
-      ? (rawMode as ReasoningConfig["mode"])
-      : DEFAULT_REASONING_CONFIG.mode;
+    const valid = validModes.includes(rawMode as ReasoningConfig["mode"]);
+    const mode = valid ? (rawMode as ReasoningConfig["mode"]) : DEFAULT_REASONING_CONFIG.mode;
+    const inspected = config.inspect?.<string>("reasoning.mode");
+    const explicit =
+      valid &&
+      [
+        inspected?.globalValue,
+        inspected?.workspaceValue,
+        inspected?.workspaceFolderValue,
+        inspected?.globalLanguageValue,
+        inspected?.workspaceLanguageValue,
+        inspected?.workspaceFolderLanguageValue,
+      ].some((value) => value !== undefined);
 
     return {
       mode,
+      explicit,
     };
   }
 

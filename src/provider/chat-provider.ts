@@ -200,6 +200,14 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
   }
 
   private fallbackContextWindow(model: LanguageModelChatInformation): number {
+    const declaredWindow = (model as { maxContextWindowTokens?: unknown }).maxContextWindowTokens;
+    if (
+      typeof declaredWindow === "number" &&
+      Number.isFinite(declaredWindow) &&
+      declaredWindow > 0
+    ) {
+      return declaredWindow;
+    }
     return model.maxInputTokens + Math.min(model.maxOutputTokens, DEFAULT_MAX_OUTPUT_TOKENS);
   }
 

@@ -2,6 +2,11 @@ import { ReasoningEffortAdapter } from "./base";
 
 export class MuseGlimmerAdapter extends ReasoningEffortAdapter {
   constructor() {
-    super(/(^|[\/_-])muse-glimmer([\/_-]|$)/i, ["none", "low", "medium", "high", "xhigh"], false);
+    // Matches the NIM reference enum for reasoning_effort.
+    super(
+      /(^|[\/_-])muse-glimmer([\/_-]|$)/i,
+      ["none", "minimal", "low", "medium", "high", "max"],
+      false,
+    );
   }
 }

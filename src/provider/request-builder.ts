@@ -15,6 +15,7 @@ import {
   getModelAdapter,
   ModelAdapter,
   isReasoningIsolationExpected,
+  resolveDefaultReasoningMode,
   resolveReasoningMode,
 } from "../models/adapters";
 import { outputLog } from "../shared/logging";
@@ -68,6 +69,22 @@ function assignClamped(
   }
 }
 export { resolveReasoningMode };
+
+/**
+ * Input-token cap picked in the model picker's "Context Size" option
+ * (`modelConfiguration.contextSize`). Copilot clamps its own prompt budget to
+ * the same value; the provider applies it too so other `vscode.lm` callers get
+ * the same limit. Returns undefined for a missing or invalid value.
+ */
+export function resolveContextSizeLimit(
+  options: vscode.ProvideLanguageModelChatResponseOptions,
+): number | undefined {
+  const contextSize = (options as { modelConfiguration?: { contextSize?: unknown } })
+    .modelConfiguration?.contextSize;
+  return typeof contextSize === "number" && Number.isFinite(contextSize) && contextSize > 0
+    ? Math.floor(contextSize)
+    : undefined;
+}
 
 export class NimRequestBuilder {
   public static calculateMaxToolResultChars(contextWindow: number): number {
@@ -230,7 +247,17 @@ export class NimRequestBuilder {
     const rawInputTokenCount = estimateMessagesTokens(
       messages as readonly { content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
     );
-    const advertisedMaxInput = model.maxInputTokens;
+    const contextSizeLimit = resolveContextSizeLimit(responseOptions);
+    const advertisedMaxInput =
+      contextSizeLimit !== undefined
+        ? Math.min(model.maxInputTokens, contextSizeLimit)
+        : model.maxInputTokens;
+    if (contextSizeLimit !== undefined && contextSizeLimit < model.maxInputTokens) {
+      debugLog(
+        "contextSize",
+        `Picker context size ${contextSizeLimit} caps input below ${model.maxInputTokens}.`,
+      );
+    }
     const windowBudget =
       contextWindow - calculateSafetyMargin(contextWindow, config.context.safetyMarginPercent);
     const effectiveMaxInputTokens = Math.max(1, Math.min(advertisedMaxInput, windowBudget));
@@ -271,7 +298,7 @@ export class NimRequestBuilder {
       firstFiniteNumber([userTemperature, generationConfig.temperature, profileTemperature]) ??
         profileTemperature,
       0,
-      2,
+      requestProfile.maxTemperature,
     );
 
     let apiMessages = this.convertMessagesWithProfile({
@@ -357,7 +384,8 @@ export class NimRequestBuilder {
     const modes = adapter.supportedReasoningModes;
     let reasoningMode: string;
     if (modes && modes.length > 0) {
-      const requestedReasoningMode = configuredReasoningMode ?? reasoningConfig.mode;
+      const requestedReasoningMode =
+        configuredReasoningMode ?? resolveDefaultReasoningMode(adapter, reasoningConfig);
       reasoningMode = resolveReasoningMode(requestedReasoningMode, modes);
       if (requestedReasoningMode && !modes.includes(requestedReasoningMode)) {
         outputLog(
@@ -376,13 +404,15 @@ export class NimRequestBuilder {
     const reasoningIsolationExpected = isReasoningIsolationExpected(adapter, reasoningMode);
 
     const modelOpts = responseOptions.modelOptions as Record<string, unknown>;
-    assignClamped(
-      requestBody,
-      "top_p",
-      [modelOpts?.top_p, generationConfig.topP, requestProfile.defaultTopP],
-      0,
-      1,
-    );
+    if (requestProfile.topPSupported) {
+      assignClamped(
+        requestBody,
+        "top_p",
+        [modelOpts?.top_p, generationConfig.topP, requestProfile.defaultTopP],
+        0,
+        1,
+      );
+    }
     const stopVal = modelOpts?.stop;
     if (typeof stopVal === "string" && stopVal.length > 0 && stopVal.length <= 256) {
       requestBody.stop = stopVal;
@@ -409,6 +439,7 @@ export class NimRequestBuilder {
     if (toolConfig.tool_choice) {
       requestBody.tool_choice = toolConfig.tool_choice;
     }
+    adapter.applyTurnOptions?.(requestBody, { toolsEnabled });
 
     debugLog("Outgoing request messages", requestBody.messages, "messages");
 

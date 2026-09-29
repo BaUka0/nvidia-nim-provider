@@ -179,14 +179,37 @@ describe("ConfigManager", () => {
     it("returns defaults when nothing is set", () => {
       const config = ConfigManager.getReasoningConfig();
       expect(config).toEqual(DEFAULT_REASONING_CONFIG);
-      expect(config.mode).toBe("none");
+      expect(config.mode).toBe("high");
+      expect(config.explicit).toBe(false);
     });
 
     it("reads reasoning setting keys", () => {
-      mockStore["reasoning.mode"] = "high";
+      mockStore["reasoning.mode"] = "medium";
 
       const config = ConfigManager.getReasoningConfig();
-      expect(config.mode).toBe("high");
+      expect(config.mode).toBe("medium");
+    });
+
+    it("marks the mode explicit when the user set it at any scope", () => {
+      mockStore["reasoning.mode"] = "none";
+      (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+        get: (key: string, defaultValue?: unknown) =>
+          key in mockStore ? mockStore[key] : defaultValue,
+        inspect: jest.fn((key: string) =>
+          key === "reasoning.mode" ? { key, workspaceValue: "none" } : undefined,
+        ),
+      }));
+
+      expect(ConfigManager.getReasoningConfig()).toEqual({ mode: "none", explicit: true });
+    });
+
+    it("does not mark the default value as explicit", () => {
+      (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+        get: (_key: string, defaultValue?: unknown) => defaultValue,
+        inspect: jest.fn((key: string) => ({ key, defaultValue: "high" })),
+      }));
+
+      expect(ConfigManager.getReasoningConfig()).toEqual({ mode: "high", explicit: false });
     });
 
     it("ignores removed legacy keys", () => {
@@ -195,12 +218,12 @@ describe("ConfigManager", () => {
       mockStore["reasoning.showInChat"] = true;
 
       const config = ConfigManager.getReasoningConfig();
-      expect(config.mode).toBe("none");
+      expect(config.mode).toBe("high");
     });
 
-    it("handles invalid reasoning mode by defaulting to none", () => {
+    it("handles invalid reasoning mode by falling back to the default", () => {
       mockStore["reasoning.mode"] = "unsupported_mode";
-      expect(ConfigManager.getReasoningConfig().mode).toBe("none");
+      expect(ConfigManager.getReasoningConfig()).toEqual({ mode: "high", explicit: false });
     });
   });
 

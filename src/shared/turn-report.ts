@@ -15,6 +15,7 @@ const MAX_ERROR_MESSAGE_CHARS = 300;
 const TEMPLATE_KWARG_KEYS = [
   "enable_thinking",
   "low_effort",
+  "medium_effort",
   "reasoning_budget",
   "thinking",
   "force_nonempty_content",
@@ -157,6 +158,9 @@ export function inferReasoningModeFromRequest(
   }
   if (kwargs.low_effort === true) {
     return "low";
+  }
+  if (kwargs.medium_effort === true) {
+    return "medium";
   }
   if (typeof kwargs.reasoning_budget === "number" && Number.isFinite(kwargs.reasoning_budget)) {
     return `budget:${kwargs.reasoning_budget}`;

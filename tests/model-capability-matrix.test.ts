@@ -70,9 +70,11 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   },
   {
     modelId: "moonshotai/kimi-k3",
-    reasoningModes: ["none", "low", "high", "max"],
+    // Thinking is always on; the NIM reference allows only low, high, or max.
+    reasoningModes: ["low", "high", "max"],
     reasoningCases: [
-      { mode: "none", expectedFields: { reasoning_effort: "none" } },
+      // A "none" request maps onto the lowest supported effort.
+      { mode: "none", expectedFields: { reasoning_effort: "low" } },
       { mode: "low", expectedFields: { reasoning_effort: "low" } },
       { mode: "high", expectedFields: { reasoning_effort: "high" } },
       { mode: "max", expectedFields: { reasoning_effort: "max" } },
@@ -80,7 +82,7 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     reasoningParameterFormat: "reasoning_effort",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "isolated",
-    contentOnlyMode: "none",
+    contentOnlyMode: "low",
     contentOnlyRouting: "text",
     thinkTag: "think",
   },
@@ -88,11 +90,14 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     modelId: "nvidia/nemotron-3-ultra-550b-a55b",
     reasoningModes: ["none", "medium", "high"],
     reasoningCases: [
-      { mode: "none", expectedFields: { reasoning_effort: "none" } },
-      { mode: "medium", expectedFields: { reasoning_effort: "medium" } },
-      { mode: "high", expectedFields: { reasoning_effort: "high" } },
+      { mode: "none", expectedFields: { chat_template_kwargs: { enable_thinking: false } } },
+      {
+        mode: "medium",
+        expectedFields: { chat_template_kwargs: { enable_thinking: true, medium_effort: true } },
+      },
+      { mode: "high", expectedFields: { chat_template_kwargs: { enable_thinking: true } } },
     ],
-    reasoningParameterFormat: "reasoning_effort",
+    reasoningParameterFormat: "chat_template_kwargs",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "isolated",
     contentOnlyMode: "none",
@@ -167,11 +172,15 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   },
   {
     modelId: "meta/muse-glimmer-30b",
-    reasoningModes: ["none", "low", "medium", "high", "xhigh"],
-    reasoningCases: ["none", "low", "medium", "high", "xhigh"].map((mode) => ({
-      mode,
-      expectedFields: { reasoning_effort: mode },
-    })),
+    reasoningModes: ["none", "minimal", "low", "medium", "high", "max"],
+    reasoningCases: [
+      ...["none", "minimal", "low", "medium", "high", "max"].map((mode) => ({
+        mode,
+        expectedFields: { reasoning_effort: mode },
+      })),
+      // xhigh is not in the NIM enum; the model card's xhigh maps to max.
+      { mode: "xhigh", expectedFields: { reasoning_effort: "max" } },
+    ],
     reasoningParameterFormat: "reasoning_effort",
     toolCallProtocol: "native-and-text",
     reasoningRouting: "direct-content",

@@ -71,7 +71,7 @@ Controls the thinking process for reasoning models (like DeepSeek V4, Nemotron S
 
 | Setting | Default | Options | What it does |
 | :--- | :--- | :--- | :--- |
-| `nvidia-nim.reasoning.mode` | `none` | `none`, `on`, `medium`, `high`, `max` | Default reasoning depth for models that support configurable thinking effort. |
+| `nvidia-nim.reasoning.mode` | `high` | `none`, `on`, `medium`, `high`, `max` | Default reasoning depth. It is the preselected Reasoning Mode in the model picker; a mode picked there for one model overrides it. A model without the chosen mode uses its closest one (Kimi K3 always thinks, so `none` becomes `low`). Nemotron 3.5 Lightning uses `medium` until you set this, because its reasoning shares the answer's token budget. |
 
 ---
 

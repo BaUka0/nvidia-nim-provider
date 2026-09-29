@@ -198,8 +198,14 @@ describe("NimChatModelProvider", () => {
     const progress = { report: jest.fn() };
     const token = makeToken();
 
+    // A non-reasoning model keeps pre-tool prose in the chat. Reasoning models
+    // fold it into the thinking block instead (covered in the stream tests).
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeModel({
+        id: "meta/llama-3.3-70b-instruct",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
       makeUserMessages("Hi"),
       makeChatOptions({
         modelOptions: {},
