@@ -7,6 +7,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 ### Added
 
 - The model picker shows each NVIDIA NIM model's full context window. Before, it showed a slightly smaller number with the extension's safety reserve taken off. The context usage indicator in the chat measures against the same full window.
+- Models with a large context window get a "Context Size" option in the model picker, next to the reasoning mode. Pick 128K, 256K, or 512K to keep requests smaller and faster; Copilot then summarizes the conversation sooner. The full window stays the default, so nothing changes until you pick a smaller size.
 
 ### Changed
 

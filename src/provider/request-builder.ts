@@ -69,6 +69,22 @@ function assignClamped(
 }
 export { resolveReasoningMode };
 
+/**
+ * Input-token cap picked in the model picker's "Context Size" option
+ * (`modelConfiguration.contextSize`). Copilot clamps its own prompt budget to
+ * the same value; the provider applies it too so other `vscode.lm` callers get
+ * the same limit. Returns undefined for a missing or invalid value.
+ */
+export function resolveContextSizeLimit(
+  options: vscode.ProvideLanguageModelChatResponseOptions,
+): number | undefined {
+  const contextSize = (options as { modelConfiguration?: { contextSize?: unknown } })
+    .modelConfiguration?.contextSize;
+  return typeof contextSize === "number" && Number.isFinite(contextSize) && contextSize > 0
+    ? Math.floor(contextSize)
+    : undefined;
+}
+
 export class NimRequestBuilder {
   public static calculateMaxToolResultChars(contextWindow: number): number {
     if (contextWindow >= 500000) {
@@ -230,7 +246,17 @@ export class NimRequestBuilder {
     const rawInputTokenCount = estimateMessagesTokens(
       messages as readonly { content: (vscode.LanguageModelInputPart | LegacyPart)[] }[],
     );
-    const advertisedMaxInput = model.maxInputTokens;
+    const contextSizeLimit = resolveContextSizeLimit(responseOptions);
+    const advertisedMaxInput =
+      contextSizeLimit !== undefined
+        ? Math.min(model.maxInputTokens, contextSizeLimit)
+        : model.maxInputTokens;
+    if (contextSizeLimit !== undefined && contextSizeLimit < model.maxInputTokens) {
+      debugLog(
+        "contextSize",
+        `Picker context size ${contextSizeLimit} caps input below ${model.maxInputTokens}.`,
+      );
+    }
     const windowBudget =
       contextWindow - calculateSafetyMargin(contextWindow, config.context.safetyMarginPercent);
     const effectiveMaxInputTokens = Math.max(1, Math.min(advertisedMaxInput, windowBudget));
