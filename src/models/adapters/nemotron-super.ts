@@ -1,5 +1,5 @@
 import { ensureChatTemplateKwargs, resolveReasoningMode } from "./base";
-import { applyNemotronToolTurnOptions, NemotronFamilyAdapter } from "./nemotron";
+import { NemotronFamilyAdapter } from "./nemotron";
 
 export class NemotronSuperAdapter extends NemotronFamilyAdapter {
   readonly idPattern = /(^|[\/_-])nemotron-3-super([\/_-]|$)/i;
@@ -20,12 +20,5 @@ export class NemotronSuperAdapter extends NemotronFamilyAdapter {
       kwargs.enable_thinking = false;
       delete kwargs.low_effort;
     }
-  }
-
-  applyTurnOptions(
-    request: import("../../types").NimChatRequest,
-    context: { toolsEnabled: boolean },
-  ): void {
-    applyNemotronToolTurnOptions(request, context);
   }
 }

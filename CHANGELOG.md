@@ -18,7 +18,6 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Loop reminders and invalid-tool retries ask the model to continue the task. They no longer open with "hey you got stuck" or "Retry NOW".
 - Muse Glimmer's reasoning options now match NVIDIA's list: None, Minimal, Low, Medium, High, and Max. A saved "xhigh" choice becomes Max.
 - Kimi K3 no longer offers "None" for reasoning, because the model always thinks. A "None" setting from before uses Low.
-- On tool turns, Nemotron 3 Super and Ultra now get the setting NVIDIA recommends for coding agents, so a reply with a tool call is read correctly.
 - A temperature above 1, from settings or from another extension, is lowered to 1, the highest value NVIDIA accepts for these models.
 - DeepSeek V4.1 Flash can now write up to 256K tokens per reply, NVIDIA's default for this model, so long reasoning is less likely to cut the answer short. In return, Copilot starts summarizing a very long DeepSeek conversation a little sooner.
 - Reasoning is now on by default: High for every model, and Medium for Nemotron 3.5 Lightning, whose thinking shares the answer's token budget. A Reasoning Mode you already picked for a model in the model picker is kept. To go back to no reasoning, set Reasoning Mode to None in the picker, or `nvidia-nim.reasoning.mode` to `none` in the Settings UI or `settings.json`.
@@ -26,7 +25,6 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 ### Fixed
 
 - Nemotron 3 Super and Ultra no longer ask for longer answers than NVIDIA allows. Their answer limit is now 32K tokens.
-- Nemotron 3 Ultra's None and Medium reasoning modes now take effect. Before, the model could keep reasoning in full with either choice.
 - Kimi K3 requests no longer include a sampling option that the model does not accept.
 - Earlier reasoning from the conversation is passed back to the model more reliably, which Kimi K3 needs for multi-step tool work.
 - The `nvidia-nim.reasoning.mode` setting takes effect again. Before, the model picker's own default always won, so changing the setting did nothing. The setting is now the picker's preselected Reasoning Mode, and changing it updates the picker right away.
