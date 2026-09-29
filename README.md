@@ -52,15 +52,17 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | Model | Intelligence Index | Context Window | Reasoning Modes | Tools | Vision | Notes |
 | :--- | :---: | :---: | :--- | :---: | :---: | :--- |
 | **GLM 5.3** | **45** | 1M | `Low`, `High`, `Max` | Yes | No | Flagship reasoning model, complex agentic coding |
-| **Kimi K3** | **44** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Long-context multimodal work, repo-scale jobs |
+| **Kimi K3** | **44** | 1M | `Low`, `High`, `Max` | Yes | Yes | Long-context multimodal work, repo-scale jobs |
 | **GLM 5.3 Flash** | **42** | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
 | **DeepSeek V4.1 Flash** | **39** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, agentic coding, architecture |
 | **Nemotron 3 Ultra 550B** | **23** | 1M | `None`, `Medium`, `High` | Yes | No | Heavy multi-step reasoning, technical docs |
-| **Muse Glimmer** | **17** | 131K | `None` to `XHigh` | Yes | Yes | Visual UX/UI work; default vision fallback |
+| **Muse Glimmer** | **17** | 131K | `None` to `Max` | Yes | Yes | Visual UX/UI work; default vision fallback |
 | **Nemotron 3.5 Lightning 30B** | **13** | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Fast agentic turns; compact 30B/3B-active MoE |
 | **Nemotron 3 Super 120B** | **13** | 1M | `None`, `Low`, `High` | Yes | No | Workhorse for everyday coding; default text fallback |
 
 Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`).
+
+Reasoning is on by default: `High`, or `Medium` on Nemotron 3.5 Lightning. Change it per model with Reasoning Mode in the model picker, or for all models with `nvidia-nim.reasoning.mode`.
 
 ---
 

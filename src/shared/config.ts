@@ -113,7 +113,7 @@ export const DEFAULT_NETWORK_CONFIG: NetworkConfig = {
 };
 
 export const DEFAULT_REASONING_CONFIG: ReasoningConfig = {
-  mode: "none",
+  mode: "high",
   explicit: false,
 };
 

@@ -179,7 +179,7 @@ describe("ConfigManager", () => {
     it("returns defaults when nothing is set", () => {
       const config = ConfigManager.getReasoningConfig();
       expect(config).toEqual(DEFAULT_REASONING_CONFIG);
-      expect(config.mode).toBe("none");
+      expect(config.mode).toBe("high");
       expect(config.explicit).toBe(false);
     });
 
@@ -209,7 +209,7 @@ describe("ConfigManager", () => {
         inspect: jest.fn((key: string) => ({ key, defaultValue: "high" })),
       }));
 
-      expect(ConfigManager.getReasoningConfig()).toEqual({ mode: "none", explicit: false });
+      expect(ConfigManager.getReasoningConfig()).toEqual({ mode: "high", explicit: false });
     });
 
     it("ignores removed legacy keys", () => {
@@ -218,12 +218,12 @@ describe("ConfigManager", () => {
       mockStore["reasoning.showInChat"] = true;
 
       const config = ConfigManager.getReasoningConfig();
-      expect(config.mode).toBe("none");
+      expect(config.mode).toBe("high");
     });
 
     it("handles invalid reasoning mode by falling back to the default", () => {
       mockStore["reasoning.mode"] = "unsupported_mode";
-      expect(ConfigManager.getReasoningConfig()).toEqual({ mode: "none", explicit: false });
+      expect(ConfigManager.getReasoningConfig()).toEqual({ mode: "high", explicit: false });
     });
   });
 

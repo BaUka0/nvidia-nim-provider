@@ -19,6 +19,7 @@ jest.mock("../src/api/client", () => ({
 
 const LIGHTNING = "nvidia/nemotron-3.5-lightning-30b-a3b";
 const SUPER = "nvidia/nemotron-3-super-120b-a12b";
+const DEFAULTS = { mode: "high", explicit: false };
 
 /** Point `nvidia-nim.reasoning.mode` at a user value, or back to the default. */
 function setReasoningSetting(mode?: string): void {
@@ -50,42 +51,49 @@ afterEach(() => {
   jest.clearAllMocks();
 });
 
-describe("reasoning setting", () => {
-  it("maps the setting onto each model's modes", () => {
+describe("default reasoning mode", () => {
+  it("uses high for every curated model except Lightning, which uses medium", () => {
     for (const id of Object.keys(MODEL_LIST)) {
-      expect([
+      const expected = id === LIGHTNING ? "medium" : "high";
+      expect([id, resolveDefaultReasoningMode(getModelAdapter(id), DEFAULTS)]).toEqual([
         id,
-        resolveDefaultReasoningMode(getModelAdapter(id), { mode: "high", explicit: true }),
-      ]).toEqual([id, "high"]);
+        expected,
+      ]);
     }
   });
 
-  it("maps none onto the lowest effort for models that always think", () => {
+  it("applies an explicit setting to Lightning too, mapped onto its modes", () => {
+    const adapter = getModelAdapter(LIGHTNING);
+
+    expect(resolveDefaultReasoningMode(adapter, { mode: "none", explicit: true })).toBe("none");
+    expect(resolveDefaultReasoningMode(adapter, { mode: "max", explicit: true })).toBe("xhigh");
+  });
+
+  it("maps an explicit none onto the lowest effort for models that always think", () => {
     expect(
       resolveDefaultReasoningMode(getModelAdapter("moonshotai/kimi-k3"), {
         mode: "none",
-        explicit: false,
+        explicit: true,
       }),
     ).toBe("low");
   });
 
   it("makes the model picker default follow the setting", () => {
+    expect(pickerDefault("moonshotai/kimi-k3")).toBe("high");
+    expect(pickerDefault(LIGHTNING)).toBe("medium");
+
+    setReasoningSetting("none");
+
     expect(pickerDefault(SUPER)).toBe("none");
     expect(pickerDefault("moonshotai/kimi-k3")).toBe("low");
-
-    setReasoningSetting("high");
-
-    expect(pickerDefault(SUPER)).toBe("high");
-    expect(pickerDefault("moonshotai/kimi-k3")).toBe("high");
-    expect(pickerDefault(LIGHTNING)).toBe("high");
+    expect(pickerDefault(LIGHTNING)).toBe("none");
   });
 
-  it("uses the setting for a request without a picker choice", async () => {
-    setReasoningSetting("high");
+  it("uses the model default for a request without a picker choice", async () => {
     const prepared = await NimRequestBuilder.prepareRequest({
       model: makeModel({
-        id: SUPER,
-        name: "Super",
+        id: LIGHTNING,
+        name: "Lightning",
         maxInputTokens: 100_000,
         maxOutputTokens: 32768,
       }),
@@ -99,11 +107,13 @@ describe("reasoning setting", () => {
       config: ConfigManager.getNimConfig(),
     });
 
-    expect(prepared.requestBody.chat_template_kwargs).toEqual({ enable_thinking: true });
+    expect(prepared.requestBody.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      reasoning_budget: 16384,
+    });
   });
 
-  it("lets a picker choice override the setting", async () => {
-    setReasoningSetting("high");
+  it("lets a picker choice override the default", async () => {
     const prepared = await NimRequestBuilder.prepareRequest({
       model: makeModel({
         id: SUPER,

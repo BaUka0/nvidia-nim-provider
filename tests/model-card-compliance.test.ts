@@ -56,7 +56,7 @@ describe("NVIDIA model card compliance", () => {
     const prepared = await prepare("moonshotai/kimi-k3", { topP: 0.5 });
 
     expect(prepared.requestBody).not.toHaveProperty("top_p");
-    expect(prepared.requestBody.reasoning_effort).toBe("low");
+    expect(prepared.requestBody.reasoning_effort).toBe("high");
   });
 
   it("still sends top_p to models that accept it", async () => {
