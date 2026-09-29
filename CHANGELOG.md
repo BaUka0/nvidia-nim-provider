@@ -20,6 +20,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Kimi K3 no longer offers "None" for reasoning, because the model always thinks. A "None" setting from before uses Low.
 - On tool turns, Nemotron 3 Super and Ultra now get the setting NVIDIA recommends for coding agents, so a reply with a tool call is read correctly.
 - A temperature above 1, from settings or from another extension, is lowered to 1, the highest value NVIDIA accepts for these models.
+- DeepSeek V4.1 Flash can now write up to 256K tokens per reply, NVIDIA's default for this model, so long reasoning is less likely to cut the answer short. In return, Copilot starts summarizing a very long DeepSeek conversation a little sooner.
 - Reasoning is now on by default: High for every model, and Medium for Nemotron 3.5 Lightning, whose thinking shares the answer's token budget. A Reasoning Mode you already picked for a model in the model picker is kept. To go back to no reasoning, set Reasoning Mode to None in the picker, or `nvidia-nim.reasoning.mode` to `none` in the Settings UI or `settings.json`.
 
 ### Fixed

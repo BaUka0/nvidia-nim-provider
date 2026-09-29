@@ -37,7 +37,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
   "deepseek-ai/deepseek-v4.1-flash": {
     displayName: "DeepSeek V4.1 Flash",
     contextWindow: 1048576,
-    maxOutputTokens: 131072,
+    maxOutputTokens: 262144,
     supportsTools: true,
     supportsVision: true,
     adapter: "deepseek",

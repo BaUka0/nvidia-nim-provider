@@ -1,9 +1,10 @@
 import * as vscode from "vscode";
 import { MODEL_LIST } from "../src/models/catalog";
+import { NvidiaModelDiscoveryService } from "../src/models/discovery";
 import { getThinkingPartValue } from "../src/messages/parts";
 import { NimRequestBuilder } from "../src/provider/request-builder";
 import { ConfigManager } from "../src/shared/config";
-import { makeChatMessages, makeChatOptions, makeModel } from "./helpers/fakes";
+import { makeChatMessages, makeChatOptions, makeModel, makeSecrets } from "./helpers/fakes";
 
 const lookupTool = {
   name: "lookup_city",
@@ -50,6 +51,35 @@ describe("NVIDIA model card compliance", () => {
   it("caps Nemotron 3 Super and Ultra output at the documented 32768 max_tokens", () => {
     expect(MODEL_LIST["nvidia/nemotron-3-super-120b-a12b"].maxOutputTokens).toBe(32768);
     expect(MODEL_LIST["nvidia/nemotron-3-ultra-550b-a55b"].maxOutputTokens).toBe(32768);
+  });
+
+  it("uses NVIDIA's default 262144 max_tokens for DeepSeek V4.1 Flash", async () => {
+    const id = "deepseek-ai/deepseek-v4.1-flash";
+    expect(MODEL_LIST[id].maxOutputTokens).toBe(262144);
+
+    const discovery = new NvidiaModelDiscoveryService(makeSecrets(), "test-ua");
+    const [info] = discovery.mapToChatInformation([{ id, ...MODEL_LIST[id] }]);
+    // Input budget = window - output reservation - safety margin (1%).
+    expect(info.maxInputTokens).toBe(1_048_576 - 262_144 - 10_486);
+    expect(info.maxContextWindowTokens).toBe(1_048_576);
+
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: makeModel({
+        id,
+        name: "DeepSeek V4.1 Flash",
+        maxInputTokens: info.maxInputTokens,
+        maxOutputTokens: info.maxOutputTokens,
+      }),
+      messages: makeChatMessages({ role: 1, content: [new vscode.LanguageModelTextPart("hi")] }),
+      options: makeChatOptions(),
+      contextWindow: 1_048_576,
+      supportsTools: false,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
+    });
+    expect(prepared.requestBody.max_tokens).toBe(262144);
   });
 
   it("never sends top_p to Kimi K3, even when a caller sets it", async () => {

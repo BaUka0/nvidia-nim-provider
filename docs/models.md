@@ -11,7 +11,7 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 | **GLM 5.3** | `GLM 5.3` | **45** | 1,048,576 | 65,536 | `Low`, `High`, `Max` | No | Flagship reasoning model, complex agentic coding, deep problem solving |
 | **Kimi K3** | `Kimi K3` | **44** | 1,048,576 | 65,536 | `Low`, `High`, `Max` | Yes | Long-context reasoning, multimodal docs, agentic research |
 | **GLM 5.3 Flash** | `GLM 5.3 Flash` | **42** | 1,048,576 | 131,072 | `Low`, `High`, `Max` | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
-| **DeepSeek V4.1 Flash** | `DeepSeek V4.1 Flash` | **39** | 1,048,576 | 131,072 | `None`, `Low`, `High`, `Max` | Yes | Hard algorithmic work, multimodal coding, complex refactors |
+| **DeepSeek V4.1 Flash** | `DeepSeek V4.1 Flash` | **39** | 1,048,576 | 262,144 | `None`, `Low`, `High`, `Max` | Yes | Hard algorithmic work, multimodal coding, complex refactors |
 | **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **23** | 1,000,000 | 32,768 | `None`, `Medium`, `High` | No | Heavy multi-step reasoning, system design, enterprise docs |
 | **Muse Glimmer** | `Muse Glimmer` | **17** | 131,072 | 32,768 | `None` to `Max` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
 | **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **13** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; compact 30B/3B-active MoE |
@@ -35,7 +35,7 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 
 **Muse Glimmer.** Reasoning: `None`, `Minimal`, `Low`, `Medium`, `High`, `Max`.
 
-**DeepSeek V4.1 Flash.** Multimodal MoE model with 1M context and up to 131,072 output tokens. Strong on algorithms, debugging, schema design, SQL, and refactors. Native vision support for visual code analysis and diagrams. Reasoning: `None`, `Low`, `High`, `Max`.
+**DeepSeek V4.1 Flash.** Multimodal MoE model with 1M context and up to 262,144 output tokens, NVIDIA's default for this model. Reasoning shares that budget with the answer. Strong on algorithms, debugging, schema design, SQL, and refactors. Native vision support for visual code analysis and diagrams. Reasoning: `None`, `Low`, `High`, `Max`.
 
 
 ---
