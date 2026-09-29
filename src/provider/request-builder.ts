@@ -15,6 +15,7 @@ import {
   getModelAdapter,
   ModelAdapter,
   isReasoningIsolationExpected,
+  resolveDefaultReasoningMode,
   resolveReasoningMode,
 } from "../models/adapters";
 import { outputLog } from "../shared/logging";
@@ -383,7 +384,8 @@ export class NimRequestBuilder {
     const modes = adapter.supportedReasoningModes;
     let reasoningMode: string;
     if (modes && modes.length > 0) {
-      const requestedReasoningMode = configuredReasoningMode ?? reasoningConfig.mode;
+      const requestedReasoningMode =
+        configuredReasoningMode ?? resolveDefaultReasoningMode(adapter, reasoningConfig);
       reasoningMode = resolveReasoningMode(requestedReasoningMode, modes);
       if (requestedReasoningMode && !modes.includes(requestedReasoningMode)) {
         outputLog(

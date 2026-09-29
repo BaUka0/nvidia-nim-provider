@@ -8,6 +8,7 @@ import {
   PROVIDER_DISPLAY_NAME,
 } from "../shared/constants";
 import { MODEL_LIST, isNormalizedNvidiaModel, NormalizedNvidiaModel } from "../models/catalog";
+import { withReasoningOff } from "../models/adapters";
 import { NvidiaApiKeyResolver } from "../api/key-resolver";
 import { ConfigManager } from "../shared/config";
 import { createAbortError } from "../shared/cancellation";
@@ -104,7 +105,7 @@ export class NimVisionClient {
     const ua = `nvidia-nim-provider/${EXTENSION_VERSION} VSCode/${vscode.version}`;
     const content = await chatCompletion(
       apiKey,
-      {
+      withReasoningOff({
         model,
         messages: [
           {
@@ -116,7 +117,7 @@ export class NimVisionClient {
           },
         ],
         max_tokens: 2000,
-      },
+      }),
       signal,
       ua,
       httpAttemptsFromConfig(ConfigManager.getNetworkConfig().maxHttpRetries),

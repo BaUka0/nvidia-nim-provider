@@ -3,6 +3,7 @@ import { debugLog } from "../shared/logging";
 import { NimChatMessage } from "../types";
 import { findToolCallOwnerIndex } from "../messages/tool-call-pairing";
 import { FALLBACK_MODEL_ID } from "./catalog";
+import { withReasoningOff } from "./adapters";
 import {
   estimateNimMessagesTokens,
   truncateMessagesForContext,
@@ -128,7 +129,7 @@ export async function summarizeOldMessages(
     }
     const summary = await chatCompletion(
       apiKey,
-      {
+      withReasoningOff({
         model: targetModel,
         messages: [
           { role: "system", content: SUMMARIZATION_PROMPT },
@@ -136,7 +137,7 @@ export async function summarizeOldMessages(
         ],
         max_tokens: 4096,
         temperature: 0,
-      },
+      }),
       signal,
       userAgent,
       attempts,

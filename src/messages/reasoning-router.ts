@@ -56,6 +56,15 @@ export class ReasoningStreamRouter {
     return this.answerStarted;
   }
 
+  /**
+   * True while text is held back: leading content waiting to be classified as
+   * answer or untagged reasoning, or reasoning waiting for a closing fence.
+   * `flush()` releases it, so a stalled stream still counts it as progress.
+   */
+  public hasPendingText(): boolean {
+    return this.contentBuffer.length > 0 || this.reasoningBuffer.length > 0;
+  }
+
   public handleReasoningContent(text: string): void {
     if (!text) {
       return;

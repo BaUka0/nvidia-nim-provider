@@ -27,6 +27,9 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Nemotron 3 Ultra's None and Medium reasoning modes now take effect. Before, the model could keep reasoning in full with either choice.
 - Kimi K3 requests no longer include a sampling option that the model does not accept.
 - Earlier reasoning from the conversation is passed back to the model more reliably, which Kimi K3 needs for multi-step tool work.
+- The `nvidia-nim.reasoning.mode` setting takes effect again. Before, the model picker's own default always won, so changing the setting did nothing. The setting is now the picker's preselected Reasoning Mode, and changing it updates the picker right away.
+- Conversation summaries and image analysis run with reasoning off, so thinking can no longer use up their short reply.
+- A reply that stalls in its first few words is kept and continued. Before, a reasoning model that stalled before its answer got going could fail the turn and lose that text.
 - A reply cut off by a dropped connection now continues instead of ending the turn. If NVIDIA closes the stream before sending its completion marker, the extension keeps what was already written and asks the model to pick up from there.
 - A tool call written as JSON text, or inside a json code fence, is executed. Ordinary JSON stays in the chat, including an unfinished wrapper around a nested object that looks like a tool call. A fenced tool call still runs when the reply ends before the closing fence.
 - A plan that a reasoning model writes around a tool call stays in the thinking block, including the text after that call. The call itself still runs. A reply with no tool call is still shown in the chat.

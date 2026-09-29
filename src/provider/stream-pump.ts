@@ -466,7 +466,8 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       sawReasoning ||
       sawToolCall ||
       lastVisibleText.length > 0 ||
-      pendingText.length > 0;
+      pendingText.length > 0 ||
+      router.hasPendingText();
     if (isDroppedStream) {
       if (lastFinishReason == null) {
         // No finish_reason and no [DONE]: the backend cut the connection

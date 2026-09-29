@@ -11,7 +11,7 @@ import { ConfigManager, calculateSafetyMargin } from "../shared/config";
 import { fetchCuratedModels } from "./fetch-curated";
 import { MODEL_LIST, isNormalizedNvidiaModel, NormalizedNvidiaModel } from "./catalog";
 import { outputLog } from "../shared/logging";
-import { getModelAdapter } from "./adapters";
+import { getModelAdapter, resolveDefaultReasoningMode } from "./adapters";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver";
 import { runSerializedModelCacheOperation } from "./cache";
 
@@ -253,7 +253,9 @@ export class NvidiaModelDiscoveryService {
           enum: enumValues,
           enumItemLabels: enumItemLabels,
           group: "navigation",
-          default: enumValues.includes("none") ? "none" : (enumValues[0] ?? "none"),
+          // VS Code injects this default into every request, so it must carry
+          // the nvidia-nim.reasoning.mode setting rather than a fixed value.
+          default: resolveDefaultReasoningMode(adapter, ConfigManager.getReasoningConfig()),
         };
       }
 

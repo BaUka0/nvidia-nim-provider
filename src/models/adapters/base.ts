@@ -41,6 +41,8 @@ export interface ModelAdapter {
   ): void;
   isContentOnlyMode?(mode: string): boolean;
   readonly supportedReasoningModes?: string[];
+  /** Model-specific default used until the user sets `nvidia-nim.reasoning.mode`. */
+  readonly defaultReasoningMode?: string;
   readonly reasoningParameterFormat?: ReasoningParameterFormat;
   readonly toolCallProtocol?: ToolCallProtocol;
   readonly isolateUntaggedReasoning?: boolean;
@@ -110,6 +112,26 @@ export function resolveReasoningMode(
   }
 
   return defaultMode;
+}
+
+/**
+ * Default reasoning mode for a model: the adapter's own default until the user
+ * sets `nvidia-nim.reasoning.mode`, then that setting mapped onto the modes the
+ * model supports. Used for the model picker default and for requests that
+ * carry no per-model choice.
+ */
+export function resolveDefaultReasoningMode(
+  adapter: Pick<ModelAdapter, "supportedReasoningModes" | "defaultReasoningMode">,
+  reasoning: { mode: string; explicit: boolean },
+): string {
+  const modes = adapter.supportedReasoningModes;
+  if (!modes || modes.length === 0) {
+    return reasoning.mode;
+  }
+  if (!reasoning.explicit && adapter.defaultReasoningMode) {
+    return resolveReasoningMode(adapter.defaultReasoningMode, modes);
+  }
+  return resolveReasoningMode(reasoning.mode, modes);
 }
 
 export function assignReasoningEffort(
