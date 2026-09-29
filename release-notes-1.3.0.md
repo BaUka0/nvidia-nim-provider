@@ -9,7 +9,7 @@ This minor release introduces flexible context size selection and full context w
 * **Automatic recovery for text and fenced tool calls.** If a model outputs function calls formatted as JSON text or within markdown code fences instead of native structured parts, the extension intercepts and executes them automatically, keeping normal conversation text in chat.
 * **Auto-continue on dropped streams.** When an upstream connection drops prematurely before the model signals completion, the extension preserves what was already generated and prompts the model to pick up where it left off, rather than failing the turn.
 * **Calmer agent nudges and loop guard tuning.** Repetition detection in thinking and answers has been calibrated to avoid false positives on legitimate repeated phrases, tool names, section headings, or quoted code lines. Reminders for interrupted turns and retries use calm, task-focused instructions.
-* **Model alignment and output limits.** DeepSeek V4.1 Flash can now output up to 256K tokens per response. Nemotron 3 Super and Ultra response limits are calibrated to 32K tokens with optimized tool calling parameters. Background tasks like conversation summaries and image analysis run with reasoning turned off to preserve their token budgets.
+* **Model alignment and output limits.** DeepSeek V4.1 Flash can now output up to 256K tokens per response. Nemotron 3 Super and Ultra response limits are set to the 32K tokens from their model cards. Background tasks like conversation summaries and image analysis run with reasoning turned off to preserve their token budgets.
 
 ## Install / Update
 

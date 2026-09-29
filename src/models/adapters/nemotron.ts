@@ -1,23 +1,16 @@
 import { NimChatRequest } from "../../types";
 import { BaseModelAdapter, ensureChatTemplateKwargs, resolveReasoningMode } from "./base";
 
+/**
+ * Nemotron 3 family. `chat_template_kwargs.force_nonempty_content` is never
+ * sent: the model cards suggest it for coding agents on self-hosted vLLM, but
+ * on hosted NIM streaming it turns off reasoning separation, so the whole
+ * reasoning trace and a literal `</think>` arrive in `content` (verified
+ * against Super and Ultra on 2026-09-29).
+ */
 export abstract class NemotronFamilyAdapter extends BaseModelAdapter {
   override readonly toolTemperature = 0.6;
   override readonly defaultTopP = 0.95;
-}
-
-/**
- * Nemotron 3 Super and Ultra model cards ask coding agents to send
- * `force_nonempty_content`; Ultra's card requires it on tool requests so the
- * endpoint parses both reasoning and tool calls.
- */
-export function applyNemotronToolTurnOptions(
-  request: NimChatRequest,
-  context: { toolsEnabled: boolean },
-): void {
-  if (context.toolsEnabled) {
-    ensureChatTemplateKwargs(request).force_nonempty_content = true;
-  }
 }
 
 /**
@@ -40,9 +33,5 @@ export class NemotronAdapter extends NemotronFamilyAdapter {
     } else {
       delete kwargs.medium_effort;
     }
-  }
-
-  applyTurnOptions(request: NimChatRequest, context: { toolsEnabled: boolean }): void {
-    applyNemotronToolTurnOptions(request, context);
   }
 }

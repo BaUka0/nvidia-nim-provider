@@ -439,7 +439,6 @@ export class NimRequestBuilder {
     if (toolConfig.tool_choice) {
       requestBody.tool_choice = toolConfig.tool_choice;
     }
-    adapter.applyTurnOptions?.(requestBody, { toolsEnabled });
 
     debugLog("Outgoing request messages", requestBody.messages, "messages");
 

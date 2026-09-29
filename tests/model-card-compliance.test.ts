@@ -101,32 +101,28 @@ describe("NVIDIA model card compliance", () => {
     expect(prepared.requestBody.temperature).toBe(1);
   });
 
-  it.each(["nvidia/nemotron-3-super-120b-a12b", "nvidia/nemotron-3-ultra-550b-a55b"])(
-    "%s sends force_nonempty_content on tool turns only",
-    async (modelId) => {
-      const withTools = await prepare(modelId, { tools: true });
-      const withoutTools = await prepare(modelId);
+  // On hosted NIM streaming, force_nonempty_content stops the endpoint from
+  // splitting reasoning out: the trace and a literal </think> land in content
+  // and show up in the chat. Never send it, with or without tools.
+  it.each([
+    "nvidia/nemotron-3-super-120b-a12b",
+    "nvidia/nemotron-3-ultra-550b-a55b",
+    "nvidia/nemotron-3.5-lightning-30b-a3b",
+  ])("%s never sends force_nonempty_content", async (modelId) => {
+    const withTools = await prepare(modelId, { tools: true });
+    const withoutTools = await prepare(modelId);
 
-      expect(withTools.requestBody.chat_template_kwargs).toMatchObject({
-        force_nonempty_content: true,
-      });
-      expect(withoutTools.requestBody.chat_template_kwargs).not.toHaveProperty(
-        "force_nonempty_content",
-      );
-    },
-  );
+    expect(withTools.requestBody.chat_template_kwargs).not.toHaveProperty("force_nonempty_content");
+    expect(withoutTools.requestBody.chat_template_kwargs).not.toHaveProperty(
+      "force_nonempty_content",
+    );
+  });
 
   it("keeps the calibrated 0.6 tool temperature on Nemotron", async () => {
     const prepared = await prepare("nvidia/nemotron-3-ultra-550b-a55b", { tools: true });
 
     expect(prepared.requestBody.temperature).toBe(0.6);
     expect(prepared.requestBody).not.toHaveProperty("reasoning_effort");
-  });
-
-  it("does not add force_nonempty_content to Nemotron 3.5 Lightning", async () => {
-    const prepared = await prepare("nvidia/nemotron-3.5-lightning-30b-a3b", { tools: true });
-
-    expect(prepared.requestBody.chat_template_kwargs).not.toHaveProperty("force_nonempty_content");
   });
 
   it("reads thinking parts whose value is an array of strings", () => {
