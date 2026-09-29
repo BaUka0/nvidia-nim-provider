@@ -87,8 +87,13 @@ describe("NimChatModelProvider", () => {
     const progress = { report: jest.fn() };
     const token = makeToken();
 
+    // A model without a reasoning adapter streams content straight to the chat.
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeModel({
+        id: "meta/llama-3.3-70b-instruct",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
       makeUserMessages("Hi"),
       makeChatOptions(),
       progress,
@@ -97,7 +102,7 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledWith(
       "test-key",
-      expect.objectContaining({ model: "kimi-k2.6", stream: true }),
+      expect.objectContaining({ model: "meta/llama-3.3-70b-instruct", stream: true }),
       expect.any(AbortSignal),
       "test-ua",
       expect.objectContaining({ maxOutputTokens: 65536 }),
@@ -112,7 +117,7 @@ describe("NimChatModelProvider", () => {
       expect.arrayContaining([
         expect.objectContaining({
           outcome: "ok",
-          modelId: "kimi-k2.6",
+          modelId: "meta/llama-3.3-70b-instruct",
           lastVisibleTextHead: "Hello world",
           sawToolCall: false,
           emittedToolCall: false,
@@ -2995,7 +3000,9 @@ describe("NimChatModelProvider", () => {
       "[RATE_LIMITED] Rate limited.\nRetry after 30.",
       { status: 429 },
     );
+    // Kimi always reasons first, so the answer after it is shown right away.
     const partialStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Thinking." } }] };
       yield { choices: [{ delta: { content: "Partial response" } }] };
       throw rateLimitError;
     };
@@ -3169,6 +3176,7 @@ describe("NimChatModelProvider", () => {
   it("does not retry a network failure after user-visible content was emitted", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     const partialStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Thinking." } }] };
       yield { choices: [{ delta: { content: "Partial response" } }] };
       throw new TypeError("fetch failed");
     };
@@ -3283,6 +3291,7 @@ describe("NimChatModelProvider", () => {
   it("does not retry a server_error after this attempt already reported visible content", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     const partialStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Thinking." } }] };
       yield { choices: [{ delta: { content: "Partial response" } }] };
       throw new NvidiaApiError("server_error", "[SERVER_ERROR] Server error.", { status: 503 });
     };

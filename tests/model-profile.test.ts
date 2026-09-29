@@ -3,8 +3,9 @@ import { NimChatMessage, NimChatRequest } from "../src/types";
 
 describe("getModelAdapter", () => {
   it.each([
-    ["kimi-k3", 1, 1, undefined],
-    ["nemotron-70b", 1, 0.6, undefined],
+    // Kimi K3 fixes top_p server-side, so the profile never sends one.
+    ["kimi-k3", 1, 1, undefined, undefined],
+    ["nemotron-70b", 1, 0.6, undefined, 0.95],
   ])(
     "returns a specialized tool-enabled profile for %s",
     (
@@ -12,13 +13,16 @@ describe("getModelAdapter", () => {
       expectedDefaultTemperature: number,
       expectedToolTemperature: number,
       expectedParallelToolCalls: boolean | undefined,
+      expectedTopP: number | undefined,
     ) => {
       const adapter = getModelAdapter(modelId);
       const profile = adapter.getProfile({ toolsEnabled: true });
 
       expect(profile.defaultTemperature).toBe(expectedDefaultTemperature);
       expect(profile.toolTemperature).toBe(expectedToolTemperature);
-      expect(profile.defaultTopP).toBe(0.95);
+      expect(profile.defaultTopP).toBe(expectedTopP);
+      expect(profile.topPSupported).toBe(expectedTopP !== undefined);
+      expect(profile.maxTemperature).toBe(1);
       expect(profile.parallelToolCalls).toBe(expectedParallelToolCalls);
       expect(profile.extraSystemMessages).toEqual([]);
     },
@@ -55,7 +59,10 @@ describe("applyReasoningMode", () => {
       "chat_template_kwargs",
     );
     expect(getModelAdapter("nvidia/nemotron-3-ultra-550b-a55b").reasoningParameterFormat).toBe(
-      "reasoning_effort",
+      "chat_template_kwargs",
+    );
+    expect(getModelAdapter("nvidia/nemotron-3.5-lightning-30b-a3b")).not.toBe(
+      getModelAdapter("nvidia/nemotron-3-ultra-550b-a55b"),
     );
   });
 
@@ -66,13 +73,14 @@ describe("applyReasoningMode", () => {
       messages: [],
     };
 
-    expect(adapter.supportedReasoningModes).toEqual(["none", "low", "high", "max"]);
+    // Thinking is always on; the NIM reference accepts only low, high, or max.
+    expect(adapter.supportedReasoningModes).toEqual(["low", "high", "max"]);
 
     adapter.applyReasoningMode!(request, "high");
     expect(request.reasoning_effort).toBe("high");
 
     adapter.applyReasoningMode!(request, "none");
-    expect(request.reasoning_effort).toBe("none");
+    expect(request.reasoning_effort).toBe("low");
   });
 
   it("exposes Muse Glimmer reasoning effort modes and sends the selected mode", () => {
@@ -82,7 +90,14 @@ describe("applyReasoningMode", () => {
       messages: [],
     };
 
-    expect(adapter.supportedReasoningModes).toEqual(["none", "low", "medium", "high", "xhigh"]);
+    expect(adapter.supportedReasoningModes).toEqual([
+      "none",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "max",
+    ]);
     expect(adapter.getProfile({ toolsEnabled: true }).defaultTemperature).toBe(1);
 
     adapter.applyReasoningMode!(request, "high");
@@ -90,6 +105,10 @@ describe("applyReasoningMode", () => {
 
     adapter.applyReasoningMode!(request, "none");
     expect(request.reasoning_effort).toBe("none");
+
+    // A saved xhigh setting maps onto the NIM enum's top value.
+    adapter.applyReasoningMode!(request, "xhigh");
+    expect(request.reasoning_effort).toBe("max");
   });
 
   it("exposes GLM reasoning effort modes and maps selected modes", () => {

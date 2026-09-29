@@ -17,6 +17,10 @@ export interface NvidiaModelRequestProfile {
   defaultTemperature: number;
   toolTemperature?: number;
   defaultTopP?: number;
+  /** False when the NIM endpoint fixes top_p and does not accept it (Kimi K3). */
+  topPSupported: boolean;
+  /** Upper bound of the endpoint's documented temperature range. */
+  maxTemperature: number;
   parallelToolCalls?: boolean;
   extraSystemMessages: string[];
 }
@@ -27,6 +31,14 @@ export interface ModelAdapter {
   getProfile(options: { toolsEnabled?: boolean }): NvidiaModelRequestProfile;
   applyMessagesWorkaround?(messages: NimChatMessage[]): NimChatMessage[];
   applyReasoningMode?(request: import("../../types").NimChatRequest, mode: string): void;
+  /**
+   * Model-card request options that depend on the turn rather than the
+   * reasoning mode. Called after tools are attached to the request.
+   */
+  applyTurnOptions?(
+    request: import("../../types").NimChatRequest,
+    context: { toolsEnabled: boolean },
+  ): void;
   isContentOnlyMode?(mode: string): boolean;
   readonly supportedReasoningModes?: string[];
   readonly reasoningParameterFormat?: ReasoningParameterFormat;
@@ -38,6 +50,11 @@ export interface ModelAdapter {
 
 export const DEFAULT_TEMPERATURE = 1.0;
 export const DEFAULT_TOP_P = 0.95;
+/**
+ * Every published NIM API reference for the curated models caps temperature
+ * at 1 (DeepSeek V4.1 Flash has no reference page; its card recommends 1.0).
+ */
+export const DEFAULT_MAX_TEMPERATURE = 1.0;
 
 export function resolveReasoningMode(
   requested: string | undefined,
@@ -137,6 +154,8 @@ export abstract class BaseModelAdapter implements ModelAdapter {
   readonly defaultTemperature: number = DEFAULT_TEMPERATURE;
   readonly toolTemperature?: number = DEFAULT_TEMPERATURE;
   readonly defaultTopP?: number = DEFAULT_TOP_P;
+  readonly topPSupported: boolean = true;
+  readonly maxTemperature: number = DEFAULT_MAX_TEMPERATURE;
   readonly parallelToolCalls?: boolean;
   readonly toolSystemMessage?: string;
   readonly supportedReasoningModes?: string[];
@@ -157,7 +176,9 @@ export abstract class BaseModelAdapter implements ModelAdapter {
     return {
       defaultTemperature: this.defaultTemperature,
       toolTemperature: this.toolTemperature,
-      defaultTopP: this.defaultTopP,
+      defaultTopP: this.topPSupported ? this.defaultTopP : undefined,
+      topPSupported: this.topPSupported,
+      maxTemperature: this.maxTemperature,
       parallelToolCalls: options.toolsEnabled ? this.parallelToolCalls : undefined,
       extraSystemMessages: [],
     };

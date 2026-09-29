@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { createStructuredError } from "../api/errors";
 import { debugLog } from "../shared/logging";
 import { MAX_CHAT_IMAGE_BYTES } from "../shared/constants";
+import { getLanguageModelThinkingPartConstructor } from "../shared/proposed-apis";
 
 export interface LegacyPart {
   type?: string;
@@ -90,13 +91,19 @@ export function getThinkingPartValue(part: unknown): string | undefined {
     return undefined;
   }
   const constructorName = (part as { constructor?: { name?: string } }).constructor?.name;
+  const ThinkingPart = getLanguageModelThinkingPartConstructor();
   if (
+    (ThinkingPart !== undefined && part instanceof ThinkingPart) ||
     constructorName === "LanguageModelThinkingPart" ||
     (part as { type?: unknown }).type === "thinking"
   ) {
     const value = (part as { value?: unknown }).value;
     if (typeof value === "string") {
       return value;
+    }
+    // The proposed API types the value as string | string[].
+    if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+      return value.join("");
     }
   }
   if ("thinking" in part && typeof (part as { thinking?: unknown }).thinking === "string") {

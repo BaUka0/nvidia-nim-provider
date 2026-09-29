@@ -53,7 +53,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
   "nvidia/nemotron-3-ultra-550b-a55b": {
     displayName: "Nemotron 3 Ultra 550B",
     contextWindow: 1000000,
-    maxOutputTokens: 65536,
+    maxOutputTokens: 32768,
     supportsTools: true,
     supportsVision: false,
     adapter: "nemotron",
@@ -61,7 +61,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
   "nvidia/nemotron-3-super-120b-a12b": {
     displayName: "Nemotron 3 Super 120B",
     contextWindow: 1000000,
-    maxOutputTokens: 65536,
+    maxOutputTokens: 32768,
     supportsTools: true,
     supportsVision: false,
     adapter: "nemotron-super",

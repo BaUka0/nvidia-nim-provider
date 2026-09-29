@@ -61,7 +61,7 @@ describe("normalizeNvidiaModels", () => {
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
         id: "nvidia/nemotron-3-ultra-550b-a55b",
-        maxOutputTokens: 65536,
+        maxOutputTokens: 32768,
       }),
     ]);
   });

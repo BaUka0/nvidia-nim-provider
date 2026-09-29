@@ -297,7 +297,7 @@ export class NimRequestBuilder {
       firstFiniteNumber([userTemperature, generationConfig.temperature, profileTemperature]) ??
         profileTemperature,
       0,
-      2,
+      requestProfile.maxTemperature,
     );
 
     let apiMessages = this.convertMessagesWithProfile({
@@ -402,13 +402,15 @@ export class NimRequestBuilder {
     const reasoningIsolationExpected = isReasoningIsolationExpected(adapter, reasoningMode);
 
     const modelOpts = responseOptions.modelOptions as Record<string, unknown>;
-    assignClamped(
-      requestBody,
-      "top_p",
-      [modelOpts?.top_p, generationConfig.topP, requestProfile.defaultTopP],
-      0,
-      1,
-    );
+    if (requestProfile.topPSupported) {
+      assignClamped(
+        requestBody,
+        "top_p",
+        [modelOpts?.top_p, generationConfig.topP, requestProfile.defaultTopP],
+        0,
+        1,
+      );
+    }
     const stopVal = modelOpts?.stop;
     if (typeof stopVal === "string" && stopVal.length > 0 && stopVal.length <= 256) {
       requestBody.stop = stopVal;
@@ -435,6 +437,7 @@ export class NimRequestBuilder {
     if (toolConfig.tool_choice) {
       requestBody.tool_choice = toolConfig.tool_choice;
     }
+    adapter.applyTurnOptions?.(requestBody, { toolsEnabled });
 
     debugLog("Outgoing request messages", requestBody.messages, "messages");
 

@@ -16,9 +16,17 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - A reasoning mode the model does not support, including "on" and "auto", maps to the closest mode that model does support.
 - A read that omits a line range now covers up to 2000 lines from the start line.
 - Loop reminders and invalid-tool retries ask the model to continue the task. They no longer open with "hey you got stuck" or "Retry NOW".
+- Muse Glimmer's reasoning options now match NVIDIA's list: None, Minimal, Low, Medium, High, and Max. A saved "xhigh" choice becomes Max.
+- Kimi K3 no longer offers "None" for reasoning, because the model always thinks. A "None" setting from before uses Low.
+- On tool turns, Nemotron 3 Super and Ultra now get the setting NVIDIA recommends for coding agents, so a reply with a tool call is read correctly.
+- A temperature above 1, from settings or from another extension, is lowered to 1, the highest value NVIDIA accepts for these models.
 
 ### Fixed
 
+- Nemotron 3 Super and Ultra no longer ask for longer answers than NVIDIA allows. Their answer limit is now 32K tokens.
+- Nemotron 3 Ultra's None and Medium reasoning modes now take effect. Before, the model could keep reasoning in full with either choice.
+- Kimi K3 requests no longer include a sampling option that the model does not accept.
+- Earlier reasoning from the conversation is passed back to the model more reliably, which Kimi K3 needs for multi-step tool work.
 - A reply cut off by a dropped connection now continues instead of ending the turn. If NVIDIA closes the stream before sending its completion marker, the extension keeps what was already written and asks the model to pick up from there.
 - A tool call written as JSON text, or inside a json code fence, is executed. Ordinary JSON stays in the chat, including an unfinished wrapper around a nested object that looks like a tool call. A fenced tool call still runs when the reply ends before the closing fence.
 - A plan that a reasoning model writes around a tool call stays in the thinking block, including the text after that call. The call itself still runs. A reply with no tool call is still shown in the chat.
