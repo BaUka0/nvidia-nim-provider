@@ -643,7 +643,7 @@ describe("NimChatModelProvider", () => {
     });
   });
 
-  it("suppresses an immediate duplicate of the just-completed tool call", async () => {
+  it("forwards a duplicate of the just-completed tool call for re-execution", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
     const mockStream = async function* () {
@@ -717,7 +717,13 @@ describe("NimChatModelProvider", () => {
     );
 
     const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
-    expect(toolCallReports).toHaveLength(0);
+    expect(toolCallReports).toHaveLength(1);
+    expect(toolCallReports[0][0].name).toBe("read_file");
+    expect(toolCallReports[0][0].input).toEqual({
+      filePath: "/tmp/example.md",
+      startLine: 158,
+      endLine: 158,
+    });
   });
 
   it("allows the same tool call again after an intervening user message", async () => {

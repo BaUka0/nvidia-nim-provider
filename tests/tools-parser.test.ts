@@ -8,7 +8,6 @@ import {
   getToolSchemaMap,
   hasRequiredToolArguments,
   missingRequiredToolArguments,
-  isDuplicateSuppressionEnabled,
   parseTextEmbeddedToolCalls,
   ParsedTextSegment,
   parseToolArguments,
@@ -582,7 +581,7 @@ describe("tool argument parsing and validation", () => {
     expect(emitted[0].id.length).toBeGreaterThan(0);
   });
 
-  it("reports a completed duplicate instead of dropping it silently", () => {
+  it("forwards a duplicate of an already-completed call for re-execution", () => {
     const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
     const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
     const aggregator = new ToolCallStreamAggregator({
@@ -621,8 +620,127 @@ describe("tool argument parsing and validation", () => {
     ]);
     aggregator.flushRemaining();
 
-    expect(emitted).toEqual([]);
-    expect(skipped).toEqual([{ name: "read_file", required: [], reason: "duplicate" }]);
+    expect(skipped).toEqual([]);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].name).toBe("read_file");
+    expect(emitted[0].args).toEqual({ filePath: "/tmp/a.ts", startLine: 1, mode: "full" });
+  });
+
+  describe("forwarding invalid native tool calls", () => {
+    const forwardOptions = makeChatOptions({
+      tools: [
+        {
+          name: "web_search",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string" },
+              depth: { type: "string" },
+            },
+            required: ["query", "depth"],
+          },
+        },
+        {
+          name: "read_file",
+          inputSchema: {
+            type: "object",
+            properties: {
+              filePath: { type: "string" },
+            },
+            required: ["filePath"],
+          },
+        },
+      ],
+    });
+
+    const makeAggregator = () => {
+      const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+      const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
+      const aggregator = new ToolCallStreamAggregator({
+        options: forwardOptions,
+        messages: [],
+        toolsConfig: ConfigManager.getToolsConfig(),
+        onEmitToolCall: (id, name, args) => emitted.push({ id, name, args }),
+        onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
+      });
+      return { aggregator, emitted, skipped };
+    };
+
+    it("forwards a known-tool call with partial required arguments", () => {
+      const { aggregator, emitted, skipped } = makeAggregator();
+
+      aggregator.handleToolCalls([
+        {
+          index: 0,
+          id: "call_1",
+          type: "function",
+          function: { name: "web_search", arguments: '{"query":"vscode api"}' },
+        },
+      ]);
+      aggregator.flushRemaining();
+
+      expect(skipped).toEqual([]);
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0].name).toBe("web_search");
+      expect(emitted[0].args).toEqual({ query: "vscode api" });
+    });
+
+    it("still skips an empty payload for a known tool", () => {
+      const { aggregator, emitted, skipped } = makeAggregator();
+
+      aggregator.handleToolCalls([
+        {
+          index: 0,
+          id: "call_1",
+          type: "function",
+          function: { name: "web_search", arguments: "{}" },
+        },
+      ]);
+      aggregator.flushRemaining();
+
+      expect(emitted).toEqual([]);
+      expect(skipped).toEqual([{ name: "web_search", required: ["query", "depth"] }]);
+    });
+
+    it("still skips a hallucinated tool name that was never offered", () => {
+      const { aggregator, emitted, skipped } = makeAggregator();
+
+      aggregator.handleToolCalls([
+        {
+          index: 0,
+          id: "call_1",
+          type: "function",
+          function: {
+            name: "str_replace_in_file",
+            arguments: '{"filePath":"/tmp/a.ts","oldString":"a","newString":"b"}',
+          },
+        },
+      ]);
+      aggregator.flushRemaining();
+
+      expect(emitted).toEqual([]);
+      expect(skipped).toEqual([{ name: "str_replace_in_file", required: [] }]);
+    });
+
+    it("applies the consecutive-identical loop guard to forwarded calls", () => {
+      const { aggregator, emitted, skipped } = makeAggregator();
+
+      for (let index = 0; index < 3; index += 1) {
+        aggregator.handleToolCalls([
+          {
+            index,
+            id: `call_${index}`,
+            type: "function",
+            function: { name: "web_search", arguments: '{"query":"vscode api"}' },
+          },
+        ]);
+      }
+      aggregator.flushRemaining();
+
+      expect(emitted).toHaveLength(2);
+      expect(skipped).toHaveLength(1);
+      expect(aggregator.getToolCallLoop()).toBeDefined();
+    });
   });
 
   it("re-emits run_in_terminal even when the same command already completed", () => {
@@ -1393,14 +1511,123 @@ describe("tool argument parsing and validation", () => {
     expect(hasRequiredToolArguments(repaired, deploySchema)).toBe(false);
   });
 
-  it("enables duplicate suppression only for read tools", () => {
-    expect(isDuplicateSuppressionEnabled("read_file")).toBe(true);
-    expect(isDuplicateSuppressionEnabled("view_file")).toBe(true);
-    expect(isDuplicateSuppressionEnabled("get_file_contents")).toBe(true);
-    expect(isDuplicateSuppressionEnabled("get_errors")).toBe(false);
-    expect(isDuplicateSuppressionEnabled("run_in_terminal")).toBe(false);
-    expect(isDuplicateSuppressionEnabled("edit_file")).toBe(false);
-    expect(isDuplicateSuppressionEnabled("list_dir")).toBe(false);
+  describe("edit tool explanation fill", () => {
+    const editOptions = makeChatOptions({
+      tools: [
+        {
+          name: "replace_string_in_file",
+          inputSchema: {
+            type: "object",
+            properties: {
+              explanation: { type: "string" },
+              filePath: { type: "string" },
+              oldString: { type: "string" },
+              newString: { type: "string" },
+            },
+            required: ["explanation", "filePath", "oldString", "newString"],
+          },
+        },
+        {
+          name: "multi_replace_string_in_file",
+          inputSchema: {
+            type: "object",
+            properties: {
+              explanation: { type: "string" },
+              replacements: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    filePath: { type: "string" },
+                    oldString: { type: "string" },
+                    newString: { type: "string" },
+                  },
+                  required: ["filePath", "oldString", "newString"],
+                },
+              },
+            },
+            required: ["explanation", "replacements"],
+          },
+        },
+        {
+          name: "insert_edit_into_file",
+          inputSchema: {
+            type: "object",
+            properties: {
+              explanation: { type: "string" },
+              filePath: { type: "string" },
+              code: { type: "string" },
+            },
+            required: ["explanation", "code"],
+          },
+        },
+      ],
+    });
+
+    it("fills a missing required explanation on a single-file edit", () => {
+      const schema = getToolSchemaMap(editOptions).get("replace_string_in_file");
+      const repaired = repairToolArguments(
+        "replace_string_in_file",
+        {
+          filePath: "/home/blue/code/wispos/WispOS.Kernel/Shell.cs",
+          oldString: "old body",
+          newString: "new body",
+        },
+        undefined,
+        schema,
+      );
+
+      expect(repaired.explanation).toBe(
+        "Applied edit to /home/blue/code/wispos/WispOS.Kernel/Shell.cs",
+      );
+      expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
+    });
+
+    it("fills a missing explanation on a batch edit from the first replacement path", () => {
+      const schema = getToolSchemaMap(editOptions).get("multi_replace_string_in_file");
+      const repaired = repairToolArguments(
+        "multi_replace_string_in_file",
+        {
+          replacements: [
+            { filePath: "/tmp/one.cs", oldString: "a", newString: "b" },
+            { filePath: "/tmp/two.cs", oldString: "c", newString: "d" },
+          ],
+        },
+        undefined,
+        schema,
+      );
+
+      expect(repaired.explanation).toBe("Applied edit to /tmp/one.cs");
+      expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
+    });
+
+    it("falls back to a neutral explanation when no path is available", () => {
+      const schema = getToolSchemaMap(editOptions).get("insert_edit_into_file");
+      const repaired = repairToolArguments(
+        "insert_edit_into_file",
+        { code: "print(1)" },
+        undefined,
+        schema,
+      );
+
+      expect(repaired.explanation).toBe("Applied edit");
+      expect(hasRequiredToolArguments(repaired, schema)).toBe(true);
+    });
+
+    it("does not fill the explanation when a core edit field is also missing", () => {
+      const schema = getToolSchemaMap(editOptions).get("replace_string_in_file");
+      const repaired = repairToolArguments(
+        "replace_string_in_file",
+        { oldString: "a", newString: "b" },
+        undefined,
+        schema,
+      );
+
+      // No filePath anywhere: explanation stays absent so the call is still
+      // rejected by validation instead of being executed without a target.
+      expect(hasRequiredToolArguments(repaired, schema)).toBe(false);
+      expect(missingRequiredToolArguments(repaired, schema)).toEqual(["explanation", "filePath"]);
+    });
   });
 
   describe("Issue #8: cross-file line range scoping and read_file defaulting", () => {

@@ -19,11 +19,7 @@ export { ChatRequestContext, extractChatRequestContext } from "./request-context
 
 export { repairToolArguments } from "./argument-repair";
 
-export {
-  buildToolCallCanonicalKey,
-  isDuplicateSuppressionEnabled,
-  getCompletedToolCallKeys,
-} from "./canonical-key";
+export { buildToolCallCanonicalKey } from "./canonical-key";
 
 export {
   isValidToolIdentifier,

@@ -2,6 +2,18 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Changed
+
+- **Invalid native tool calls are forwarded for model-side feedback (`src/provider/tool-call-aggregator.ts`).** At stream end, `tryCompleteToolCall` forwards a call whose repaired arguments still fail schema validation when the tool name is offered (`toolSchemas.has(name)`) and the raw parsed payload carries at least one non-empty required argument. The forward goes through `emitValidatedToolCall`, so the consecutive-identical loop guard (`maxConsecutiveIdenticalCalls`) still applies, and it sets `emittedToolCall`, which ends the `invalid_tool_call` retry/failover cascade for this class: the tool implementation's precise schema error reaches the model through Copilot's agent loop instead. Empty payloads, unoffered tool names such as the hallucinated `str_replace_in_file`, and unparseable arguments keep the skip/retry path. Debug event `Forwarded incomplete tool call for model-side error feedback`. Addresses #22.
+- **History-window duplicate suppression removed (`src/provider/tool-call-aggregator.ts`, `src/tools/canonical-key.ts`, `src/tools/parser.ts`).** `emitValidatedToolCall` no longer consults `emittedTextToolCallKeys`, so a re-call of a read completed earlier in the turn window executes again instead of being skipped with reason `duplicate` — the suppressed repeat was the loop that burned invalid-tool retries on Nemotron in the #22 logs. Degenerate same-stream repetition is still capped by the tool-call loop guard. `isDuplicateSuppressionEnabled` and `getCompletedToolCallKeys` are deleted along with their re-exports. Addresses #22.
+
+### Fixed
+
+- **`explanation` auto-fill on edit tools (`src/tools/argument-repair.ts`).** `fillEditToolExplanation` runs in the `isEditTool` branch of `repairToolArguments` and synthesizes `explanation` when it is the single missing required argument: `Applied edit to <filePath|AbsolutePath|TargetFile|replacements[0].filePath>`, falling back to `Applied edit`. Copilot's edit tool schemas require `explanation` (confirmed in `multi_replace_string_in_file`'s contributed schema), and Nemotron under long context omits it, so every edit call failed `hasRequiredToolArguments` at stream end and the turn exhausted its invalid-tool retries before failover (64 skipped calls in the #22 session log). Calls that also miss a core field such as `filePath` stay invalid. Addresses #22.
+- **Tests.** The duplicate-suppression cases now assert forwarding (`forwards a duplicate of an already-completed call for re-execution`, `forwards a duplicate of the just-completed tool call for re-execution`, `forwards a duplicate read_file for re-execution instead of retrying it`). New aggregator cases cover the forward gate (partial required arguments forwarded, empty payload skipped, hallucinated tool name skipped, loop guard applied to forwarded calls) and the `explanation` fill (single-file, batch via the first replacement path, neutral fallback when no path is declared, no fill when a core field is also missing).
+
 ## [1.3.0] - 2026-09-29
 
 ### Added
