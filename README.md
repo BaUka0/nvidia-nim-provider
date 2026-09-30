@@ -151,6 +151,10 @@ All requests go directly from your VS Code client to the official NVIDIA NIM API
 
 ---
 
+**Q: How do I check if NVIDIA NIM is busy or down?**
+
+**A:** While unofficial, try this page: https://nimstats.aathil.com/
+
 ## Development
 
 ### Prerequisites
