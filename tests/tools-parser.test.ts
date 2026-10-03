@@ -1,6 +1,5 @@
 import { ConfigManager } from "../src/shared/config";
 import {
-  buildInvalidToolCallFallback,
   buildInvalidToolCallRetryMessage,
   buildToolCallCanonicalKey,
   extractStandaloneXmlParameters,
@@ -859,6 +858,7 @@ describe("tool argument parsing and validation", () => {
     expect(skipped).toEqual([]);
     expect(aggregator.getToolCallLoop()).toEqual({
       key: expect.stringContaining('run_in_terminal:{"command":"npm run compile"'),
+      name: "run_in_terminal",
       count: 5,
     });
   });
@@ -987,7 +987,11 @@ describe("tool argument parsing and validation", () => {
       const { emitted, loop } = streamCall(history, "read_file", readA);
 
       expect(emitted).toEqual([]);
-      expect(loop).toEqual({ key: expect.stringContaining('"filePath":"/tmp/a.ts"'), count: 5 });
+      expect(loop).toEqual({
+        key: expect.stringContaining('"filePath":"/tmp/a.ts"'),
+        name: "read_file",
+        count: 5,
+      });
     });
 
     it("allows the fourth identical call", () => {
@@ -1156,20 +1160,18 @@ describe("tool argument parsing and validation", () => {
     expect(emitted).toEqual([{ id: "grep:1", name: "grep_search", args: grepArgs }]);
   });
 
-  it("explains missing tool-call payloads and duplicates in fallback text", () => {
-    expect(
-      buildInvalidToolCallFallback([
-        { name: "tool_call", required: [], reason: "missing_payload" },
-      ]),
-    ).toContain("did not include tool arguments");
+  it("explains missing payloads and truncated arguments in retry text", () => {
     expect(
       buildInvalidToolCallRetryMessage([
         { name: "tool_call", required: [], reason: "missing_payload" },
       ]),
     ).toContain("complete JSON arguments");
-    expect(
-      buildInvalidToolCallFallback([{ name: "read_file", required: [], reason: "duplicate" }]),
-    ).toContain("already completed");
+    const truncated = buildInvalidToolCallRetryMessage([
+      { name: "read_file", required: ["filePath"] },
+      { name: "replace_string_in_file", required: [], reason: "truncated" },
+    ]);
+    expect(truncated).toContain('"replace_string_in_file" was cut off');
+    expect(truncated).toContain("smaller tool calls");
   });
 
   it("parses Hermes/Nemotron XML tool calls and strips XML tags from text", () => {
@@ -1673,6 +1675,90 @@ describe("tool argument parsing and validation", () => {
     expect(repaired).toEqual({ environment: "staging" });
     expect(repaired.rollbackOnFailure).toBeUndefined();
     expect(hasRequiredToolArguments(repaired, deploySchema)).toBe(false);
+  });
+
+  describe("tool calls cut off by a short stream", () => {
+    const editOptions = makeChatOptions({
+      tools: [
+        {
+          name: "replace_string_in_file",
+          inputSchema: {
+            type: "object",
+            properties: {
+              explanation: { type: "string" },
+              filePath: { type: "string" },
+              oldString: { type: "string" },
+              newString: { type: "string" },
+            },
+            required: ["explanation", "filePath", "oldString", "newString"],
+          },
+        },
+      ],
+    });
+
+    const flushWith = (args: string, argumentsMayBeTruncated: boolean) => {
+      const emitted: Array<{ name: string; args: Record<string, unknown> }> = [];
+      const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
+      const aggregator = new ToolCallStreamAggregator({
+        options: editOptions,
+        messages: [],
+        toolsConfig: ConfigManager.getToolsConfig(),
+        onEmitToolCall: (_id, name, emittedArgs) => emitted.push({ name, args: emittedArgs }),
+        onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
+      });
+      aggregator.handleToolCalls([
+        {
+          index: 0,
+          id: "edit_1",
+          type: "function",
+          function: { name: "replace_string_in_file", arguments: args },
+        },
+      ]);
+      aggregator.flushRemaining({ argumentsMayBeTruncated });
+      return { emitted, skipped };
+    };
+
+    // Cut inside newString and no explanation yet: jsonrepair plus the
+    // explanation fill would otherwise yield a valid call with half the edit.
+    const cutMidEdit =
+      '{"filePath":"/tmp/a.ts","oldString":"function foo() {\\n  return 1;\\n}","newString":"function foo() {\\n  ret';
+
+    it("skips unfinished arguments instead of repairing them into an edit", () => {
+      const { emitted, skipped } = flushWith(cutMidEdit, true);
+
+      expect(emitted).toEqual([]);
+      expect(skipped).toEqual([
+        { name: "replace_string_in_file", required: [], reason: "truncated" },
+      ]);
+    });
+
+    it("still runs a call whose JSON was complete before the stream was cut", () => {
+      // Without explanation the strict streaming check waits for more data, so
+      // this call reaches the stream-end flush with complete JSON.
+      const complete = JSON.stringify({
+        filePath: "/tmp/a.ts",
+        oldString: "return 1;",
+        newString: "return 2;",
+      });
+      const { emitted, skipped } = flushWith(complete, true);
+
+      expect(skipped).toEqual([]);
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0].args.newString).toBe("return 2;");
+    });
+
+    it("keeps repairing malformed but finished JSON when the stream ended normally", () => {
+      const { emitted, skipped } = flushWith(
+        '{"filePath":"/tmp/a.ts","oldString":"a","newString":"b",}',
+        false,
+      );
+
+      expect(skipped).toEqual([]);
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0].args).toEqual(
+        expect.objectContaining({ filePath: "/tmp/a.ts", oldString: "a", newString: "b" }),
+      );
+    });
   });
 
   describe("edit tool explanation fill", () => {

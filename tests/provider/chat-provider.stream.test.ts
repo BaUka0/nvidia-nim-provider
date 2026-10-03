@@ -2126,6 +2126,181 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("does not run an edit cut off by a dropped stream and asks the model to resend it", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.enabled") return false;
+        return defaultValue;
+      }),
+    }));
+    const editCall = (id: string, args: string) => ({
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id,
+                type: "function",
+                function: { name: "replace_string_in_file", arguments: args },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const droppedStream = async function* () {
+      yield editCall(
+        "edit_1",
+        '{"filePath":"/tmp/a.ts","oldString":"return 1;","newString":"return 2;\\n  // keep',
+      );
+      const dropped = new Error("NVIDIA NIM stream ended before the [DONE] sentinel");
+      dropped.name = "StreamDroppedError";
+      throw dropped;
+    };
+    const resentStream = async function* () {
+      yield editCall(
+        "edit_2",
+        '{"filePath":"/tmp/a.ts","oldString":"return 1;","newString":"return 2;"}',
+      );
+    };
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => droppedStream())
+      .mockImplementationOnce(() => resentStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "meta/llama-3.3-70b-instruct",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Change the return value"),
+      makeChatOptions({
+        tools: [
+          {
+            name: "replace_string_in_file",
+            description: "Replace a string in a file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                explanation: { type: "string" },
+                filePath: { type: "string" },
+                oldString: { type: "string" },
+                newString: { type: "string" },
+              },
+              required: ["explanation", "filePath", "oldString", "newString"],
+            },
+          },
+        ],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(retryBody.messages.at(-1).content).toContain("was cut off before its arguments");
+    const toolCalls = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0][0].input).toEqual(
+      expect.objectContaining({ newString: "return 2;", explanation: "Applied edit to /tmp/a.ts" }),
+    );
+  });
+
+  it("tells the user when the model keeps repeating a dropped call after auto-continue", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.enabled") return false;
+        return defaultValue;
+      }),
+    }));
+    const readInput = { filePath: "/tmp/a.ts", startLine: 1, endLine: 40 };
+    const repeatedRead = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "read_again",
+                  type: "function",
+                  function: { name: "read_file", arguments: JSON.stringify(readInput) },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock).mockImplementation(() => repeatedRead());
+
+    const history = [0, 1, 2, 3].flatMap((round) => [
+      {
+        role: 2,
+        content: [new vscode.LanguageModelToolCallPart(`read_${round}`, "read_file", readInput)],
+      },
+      {
+        role: 1,
+        content: [
+          new vscode.LanguageModelToolResultPart(`read_${round}`, [
+            new vscode.LanguageModelTextPart("file contents"),
+          ]),
+        ],
+      },
+    ]);
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "meta/llama-3.3-70b-instruct",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeMessages({ role: 1, content: [{ value: "Explain a.ts" }] }, ...history),
+      makeChatOptions({
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "number" },
+                endLine: { type: "number" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    // Initial attempt plus the two default auto-continues, all dropped.
+    expect(streamChatCompletion).toHaveBeenCalledTimes(3);
+    const toolCalls = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    expect(toolCalls).toEqual([]);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: expect.stringContaining(
+          "Stopped a repeated tool call. `read_file` already ran 4 times with the same arguments",
+        ),
+      }),
+    );
+  });
+
   it("keeps a partial answer when a stream stalls and auto-continue is disabled", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({

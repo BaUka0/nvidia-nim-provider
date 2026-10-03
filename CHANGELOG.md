@@ -13,6 +13,8 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Edit tool calls that omit the model's short description of the change now run instead of failing. The extension fills in a neutral description and lets the edit proceed, so long conversations no longer spiral into "your request failed" when the model drops that field.
 - Asking the model to read a file it already read in the same task no longer stalls the turn. The read simply runs again; before, the repeat was silently discarded and the turn could fail after several retries and fallbacks.
 - A tool call that still arrives with a missing argument is passed through so the tool's own precise error reaches the model, which can correct the call within the same task. Before, the extension retried the whole turn on its own and could burn through every model in the fallback chain.
+- An edit that gets cut off mid-way, because the connection dropped, the stream stalled, or the reply hit the output limit, is no longer applied with only part of its content. The extension asks the model to send the call again instead.
+- When the model keeps asking for a tool call that was stopped as a loop, the chat now says so and tells you to send a new message, instead of ending with an empty reply.
 
 ## [1.3.0] - 2026-09-29
 

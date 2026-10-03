@@ -77,6 +77,8 @@ export interface StreamAttemptResult {
   trippedDetector?: RepetitionDetector;
   toolCallLoopTripped: boolean;
   toolCallLoopKey?: string;
+  /** Tool whose identical-call limit tripped, for the chat notice. */
+  toolCallLoopName?: string;
   streamChunkCount: number;
   firstResponseAtMs?: number;
   firstToolCallAtMs?: number;
@@ -116,6 +118,8 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   let toolParsingStateInitDurationMs: number | undefined;
   let timedOut = false;
   let streamDropped = false;
+  /** A guard broke out of the read loop before the backend finished. */
+  let consumptionStoppedEarly = false;
 
   const repetitionGuard = new RepetitionGuard({
     maxRepeatedLines: input.maxRepeatedLines,
@@ -448,6 +452,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
 
       if (repetitionGuard.tripped || reasoningGuard.tripped || toolCallLoopKey) {
         debugLog("repetitionGuard", "stopping stream consumption");
+        consumptionStoppedEarly = true;
         break;
       }
     }
@@ -537,7 +542,14 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   }
 
   if (toolAggregator) {
-    toolAggregator.flushRemaining();
+    toolAggregator.flushRemaining({
+      argumentsMayBeTruncated:
+        timedOut ||
+        streamDropped ||
+        consumptionStoppedEarly ||
+        lastFinishReason === "length" ||
+        lastFinishReason === "content_filter",
+    });
     toolCallLoopKey ??= toolAggregator.getToolCallLoop()?.key;
   }
 
@@ -658,6 +670,8 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     );
   }
 
+  const toolCallLoopName = toolCallLoopKey ? toolAggregator?.getToolCallLoop()?.name : undefined;
+
   return {
     reportedContent,
     reportedVisibleContent,
@@ -675,6 +689,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       : reasoningGuard.trippedDetector,
     toolCallLoopTripped: toolCallLoopKey !== undefined,
     ...(toolCallLoopKey ? { toolCallLoopKey } : {}),
+    ...(toolCallLoopName ? { toolCallLoopName } : {}),
     streamChunkCount,
     firstResponseAtMs,
     firstToolCallAtMs,

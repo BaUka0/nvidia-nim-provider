@@ -57,6 +57,7 @@ export class ToolCallStreamAggregator {
   /** Seeded from the current task's history so the cap spans agent-loop iterations. */
   private identicalCalls: IdenticalToolCallTracker;
   private toolCallLoopKey: string | undefined;
+  private toolCallLoopName: string | undefined;
   private toolCallLoopCount = 0;
 
   constructor(options: ToolCallStreamAggregatorOptions) {
@@ -72,11 +73,15 @@ export class ToolCallStreamAggregator {
     return this.sawToolCall;
   }
 
-  public getToolCallLoop(): { key: string; count: number } | undefined {
-    if (!this.toolCallLoopKey) {
+  public getToolCallLoop(): { key: string; name: string; count: number } | undefined {
+    if (!this.toolCallLoopKey || !this.toolCallLoopName) {
       return undefined;
     }
-    return { key: this.toolCallLoopKey, count: this.toolCallLoopCount };
+    return {
+      key: this.toolCallLoopKey,
+      name: this.toolCallLoopName,
+      count: this.toolCallLoopCount,
+    };
   }
 
   public getToolSchema(name: string): ToolSchema | undefined {
@@ -154,6 +159,7 @@ export class ToolCallStreamAggregator {
     const attemptedCount = this.identicalCalls.countOf(name, canonicalKey) + 1;
     if (exceedsIdenticalCallLimit(attemptedCount, this.toolsConfig.maxConsecutiveIdenticalCalls)) {
       this.toolCallLoopKey = canonicalKey;
+      this.toolCallLoopName = name;
       this.toolCallLoopCount = attemptedCount;
       debugLog("repetitionGuard", {
         action: "toolCallLoop",
@@ -364,7 +370,12 @@ export class ToolCallStreamAggregator {
     return false;
   }
 
-  public flushRemaining(): void {
+  /**
+   * Finish buffered calls at stream end. Set `argumentsMayBeTruncated` when the
+   * stream was cut short (timeout, dropped connection, output limit, guard
+   * stop) so unfinished arguments are not repaired into a runnable call.
+   */
+  public flushRemaining(options?: { argumentsMayBeTruncated?: boolean }): void {
     if (this.toolCallLoopKey) {
       return;
     }
@@ -372,7 +383,40 @@ export class ToolCallStreamAggregator {
       if (this.completedToolCallIndices.has(idx)) {
         continue;
       }
+      if (options?.argumentsMayBeTruncated && this.skipTruncatedToolCall(idx, buf)) {
+        continue;
+      }
       this.tryCompleteToolCall(idx, buf, false);
     }
+  }
+
+  /**
+   * Arguments that are not complete JSON after a cut-short stream are
+   * unfinished, not merely malformed: jsonrepair would close the half-written
+   * string and the call could pass validation with partial content (an edit
+   * carrying half of `newString`, a shortened terminal command). Skip it so
+   * the model is asked to send the call again.
+   */
+  private skipTruncatedToolCall(
+    idx: number,
+    buf: { id?: string; name?: string; args: string },
+  ): boolean {
+    if (buf.args.trim().length === 0) {
+      return false;
+    }
+    try {
+      parseToolArgumentsStrict(buf.args);
+      return false;
+    } catch {
+      // Not complete JSON: treat as truncated below.
+    }
+    this.onSkipToolCall(buf.name ?? "unknown_tool", [], "truncated");
+    debugLog("Skipped truncated tool call after the stream was cut short", {
+      id: buf.id,
+      name: buf.name,
+      argsChars: buf.args.length,
+    });
+    this.markToolCallIndexComplete(idx);
+    return true;
   }
 }

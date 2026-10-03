@@ -1,9 +1,6 @@
 export { parseToolArguments, parseToolArgumentsStrict, tryParseJsonValue } from "./json-args";
 
-export {
-  buildInvalidToolCallFallback,
-  buildInvalidToolCallRetryMessage,
-} from "./invalid-call-messages";
+export { buildInvalidToolCallRetryMessage } from "./invalid-call-messages";
 
 export {
   ToolSchema,
@@ -44,7 +41,7 @@ export {
   buildKnownPropertySet,
 } from "./json-tool-scanner";
 
-export type SkippedToolCallReason = "invalid" | "duplicate" | "missing_payload";
+export type SkippedToolCallReason = "invalid" | "truncated" | "missing_payload";
 
 export interface SkippedToolCall {
   name: string;

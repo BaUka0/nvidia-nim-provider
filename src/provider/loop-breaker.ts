@@ -193,6 +193,17 @@ export function buildLoopBreakerNudge(reason: LoopBreakerNudgeReason): NimChatMe
   return { role: "user", content: `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_NUDGES[reason]}` };
 }
 
+/**
+ * Chat notice for a turn that ends because the model kept asking for a call
+ * the identical-call limit dropped. The count resets on a new user message,
+ * so sending one lets the task continue.
+ */
+export function buildToolCallLoopNotice(toolName: string | undefined, limit: number): string {
+  const tool = toolName ? `\`${toolName}\`` : "The same tool call";
+  const times = `${limit} time${limit === 1 ? "" : "s"}`;
+  return `> **NVIDIA NIM:** Stopped a repeated tool call. ${tool} already ran ${times} with the same arguments in this task, and the model kept asking for it again. Send a new message to continue.\n\n`;
+}
+
 /** Return the textual content of a message part, if any. */
 function partTextValue(part: unknown): string | undefined {
   if (typeof part === "string") {
