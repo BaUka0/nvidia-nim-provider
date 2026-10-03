@@ -2,7 +2,7 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
-## [Unreleased]
+## [1.4.0] - 2026-10-03
 
 ### Changed
 
@@ -13,6 +13,7 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 - **History-window duplicate suppression removed (`src/provider/tool-call-aggregator.ts`, `src/tools/canonical-key.ts`, `src/tools/parser.ts`).** `emitValidatedToolCall` no longer consults `emittedTextToolCallKeys`, so a re-call of a read completed earlier in the turn window executes again instead of being skipped with reason `duplicate` — the suppressed repeat was the loop that burned invalid-tool retries on Nemotron in the #22 logs. Repeats are now capped by the unified identical-call limit (next entry). `isDuplicateSuppressionEnabled` and `getCompletedToolCallKeys` are deleted along with their re-exports. Addresses #22.
 - **Unified identical tool-call limit across agent steps (`src/tools/tool-call-repeats.ts`, `src/provider/tool-call-aggregator.ts`, `src/provider/loop-breaker.ts`, `src/provider/turn-executor.ts`, `src/shared/config.ts`, `package.json`).** New `IdenticalToolCallTracker` counts calls per canonical key (`buildToolCallCanonicalKey`, name plus sorted arguments) and clears every count when a different tool name is called, so same-tool cycles (read A, read B, read A, ...) keep accumulating. `replayTaskToolCalls` seeds it from assistant tool-call parts after the last user turn carrying typed text; tool-result turns and `cache_control` data parts do not start a new task. `ToolCallStreamAggregator` seeds the tracker from `options.messages` and drops a call once its attempted count exceeds `tools.maxConsecutiveIdenticalCalls` (`exceedsIdenticalCallLimit`). This replaces the per-stream consecutive counter, which reset on every request and tripped on the Nth copy (cap 3 let 2 through). A dropped call sets `toolCallLoopKey` and follows the existing `tool_call_loop` auto-continue path. `detectToolCallHistoryLoop` now uses the same replay and takes `{ limit }` instead of `{ windowSize, minRepeats }`: it reports the last call once its count reaches the limit (and is above 1), and `injectHistoryLoopBreaker` / `buildHistoryLoopBreakerContent` receive `maxIdenticalToolCalls` from config. The breaker text now says the next identical call will be dropped. `0` disables both the drop and the history breaker. Default raised from 3 to 4. Closes the cross-step `read_file` re-read loop left open by removing duplicate suppression. Addresses #22.
 - **Dead `duplicate` skip reason removed (`src/tools/parser.ts`, `src/tools/invalid-call-messages.ts`).** Nothing produced `SkippedToolCallReason` `"duplicate"` once history-window suppression was gone; its branches in `buildInvalidToolCallRetryMessage` are deleted and the union now reads `"invalid" | "truncated" | "missing_payload"`. `buildInvalidToolCallFallback` had no callers in `src` and is deleted with its re-export.
+- **README FAQ: checking NVIDIA NIM service status (`README.md`).** New FAQ entry pointing to the NVIDIA NIM status page. Contributed by @blueheron786 in #23.
 
 ### Fixed
 
