@@ -726,6 +726,96 @@ describe("NimChatModelProvider", () => {
     });
   });
 
+  it("drops a fifth identical read_file across agent steps and nudges the model on", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const readCall = (id: string, args: string) =>
+      async function* () {
+        yield {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id,
+                    type: "function",
+                    function: { name: "read_file", arguments: args },
+                  },
+                ],
+              },
+            },
+          ],
+        };
+      };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(
+        readCall("read_file:5", '{"filePath":"/tmp/example.md","startLine":158,"endLine":158}'),
+      )
+      .mockImplementationOnce(
+        readCall("read_file:6", '{"filePath":"/tmp/example.md","startLine":1,"endLine":80}'),
+      );
+
+    const readInput = { filePath: "/tmp/example.md", startLine: 158, endLine: 158 };
+    const history = [0, 1, 2, 3].flatMap((round) => [
+      {
+        role: 2,
+        content: [
+          new vscode.LanguageModelToolCallPart(`read_file:${round}`, "read_file", readInput),
+        ],
+      },
+      {
+        role: 1,
+        content: [
+          new vscode.LanguageModelToolResultPart(`read_file:${round}`, [
+            new vscode.LanguageModelTextPart("line 158"),
+          ]),
+        ],
+      },
+    ]);
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeMessages({ role: 1, content: [{ value: "Summarize line 158" }] }, ...history),
+      makeChatOptions({
+        modelOptions: {},
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file from disk",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "number" },
+                endLine: { type: "number" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const firstRequest = (streamChatCompletion as jest.Mock).mock.calls[0][1];
+    expect(firstRequest.messages.at(-1).content).toContain(
+      "another identical call will be dropped",
+    );
+    const retryRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(retryRequest.messages.at(-1).content).toContain("Do not repeat the previous tool call");
+    const toolCallReports = progress.report.mock.calls.filter((c) => c[0]?.callId);
+    expect(toolCallReports).toHaveLength(1);
+    expect(toolCallReports[0][0].input).toEqual({
+      filePath: "/tmp/example.md",
+      startLine: 1,
+      endLine: 80,
+    });
+  });
+
   it("allows the same tool call again after an intervening user message", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
@@ -758,24 +848,27 @@ describe("NimChatModelProvider", () => {
     await provider.provideLanguageModelChatResponse(
       makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
       makeMessages(
-        {
-          role: 2,
-          content: [
-            new vscode.LanguageModelToolCallPart("read_file:0", "read_file", {
-              filePath: "/tmp/example.md",
-              startLine: 158,
-              endLine: 158,
-            }),
-          ],
-        },
-        {
-          role: 1,
-          content: [
-            new vscode.LanguageModelToolResultPart("read_file:0", [
-              new vscode.LanguageModelTextPart("**③ パネル・データ分析（差分の差分法）**"),
-            ]),
-          ],
-        },
+        // Four identical reads already used up the limit for the previous task.
+        ...[0, 1, 2, 3].flatMap((round) => [
+          {
+            role: 2,
+            content: [
+              new vscode.LanguageModelToolCallPart(`read_file:h${round}`, "read_file", {
+                filePath: "/tmp/example.md",
+                startLine: 158,
+                endLine: 158,
+              }),
+            ],
+          },
+          {
+            role: 1,
+            content: [
+              new vscode.LanguageModelToolResultPart(`read_file:h${round}`, [
+                new vscode.LanguageModelTextPart("**③ パネル・データ分析（差分の差分法）**"),
+              ]),
+            ],
+          },
+        ]),
         {
           role: 1,
           content: [new vscode.LanguageModelTextPart("Read that same line again.")],

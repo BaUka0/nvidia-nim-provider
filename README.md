@@ -37,7 +37,7 @@ The extension routes Copilot Chat to NVIDIA NIM models with automatic failover, 
 
 **Repetition guard.** Detects degenerate "Let me fix..." output loops mid-stream and ends the turn cleanly instead of spinning forever.
 
-**Tool calls.** A single streaming tag-stack XML scanner handles OpenAI JSON, XML control blocks, and Hermes/Anthropic-style tags. Malformed arguments are auto-repaired through `jsonrepair`, and consecutive duplicate read-only calls are suppressed.
+**Tool calls.** A single streaming tag-stack XML scanner handles OpenAI JSON, XML control blocks, and Hermes/Anthropic-style tags. Malformed arguments are auto-repaired through `jsonrepair`, and a call repeated with identical arguments more than `tools.maxConsecutiveIdenticalCalls` times in one task (default 4) is dropped as a loop.
 
 **Context auto-compaction.** Long sessions get compacted in the background by a dedicated model so you don't hit `HTTP 400 Context Window Exceeded`.
 

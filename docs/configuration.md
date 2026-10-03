@@ -92,7 +92,7 @@ Settings for file edits, terminal commands, and agent workflows.
 
 | Setting | Default | What it does |
 | :--- | :--- | :--- |
-| `nvidia-nim.tools.maxConsecutiveIdenticalCalls` | `3` | Drops extra copies of the same tool call in one reply after this many identical calls. Already-emitted calls still run. `0` disables the cap. |
+| `nvidia-nim.tools.maxConsecutiveIdenticalCalls` | `4` | How many times the same tool call (same tool, same arguments) may run in one task. The next identical call is dropped as a loop. The count carries across agent steps and resets when the model calls a different tool or you send a new message. `0` disables the cap. |
 
 ---
 

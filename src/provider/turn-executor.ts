@@ -275,6 +275,7 @@ export class ModelTurnExecutor {
         historyMessages: messages,
         modelId: model.id,
         applyBudget,
+        maxIdenticalToolCalls: nimConfig.tools.maxConsecutiveIdenticalCalls,
       });
       const retryReasonHistory: string[] = [];
       let requestPreparationDurationMs: number | undefined;

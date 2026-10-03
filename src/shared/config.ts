@@ -126,7 +126,7 @@ export const DEFAULT_GENERATION_CONFIG: GenerationConfig = {
 };
 
 export const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
-  maxConsecutiveIdenticalCalls: 3,
+  maxConsecutiveIdenticalCalls: 4,
 };
 
 export const DEFAULT_CONTEXT_CONFIG: ContextConfig = {

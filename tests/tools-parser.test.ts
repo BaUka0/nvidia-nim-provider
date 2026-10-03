@@ -722,10 +722,10 @@ describe("tool argument parsing and validation", () => {
       expect(skipped).toEqual([{ name: "str_replace_in_file", required: [] }]);
     });
 
-    it("applies the consecutive-identical loop guard to forwarded calls", () => {
+    it("applies the identical-call loop guard to forwarded calls", () => {
       const { aggregator, emitted, skipped } = makeAggregator();
 
-      for (let index = 0; index < 3; index += 1) {
+      for (let index = 0; index < 5; index += 1) {
         aggregator.handleToolCalls([
           {
             index,
@@ -737,7 +737,7 @@ describe("tool argument parsing and validation", () => {
       }
       aggregator.flushRemaining();
 
-      expect(emitted).toHaveLength(2);
+      expect(emitted).toHaveLength(4);
       expect(skipped).toHaveLength(1);
       expect(aggregator.getToolCallLoop()).toBeDefined();
     });
@@ -808,7 +808,7 @@ describe("tool argument parsing and validation", () => {
     expect(emitted).toEqual([{ id: "term:1", name: "run_in_terminal", args: terminalArgs }]);
   });
 
-  it("stops a native tool call that repeats three times in one stream", () => {
+  it("drops the fifth identical native tool call in one stream", () => {
     const emitted: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
     const skipped: Array<{ name: string; required: string[]; reason?: string }> = [];
     const terminalArgs = {
@@ -841,7 +841,7 @@ describe("tool argument parsing and validation", () => {
       onSkipToolCall: (name, required, reason) => skipped.push({ name, required, reason }),
     });
 
-    for (let index = 0; index < 3; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       aggregator.handleToolCalls([
         {
           index,
@@ -855,11 +855,11 @@ describe("tool argument parsing and validation", () => {
       ]);
     }
 
-    expect(emitted).toHaveLength(2);
+    expect(emitted).toHaveLength(4);
     expect(skipped).toEqual([]);
     expect(aggregator.getToolCallLoop()).toEqual({
       key: expect.stringContaining('run_in_terminal:{"command":"npm run compile"'),
-      count: 3,
+      count: 5,
     });
   });
 
@@ -911,6 +911,170 @@ describe("tool argument parsing and validation", () => {
 
     expect(emitted).toHaveLength(5);
     expect(aggregator.getToolCallLoop()).toBeUndefined();
+  });
+
+  describe("identical-call limit across agent steps", () => {
+    const readOptions = makeChatOptions({
+      tools: [
+        {
+          name: "read_file",
+          inputSchema: {
+            type: "object",
+            properties: {
+              filePath: { type: "string" },
+              startLine: { type: "number" },
+              endLine: { type: "number" },
+            },
+            required: ["filePath", "startLine", "endLine"],
+          },
+        },
+        {
+          name: "grep_search",
+          inputSchema: {
+            type: "object",
+            properties: { query: { type: "string" } },
+            required: ["query"],
+          },
+        },
+      ],
+    });
+    const readA = { filePath: "/tmp/a.ts", startLine: 1, endLine: 40 };
+    const readB = { filePath: "/tmp/b.ts", startLine: 1, endLine: 40 };
+    const userText = (value: string) => ({ role: 1, content: [{ value }] });
+    let callSeq = 0;
+    const round = (name: string, input: Record<string, unknown>) => {
+      const callId = `hist_${callSeq++}`;
+      return [
+        { role: 2, content: [{ callId, name, input }] },
+        { role: 1, content: [{ callId, content: [{ value: "result" }] }] },
+      ];
+    };
+    const rounds = (...calls: Array<[string, Record<string, unknown>]>) =>
+      calls.flatMap(([name, input]) => round(name, input));
+
+    const streamCall = (messages: unknown[], name: string, input: Record<string, unknown>) => {
+      const emitted: Array<{ name: string; args: Record<string, unknown> }> = [];
+      const aggregator = new ToolCallStreamAggregator({
+        options: readOptions,
+        messages: messages as never,
+        toolsConfig: ConfigManager.getToolsConfig(),
+        onEmitToolCall: (_id, emittedName, args) => emitted.push({ name: emittedName, args }),
+        onSkipToolCall: () => undefined,
+      });
+      aggregator.handleToolCalls([
+        {
+          index: 0,
+          id: "call_new",
+          type: "function",
+          function: { name, arguments: JSON.stringify(input) },
+        },
+      ]);
+      aggregator.flushRemaining();
+      return { emitted, loop: aggregator.getToolCallLoop() };
+    };
+
+    it("drops the fifth identical call when four already ran earlier in the task", () => {
+      const history = [
+        userText("Fix the bug"),
+        ...rounds(
+          ["read_file", readA],
+          ["read_file", readA],
+          ["read_file", readA],
+          ["read_file", readA],
+        ),
+      ];
+
+      const { emitted, loop } = streamCall(history, "read_file", readA);
+
+      expect(emitted).toEqual([]);
+      expect(loop).toEqual({ key: expect.stringContaining('"filePath":"/tmp/a.ts"'), count: 5 });
+    });
+
+    it("allows the fourth identical call", () => {
+      const history = [
+        userText("Fix the bug"),
+        ...rounds(["read_file", readA], ["read_file", readA], ["read_file", readA]),
+      ];
+
+      const { emitted, loop } = streamCall(history, "read_file", readA);
+
+      expect(emitted).toHaveLength(1);
+      expect(loop).toBeUndefined();
+    });
+
+    it("keeps counting while the model cycles between files with the same tool", () => {
+      const history = [
+        userText("Fix the bug"),
+        ...rounds(
+          ["read_file", readA],
+          ["read_file", readB],
+          ["read_file", readA],
+          ["read_file", readB],
+          ["read_file", readA],
+          ["read_file", readB],
+          ["read_file", readA],
+          ["read_file", readB],
+        ),
+      ];
+
+      const { emitted, loop } = streamCall(history, "read_file", readA);
+
+      expect(emitted).toEqual([]);
+      expect(loop?.count).toBe(5);
+    });
+
+    it("resets the count when a different tool runs", () => {
+      const history = [
+        userText("Fix the bug"),
+        ...rounds(
+          ["read_file", readA],
+          ["read_file", readA],
+          ["read_file", readA],
+          ["read_file", readA],
+          ["grep_search", { query: "TODO" }],
+        ),
+      ];
+
+      const { emitted, loop } = streamCall(history, "read_file", readA);
+
+      expect(emitted).toHaveLength(1);
+      expect(loop).toBeUndefined();
+    });
+
+    it("resets the count when the user sends a new message", () => {
+      const history = [
+        userText("Fix the bug"),
+        ...rounds(
+          ["read_file", readA],
+          ["read_file", readA],
+          ["read_file", readA],
+          ["read_file", readA],
+        ),
+        userText("Read it once more"),
+      ];
+
+      const { emitted, loop } = streamCall(history, "read_file", readA);
+
+      expect(emitted).toHaveLength(1);
+      expect(loop).toBeUndefined();
+    });
+
+    it("does not treat cache-control data parts as a new user message", () => {
+      const history = [
+        userText("Fix the bug"),
+        ...rounds(
+          ["read_file", readA],
+          ["read_file", readA],
+          ["read_file", readA],
+          ["read_file", readA],
+        ),
+        { role: 1, content: [{ mimeType: "cache_control", data: new Uint8Array([1]) }] },
+      ];
+
+      const { emitted } = streamCall(history, "read_file", readA);
+
+      expect(emitted).toEqual([]);
+    });
   });
 
   it("defaults missing grep isRegexp to false so the call is not rejected", () => {

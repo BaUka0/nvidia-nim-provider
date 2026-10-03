@@ -22,6 +22,13 @@ export { repairToolArguments } from "./argument-repair";
 export { buildToolCallCanonicalKey } from "./canonical-key";
 
 export {
+  IdenticalToolCallTracker,
+  TrackedToolCall,
+  exceedsIdenticalCallLimit,
+  replayTaskToolCalls,
+} from "./tool-call-repeats";
+
+export {
   isValidToolIdentifier,
   stripKnownControlText,
   extractStandaloneXmlParameters,

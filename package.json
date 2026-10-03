@@ -309,10 +309,10 @@
         },
         "nvidia-nim.tools.maxConsecutiveIdenticalCalls": {
           "type": "integer",
-          "default": 3,
+          "default": 4,
           "minimum": 0,
           "maximum": 20,
-          "description": "Drop extra copies of the same validated tool call in one reply after this many identical calls. Already-emitted calls still run. 0 disables the cap."
+          "description": "How many times the same tool call (same tool, same arguments) may run in one task before further copies are dropped as a loop. The count carries across agent steps and resets when the model calls a different tool or you send a new message. 0 disables the cap."
         },
         "nvidia-nim.context.summarizationModel": {
           "type": "string",

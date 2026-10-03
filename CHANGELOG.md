@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Changed
+
+- Repeated identical tool calls are now limited across the whole task instead of within a single reply, which stops agents that keep re-reading the same file step after step. The same call (same tool, same arguments) can run up to 4 times; the next copy is dropped and the model is asked to move on. The count resets as soon as the model uses a different tool or you send a new message. Change or disable the limit with `nvidia-nim.tools.maxConsecutiveIdenticalCalls` in the Settings UI or `settings.json` (the default went from 3 to 4, and a value of N now allows exactly N identical calls).
+
 ### Fixed
 
 - Edit tool calls that omit the model's short description of the change now run instead of failing. The extension fills in a neutral description and lets the edit proceed, so long conversations no longer spiral into "your request failed" when the model drops that field.

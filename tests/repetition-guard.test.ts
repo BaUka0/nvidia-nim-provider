@@ -614,13 +614,14 @@ describe("RepetitionGuard.detectToolCallHistoryLoop", () => {
     content: [{ name, input }],
   });
 
-  it("detects 3 identical consecutive tool calls", () => {
-    const messages = [
-      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
-      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
-      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
-    ];
-    expect(detectToolCallHistoryLoop(messages)).toBeDefined();
+  const repeat = (count: number, name: string, input: unknown) =>
+    Array.from({ length: count }, () => toolCall(name, input));
+
+  it("detects once the default limit of identical calls has run", () => {
+    const messages = repeat(4, "read_file", { filePath: "/a.ts", startLine: 1 });
+    expect(detectToolCallHistoryLoop(messages)).toBe(
+      'read_file:{"filePath":"/a.ts","startLine":1}',
+    );
   });
 
   it("is insensitive to argument key order", () => {
@@ -628,6 +629,7 @@ describe("RepetitionGuard.detectToolCallHistoryLoop", () => {
       toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
       toolCall("read_file", { startLine: 1, filePath: "/a.ts" }),
       toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
+      toolCall("read_file", { startLine: 1, filePath: "/a.ts" }),
     ];
     expect(detectToolCallHistoryLoop(messages)).toBeDefined();
   });
@@ -637,24 +639,58 @@ describe("RepetitionGuard.detectToolCallHistoryLoop", () => {
       toolCall("read_file", '{"filePath":"/a.ts","startLine":1}'),
       toolCall("read_file", '{"startLine":1,"filePath":"/a.ts"}'),
       toolCall("read_file", '{"filePath":"/a.ts","startLine":1}'),
+      toolCall("read_file", '{"startLine":1,"filePath":"/a.ts"}'),
     ];
     expect(detectToolCallHistoryLoop(messages)).toBeDefined();
   });
 
   it("returns undefined when arguments differ", () => {
-    const messages = [
-      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
-      toolCall("read_file", { filePath: "/a.ts", startLine: 2 }),
-      toolCall("read_file", { filePath: "/a.ts", startLine: 3 }),
-    ];
+    const messages = [1, 2, 3, 4].map((startLine) =>
+      toolCall("read_file", { filePath: "/a.ts", startLine }),
+    );
     expect(detectToolCallHistoryLoop(messages)).toBeUndefined();
   });
 
-  it("returns undefined below the repeat threshold", () => {
-    const messages = [
-      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
-      toolCall("read_file", { filePath: "/a.ts", startLine: 1 }),
-    ];
+  it("returns undefined below the limit", () => {
+    const messages = repeat(3, "read_file", { filePath: "/a.ts", startLine: 1 });
     expect(detectToolCallHistoryLoop(messages)).toBeUndefined();
+  });
+
+  it("follows the configured limit", () => {
+    const messages = repeat(2, "read_file", { filePath: "/a.ts", startLine: 1 });
+    expect(detectToolCallHistoryLoop(messages, { limit: 2 })).toBeDefined();
+    expect(detectToolCallHistoryLoop(messages, { limit: 3 })).toBeUndefined();
+  });
+
+  it("is disabled when the limit is 0", () => {
+    const messages = repeat(10, "read_file", { filePath: "/a.ts", startLine: 1 });
+    expect(detectToolCallHistoryLoop(messages, { limit: 0 })).toBeUndefined();
+  });
+
+  it("does not flag a single call when the limit is 1", () => {
+    const messages = repeat(1, "read_file", { filePath: "/a.ts", startLine: 1 });
+    expect(detectToolCallHistoryLoop(messages, { limit: 1 })).toBeUndefined();
+  });
+
+  it("keeps counting a same-tool cycle between two files", () => {
+    const messages = [1, 2, 3, 4].flatMap(() => [
+      toolCall("read_file", { filePath: "/a.ts" }),
+      toolCall("read_file", { filePath: "/b.ts" }),
+    ]);
+    expect(detectToolCallHistoryLoop(messages)).toBe('read_file:{"filePath":"/b.ts"}');
+  });
+
+  it("resets after a different tool or a new user message", () => {
+    const loop = repeat(4, "read_file", { filePath: "/a.ts" });
+    expect(
+      detectToolCallHistoryLoop([...loop, toolCall("grep_search", { query: "x" })]),
+    ).toBeUndefined();
+    expect(
+      detectToolCallHistoryLoop([
+        ...repeat(3, "read_file", { filePath: "/a.ts" }),
+        { role: 1, content: [{ value: "Read it again" }] },
+        toolCall("read_file", { filePath: "/a.ts" }),
+      ]),
+    ).toBeUndefined();
   });
 });
