@@ -1,9 +1,6 @@
 export { parseToolArguments, parseToolArgumentsStrict, tryParseJsonValue } from "./json-args";
 
-export {
-  buildInvalidToolCallFallback,
-  buildInvalidToolCallRetryMessage,
-} from "./invalid-call-messages";
+export { buildInvalidToolCallRetryMessage } from "./invalid-call-messages";
 
 export {
   ToolSchema,
@@ -19,11 +16,14 @@ export { ChatRequestContext, extractChatRequestContext } from "./request-context
 
 export { repairToolArguments } from "./argument-repair";
 
+export { buildToolCallCanonicalKey } from "./canonical-key";
+
 export {
-  buildToolCallCanonicalKey,
-  isDuplicateSuppressionEnabled,
-  getCompletedToolCallKeys,
-} from "./canonical-key";
+  IdenticalToolCallTracker,
+  TrackedToolCall,
+  exceedsIdenticalCallLimit,
+  replayTaskToolCalls,
+} from "./tool-call-repeats";
 
 export {
   isValidToolIdentifier,
@@ -41,7 +41,7 @@ export {
   buildKnownPropertySet,
 } from "./json-tool-scanner";
 
-export type SkippedToolCallReason = "invalid" | "duplicate" | "missing_payload";
+export type SkippedToolCallReason = "invalid" | "truncated" | "missing_payload";
 
 export interface SkippedToolCall {
   name: string;

@@ -3,9 +3,10 @@ import { NimChatMessage, NimChatRequest } from "../types";
 import { debugLog, outputLog } from "../shared/logging";
 import { LanguageModelChatMessageRole } from "vscode";
 import { normalizeLineForRepetition } from "./repetition-guard";
-import { buildToolCallCanonicalKey, tryParseJsonValue } from "../tools/parser";
+import { replayTaskToolCalls } from "../tools/parser";
 import { cloneNimChatRequest } from "./request-snapshot";
 import { BoundedMap } from "../shared/bounded-map";
+import { DEFAULT_TOOLS_CONFIG } from "../shared/config";
 import { stripFallbackNotices } from "../messages/converter";
 import { extractPrefixGram } from "../shared/cycle-detection";
 
@@ -129,50 +130,26 @@ export function detectHistoryLoop(
 }
 
 /**
- * Detects repeated identical tool calls in recent assistant history. Returns
- * a canonical (key-order-insensitive) tool-call signature when the same call
- * is emitted `minRepeats` times consecutively, otherwise undefined.
+ * Detects an identical-call loop in the current task's history using the same
+ * accounting as the stream-side guard. Returns the canonical signature of the
+ * last tool call once it has run `limit` times since the last switch to another
+ * tool, so the model is warned before the next identical call is dropped.
+ * `limit <= 0` disables detection.
  */
 export function detectToolCallHistoryLoop(
   messages: readonly { role: unknown; content: unknown }[],
-  options: { windowSize?: number; minRepeats?: number } = {},
+  options: { limit?: number } = {},
 ): string | undefined {
-  const windowSize = options.windowSize ?? 6;
-  const minRepeats = options.minRepeats ?? 3;
-
-  const recentToolKeys: string[] = [];
-  for (const msg of messages) {
-    if (!isAssistantRole(msg.role)) {
-      continue;
-    }
-    const content = msg.content;
-    if (!Array.isArray(content)) {
-      continue;
-    }
-    for (const part of content) {
-      if (part == null || typeof part !== "object") {
-        continue;
-      }
-      const p = part as Record<string, unknown>;
-      const name = typeof p.name === "string" ? p.name : undefined;
-      if (!name) {
-        continue;
-      }
-      const rawInput = p.input ?? p.arguments;
-      const parsedInput =
-        typeof rawInput === "string" ? tryParseJsonValue(rawInput) : (rawInput ?? {});
-      recentToolKeys.push(buildToolCallCanonicalKey(name, parsedInput));
-    }
-  }
-
-  if (recentToolKeys.length < minRepeats) {
+  const limit = options.limit ?? DEFAULT_TOOLS_CONFIG.maxConsecutiveIdenticalCalls;
+  if (limit <= 0) {
     return undefined;
   }
-  const recent = recentToolKeys.slice(-windowSize);
-  if (countTrailingMatches(recent, minRepeats) >= minRepeats) {
-    return recent[recent.length - 1];
+  const { lastCall } = replayTaskToolCalls(messages);
+  // A single call is not a repeat, even when the cap allows only one.
+  if (!lastCall || lastCall.count < 2 || lastCall.count < limit) {
+    return undefined;
   }
-  return undefined;
+  return lastCall.key;
 }
 
 /**
@@ -190,7 +167,8 @@ export type LoopBreakerNudgeReason =
   | "output_truncated"
   | "content_filter"
   | "stream_timeout"
-  | "stream_dropped";
+  | "stream_dropped"
+  | "reasoning_only";
 
 const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
   repetition_loop:
@@ -207,6 +185,8 @@ const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
     "The previous reply stalled before completing. Continue working from where you left off. Call the required tool or proceed with the task.",
   stream_dropped:
     "The connection dropped before your previous reply finished. Continue from where you left off: call the required tool or finish the answer.",
+  reasoning_only:
+    "Your previous reply contained only reasoning, with no answer and no tool call. Act on that reasoning now: call the next required tool, or write the final answer.",
 };
 
 const HISTORY_LOOP_ESCALATION_NUDGE =
@@ -214,6 +194,17 @@ const HISTORY_LOOP_ESCALATION_NUDGE =
 
 export function buildLoopBreakerNudge(reason: LoopBreakerNudgeReason): NimChatMessage {
   return { role: "user", content: `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_NUDGES[reason]}` };
+}
+
+/**
+ * Chat notice for a turn that ends because the model kept asking for a call
+ * the identical-call limit dropped. The count resets on a new user message,
+ * so sending one lets the task continue.
+ */
+export function buildToolCallLoopNotice(toolName: string | undefined, limit: number): string {
+  const tool = toolName ? `\`${toolName}\`` : "The same tool call";
+  const times = `${limit} time${limit === 1 ? "" : "s"}`;
+  return `> **NVIDIA NIM:** Stopped a repeated tool call. ${tool} already ran ${times} with the same arguments in this task, and the model kept asking for it again. Send a new message to continue.\n\n`;
 }
 
 /** Return the textual content of a message part, if any. */
@@ -268,9 +259,10 @@ export function hasEscalatedLoopBreaker(
 
 export function buildHistoryLoopBreakerContent(
   messages: readonly { role: unknown; content: unknown }[],
+  maxIdenticalToolCalls?: number,
 ): string | undefined {
   const historyLoopPreamble = detectHistoryLoop(messages);
-  const historyLoopTool = detectToolCallHistoryLoop(messages);
+  const historyLoopTool = detectToolCallHistoryLoop(messages, { limit: maxIdenticalToolCalls });
   const breakerNotices: string[] = [];
   if (historyLoopPreamble) {
     breakerNotices.push(
@@ -279,7 +271,7 @@ export function buildHistoryLoopBreakerContent(
   }
   if (historyLoopTool) {
     breakerNotices.push(
-      `You have called the same tool "${historyLoopTool.slice(0, 120)}" multiple times consecutively with identical arguments. Use the existing results, call a different tool, or proceed with the next step of your task.`,
+      `You have called the same tool "${historyLoopTool.slice(0, 120)}" multiple times with identical arguments; another identical call will be dropped. Use the existing results, call a different tool, or proceed with the next step of your task.`,
     );
   }
   if (breakerNotices.length === 0) {
@@ -300,10 +292,17 @@ export function injectHistoryLoopBreaker(options: {
   historyMessages: readonly { role: unknown; content: readonly unknown[] }[];
   modelId: string;
   applyBudget: (body: NimChatRequest) => NimChatRequest;
+  /** `tools.maxConsecutiveIdenticalCalls`; defaults to the shipped setting value. */
+  maxIdenticalToolCalls?: number;
 }): NimChatRequest {
   const historyLoopPreamble = detectHistoryLoop(options.historyMessages);
-  const historyLoopTool = detectToolCallHistoryLoop(options.historyMessages);
-  const loopContent = buildHistoryLoopBreakerContent(options.historyMessages);
+  const historyLoopTool = detectToolCallHistoryLoop(options.historyMessages, {
+    limit: options.maxIdenticalToolCalls,
+  });
+  const loopContent = buildHistoryLoopBreakerContent(
+    options.historyMessages,
+    options.maxIdenticalToolCalls,
+  );
   if (!loopContent) {
     return options.requestBody;
   }

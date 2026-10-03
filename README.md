@@ -33,11 +33,11 @@ The extension routes Copilot Chat to NVIDIA NIM models with automatic failover, 
 
 **Reasoning controls.** Collapsible thinking blocks via VS Code's `LanguageModelThinkingPart`, plus per-turn effort control from `None` to `Max` in the Copilot model dropdown.
 
-**Failover.** When the active model returns 429, 404, 410, an empty stream, or a timeout, the same prompt is rerouted to a backup. A configurable `fallback.priorityList` is tried first; text requests fall back to Nemotron 3 Super 120B and image requests to Muse Glimmer by default. The next turn retries the original model.
+**Failover.** When the active model returns 429, 404, 410, an empty stream, or a timeout, the same prompt is rerouted to a backup. A configurable `fallback.priorityList` is tried first; text requests fall back to Nemotron 3.5 Lightning 30B and image requests to Muse Glimmer by default. The next turn retries the original model, unless NVIDIA has retired it (HTTP 410): a retired model is skipped and hidden from the picker for the rest of the session.
 
 **Repetition guard.** Detects degenerate "Let me fix..." output loops mid-stream and ends the turn cleanly instead of spinning forever.
 
-**Tool calls.** A single streaming tag-stack XML scanner handles OpenAI JSON, XML control blocks, and Hermes/Anthropic-style tags. Malformed arguments are auto-repaired through `jsonrepair`, and consecutive duplicate read-only calls are suppressed.
+**Tool calls.** A single streaming tag-stack XML scanner handles OpenAI JSON, XML control blocks, and Hermes/Anthropic-style tags. Malformed arguments are auto-repaired through `jsonrepair`, and a call repeated with identical arguments more than `tools.maxConsecutiveIdenticalCalls` times in one task (default 4) is dropped as a loop.
 
 **Context auto-compaction.** Long sessions get compacted in the background by a dedicated model so you don't hit `HTTP 400 Context Window Exceeded`.
 
@@ -57,8 +57,7 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | **DeepSeek V4.1 Flash** | **39** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, agentic coding, architecture |
 | **Nemotron 3 Ultra 550B** | **23** | 1M | `None`, `Medium`, `High` | Yes | No | Heavy multi-step reasoning, technical docs |
 | **Muse Glimmer** | **17** | 131K | `None` to `Max` | Yes | Yes | Visual UX/UI work; default vision fallback |
-| **Nemotron 3.5 Lightning 30B** | **13** | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Fast agentic turns; compact 30B/3B-active MoE |
-| **Nemotron 3 Super 120B** | **13** | 1M | `None`, `Low`, `High` | Yes | No | Workhorse for everyday coding; default text fallback |
+| **Nemotron 3.5 Lightning 30B** | **13** | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Fast agentic turns; default text fallback and summarizer |
 
 Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`).
 

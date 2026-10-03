@@ -288,7 +288,7 @@ describe("ConfigManager", () => {
     it("returns defaults", () => {
       const config = ConfigManager.getToolsConfig();
       expect(config).toEqual(DEFAULT_TOOLS_CONFIG);
-      expect(config.maxConsecutiveIdenticalCalls).toBe(3);
+      expect(config.maxConsecutiveIdenticalCalls).toBe(4);
     });
 
     it("reads custom flags", () => {
@@ -305,7 +305,7 @@ describe("ConfigManager", () => {
       expect(ConfigManager.getToolsConfig().maxConsecutiveIdenticalCalls).toBe(20);
 
       mockStore["tools.maxConsecutiveIdenticalCalls"] = Number.NaN;
-      expect(ConfigManager.getToolsConfig().maxConsecutiveIdenticalCalls).toBe(3);
+      expect(ConfigManager.getToolsConfig().maxConsecutiveIdenticalCalls).toBe(4);
     });
   });
 
@@ -313,7 +313,7 @@ describe("ConfigManager", () => {
     it("returns defaults", () => {
       const config = ConfigManager.getContextConfig();
       expect(config).toEqual(DEFAULT_CONTEXT_CONFIG);
-      expect(config.summarizationModel).toBe("nvidia/nemotron-3-super-120b-a12b");
+      expect(config.summarizationModel).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
       expect(config.safetyMarginPercent).toBe(1.0);
     });
 

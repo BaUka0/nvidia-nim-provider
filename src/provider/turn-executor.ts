@@ -32,7 +32,11 @@ import {
   StreamFailureOutcome,
 } from "./attempt-loop";
 import { ContextLimitStore } from "./context-limit-store";
-import { buildLoopBreakerNudge, injectHistoryLoopBreaker } from "./loop-breaker";
+import {
+  buildLoopBreakerNudge,
+  buildToolCallLoopNotice,
+  injectHistoryLoopBreaker,
+} from "./loop-breaker";
 import { buildOverflowRetryRequest } from "./overflow-compactor";
 import { NimRequestBuilder } from "./request-builder";
 import { appendChatMessage, cloneNimChatRequest } from "./request-snapshot";
@@ -275,6 +279,7 @@ export class ModelTurnExecutor {
         historyMessages: messages,
         modelId: model.id,
         applyBudget,
+        maxIdenticalToolCalls: nimConfig.tools.maxConsecutiveIdenticalCalls,
       });
       const retryReasonHistory: string[] = [];
       let requestPreparationDurationMs: number | undefined;
@@ -503,6 +508,7 @@ export class ModelTurnExecutor {
             fetchBudgetExhausted: fetchBudget.exhausted,
             knownToolNames: collectKnownToolNames(),
             previousPreamblePrefixes: state.previousPreamblePrefixes,
+            reasoningOnlyRetryUsed: retryReasonHistory.includes("reasoning_only"),
           });
 
           const dispatch = this.dispatchAttemptOutcome({
@@ -530,6 +536,24 @@ export class ModelTurnExecutor {
           baselineRequestBody = dispatch.baselineRequestBody;
           if (dispatch.action === "continue") {
             continue;
+          }
+          if (result.toolCallLoopTripped && !result.emittedToolCall) {
+            // Auto-continue is spent and the model still asks for the dropped
+            // call: say so instead of ending the turn with an empty reply.
+            progress.report(
+              new vscode.LanguageModelTextPart(
+                buildToolCallLoopNotice(
+                  result.toolCallLoopName,
+                  toolsConfig.maxConsecutiveIdenticalCalls,
+                ),
+              ),
+            );
+            hasReportedVisibleContent = true;
+            reportState.hasReportedVisibleContent = true;
+            outputLog(
+              "repetitionGuard",
+              `Ended turn on ${model.id}: the model kept repeating ${result.toolCallLoopName ?? "a tool call"} past the identical-call limit.`,
+            );
           }
           break;
         }

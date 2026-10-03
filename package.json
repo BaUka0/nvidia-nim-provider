@@ -3,7 +3,7 @@
   "publisher": "neuraldock",
   "displayName": "NVIDIA NIM Agent",
   "description": "Use NVIDIA NIM reasoning models in GitHub Copilot Chat for VS Code",
-  "version": "1.3.0",
+  "version": "1.3.1-beta.1",
   "license": "MIT",
   "homepage": "https://marketplace.visualstudio.com/items?itemName=neuraldock.nvidia-nim-agent",
   "bugs": {
@@ -148,13 +148,12 @@
             "deepseek-ai/deepseek-v4.1-flash",
             "meta/muse-glimmer-30b",
             "moonshotai/kimi-k3",
-            "nvidia/nemotron-3-super-120b-a12b",
             "nvidia/nemotron-3-ultra-550b-a55b",
             "nvidia/nemotron-3.5-lightning-30b-a3b",
             "z-ai/glm-5.3",
             "z-ai/glm-5.3-flash"
           ],
-          "default": "nvidia/nemotron-3-super-120b-a12b",
+          "default": "nvidia/nemotron-3.5-lightning-30b-a3b",
           "description": "Model to switch to when the primary model encounters a fatal error or rate limit."
         },
         "nvidia-nim.fallback.visionModel": {
@@ -176,7 +175,6 @@
               "deepseek-ai/deepseek-v4.1-flash",
               "meta/muse-glimmer-30b",
               "moonshotai/kimi-k3",
-              "nvidia/nemotron-3-super-120b-a12b",
               "nvidia/nemotron-3-ultra-550b-a55b",
               "nvidia/nemotron-3.5-lightning-30b-a3b",
               "z-ai/glm-5.3",
@@ -305,14 +303,14 @@
           "default": 2,
           "minimum": 0,
           "maximum": 8,
-          "description": "How many times in one turn to nudge the model after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. 0 disables auto-continue."
+          "description": "How many times in one turn to nudge the model after a loop, hanging colon, truncated reply, repeated tool call, stalled stream, or a reply that only reasoned (that last one is nudged at most once). 0 disables auto-continue."
         },
         "nvidia-nim.tools.maxConsecutiveIdenticalCalls": {
           "type": "integer",
-          "default": 3,
+          "default": 4,
           "minimum": 0,
           "maximum": 20,
-          "description": "Drop extra copies of the same validated tool call in one reply after this many identical calls. Already-emitted calls still run. 0 disables the cap."
+          "description": "How many times the same tool call (same tool, same arguments) may run in one task before further copies are dropped as a loop. The count carries across agent steps and resets when the model calls a different tool or you send a new message. 0 disables the cap."
         },
         "nvidia-nim.context.summarizationModel": {
           "type": "string",
@@ -320,13 +318,12 @@
             "deepseek-ai/deepseek-v4.1-flash",
             "meta/muse-glimmer-30b",
             "moonshotai/kimi-k3",
-            "nvidia/nemotron-3-super-120b-a12b",
             "nvidia/nemotron-3-ultra-550b-a55b",
             "nvidia/nemotron-3.5-lightning-30b-a3b",
             "z-ai/glm-5.3",
             "z-ai/glm-5.3-flash"
           ],
-          "default": "nvidia/nemotron-3-super-120b-a12b",
+          "default": "nvidia/nemotron-3.5-lightning-30b-a3b",
           "description": "Dedicated lightweight model used for compacting and summarizing conversation history."
         },
         "nvidia-nim.context.safetyMarginPercent": {

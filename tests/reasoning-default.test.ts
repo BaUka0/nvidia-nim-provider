@@ -18,7 +18,7 @@ jest.mock("../src/api/client", () => ({
 }));
 
 const LIGHTNING = "nvidia/nemotron-3.5-lightning-30b-a3b";
-const SUPER = "nvidia/nemotron-3-super-120b-a12b";
+const ULTRA = "nvidia/nemotron-3-ultra-550b-a55b";
 const DEFAULTS = { mode: "high", explicit: false };
 
 /** Point `nvidia-nim.reasoning.mode` at a user value, or back to the default. */
@@ -84,7 +84,7 @@ describe("default reasoning mode", () => {
 
     setReasoningSetting("none");
 
-    expect(pickerDefault(SUPER)).toBe("none");
+    expect(pickerDefault(ULTRA)).toBe("none");
     expect(pickerDefault("moonshotai/kimi-k3")).toBe("low");
     expect(pickerDefault(LIGHTNING)).toBe("none");
   });
@@ -116,8 +116,8 @@ describe("default reasoning mode", () => {
   it("lets a picker choice override the default", async () => {
     const prepared = await NimRequestBuilder.prepareRequest({
       model: makeModel({
-        id: SUPER,
-        name: "Super",
+        id: ULTRA,
+        name: "Ultra",
         maxInputTokens: 100_000,
         maxOutputTokens: 32768,
       }),
@@ -137,7 +137,7 @@ describe("default reasoning mode", () => {
 
 describe("internal single-shot calls", () => {
   it("turns reasoning off, or to the lowest effort when the model always thinks", () => {
-    expect(withReasoningOff({ model: SUPER, messages: [] }).chat_template_kwargs).toEqual({
+    expect(withReasoningOff({ model: ULTRA, messages: [] }).chat_template_kwargs).toEqual({
       enable_thinking: false,
     });
     expect(withReasoningOff({ model: "moonshotai/kimi-k3", messages: [] }).reasoning_effort).toBe(
@@ -155,8 +155,8 @@ describe("internal single-shot calls", () => {
     await summarizeOldMessages([{ role: "user", content: "old turn" }], "key", "ua");
 
     const body = (chatCompletion as jest.Mock).mock.calls[0][1];
-    expect(body.model).toBe(SUPER);
-    expect(body.chat_template_kwargs).toEqual({ enable_thinking: false });
+    expect(body.model).toBe(LIGHTNING);
+    expect(body.chat_template_kwargs).toEqual({ enable_thinking: false, reasoning_budget: 0 });
   });
 });
 

@@ -2,6 +2,23 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Changed
+
+- Nemotron 3 Super 120B is no longer offered. NVIDIA retired it on October 3, 2026, and it now rejects every request. Nemotron 3.5 Lightning 30B takes its place as the default backup model and as the model that summarizes older conversation history. If you had chosen Nemotron 3 Super for either setting, the extension switches to Lightning on its own.
+- A model that NVIDIA has retired is now remembered for the rest of the session. After the first failure, later steps go straight to the backup model without calling the retired one, the fallback notice appears only once instead of on every step, and the model is removed from the model picker. Restarting VS Code clears this.
+- When a model finishes thinking but writes no answer and calls no tool, the extension now asks the same model once to act on its reasoning. Before, the turn was treated as empty right away and moved to another model with the whole conversation.
+- Repeated identical tool calls are now limited across the whole task instead of within a single reply, which stops agents that keep re-reading the same file step after step. The same call (same tool, same arguments) can run up to 4 times; the next copy is dropped and the model is asked to move on. The count resets as soon as the model uses a different tool or you send a new message. Change or disable the limit with `nvidia-nim.tools.maxConsecutiveIdenticalCalls` in the Settings UI or `settings.json` (the default went from 3 to 4, and a value of N now allows exactly N identical calls).
+
+### Fixed
+
+- Edit tool calls that omit the model's short description of the change now run instead of failing. The extension fills in a neutral description and lets the edit proceed, so long conversations no longer spiral into "your request failed" when the model drops that field.
+- Asking the model to read a file it already read in the same task no longer stalls the turn. The read simply runs again; before, the repeat was silently discarded and the turn could fail after several retries and fallbacks.
+- A tool call that still arrives with a missing argument is passed through so the tool's own precise error reaches the model, which can correct the call within the same task. Before, the extension retried the whole turn on its own and could burn through every model in the fallback chain.
+- An edit that gets cut off mid-way, because the connection dropped, the stream stalled, or the reply hit the output limit, is no longer applied with only part of its content. The extension asks the model to send the call again instead.
+- When the model keeps asking for a tool call that was stopped as a loop, the chat now says so and tells you to send a new message, instead of ending with an empty reply.
+
 ## [1.3.0] - 2026-09-29
 
 ### Added

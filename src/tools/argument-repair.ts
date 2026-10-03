@@ -5,7 +5,7 @@ import { FORBIDDEN_TOOL_IDENTIFIERS } from "./embedded-parser";
 import { parseToolArguments } from "./json-args";
 import { ChatRequestContext } from "./request-context";
 import { isEditTool, isReadTool, isTerminalTool } from "./tool-kinds";
-import { normalizeArguments, ToolSchema } from "./tool-schema";
+import { missingRequiredToolArguments, normalizeArguments, ToolSchema } from "./tool-schema";
 
 const LINE_START_ALIASES = [
   "startLine",
@@ -232,6 +232,41 @@ function applyRequiredAliases(
 }
 
 /**
+ * Copilot's edit tools mark `explanation` as required, but models under long
+ * context often omit it. The field is display-only edit header text, so a
+ * neutral description is safer than discarding the whole call. Filled only
+ * when `explanation` is the single missing required argument — a call that
+ * also lacks `filePath` or the edit payload stays invalid.
+ */
+function fillEditToolExplanation(
+  repaired: Record<string, unknown>,
+  schema: ToolSchema | undefined,
+): void {
+  const missing = missingRequiredToolArguments(repaired, schema);
+  if (missing.length !== 1 || missing[0] !== "explanation") {
+    return;
+  }
+  for (const key of ["filePath", "AbsolutePath", "TargetFile"]) {
+    const value = repaired[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      repaired.explanation = `Applied edit to ${value}`;
+      return;
+    }
+  }
+  const replacements = repaired.replacements;
+  if (Array.isArray(replacements)) {
+    for (const item of replacements) {
+      const path = (item as Record<string, unknown> | null)?.filePath;
+      if (typeof path === "string" && path.trim().length > 0) {
+        repaired.explanation = `Applied edit to ${path}`;
+        return;
+      }
+    }
+  }
+  repaired.explanation = "Applied edit";
+}
+
+/**
  * Models sometimes wrap the real arguments in a nested `arguments` object.
  * Lift them to the top level only when the schema does not declare a nested
  * `arguments` property.
@@ -404,6 +439,7 @@ export function repairToolArguments(
     }
     clampLineSpan("startLine", "endLine");
     clampLineSpan("StartLine", "EndLine");
+    fillEditToolExplanation(repaired, schema);
   }
 
   // Directory tools keep model-supplied path/cwd. Regex-extracted Cwd is not

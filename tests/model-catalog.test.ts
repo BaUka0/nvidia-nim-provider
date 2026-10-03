@@ -128,14 +128,6 @@ describe("normalizeNvidiaModels", () => {
 });
 
 describe("getFallbackModel", () => {
-  const super120 = {
-    id: FALLBACK_MODEL_ID,
-    displayName: "Nemotron 3 Super 120B",
-    contextWindow: 1000000,
-    maxOutputTokens: 65536,
-    supportsTools: true,
-    supportsVision: false,
-  };
   const lightning = {
     id: "nvidia/nemotron-3.5-lightning-30b-a3b",
     displayName: "Nemotron 3.5 Lightning 30B",
@@ -169,19 +161,19 @@ describe("getFallbackModel", () => {
     supportsVision: false,
   };
 
-  it("selects Nemotron 3 Super 120B as the default text fallback", () => {
-    expect(FALLBACK_MODEL_ID).toBe("nvidia/nemotron-3-super-120b-a12b");
-    expect(getFallbackModel(kimi.id, [kimi, lightning, super120])).toEqual(super120);
+  it("selects Nemotron 3.5 Lightning 30B as the default text fallback", () => {
+    expect(FALLBACK_MODEL_ID).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
+    expect(getFallbackModel(kimi.id, [kimi, glm, lightning])).toEqual(lightning);
   });
 
   it("last-resorts to another available model when the current model is already the text fallback", () => {
-    expect(getFallbackModel(super120.id, [kimi, lightning, super120])).toEqual(kimi);
+    expect(getFallbackModel(lightning.id, [kimi, lightning])).toEqual(kimi);
   });
 
   describe("priority list fallback (requiresVision: false)", () => {
     it("walks the priority list in order before the configured single model", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, glm, lightning, super120], {
+        getFallbackModel(kimi.id, [kimi, glm, lightning], {
           configuredFallbackModelId: FALLBACK_MODEL_ID,
           priorityList: ["z-ai/glm-5.3", "meta/muse-glimmer-30b"],
         }),
@@ -205,9 +197,9 @@ describe("getFallbackModel", () => {
       ).toEqual(glm);
     });
 
-    it("last-resorts to Lightning when the configured fallback is missing", () => {
+    it("picks Lightning when it is the configured fallback", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, lightning], {
+        getFallbackModel(kimi.id, [kimi, glm, lightning], {
           configuredFallbackModelId: FALLBACK_MODEL_ID,
         }),
       ).toEqual(lightning);
@@ -215,11 +207,11 @@ describe("getFallbackModel", () => {
 
     it("skips unknown entries and keeps walking the chain", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, super120], {
+        getFallbackModel(kimi.id, [kimi, lightning], {
           priorityList: ["vendor/does-not-exist"],
           triedModelIds: [],
         }),
-      ).toEqual(super120);
+      ).toEqual(lightning);
     });
 
     it("returns undefined when the whole chain is exhausted", () => {

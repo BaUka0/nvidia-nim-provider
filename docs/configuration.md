@@ -24,7 +24,7 @@ Automatically switches to backup models during outages or rate limits, auto-repa
 ```json
 {
   "nvidia-nim.fallback.enabled": true,
-  "nvidia-nim.fallback.model": "nvidia/nemotron-3-super-120b-a12b",
+  "nvidia-nim.fallback.model": "nvidia/nemotron-3.5-lightning-30b-a3b",
   "nvidia-nim.fallback.visionModel": "meta/muse-glimmer-30b",
   "nvidia-nim.network.streamIdleTimeout": 120,
   "nvidia-nim.ui.showStatusBarItem": true
@@ -53,7 +53,7 @@ These settings control automatic re-routing when an NVIDIA NIM endpoint returns 
 | Setting | Default | What it does |
 | :--- | :--- | :--- |
 | `nvidia-nim.fallback.enabled` | `true` | When enabled, automatically re-routes your request to a backup model if the selected model encounters an error, so your chat is not interrupted. |
-| `nvidia-nim.fallback.model` | `nvidia/nemotron-3-super-120b-a12b` | The backup model used for standard text prompts if your primary model fails. |
+| `nvidia-nim.fallback.model` | `nvidia/nemotron-3.5-lightning-30b-a3b` | The backup model used for standard text prompts if your primary model fails. |
 | `nvidia-nim.fallback.visionModel` | `meta/muse-glimmer-30b` | The backup model used when your prompt contains images or screenshots. |
 | `nvidia-nim.fallback.priorityList` | `[]` | An optional list of specific models to try in order before falling back to the default backup model. |
 | `nvidia-nim.fallback.onTimeout` | `true` | Automatically switch to backup if a model stops responding mid-stream. |
@@ -81,7 +81,7 @@ Keeps conversation history within the model's context window.
 
 | Setting | Default | What it does |
 | :--- | :--- | :--- |
-| `nvidia-nim.context.summarizationModel` | `nvidia/nemotron-3-super-120b-a12b` | The model used in the background to summarize older conversation history. |
+| `nvidia-nim.context.summarizationModel` | `nvidia/nemotron-3.5-lightning-30b-a3b` | The model used in the background to summarize older conversation history. |
 | `nvidia-nim.context.safetyMarginPercent` | `1.0` | Percentage of the model's context window reserved as a safety buffer (0.0% to 10.0%) to prevent unexpected overflow errors. |
 
 ---
@@ -92,7 +92,7 @@ Settings for file edits, terminal commands, and agent workflows.
 
 | Setting | Default | What it does |
 | :--- | :--- | :--- |
-| `nvidia-nim.tools.maxConsecutiveIdenticalCalls` | `3` | Drops extra copies of the same tool call in one reply after this many identical calls. Already-emitted calls still run. `0` disables the cap. |
+| `nvidia-nim.tools.maxConsecutiveIdenticalCalls` | `4` | How many times the same tool call (same tool, same arguments) may run in one task. The next identical call is dropped as a loop. The count carries across agent steps and resets when the model calls a different tool or you send a new message. `0` disables the cap. |
 
 ---
 
@@ -119,7 +119,7 @@ Optional sampling parameters sent with each request.
 | `nvidia-nim.generation.topP` | `null` | `0.0`–`1.0` | Alternative way to control response diversity. `null` uses the model default. |
 | `nvidia-nim.generation.maxOutputTokens` | `null` | `≥128` | Maximum length of generated responses in tokens. `null` allows the full model capacity. |
 | `nvidia-nim.generation.maxRepeatedLines` | `4` | `0`–`50` | Stops the response early if the model gets stuck repeating the same sentence. A short section label can repeat across a report, and it only counts as a loop when that same label is printed again and again in a row. Reasoning also stops when the same paragraph comes back with different words, and a short phrase there can repeat a few more times. `0` disables loop detection. |
-| `nvidia-nim.generation.maxLoopContinues` | `2` | `0`–`8` | How many times in one turn to nudge after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. `0` disables auto-continue. |
+| `nvidia-nim.generation.maxLoopContinues` | `2` | `0`–`8` | How many times in one turn to nudge after a loop, hanging colon, truncated reply, repeated tool call, stalled stream, or a reply that only reasoned (at most once for that case). `0` disables auto-continue. |
 
 ---
 

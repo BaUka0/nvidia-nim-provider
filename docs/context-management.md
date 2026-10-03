@@ -12,7 +12,7 @@ In long sessions, chat history, system instructions, and file contents accumulat
 
 ## Decoupled Background Summarization
 
-When conversation length approaches capacity, the extension compacts older turns into a dense summary. Compaction runs through a dedicated model (`nvidia-nim.context.summarizationModel`, default `Nemotron 3 Super 120B`), so your active primary model is never disturbed.
+When conversation length approaches capacity, the extension compacts older turns into a dense summary. Compaction runs through a dedicated model (`nvidia-nim.context.summarizationModel`, default `Nemotron 3.5 Lightning 30B`), so your active primary model is never disturbed.
 
 ---
 

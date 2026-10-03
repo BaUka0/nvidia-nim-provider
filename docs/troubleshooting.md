@@ -25,7 +25,7 @@ If something goes wrong, save the session file. Debug logging does not need to b
 ### HTTP 404 Not Found / HTTP 410 Gone
 
 - **Cause:** The model endpoint is decommissioned (`410 Gone`) or unavailable for this key (`404 Not Found`).
-- **Fix:** With `"nvidia-nim.fallback.enabled": true`, the extension handles this automatically. Otherwise, switch to `Nemotron 3 Super 120B`, `DeepSeek V4`, or `Muse Glimmer`.
+- **Fix:** With `"nvidia-nim.fallback.enabled": true`, the extension handles this automatically. Otherwise, switch to `Nemotron 3.5 Lightning 30B`, `DeepSeek V4.1 Flash`, or `Muse Glimmer`.
 
 ### HTTP 429 Too Many Requests / 529 Overloaded
 

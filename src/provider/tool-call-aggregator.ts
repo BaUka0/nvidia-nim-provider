@@ -3,9 +3,10 @@ import type * as vscode from "vscode";
 import {
   getToolSchemaMap,
   extractChatRequestContext,
-  getCompletedToolCallKeys,
   buildToolCallCanonicalKey,
-  isDuplicateSuppressionEnabled,
+  exceedsIdenticalCallLimit,
+  replayTaskToolCalls,
+  IdenticalToolCallTracker,
   isToolCallInput,
   hasRequiredToolArguments,
   missingRequiredToolArguments,
@@ -37,7 +38,6 @@ export class ToolCallStreamAggregator {
   private toolSchemas: Map<string, ToolSchema>;
   private toolsConfig: ToolsConfig;
   private requestContext: ChatRequestContext | undefined;
-  private emittedTextToolCallKeys: Set<string>;
   private emittedCanonicalKeys = new Set<string>();
   private emittedThinkingCanonicalKeys = new Set<string>();
   private onEmitToolCall: (id: string, name: string, args: Record<string, unknown>) => void;
@@ -54,21 +54,17 @@ export class ToolCallStreamAggregator {
 
   private sawToolCall = false;
   private emittedToolCall = false;
-  private consecutiveToolCallKey: string | undefined;
-  private consecutiveToolCallCount = 0;
+  /** Seeded from the current task's history so the cap spans agent-loop iterations. */
+  private identicalCalls: IdenticalToolCallTracker;
   private toolCallLoopKey: string | undefined;
+  private toolCallLoopName: string | undefined;
   private toolCallLoopCount = 0;
 
   constructor(options: ToolCallStreamAggregatorOptions) {
     this.toolSchemas = getToolSchemaMap(options.options);
     this.toolsConfig = options.toolsConfig;
     this.requestContext = extractChatRequestContext(options.messages);
-    this.emittedTextToolCallKeys = getCompletedToolCallKeys(
-      options.messages,
-      this.requestContext,
-      this.toolSchemas,
-      this.toolsConfig,
-    );
+    this.identicalCalls = replayTaskToolCalls(options.messages).tracker;
     this.onEmitToolCall = options.onEmitToolCall;
     this.onSkipToolCall = options.onSkipToolCall;
   }
@@ -77,11 +73,15 @@ export class ToolCallStreamAggregator {
     return this.sawToolCall;
   }
 
-  public getToolCallLoop(): { key: string; count: number } | undefined {
-    if (!this.toolCallLoopKey) {
+  public getToolCallLoop(): { key: string; name: string; count: number } | undefined {
+    if (!this.toolCallLoopKey || !this.toolCallLoopName) {
       return undefined;
     }
-    return { key: this.toolCallLoopKey, count: this.toolCallLoopCount };
+    return {
+      key: this.toolCallLoopKey,
+      name: this.toolCallLoopName,
+      count: this.toolCallLoopCount,
+    };
   }
 
   public getToolSchema(name: string): ToolSchema | undefined {
@@ -136,8 +136,9 @@ export class ToolCallStreamAggregator {
   }
 
   /**
-   * Shared tail of every emit path: duplicate suppression, callback emit,
-   * and canonical-key bookkeeping. Returns false when the call was a duplicate.
+   * Shared tail of every emit path: callback emit and canonical-key
+   * bookkeeping. Returns false when a thinking/native duplicate or the
+   * identical-call loop guard suppressed the call.
    */
   private emitValidatedToolCall(
     name: string,
@@ -155,35 +156,22 @@ export class ToolCallStreamAggregator {
       debugLog("Ignoring native tool call already emitted in thinking", { name, canonicalKey });
       return false;
     }
-    if (canonicalKey === this.consecutiveToolCallKey) {
-      this.consecutiveToolCallCount += 1;
-    } else {
-      this.consecutiveToolCallKey = canonicalKey;
-      this.consecutiveToolCallCount = 1;
-    }
-    const identicalCallCap = this.toolsConfig.maxConsecutiveIdenticalCalls;
-    if (identicalCallCap > 0 && this.consecutiveToolCallCount >= identicalCallCap) {
+    const attemptedCount = this.identicalCalls.countOf(name, canonicalKey) + 1;
+    if (exceedsIdenticalCallLimit(attemptedCount, this.toolsConfig.maxConsecutiveIdenticalCalls)) {
       this.toolCallLoopKey = canonicalKey;
-      this.toolCallLoopCount = this.consecutiveToolCallCount;
+      this.toolCallLoopName = name;
+      this.toolCallLoopCount = attemptedCount;
       debugLog("repetitionGuard", {
         action: "toolCallLoop",
         name,
-        count: this.consecutiveToolCallCount,
+        count: attemptedCount,
       });
       return false;
     }
-    if (
-      isDuplicateSuppressionEnabled(name, this.toolsConfig) &&
-      this.emittedTextToolCallKeys.has(canonicalKey)
-    ) {
-      this.onSkipToolCall(name, [], "duplicate");
-      debugLog("Skipped duplicate tool call", { name });
-      return false;
-    }
+    this.identicalCalls.record(name, canonicalKey);
     this.onEmitToolCall(id, name, args);
     this.emittedToolCall = true;
     this.emittedCanonicalKeys.add(canonicalKey);
-    this.emittedTextToolCallKeys.add(canonicalKey);
     if (options?.isThinking) {
       this.emittedThinkingCanonicalKeys.add(canonicalKey);
     }
@@ -308,7 +296,23 @@ export class ToolCallStreamAggregator {
         return true;
       }
       if (!requireStrictJson && (buf.name || buf.id || buf.args)) {
-        this.onSkipToolCall(buf.name ?? "unknown_tool", missingRequiredToolArguments(args, schema));
+        const missing = missingRequiredToolArguments(args, schema);
+        if (this.canForwardInvalidToolCall(buf.name, parsed)) {
+          const id =
+            buf.id && buf.id.length > 0 ? buf.id : `${NATIVE_TOOL_CALL_ID_PREFIX}${randomUUID()}`;
+          if (this.emitValidatedToolCall(buf.name!, args, schema, id)) {
+            debugLog("Forwarded incomplete tool call for model-side error feedback", {
+              id,
+              name: buf.name,
+              missing,
+            });
+            this.markToolCallIndexComplete(idx);
+            return true;
+          }
+          // The loop guard tripped on the forwarded key; record the skip so the
+          // turn report still shows the dropped invalid call.
+        }
+        this.onSkipToolCall(buf.name ?? "unknown_tool", missing);
         debugLog("Skipped invalid tool call at stream end", {
           id: buf.id,
           name: buf.name,
@@ -335,6 +339,28 @@ export class ToolCallStreamAggregator {
     return false;
   }
 
+  /**
+   * A known tool whose raw payload carries at least one required argument is
+   * forwarded even when validation fails: the tool implementation then returns
+   * a precise error the model can correct inside the same agent loop, which is
+   * more actionable than a provider-level retry. Empty payloads, unknown tool
+   * names, and unparseable arguments still go through the skip/retry path.
+   */
+  private canForwardInvalidToolCall(name: string | undefined, parsed: unknown): boolean {
+    if (!name || !this.toolSchemas.has(name) || !isToolCallInput(parsed)) {
+      return false;
+    }
+    const record = parsed as Record<string, unknown>;
+    return (this.toolSchemas.get(name)?.required ?? []).some((key) => {
+      const value = record[key];
+      return (
+        value !== undefined &&
+        value !== null &&
+        !(typeof value === "string" && value.trim().length === 0)
+      );
+    });
+  }
+
   private hasToolNameCandidate(name: string): boolean {
     for (const knownName of this.toolSchemas.keys()) {
       if (knownName === name || knownName.startsWith(name)) {
@@ -344,7 +370,12 @@ export class ToolCallStreamAggregator {
     return false;
   }
 
-  public flushRemaining(): void {
+  /**
+   * Finish buffered calls at stream end. Set `argumentsMayBeTruncated` when the
+   * stream was cut short (timeout, dropped connection, output limit, guard
+   * stop) so unfinished arguments are not repaired into a runnable call.
+   */
+  public flushRemaining(options?: { argumentsMayBeTruncated?: boolean }): void {
     if (this.toolCallLoopKey) {
       return;
     }
@@ -352,7 +383,40 @@ export class ToolCallStreamAggregator {
       if (this.completedToolCallIndices.has(idx)) {
         continue;
       }
+      if (options?.argumentsMayBeTruncated && this.skipTruncatedToolCall(idx, buf)) {
+        continue;
+      }
       this.tryCompleteToolCall(idx, buf, false);
     }
+  }
+
+  /**
+   * Arguments that are not complete JSON after a cut-short stream are
+   * unfinished, not merely malformed: jsonrepair would close the half-written
+   * string and the call could pass validation with partial content (an edit
+   * carrying half of `newString`, a shortened terminal command). Skip it so
+   * the model is asked to send the call again.
+   */
+  private skipTruncatedToolCall(
+    idx: number,
+    buf: { id?: string; name?: string; args: string },
+  ): boolean {
+    if (buf.args.trim().length === 0) {
+      return false;
+    }
+    try {
+      parseToolArgumentsStrict(buf.args);
+      return false;
+    } catch {
+      // Not complete JSON: treat as truncated below.
+    }
+    this.onSkipToolCall(buf.name ?? "unknown_tool", [], "truncated");
+    debugLog("Skipped truncated tool call after the stream was cut short", {
+      id: buf.id,
+      name: buf.name,
+      argsChars: buf.args.length,
+    });
+    this.markToolCallIndexComplete(idx);
+    return true;
   }
 }

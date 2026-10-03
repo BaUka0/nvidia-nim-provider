@@ -2,11 +2,13 @@ import * as vscode from "vscode";
 import { fetchModelsOrThrow, streamChatCompletion } from "../../src/api/client";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../../src/api/key-resolver";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
+import { NvidiaApiError } from "../../src/api/errors";
 import { MODELS_CACHE_VERSION } from "../../src/shared/constants";
 import {
   asRuntimeInfoCache,
   makeChatOptions,
   makeMemento,
+  makeModel,
   makePrepareOptions,
   makeSecrets,
   makeToken,
@@ -1019,6 +1021,102 @@ describe("NimChatModelProvider", () => {
     await expect(resolver.resolveForModel(model)).resolves.toEqual({
       value: "key-a",
       source: "runtime",
+    });
+  });
+
+  describe("models retired with HTTP 410", () => {
+    const LIGHTNING = "nvidia/nemotron-3.5-lightning-30b-a3b";
+    const glm = makeModel({
+      id: "z-ai/glm-5.3",
+      name: "GLM 5.3",
+      maxInputTokens: 900000,
+      maxOutputTokens: 65536,
+    });
+
+    const answer = async function* () {
+      yield { choices: [{ delta: { content: "ok" } }] };
+    };
+    const failingWith = (status: number) =>
+      async function* () {
+        throw new NvidiaApiError("model_unavailable", "[MODEL_UNAVAILABLE] unavailable", {
+          status,
+        });
+      };
+    const hasFallbackNotice = (progress: { report: jest.Mock }) =>
+      progress.report.mock.calls.some((c: unknown[]) =>
+        String((c[0] as { value?: unknown })?.value ?? "").includes("NVIDIA NIM Fallback"),
+      );
+
+    beforeEach(() => {
+      (globalState.get as jest.Mock).mockReturnValue(undefined);
+      (globalState.update as jest.Mock).mockResolvedValue(undefined);
+      (secrets.get as jest.Mock).mockResolvedValue("test-key");
+      (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
+        { id: "z-ai/glm-5.3", object: "model", owned_by: "integrate.api.nvidia.com" },
+        { id: LIGHTNING, object: "model", owned_by: "integrate.api.nvidia.com" },
+      ]);
+    });
+
+    it("skips the model without a request for the rest of the session and notices it once", async () => {
+      (streamChatCompletion as jest.Mock)
+        .mockImplementationOnce(() => failingWith(410)())
+        .mockImplementation(() => answer());
+      const fire = (
+        provider as unknown as { _onDidChangeLanguageModelChatInformation: { fire: jest.Mock } }
+      )._onDidChangeLanguageModelChatInformation.fire;
+
+      const first = { report: jest.fn() };
+      await provider.provideLanguageModelChatResponse(
+        glm,
+        makeUserMessages("Hi"),
+        makeChatOptions(),
+        first,
+        makeToken(),
+      );
+      const second = { report: jest.fn() };
+      await provider.provideLanguageModelChatResponse(
+        glm,
+        makeUserMessages("Again"),
+        makeChatOptions(),
+        second,
+        makeToken(),
+      );
+
+      const requestedModels = (streamChatCompletion as jest.Mock).mock.calls.map(
+        (call: unknown[]) => (call[1] as { model: string }).model,
+      );
+      expect(requestedModels).toEqual(["z-ai/glm-5.3", LIGHTNING, LIGHTNING]);
+      expect(hasFallbackNotice(first)).toBe(true);
+      expect(hasFallbackNotice(second)).toBe(false);
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(1);
+      expect(fire).toHaveBeenCalledTimes(1);
+
+      const infos = await provider.provideLanguageModelChatInformation(
+        makePrepareOptions({ silent: true, configuration: { apiKey: "test-key" } }),
+        makeToken(),
+      );
+      expect(infos.map((info) => info.id)).toEqual([LIGHTNING]);
+    });
+
+    it("keeps calling a model that answered HTTP 404", async () => {
+      (streamChatCompletion as jest.Mock)
+        .mockImplementationOnce(() => failingWith(404)())
+        .mockImplementation(() => answer());
+
+      for (const prompt of ["Hi", "Again"]) {
+        await provider.provideLanguageModelChatResponse(
+          glm,
+          makeUserMessages(prompt),
+          makeChatOptions(),
+          { report: jest.fn() },
+          makeToken(),
+        );
+      }
+
+      const requestedModels = (streamChatCompletion as jest.Mock).mock.calls.map(
+        (call: unknown[]) => (call[1] as { model: string }).model,
+      );
+      expect(requestedModels).toEqual(["z-ai/glm-5.3", LIGHTNING, "z-ai/glm-5.3"]);
     });
   });
 });

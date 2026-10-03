@@ -288,7 +288,7 @@ describe("NimChatModelProvider", () => {
       yield { choices: [{ delta: { reasoning_content: "Only reasoning, no answer" } }] };
       yield { choices: [{ delta: {}, finish_reason: "stop" }] };
     };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+    (streamChatCompletion as jest.Mock).mockImplementation(() => mockStream());
 
     const progress = { report: jest.fn() };
     const token = makeToken();
@@ -307,11 +307,12 @@ describe("NimChatModelProvider", () => {
       ),
     ).rejects.toThrow("[EMPTY_STREAM]");
 
-    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    // One nudged retry on the same model, then the empty turn is reported.
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
 
     const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
 
-    expect(thinkingReports).toHaveLength(1);
+    expect(thinkingReports).toHaveLength(2);
     expect(thinkingReports[0][0]).toEqual(
       expect.objectContaining({ value: "Only reasoning, no answer" }),
     );
@@ -2126,6 +2127,181 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("does not run an edit cut off by a dropped stream and asks the model to resend it", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.enabled") return false;
+        return defaultValue;
+      }),
+    }));
+    const editCall = (id: string, args: string) => ({
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id,
+                type: "function",
+                function: { name: "replace_string_in_file", arguments: args },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const droppedStream = async function* () {
+      yield editCall(
+        "edit_1",
+        '{"filePath":"/tmp/a.ts","oldString":"return 1;","newString":"return 2;\\n  // keep',
+      );
+      const dropped = new Error("NVIDIA NIM stream ended before the [DONE] sentinel");
+      dropped.name = "StreamDroppedError";
+      throw dropped;
+    };
+    const resentStream = async function* () {
+      yield editCall(
+        "edit_2",
+        '{"filePath":"/tmp/a.ts","oldString":"return 1;","newString":"return 2;"}',
+      );
+    };
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => droppedStream())
+      .mockImplementationOnce(() => resentStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "meta/llama-3.3-70b-instruct",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Change the return value"),
+      makeChatOptions({
+        tools: [
+          {
+            name: "replace_string_in_file",
+            description: "Replace a string in a file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                explanation: { type: "string" },
+                filePath: { type: "string" },
+                oldString: { type: "string" },
+                newString: { type: "string" },
+              },
+              required: ["explanation", "filePath", "oldString", "newString"],
+            },
+          },
+        ],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(retryBody.messages.at(-1).content).toContain("was cut off before its arguments");
+    const toolCalls = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0][0].input).toEqual(
+      expect.objectContaining({ newString: "return 2;", explanation: "Applied edit to /tmp/a.ts" }),
+    );
+  });
+
+  it("tells the user when the model keeps repeating a dropped call after auto-continue", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.enabled") return false;
+        return defaultValue;
+      }),
+    }));
+    const readInput = { filePath: "/tmp/a.ts", startLine: 1, endLine: 40 };
+    const repeatedRead = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "read_again",
+                  type: "function",
+                  function: { name: "read_file", arguments: JSON.stringify(readInput) },
+                },
+              ],
+            },
+          },
+        ],
+      };
+    };
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock).mockImplementation(() => repeatedRead());
+
+    const history = [0, 1, 2, 3].flatMap((round) => [
+      {
+        role: 2,
+        content: [new vscode.LanguageModelToolCallPart(`read_${round}`, "read_file", readInput)],
+      },
+      {
+        role: 1,
+        content: [
+          new vscode.LanguageModelToolResultPart(`read_${round}`, [
+            new vscode.LanguageModelTextPart("file contents"),
+          ]),
+        ],
+      },
+    ]);
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "meta/llama-3.3-70b-instruct",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeMessages({ role: 1, content: [{ value: "Explain a.ts" }] }, ...history),
+      makeChatOptions({
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "number" },
+                endLine: { type: "number" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    // Initial attempt plus the two default auto-continues, all dropped.
+    expect(streamChatCompletion).toHaveBeenCalledTimes(3);
+    const toolCalls = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    expect(toolCalls).toEqual([]);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: expect.stringContaining(
+          "Stopped a repeated tool call. `read_file` already ran 4 times with the same arguments",
+        ),
+      }),
+    );
+  });
+
   it("keeps a partial answer when a stream stalls and auto-continue is disabled", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
@@ -2462,7 +2638,7 @@ describe("NimChatModelProvider", () => {
     [404, "Model unavailable", "model_unavailable"],
     [410, "Model unavailable", "model_unavailable"],
   ] as const)(
-    "falls back to Nemotron 3 Super 120B on HTTP %s",
+    "falls back to Nemotron 3.5 Lightning 30B on HTTP %s",
     async (status: number, capacityLabel: string, kind: ApiErrorKind) => {
       (secrets.get as jest.Mock).mockResolvedValue("test-key");
       (globalState.get as jest.Mock).mockImplementation((key: string) =>
@@ -2477,8 +2653,8 @@ describe("NimChatModelProvider", () => {
                 supportsVision: true,
               },
               {
-                id: "nvidia/nemotron-3-super-120b-a12b",
-                displayName: "Nemotron 3 Super 120B",
+                id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+                displayName: "Nemotron 3.5 Lightning 30B",
                 contextWindow: 1000000,
                 maxOutputTokens: 65536,
                 supportsTools: true,
@@ -2523,9 +2699,9 @@ describe("NimChatModelProvider", () => {
 
       expect(streamChatCompletion).toHaveBeenCalledTimes(2);
       const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-      expect(fallbackRequest.model).toBe("nvidia/nemotron-3-super-120b-a12b");
+      expect(fallbackRequest.model).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
       expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-        `${capacityLabel} on Kimi k2.6. Falling back to Nemotron 3 Super 120B.`,
+        `${capacityLabel} on Kimi k2.6. Falling back to Nemotron 3.5 Lightning 30B.`,
       );
       expect(progress.report).toHaveBeenCalledWith(
         expect.objectContaining({ value: "Fallback response" }),
@@ -2552,8 +2728,8 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "nvidia/nemotron-3-super-120b-a12b",
-              displayName: "Nemotron 3 Super 120B",
+              id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+              displayName: "Nemotron 3.5 Lightning 30B",
               contextWindow: 1000000,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -2596,7 +2772,7 @@ describe("NimChatModelProvider", () => {
 
     expect(calls).toBeGreaterThan(1);
     const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
-    expect(fallbackRequest.model).toBe("nvidia/nemotron-3-super-120b-a12b");
+    expect(fallbackRequest.model).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Recovered on Super" }),
     );
@@ -2626,8 +2802,8 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "nvidia/nemotron-3-super-120b-a12b",
-              displayName: "Nemotron 3 Super 120B",
+              id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+              displayName: "Nemotron 3.5 Lightning 30B",
               contextWindow: 1000000,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -2670,7 +2846,7 @@ describe("NimChatModelProvider", () => {
 
     expect(calls).toBeGreaterThan(1);
     const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
-    expect(fallbackRequest.model).toBe("nvidia/nemotron-3-super-120b-a12b");
+    expect(fallbackRequest.model).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Recovered on Nemotron fallback" }),
     );
@@ -2801,8 +2977,8 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "nvidia/nemotron-3-super-120b-a12b",
-              displayName: "Nemotron 3 Super 120B",
+              id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+              displayName: "Nemotron 3.5 Lightning 30B",
               contextWindow: 1000000,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -3431,8 +3607,8 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "nvidia/nemotron-3-super-120b-a12b",
-              displayName: "Nemotron 3 Super 120B",
+              id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+              displayName: "Nemotron 3.5 Lightning 30B",
               contextWindow: 1000000,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -3512,7 +3688,7 @@ describe("NimChatModelProvider", () => {
     );
 
     const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
-    expect(fallbackRequest.model).toBe("nvidia/nemotron-3-super-120b-a12b");
+    expect(fallbackRequest.model).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Let me check the wallpapers.\n" }),
     );
@@ -3520,7 +3696,7 @@ describe("NimChatModelProvider", () => {
       expect.objectContaining({ value: "Fallback listing" }),
     );
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      expect.stringContaining("Falling back to Nemotron 3 Super 120B"),
+      expect.stringContaining("Falling back to Nemotron 3.5 Lightning 30B"),
     );
   });
 
@@ -3615,8 +3791,8 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "nvidia/nemotron-3-super-120b-a12b",
-              displayName: "Nemotron 3 Super 120B",
+              id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+              displayName: "Nemotron 3.5 Lightning 30B",
               contextWindow: 1000000,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -3690,7 +3866,7 @@ describe("NimChatModelProvider", () => {
     );
 
     const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
-    expect(fallbackRequest.model).toBe("nvidia/nemotron-3-super-120b-a12b");
+    expect(fallbackRequest.model).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: expect.stringContaining("Invalid tool call") }),
     );
@@ -3962,7 +4138,51 @@ describe("NimChatModelProvider", () => {
     expect(textReports.map((c) => c[0].value).join("")).toBe("Recovered answer");
   });
 
-  it("does not multi-retry a reasoning-only stream and throws empty_stream", async () => {
+  it("recovers on the same model when the nudged retry answers after a reasoning-only reply", async () => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) =>
+        key === "fallback.enabled" ? false : defaultValue,
+      ),
+    }));
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const reasoningOnly = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "The edit is done." } }] };
+      yield { choices: [{ delta: {}, finish_reason: "stop" }] };
+    };
+    const answered = async function* () {
+      yield { choices: [{ delta: { content: "The fix is in place." } }] };
+      yield { choices: [{ delta: {}, finish_reason: "stop" }] };
+    };
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => reasoningOnly())
+      .mockImplementationOnce(() => answered());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Fix the bug"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "The fix is in place." }),
+    );
+    expect(getTurnReports().at(-1)).toMatchObject({ outcome: "ok" });
+    expect(getTurnReports()[0]).toMatchObject({
+      outcome: "retry",
+      autoContinueFired: true,
+    });
+  });
+
+  it("retries a reasoning-only stream once with a nudge, then throws empty_stream", async () => {
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((key: string, defaultValue: unknown) =>
         key === "fallback.enabled" ? false : defaultValue,
@@ -3974,7 +4194,7 @@ describe("NimChatModelProvider", () => {
       yield { choices: [{ delta: { reasoning_content: "thinking only" } }] };
       yield { choices: [{ delta: {}, finish_reason: "stop" }] };
     };
-    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+    (streamChatCompletion as jest.Mock).mockImplementation(() => mockStream());
 
     const progress = { report: jest.fn() };
     const token = makeToken();
@@ -3993,10 +4213,13 @@ describe("NimChatModelProvider", () => {
       ),
     ).rejects.toThrow("[EMPTY_STREAM]");
 
-    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(retryBody.model).toBe("deepseek-ai/deepseek-v4");
+    expect(retryBody.messages.at(-1).content).toContain("contained only reasoning");
 
     const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
-    expect(thinkingReports).toHaveLength(1);
+    expect(thinkingReports).toHaveLength(2);
     expect(thinkingReports[0][0]).toEqual(expect.objectContaining({ value: "thinking only" }));
   });
 

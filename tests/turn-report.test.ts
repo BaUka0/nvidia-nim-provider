@@ -137,7 +137,7 @@ describe("turn-report", () => {
       requestBody: request,
       sawToolCall: true,
       emittedToolCall: false,
-      skippedToolCalls: [{ name: "read_file", reason: "duplicate" }],
+      skippedToolCalls: [{ name: "read_file", reason: "truncated" }],
       finishReason: "stop",
       streamChunkCount: 12,
       lastVisibleText: "Let me check the file.",
@@ -154,7 +154,7 @@ describe("turn-report", () => {
     expect(report.toolNames).toEqual(["read_file"]);
     expect(report.reasoningMode).toBe("low");
     expect(report.temperature).toBe(1);
-    expect(report.skippedToolCalls).toEqual([{ name: "read_file", reason: "duplicate" }]);
+    expect(report.skippedToolCalls).toEqual([{ name: "read_file", reason: "truncated" }]);
     expect(report.errorMessage).toContain("Bearer [REDACTED]");
     expect(report.errorMessage).not.toContain("super-secret-token-value");
     expect(report.cycleHint).toBe(false);
