@@ -167,7 +167,8 @@ export type LoopBreakerNudgeReason =
   | "output_truncated"
   | "content_filter"
   | "stream_timeout"
-  | "stream_dropped";
+  | "stream_dropped"
+  | "reasoning_only";
 
 const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
   repetition_loop:
@@ -184,6 +185,8 @@ const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
     "The previous reply stalled before completing. Continue working from where you left off. Call the required tool or proceed with the task.",
   stream_dropped:
     "The connection dropped before your previous reply finished. Continue from where you left off: call the required tool or finish the answer.",
+  reasoning_only:
+    "Your previous reply contained only reasoning, with no answer and no tool call. Act on that reasoning now: call the next required tool, or write the final answer.",
 };
 
 const HISTORY_LOOP_ESCALATION_NUDGE =

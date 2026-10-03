@@ -508,6 +508,7 @@ export class ModelTurnExecutor {
             fetchBudgetExhausted: fetchBudget.exhausted,
             knownToolNames: collectKnownToolNames(),
             previousPreamblePrefixes: state.previousPreamblePrefixes,
+            reasoningOnlyRetryUsed: retryReasonHistory.includes("reasoning_only"),
           });
 
           const dispatch = this.dispatchAttemptOutcome({

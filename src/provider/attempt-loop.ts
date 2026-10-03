@@ -60,6 +60,7 @@ const LOOP_REASON_LABELS: Record<string, string> = {
   content_filter: "content filter",
   stream_timeout: "stream stall",
   stream_dropped: "dropped stream",
+  reasoning_only: "reasoning-only reply",
 };
 
 export function logAttemptTiming(input: {

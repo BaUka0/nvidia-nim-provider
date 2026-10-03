@@ -148,13 +148,12 @@
             "deepseek-ai/deepseek-v4.1-flash",
             "meta/muse-glimmer-30b",
             "moonshotai/kimi-k3",
-            "nvidia/nemotron-3-super-120b-a12b",
             "nvidia/nemotron-3-ultra-550b-a55b",
             "nvidia/nemotron-3.5-lightning-30b-a3b",
             "z-ai/glm-5.3",
             "z-ai/glm-5.3-flash"
           ],
-          "default": "nvidia/nemotron-3-super-120b-a12b",
+          "default": "nvidia/nemotron-3.5-lightning-30b-a3b",
           "description": "Model to switch to when the primary model encounters a fatal error or rate limit."
         },
         "nvidia-nim.fallback.visionModel": {
@@ -176,7 +175,6 @@
               "deepseek-ai/deepseek-v4.1-flash",
               "meta/muse-glimmer-30b",
               "moonshotai/kimi-k3",
-              "nvidia/nemotron-3-super-120b-a12b",
               "nvidia/nemotron-3-ultra-550b-a55b",
               "nvidia/nemotron-3.5-lightning-30b-a3b",
               "z-ai/glm-5.3",
@@ -305,7 +303,7 @@
           "default": 2,
           "minimum": 0,
           "maximum": 8,
-          "description": "How many times in one turn to nudge the model after a loop, hanging colon, truncated reply, repeated tool call, or stalled stream. 0 disables auto-continue."
+          "description": "How many times in one turn to nudge the model after a loop, hanging colon, truncated reply, repeated tool call, stalled stream, or a reply that only reasoned (that last one is nudged at most once). 0 disables auto-continue."
         },
         "nvidia-nim.tools.maxConsecutiveIdenticalCalls": {
           "type": "integer",
@@ -320,13 +318,12 @@
             "deepseek-ai/deepseek-v4.1-flash",
             "meta/muse-glimmer-30b",
             "moonshotai/kimi-k3",
-            "nvidia/nemotron-3-super-120b-a12b",
             "nvidia/nemotron-3-ultra-550b-a55b",
             "nvidia/nemotron-3.5-lightning-30b-a3b",
             "z-ai/glm-5.3",
             "z-ai/glm-5.3-flash"
           ],
-          "default": "nvidia/nemotron-3-super-120b-a12b",
+          "default": "nvidia/nemotron-3.5-lightning-30b-a3b",
           "description": "Dedicated lightweight model used for compacting and summarizing conversation history."
         },
         "nvidia-nim.context.safetyMarginPercent": {

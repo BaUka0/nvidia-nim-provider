@@ -319,4 +319,59 @@ describe("evaluateAttemptRetry", () => {
     });
     expect(evaluation.retryReason).toBe("repetition_loop");
   });
+
+  describe("reasoning-only replies", () => {
+    const reasoningOnly = result({
+      sawReasoning: true,
+      reportedContent: true,
+      reportedVisibleContent: false,
+      lastFinishReason: "stop",
+    });
+
+    it("nudges the same model once after a reply that only reasoned", () => {
+      expect(evaluateAttemptRetry({ ...baseFacts, result: reasoningOnly }).retryReason).toBe(
+        "reasoning_only",
+      );
+    });
+
+    it("does not retry a second reasoning-only reply in the same turn", () => {
+      expect(
+        evaluateAttemptRetry({ ...baseFacts, result: reasoningOnly, reasoningOnlyRetryUsed: true })
+          .retryReason,
+      ).toBeUndefined();
+    });
+
+    it("does not retry when auto-continue is disabled or spent", () => {
+      expect(
+        evaluateAttemptRetry({ ...baseFacts, result: reasoningOnly, maxLoopContinues: 0 })
+          .retryReason,
+      ).toBeUndefined();
+      expect(
+        evaluateAttemptRetry({ ...baseFacts, result: reasoningOnly, loopContinueCount: 2 })
+          .retryReason,
+      ).toBeUndefined();
+    });
+
+    it("leaves a dropped stream that only reasoned to the dropped-stream path", () => {
+      const dropped = result({
+        sawReasoning: true,
+        reportedContent: true,
+        streamDropped: true,
+        lastFinishReason: null,
+      });
+      expect(evaluateAttemptRetry({ ...baseFacts, result: dropped }).retryReason).toBe(
+        "stream_dropped",
+      );
+    });
+
+    it("does not treat a reply with visible text as reasoning-only", () => {
+      const answered = result({
+        sawReasoning: true,
+        reportedContent: true,
+        reportedVisibleContent: true,
+        lastVisibleText: "Done.",
+      });
+      expect(evaluateAttemptRetry({ ...baseFacts, result: answered }).retryReason).toBeUndefined();
+    });
+  });
 });

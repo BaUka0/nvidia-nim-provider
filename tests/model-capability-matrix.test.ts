@@ -105,36 +105,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "think",
   },
   {
-    modelId: "nvidia/nemotron-3-super-120b-a12b",
-    reasoningModes: ["none", "low", "high"],
-    reasoningCases: [
-      {
-        mode: "none",
-        expectedFields: {
-          chat_template_kwargs: { enable_thinking: false },
-        },
-      },
-      {
-        mode: "low",
-        expectedFields: {
-          chat_template_kwargs: { enable_thinking: true, low_effort: true },
-        },
-      },
-      {
-        mode: "high",
-        expectedFields: {
-          chat_template_kwargs: { enable_thinking: true },
-        },
-      },
-    ],
-    reasoningParameterFormat: "chat_template_kwargs",
-    toolCallProtocol: "native-and-text",
-    reasoningRouting: "isolated",
-    contentOnlyMode: "none",
-    contentOnlyRouting: "text",
-    thinkTag: "think",
-  },
-  {
     modelId: "nvidia/nemotron-3.5-lightning-30b-a3b",
     reasoningModes: ["none", "medium", "high", "xhigh"],
     reasoningCases: [

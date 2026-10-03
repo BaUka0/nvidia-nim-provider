@@ -16,7 +16,8 @@ export type LoopRetryReason =
   | "output_truncated"
   | "content_filter"
   | "stream_timeout"
-  | "stream_dropped";
+  | "stream_dropped"
+  | "reasoning_only";
 export type RetryReason = LoopRetryReason | "invalid_tool_call" | "empty_stream";
 
 export const LOOP_RETRY_REASONS: ReadonlySet<RetryReason> = new Set([
@@ -27,6 +28,7 @@ export const LOOP_RETRY_REASONS: ReadonlySet<RetryReason> = new Set([
   "content_filter",
   "stream_timeout",
   "stream_dropped",
+  "reasoning_only",
 ]);
 
 export function isLoopRetryReason(reason: RetryReason | undefined): reason is LoopRetryReason {
@@ -45,6 +47,8 @@ export interface AttemptRetryFacts {
   fetchBudgetExhausted: boolean;
   knownToolNames: ReadonlySet<string>;
   previousPreamblePrefixes?: readonly string[];
+  /** The one same-model retry for a reasoning-only reply was already spent this turn. */
+  reasoningOnlyRetryUsed?: boolean;
 }
 
 export interface AttemptRetryEvaluation {
@@ -123,6 +127,29 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     !isTruncatedLength &&
     isContentFilterPartial &&
     loopAutoContinueEligible;
+  // The model finished normally after thinking but wrote no answer and called
+  // no tool. One nudge on the same model is cheaper than failing over with
+  // the whole context; a second reasoning-only reply still ends as empty.
+  // Stalls mid-thinking (timeout, dropped stream) keep their own handling so
+  // a slow backend is not retried twice over.
+  const isReasoningOnly =
+    result.sawReasoning &&
+    !result.reportedVisibleContent &&
+    !result.sawToolCall &&
+    !result.emittedToolCall &&
+    !result.repetitionTripped &&
+    !result.timedOut &&
+    !result.streamDropped &&
+    result.lastFinishReason === "stop";
+  const willRetryReasoningOnly =
+    !isRepetitionLoop &&
+    !willRetryToolCallLoop &&
+    !isHangingColon &&
+    !isTruncatedLength &&
+    !isContentFilterPartial &&
+    isReasoningOnly &&
+    !facts.reasoningOnlyRetryUsed &&
+    loopAutoContinueEligible;
   const retryMessage = result.sawToolCall
     ? buildInvalidToolCallRetryMessage(result.skippedToolCalls)
     : undefined;
@@ -156,7 +183,8 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     willRetryTruncation ||
     willRetryContentFilter ||
     willRetryStreamTimeout ||
-    willRetryStreamDropped;
+    willRetryStreamDropped ||
+    willRetryReasoningOnly;
   const willRetryEmptyStream =
     !result.sawReasoning &&
     !result.sawToolCall &&
@@ -178,7 +206,9 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
               ? "content_filter"
               : willRetryStreamDropped
                 ? "stream_dropped"
-                : "stream_timeout"
+                : willRetryReasoningOnly
+                  ? "reasoning_only"
+                  : "stream_timeout"
     : willRetryAfterInvalidToolCall
       ? "invalid_tool_call"
       : willRetryEmptyStream
