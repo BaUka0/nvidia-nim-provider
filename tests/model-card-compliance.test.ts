@@ -48,7 +48,8 @@ async function prepare(
 }
 
 describe("NVIDIA model card compliance", () => {
-  it("caps Nemotron 3 Ultra and 3.5 Lightning output at the documented 32768 max_tokens", () => {
+  it("caps Nemotron 3 Super, Ultra and 3.5 Lightning output at the documented 32768 max_tokens", () => {
+    expect(MODEL_LIST["nvidia/nemotron-3-super-120b-a12b"].maxOutputTokens).toBe(32768);
     expect(MODEL_LIST["nvidia/nemotron-3-ultra-550b-a55b"].maxOutputTokens).toBe(32768);
     expect(MODEL_LIST["nvidia/nemotron-3.5-lightning-30b-a3b"].maxOutputTokens).toBe(32768);
   });
@@ -104,20 +105,19 @@ describe("NVIDIA model card compliance", () => {
   // On hosted NIM streaming, force_nonempty_content stops the endpoint from
   // splitting reasoning out: the trace and a literal </think> land in content
   // and show up in the chat. Never send it, with or without tools.
-  it.each(["nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3.5-lightning-30b-a3b"])(
-    "%s never sends force_nonempty_content",
-    async (modelId) => {
-      const withTools = await prepare(modelId, { tools: true });
-      const withoutTools = await prepare(modelId);
+  it.each([
+    "nvidia/nemotron-3-super-120b-a12b",
+    "nvidia/nemotron-3-ultra-550b-a55b",
+    "nvidia/nemotron-3.5-lightning-30b-a3b",
+  ])("%s never sends force_nonempty_content", async (modelId) => {
+    const withTools = await prepare(modelId, { tools: true });
+    const withoutTools = await prepare(modelId);
 
-      expect(withTools.requestBody.chat_template_kwargs).not.toHaveProperty(
-        "force_nonempty_content",
-      );
-      expect(withoutTools.requestBody.chat_template_kwargs).not.toHaveProperty(
-        "force_nonempty_content",
-      );
-    },
-  );
+    expect(withTools.requestBody.chat_template_kwargs).not.toHaveProperty("force_nonempty_content");
+    expect(withoutTools.requestBody.chat_template_kwargs).not.toHaveProperty(
+      "force_nonempty_content",
+    );
+  });
 
   it("keeps the calibrated 0.6 tool temperature on Nemotron", async () => {
     const prepared = await prepare("nvidia/nemotron-3-ultra-550b-a55b", { tools: true });

@@ -28,6 +28,7 @@ export type CatalogAdapterId =
   | "deepseek"
   | "kimi"
   | "nemotron"
+  | "nemotron-super"
   | "nemotron-lightning"
   | "muse-glimmer"
   | "glm";
@@ -56,6 +57,14 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: false,
     adapter: "nemotron",
+  },
+  "nvidia/nemotron-3-super-120b-a12b": {
+    displayName: "Nemotron 3 Super 120B",
+    contextWindow: 1000000,
+    maxOutputTokens: 32768,
+    supportsTools: true,
+    supportsVision: false,
+    adapter: "nemotron-super",
   },
   "nvidia/nemotron-3.5-lightning-30b-a3b": {
     displayName: "Nemotron 3.5 Lightning 30B",
