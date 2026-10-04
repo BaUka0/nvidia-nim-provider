@@ -15,6 +15,7 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 | **Nemotron 3 Ultra 550B** | `Nemotron 3 Ultra 550B` | **23** | 1,000,000 | 32,768 | `None`, `Medium`, `High` | No | Heavy multi-step reasoning, system design, enterprise docs |
 | **Muse Glimmer** | `Muse Glimmer` | **17** | 131,072 | 32,768 | `None` to `Max` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
 | **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **13** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; default text fallback and summarizer |
+| **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **13** | 1,000,000 | 32,768 | `None`, `Low`, `High` | No | Workhorse for everyday coding |
 
 Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`).
 
@@ -25,6 +26,8 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 **GLM 5.3.** Flagship open-weights reasoning model with 1M context, up to 65,536 output tokens. Strong on multi-step reasoning, system architecture, and agentic workflows. Reasoning: `Low` (instant answer), `High`, `Max`. Text-only; vision requests fail over to `fallback.visionModel`.
 
 **GLM 5.3 Flash.** Fast multimodal reasoning model with 1M context and up to 131,072 output tokens. Reasoning: `Low` (instant answer), `High`, `Max`.
+
+**Nemotron 3 Super 120B.** MoE reasoning model for everyday coding, 1M context, up to 32,768 output tokens. Reasoning: `None` (standard), `Low` (quick pass), `High` (thorough). NVIDIA briefly retired it on October 3, 2026 and restored it the next day, so it is not used as a default.
 
 **Nemotron 3.5 Lightning 30B.** Default text fallback and summarization model. Compact 30B/3B-active MoE for fast agentic turns. 1M context, up to 32,768 output tokens. Reasoning: `None`, `Medium`, `High`, `XHigh`; defaults to `Medium` because reasoning shares the answer's token budget. Text-only; vision requests fail over to `fallback.visionModel`.
 

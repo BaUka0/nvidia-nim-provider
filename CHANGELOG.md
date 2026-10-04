@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Added
+
+- Nemotron 3 Super 120B is back in the model picker. NVIDIA restored it on October 4, 2026, a day after retiring it. Nemotron 3.5 Lightning 30B stays the default backup and summarization model, since Super was shut down once without notice.
+
 ## [1.4.0] - 2026-10-03
 
 ### Changed
