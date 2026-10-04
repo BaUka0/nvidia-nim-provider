@@ -8,7 +8,7 @@ type ChatToolInit = {
 
 type ChatOptionsInit = Omit<Partial<vscode.ProvideLanguageModelChatResponseOptions>, "tools"> & {
   tools?: readonly ChatToolInit[];
-  modelConfiguration?: { reasoningMode?: string; contextSize?: unknown };
+  modelConfiguration?: { reasoningEffort?: string; reasoningMode?: string; contextSize?: unknown };
 };
 
 type PrepareOptionsInit = Partial<vscode.PrepareLanguageModelChatModelOptions> & {

@@ -246,7 +246,9 @@ export class NvidiaModelDiscoveryService {
           v === "none" ? "None" : v.charAt(0).toUpperCase() + v.slice(1),
         );
 
-        properties.reasoningMode = {
+        // `reasoningEffort` is the key VS Code's agent host reads to offer an
+        // effort picker in Copilot sessions; the regular picker accepts any key.
+        properties.reasoningEffort = {
           type: "string",
           title: "Reasoning Mode",
           description: "Configure the reasoning effort mode sent to supported models.",

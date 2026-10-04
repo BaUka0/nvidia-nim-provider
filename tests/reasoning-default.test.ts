@@ -42,7 +42,7 @@ function pickerDefault(id: string): unknown {
     supportsVision: entry.supportsVision,
   };
   const discovery = new NvidiaModelDiscoveryService(makeSecrets(), "test-ua");
-  return discovery.mapToChatInformation([model])[0].configurationSchema?.properties.reasoningMode
+  return discovery.mapToChatInformation([model])[0].configurationSchema?.properties.reasoningEffort
     ?.default;
 }
 
@@ -132,6 +132,57 @@ describe("default reasoning mode", () => {
     });
 
     expect(prepared.requestBody.chat_template_kwargs).toEqual({ enable_thinking: false });
+  });
+
+  describe("picker key", () => {
+    const prepareWith = (modelConfiguration: Record<string, string>) =>
+      NimRequestBuilder.prepareRequest({
+        model: makeModel({
+          id: ULTRA,
+          name: "Ultra",
+          maxInputTokens: 100_000,
+          maxOutputTokens: 32768,
+        }),
+        messages: makeChatMessages({ role: 1, content: [new vscode.LanguageModelTextPart("hi")] }),
+        options: makeChatOptions({ modelConfiguration }),
+        contextWindow: 200_000,
+        supportsTools: false,
+        supportsVision: false,
+        apiKey: "test-key",
+        userAgent: "test-agent",
+        config: ConfigManager.getNimConfig(),
+      });
+
+    it("exposes the choice as reasoningEffort so the agent host offers it", () => {
+      const discovery = new NvidiaModelDiscoveryService(makeSecrets(), "test-ua");
+      const model: NormalizedNvidiaModel = { id: ULTRA, ...MODEL_LIST[ULTRA] };
+      const properties = discovery.mapToChatInformation([model])[0].configurationSchema?.properties;
+
+      expect(properties).not.toHaveProperty("reasoningMode");
+      expect(properties?.reasoningEffort).toMatchObject({
+        enum: ["none", "medium", "high"],
+        default: "high",
+        group: "navigation",
+      });
+    });
+
+    it("applies reasoningEffort sent by the picker or the agent host", async () => {
+      const prepared = await prepareWith({ reasoningEffort: "none" });
+      expect(prepared.requestBody.chat_template_kwargs).toEqual({ enable_thinking: false });
+    });
+
+    it("still honors a saved reasoningMode from before the rename", async () => {
+      const prepared = await prepareWith({ reasoningMode: "none" });
+      expect(prepared.requestBody.chat_template_kwargs).toEqual({ enable_thinking: false });
+    });
+
+    it("prefers reasoningEffort when both keys are present", async () => {
+      const prepared = await prepareWith({ reasoningEffort: "medium", reasoningMode: "none" });
+      expect(prepared.requestBody.chat_template_kwargs).toEqual({
+        enable_thinking: true,
+        medium_effort: true,
+      });
+    });
   });
 });
 

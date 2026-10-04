@@ -62,7 +62,7 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 
 Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`).
 
-Reasoning is on by default: `High`, or `Medium` on Nemotron 3.5 Lightning. Change it per model with Reasoning Mode in the model picker, or for all models with `nvidia-nim.reasoning.mode`.
+Reasoning is on by default: `High`, or `Medium` on Nemotron 3.5 Lightning. Change it per model with Reasoning Mode in the model picker, or for all models with `nvidia-nim.reasoning.mode`. Copilot agent sessions offer the reasoning level as well; Context Size is available in local chat sessions only.
 
 ---
 
