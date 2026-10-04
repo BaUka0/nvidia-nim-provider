@@ -71,6 +71,25 @@ function assignClamped(
 export { resolveReasoningMode };
 
 /**
+ * Picker reasoning choice. `reasoningEffort` is the current key (also sent by
+ * VS Code's agent host in Copilot sessions); `reasoningMode` is the pre-1.4.1
+ * key that saved configurations may still carry.
+ */
+export function readConfiguredReasoningMode(
+  options: vscode.ProvideLanguageModelChatResponseOptions,
+): string | undefined {
+  const configuration = (
+    options as { modelConfiguration?: { reasoningEffort?: unknown; reasoningMode?: unknown } }
+  ).modelConfiguration;
+  for (const value of [configuration?.reasoningEffort, configuration?.reasoningMode]) {
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Input-token cap picked in the model picker's "Context Size" option
  * (`modelConfiguration.contextSize`). Copilot clamps its own prompt budget to
  * the same value; the provider applies it too so other `vscode.lm` callers get
@@ -378,9 +397,7 @@ export class NimRequestBuilder {
       stream_options: { include_usage: true },
     };
 
-    const configuredReasoningMode = (
-      responseOptions as { modelConfiguration?: { reasoningMode?: string } }
-    ).modelConfiguration?.reasoningMode;
+    const configuredReasoningMode = readConfiguredReasoningMode(responseOptions);
     const modes = adapter.supportedReasoningModes;
     let reasoningMode: string;
     if (modes && modes.length > 0) {

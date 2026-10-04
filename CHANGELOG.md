@@ -8,6 +8,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 - Nemotron 3 Super 120B is back in the model picker. NVIDIA restored it on October 4, 2026, a day after retiring it. Nemotron 3.5 Lightning 30B stays the default backup and summarization model, since Super was shut down once without notice.
 
+### Fixed
+
+- The reasoning level can now be chosen in Copilot agent sessions too, not only in local chat sessions. VS Code 1.140 only offers that choice for models that use its standard name for it. A reasoning level you picked earlier resets to the default once after updating. Context Size stays available in local chat sessions only, since Copilot agent sessions do not support it for any model.
+
 ## [1.4.0] - 2026-10-03
 
 ### Changed

@@ -46,7 +46,7 @@ describe("Context Size picker option", () => {
     });
     expect(property?.enumDescriptions).toHaveLength(4);
     // The reasoning option is kept next to the new one.
-    expect(info.configurationSchema?.properties.reasoningMode).toBeDefined();
+    expect(info.configurationSchema?.properties.reasoningEffort).toBeDefined();
   });
 
   it("omits the option when no tier is smaller than the model's input budget", () => {
