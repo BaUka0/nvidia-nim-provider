@@ -275,6 +275,11 @@
     "created": 735790403
   },
   {
+    "id": "nvidia/nemotron-3-super-120b-a12b",
+    "owned_by": "nvidia",
+    "created": 735790403
+  },
+  {
     "id": "nvidia/nemotron-3-ultra-550b-a55b",
     "owned_by": "nvidia",
     "created": 735790403
