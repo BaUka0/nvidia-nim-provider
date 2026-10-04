@@ -2,14 +2,11 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
-## [Unreleased]
-
-### Added
-
-- **Nemotron 3 Super 120B restored (`src/models/catalog.ts`, `src/models/adapters/nemotron-super.ts`, `src/models/adapters/index.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`).** `nvidia/nemotron-3-super-120b-a12b` reappeared in `/v1/models` on 2026-10-04 (Resolves #26) and serves again: a plain completion and a streamed `enable_thinking` + `low_effort` request both return 200 with reasoning split into `reasoning_content`. The catalog entry (1M context, 32,768 output) and `NemotronSuperAdapter` (`none` / `low` / `high` via `chat_template_kwargs`) come back unchanged from 1.3.x, registered under `nemotron-super` and in the family list ahead of the generic Nemotron adapter. `FALLBACK_MODEL_ID` stays Lightning, so `fallback.model` and `context.summarizationModel` defaults do not move; `sync:manifest` re-added the id to the three enums and bumped `MODELS_CACHE_VERSION` to 24. If the model is retired again, the session 410 memory skips it. Capability-matrix, model-profile and model-card tests restored.
+## [1.4.1] - 2026-10-05
 
 ### Fixed
 
+- **Nemotron 3 Super 120B restored (`src/models/catalog.ts`, `src/models/adapters/nemotron-super.ts`, `src/models/adapters/index.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`).** `nvidia/nemotron-3-super-120b-a12b` reappeared in `/v1/models` on 2026-10-04 (Resolves #26) and serves again: a plain completion and a streamed `enable_thinking` + `low_effort` request both return 200 with reasoning split into `reasoning_content`. The catalog entry (1M context, 32,768 output) and `NemotronSuperAdapter` (`none` / `low` / `high` via `chat_template_kwargs`) come back unchanged from 1.3.x, registered under `nemotron-super` and in the family list ahead of the generic Nemotron adapter. `FALLBACK_MODEL_ID` stays Lightning, so `fallback.model` and `context.summarizationModel` defaults do not move; `sync:manifest` re-added the id to the three enums and bumped `MODELS_CACHE_VERSION` to 24. If the model is retired again, the session 410 memory skips it. Capability-matrix, model-profile and model-card tests restored.
 - **Picker reasoning key renamed to `reasoningEffort` (`src/models/discovery.ts`, `src/provider/request-builder.ts`).** In VS Code 1.140 the agent host that runs Copilot sessions lists BYOK models with `supportedReasoningEfforts` / `defaultReasoningEffort` taken only from `configurationSchema.properties.reasoningEffort`, and sends the choice back as `configuration.reasoningEffort`; it never reads other keys and has no `contextSize` support. Our property was `reasoningMode`, so Copilot sessions showed no effort picker and always ran the schema default. The property is now `reasoningEffort` (same enum, labels, `navigation` group and setting-driven default), and `readConfiguredReasoningMode` reads `modelConfiguration.reasoningEffort` first, then the legacy `reasoningMode`. VS Code drops saved configuration keys missing from the schema, so earlier picker choices reset once. Tests cover the exposed property and both keys.
 
 ## [1.4.0] - 2026-10-03
