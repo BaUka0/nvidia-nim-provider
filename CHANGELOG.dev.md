@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Added
+
+- **Tool-call trail in turn reports (`src/shared/turn-report.ts`, `src/provider/stream-pump.ts`, `src/provider/turn-executor.ts`).** `StreamAttemptResult.emittedToolCalls` collects `{ id, name }` for every `LanguageModelToolCallPart` handed to VS Code. `TurnReport` gains `emittedToolCalls`; `reusedToolCallIds` (emitted ids already in the request history's assistant `tool_calls` or repeated within the reply, omitted when empty); `requestTail` (`user` / `tool_result` / `assistant`, read from the host's last `LanguageModelChatMessage` rather than the NIM body, since retries append nudges); and `harness` (`copilot` when the tool set has `view` + `edit` + `bash` or `powershell`, `local` for `read_file` / `run_in_terminal` / `replace_string_in_file`). In #29 every request ended with `tool_calls` and no further request arrived, but the report could not show which call the Copilot harness stopped after. Addresses #29.
+
 ## [1.4.1] - 2026-10-05
 
 ### Fixed

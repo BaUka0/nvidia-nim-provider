@@ -29,10 +29,23 @@ export interface TurnReportSkippedTool {
   readonly reason?: string;
 }
 
+export interface TurnReportToolCall {
+  readonly id: string;
+  readonly name: string;
+}
+
+/** VS Code chat harness that sent the request: the Copilot SDK runtime or the Local agent. */
+export type TurnReportHarness = "copilot" | "local";
+
+/** What the host's last message was: a new prompt, tool output, or an assistant prefill. */
+export type TurnReportRequestTail = "user" | "tool_result" | "assistant";
+
 export interface TurnReport {
   readonly recordedAt: string;
   readonly outcome: TurnReportOutcome;
   readonly modelId: string;
+  readonly harness?: TurnReportHarness;
+  readonly requestTail?: TurnReportRequestTail;
   readonly reasoningMode?: string;
   readonly toolsEnabled: boolean;
   readonly toolNames: string[];
@@ -42,6 +55,9 @@ export interface TurnReport {
   readonly chatTemplateKwargs?: Record<string, unknown>;
   readonly sawToolCall: boolean;
   readonly emittedToolCall: boolean;
+  readonly emittedToolCalls: TurnReportToolCall[];
+  /** Emitted ids already present in the request history or repeated within this reply. */
+  readonly reusedToolCallIds?: string[];
   readonly skippedToolCalls: TurnReportSkippedTool[];
   readonly finishReason?: string | null;
   readonly streamChunkCount: number;
@@ -62,8 +78,10 @@ export interface TurnReportInput {
   readonly outcome: TurnReportOutcome;
   readonly modelId: string;
   readonly requestBody?: NimChatRequest;
+  readonly requestTail?: TurnReportRequestTail;
   readonly sawToolCall?: boolean;
   readonly emittedToolCall?: boolean;
+  readonly emittedToolCalls?: readonly TurnReportToolCall[];
   readonly skippedToolCalls?: readonly TurnReportSkippedTool[];
   readonly finishReason?: string | null;
   readonly streamChunkCount?: number;
@@ -200,6 +218,50 @@ function toolNamesFromRequest(body: NimChatRequest | undefined): string[] {
   return names;
 }
 
+/**
+ * Tell the harness apart by its tool set: the Copilot harness exposes the
+ * Copilot CLI tools (`view`, `edit`, `bash` / `powershell`), the Local agent
+ * the VS Code ones (`read_file`, `run_in_terminal`, ...).
+ */
+export function inferHarness(toolNames: readonly string[]): TurnReportHarness | undefined {
+  const names = new Set(toolNames);
+  if (names.has("view") && names.has("edit") && (names.has("bash") || names.has("powershell"))) {
+    return "copilot";
+  }
+  if (
+    names.has("read_file") ||
+    names.has("run_in_terminal") ||
+    names.has("replace_string_in_file")
+  ) {
+    return "local";
+  }
+  return undefined;
+}
+
+/**
+ * A host that tracks calls by id can treat a reused id as already handled,
+ * so flag ids seen earlier in the history or twice in the same reply.
+ */
+export function findReusedToolCallIds(
+  emitted: readonly TurnReportToolCall[],
+  body: NimChatRequest | undefined,
+): string[] {
+  const seen = new Set<string>();
+  for (const message of body?.messages ?? []) {
+    for (const call of message.tool_calls ?? []) {
+      seen.add(call.id);
+    }
+  }
+  const reused: string[] = [];
+  for (const call of emitted) {
+    if (seen.has(call.id) && !reused.includes(call.id)) {
+      reused.push(call.id);
+    }
+    seen.add(call.id);
+  }
+  return reused;
+}
+
 function sanitizeErrorMessage(message: string | undefined): string | undefined {
   if (!message) {
     return undefined;
@@ -210,19 +272,30 @@ function sanitizeErrorMessage(message: string | undefined): string | undefined {
 export function recordTurnReport(input: TurnReportInput): TurnReport {
   const visible = input.lastVisibleText ?? "";
   const { head, tail } = clipHeadTail(visible);
+  const toolNames = toolNamesFromRequest(input.requestBody);
+  const harness = inferHarness(toolNames);
+  const emittedToolCalls = (input.emittedToolCalls ?? []).map((call) => ({
+    id: call.id,
+    name: call.name,
+  }));
+  const reusedToolCallIds = findReusedToolCallIds(emittedToolCalls, input.requestBody);
   const report: TurnReport = {
     recordedAt: input.recordedAt ?? new Date().toISOString(),
     outcome: input.outcome,
     modelId: input.modelId,
+    ...(harness ? { harness } : {}),
+    ...(input.requestTail ? { requestTail: input.requestTail } : {}),
     reasoningMode: inferReasoningModeFromRequest(input.requestBody),
     toolsEnabled: Boolean(input.requestBody?.tools?.length),
-    toolNames: toolNamesFromRequest(input.requestBody),
+    toolNames,
     temperature: input.requestBody?.temperature,
     topP: input.requestBody?.top_p,
     toolChoice: input.requestBody?.tool_choice,
     chatTemplateKwargs: pickTemplateKwargs(input.requestBody?.chat_template_kwargs),
     sawToolCall: Boolean(input.sawToolCall),
     emittedToolCall: Boolean(input.emittedToolCall),
+    emittedToolCalls,
+    ...(reusedToolCallIds.length > 0 ? { reusedToolCallIds } : {}),
     skippedToolCalls: (input.skippedToolCalls ?? []).map((call) => ({
       name: call.name,
       ...(call.reason ? { reason: call.reason } : {}),

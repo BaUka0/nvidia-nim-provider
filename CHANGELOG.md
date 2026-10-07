@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Added
+
+- Save Last Turn Report now records which tools the model called, whether the turn followed tool output or a new message, and whether it came from a Copilot agent session or a local chat session. This makes agent sessions that stop after a tool call easier to diagnose.
+
 ## [1.4.1] - 2026-10-05
 
 ### Fixed
