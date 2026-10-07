@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Fixed
+
+- **Copilot harness tool names in the tool-kind taxonomy (`src/tools/tool-kinds.ts`).** The token rules were written for Local agent names, so in Copilot harness sessions `edit` / `create` were not edit tools (no file-hint token), `powershell` and the rest of the `*_powershell` family were not terminal tools (the `*_bash` family matched through the `bash` token), and `read_bash` / `read_powershell` / `read_agent` were read tools because of their leading `read`. Fixed with exact names: `edit` and `create` added to `EDIT_TOOL_EXACT`, the `powershell` family to `TERMINAL_TOOL_EXACT`, and a new `NOT_READ_TOOL_EXACT` (`read_bash`, `read_powershell`, `read_agent`) that `isReadTool` checks right after `READ_TOOL_EXACT`. The only caller is `repairToolArguments`. Duplicate suppression has not used tool kinds since 1.4.0: `IdenticalToolCallTracker` keys on name plus canonical arguments. Effect: `powershell` now goes through the terminal branch (fills `goal` / `explanation` / `mode` when they are required and missing), the same as `bash`. `edit` / `create` now reach the edit branch. Its fills key on `filePath` / `AbsolutePath` / `TargetFile`, `startLine` / `endLine` and `explanation`, while the harness schemas use `path`, `old_str` / `new_str` and `file_text`, so the edit branch changes nothing for them yet. Shell / agent readers no longer reach the read branch (line-range and `mode: "full"` fills), which matched none of their keys either. Local agent names classify exactly as before. The file header no longer claims duplicate suppression as a consumer. `tests/tool-kinds.test.ts` covers harness classification, pins the Local agent classification, and checks that `powershell` gets the same `mode` fill as `bash`.
+
 ## [1.4.1] - 2026-10-05
 
 ### Fixed

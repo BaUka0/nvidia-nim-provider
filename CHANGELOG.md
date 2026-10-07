@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Fixed
+
+- Copilot agent sessions now have their tools recognized correctly. On Windows, the PowerShell tool is treated as a shell command just like Bash. The edit and create tools are treated as file edits. Reading output from a running shell or a sub-agent is no longer mistaken for reading a file. The automatic cleanup of incomplete tool calls now works the same way in Copilot agent sessions as in local chat sessions. Local chat sessions are unchanged.
+
 ## [1.4.1] - 2026-10-05
 
 ### Fixed
