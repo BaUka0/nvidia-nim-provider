@@ -201,6 +201,69 @@ describe("applyReasoningMode", () => {
     });
   });
 
+  it("maps Nemotron 3 Nano Omni modes to fixed reasoning_budget values", () => {
+    const adapter = getModelAdapter("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning");
+    const request: NimChatRequest = {
+      model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+      messages: [],
+      max_tokens: 65536,
+    };
+
+    expect(adapter).not.toBe(getModelAdapter("nvidia/nemotron-3.5-lightning-30b-a3b"));
+    expect(adapter.supportedReasoningModes).toEqual(["none", "medium", "high", "xhigh"]);
+    expect(adapter.defaultReasoningMode).toBeUndefined();
+    const profile = adapter.getProfile({ toolsEnabled: true });
+    expect(profile.defaultTemperature).toBe(0.6);
+    expect(profile.toolTemperature).toBe(0.6);
+    expect(profile.defaultTopP).toBe(0.95);
+    expect(profile.maxTemperature).toBe(2);
+    expect(profile.parallelToolCalls).toBeUndefined();
+
+    adapter.applyReasoningMode!(request, "medium");
+    expect(request.chat_template_kwargs).toEqual({ enable_thinking: true, reasoning_budget: 8192 });
+    adapter.applyReasoningMode!(request, "high");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      reasoning_budget: 16384,
+    });
+    adapter.applyReasoningMode!(request, "xhigh");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      reasoning_budget: 32768,
+    });
+    adapter.applyReasoningMode!(request, "none");
+    expect(request.chat_template_kwargs).toEqual({ enable_thinking: false });
+    expect(request.reasoning_effort).toBeUndefined();
+
+    // Unsupported picker values map onto the closest supported mode.
+    adapter.applyReasoningMode!(request, "max");
+    expect(request.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      reasoning_budget: 32768,
+    });
+    adapter.applyReasoningMode!(request, "low");
+    expect(request.chat_template_kwargs).toEqual({ enable_thinking: true, reasoning_budget: 8192 });
+  });
+
+  it("caps Nemotron 3 Nano Omni reasoning_budget at half of max_tokens", () => {
+    const adapter = getModelAdapter("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning");
+    const request: NimChatRequest = {
+      model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+      messages: [],
+      max_tokens: 12000,
+    };
+
+    adapter.applyReasoningMode!(request, "medium");
+    expect(request.chat_template_kwargs).toEqual({ enable_thinking: true, reasoning_budget: 6000 });
+    adapter.applyReasoningMode!(request, "xhigh");
+    expect(request.chat_template_kwargs).toEqual({ enable_thinking: true, reasoning_budget: 6000 });
+
+    // A zero budget turns thinking off instead of sending an empty budget.
+    request.max_tokens = 1;
+    adapter.applyReasoningMode!(request, "high");
+    expect(request.chat_template_kwargs).toEqual({ enable_thinking: false });
+  });
+
   it("maps Nemotron 3 Super reasoning modes to chat_template_kwargs (enable_thinking, low_effort)", () => {
     const adapter = getModelAdapter("nvidia/nemotron-3-super-120b-a12b");
     const request: NimChatRequest = {

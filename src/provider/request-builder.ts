@@ -212,16 +212,27 @@ export class NimRequestBuilder {
       typeof body.max_tokens === "number" && body.max_tokens > 0
         ? body.max_tokens
         : options.requestedMaxTokens;
-    return {
-      ...body,
-      max_tokens: this.calculateRequestedMaxTokens({
-        requestedMaxTokens: currentMaxTokens,
-        modelMaxOutputTokens: options.modelMaxOutputTokens,
-        contextWindow: options.effectiveContextWindow,
-        inputTokenCount: payloadInputTokenCount,
-        safetyMarginPercent: options.safetyMarginPercent,
-      }),
-    };
+    const maxTokens = this.calculateRequestedMaxTokens({
+      requestedMaxTokens: currentMaxTokens,
+      modelMaxOutputTokens: options.modelMaxOutputTokens,
+      contextWindow: options.effectiveContextWindow,
+      inputTokenCount: payloadInputTokenCount,
+      safetyMarginPercent: options.safetyMarginPercent,
+    });
+    // Hosted NIM lets a reasoning_budget at or above max_tokens override the
+    // output cap, so a shrunken retry budget must shrink the reasoning budget too.
+    const reasoningBudget = body.chat_template_kwargs?.reasoning_budget;
+    if (typeof reasoningBudget === "number" && reasoningBudget >= maxTokens) {
+      return {
+        ...body,
+        max_tokens: maxTokens,
+        chat_template_kwargs: {
+          ...body.chat_template_kwargs,
+          reasoning_budget: Math.floor(maxTokens / 2),
+        },
+      };
+    }
+    return { ...body, max_tokens: maxTokens };
   }
 
   public static hasImageInput(messages: readonly vscode.LanguageModelChatMessage[]): boolean {

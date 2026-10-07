@@ -30,6 +30,7 @@ export type CatalogAdapterId =
   | "nemotron"
   | "nemotron-super"
   | "nemotron-lightning"
+  | "nemotron-omni"
   | "muse-glimmer"
   | "glm";
 
@@ -73,6 +74,14 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: false,
     adapter: "nemotron-lightning",
+  },
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": {
+    displayName: "Nemotron 3 Nano Omni 30B",
+    contextWindow: 262144,
+    maxOutputTokens: 65536,
+    supportsTools: true,
+    supportsVision: true,
+    adapter: "nemotron-omni",
   },
   "meta/muse-glimmer-30b": {
     displayName: "Muse Glimmer",

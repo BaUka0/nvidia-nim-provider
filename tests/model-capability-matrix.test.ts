@@ -171,6 +171,35 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "think",
   },
   {
+    modelId: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    reasoningModes: ["none", "medium", "high", "xhigh"],
+    reasoningCases: [
+      { mode: "none", expectedFields: { chat_template_kwargs: { enable_thinking: false } } },
+      {
+        mode: "medium",
+        expectedFields: { chat_template_kwargs: { enable_thinking: true, reasoning_budget: 8192 } },
+      },
+      {
+        mode: "high",
+        expectedFields: {
+          chat_template_kwargs: { enable_thinking: true, reasoning_budget: 16384 },
+        },
+      },
+      {
+        mode: "xhigh",
+        expectedFields: {
+          chat_template_kwargs: { enable_thinking: true, reasoning_budget: 32768 },
+        },
+      },
+    ],
+    reasoningParameterFormat: "chat_template_kwargs",
+    toolCallProtocol: "native-and-text",
+    reasoningRouting: "isolated",
+    contentOnlyMode: "none",
+    contentOnlyRouting: "text",
+    thinkTag: "think",
+  },
+  {
     modelId: "meta/muse-glimmer-30b",
     reasoningModes: ["none", "minimal", "low", "medium", "high", "max"],
     reasoningCases: [

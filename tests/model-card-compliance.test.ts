@@ -109,6 +109,7 @@ describe("NVIDIA model card compliance", () => {
     "nvidia/nemotron-3-super-120b-a12b",
     "nvidia/nemotron-3-ultra-550b-a55b",
     "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
   ])("%s never sends force_nonempty_content", async (modelId) => {
     const withTools = await prepare(modelId, { tools: true });
     const withoutTools = await prepare(modelId);
@@ -117,6 +118,30 @@ describe("NVIDIA model card compliance", () => {
     expect(withoutTools.requestBody.chat_template_kwargs).not.toHaveProperty(
       "force_nonempty_content",
     );
+  });
+
+  it("uses the documented Nemotron 3 Nano Omni limits and thinking-mode sampling", async () => {
+    const id = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning";
+    expect(MODEL_LIST[id]).toMatchObject({
+      contextWindow: 262144,
+      maxOutputTokens: 65536,
+      supportsTools: true,
+      supportsVision: true,
+    });
+
+    const prepared = await prepare(id);
+    expect(prepared.requestBody.temperature).toBe(0.6);
+    expect(prepared.requestBody.top_p).toBe(0.95);
+    // Thinking is always sent explicitly, with the NVIDIA default 16384 budget at High.
+    expect(prepared.requestBody.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      reasoning_budget: 16384,
+    });
+
+    const warm = await prepare(id, { temperature: 1.7 });
+    expect(warm.requestBody.temperature).toBe(1.7);
+    const tooHot = await prepare(id, { temperature: 3 });
+    expect(tooHot.requestBody.temperature).toBe(2);
   });
 
   it("keeps the calibrated 0.6 tool temperature on Nemotron", async () => {

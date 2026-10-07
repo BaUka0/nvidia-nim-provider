@@ -16,6 +16,7 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 | **Muse Glimmer** | `Muse Glimmer` | **17** | 131,072 | 32,768 | `None` to `Max` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
 | **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **13** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; default text fallback and summarizer |
 | **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **13** | 1,000,000 | 32,768 | `None`, `Low`, `High` | No | Workhorse for everyday coding |
+| **Nemotron 3 Nano Omni 30B** | `Nemotron 3 Nano Omni 30B` | — | 262,144 | 65,536 | `None`, `Medium`, `High`, `XHigh` | Yes | Fast, light model for screenshots, documents and charts; English only |
 
 Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`).
 
@@ -30,6 +31,8 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 **Nemotron 3 Super 120B.** MoE reasoning model for everyday coding, 1M context, up to 32,768 output tokens. Reasoning: `None` (standard), `Low` (quick pass), `High` (thorough). NVIDIA briefly retired it on October 3, 2026 and restored it the next day, so it is not used as a default.
 
 **Nemotron 3.5 Lightning 30B.** Default text fallback and summarization model. Compact 30B/3B-active MoE for fast agentic turns. 1M context, up to 32,768 output tokens. Reasoning: `None`, `Medium`, `High`, `XHigh`; defaults to `Medium` because reasoning shares the answer's token budget. Text-only; vision requests fail over to `fallback.visionModel`.
+
+**Nemotron 3 Nano Omni 30B.** Compact 30B/3B-active multimodal model for screenshots, scanned documents, charts and GUI images. 262,144-token context, up to 65,536 output tokens, tool calling. Reasoning: `None`, `Medium`, `High`, `XHigh`, which cap thinking at about 8K, 16K and 32K tokens; the cap never exceeds half of the answer budget, so a long reply always has room. NVIDIA tunes it for English only. Copilot Chat sends it text and images; the model's audio and video input is not used. Not ranked in the Artificial Analysis index yet.
 
 **Kimi K3.** Always reasons; the effort is `Low`, `High`, or `Max`.
 

@@ -2,6 +2,17 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Added
+
+- **Nemotron 3 Nano Omni 30B (`src/models/catalog.ts`, `src/models/adapters/nemotron-omni.ts`, `src/models/adapters/index.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`).** `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`: 262,144 context (model card: up to 256K; live-probed), 65,536 output (documented `max_tokens` maximum), tools, vision. `NemotronOmniAdapter` extends `NemotronFamilyAdapter` (tool temperature 0.6, top_p 0.95) with `defaultTemperature` 0.6 (card thinking-mode range 0.5-0.7) and `maxTemperature` 2 (reference range 0-2). Modes `none` / `medium` / `high` / `xhigh` send `chat_template_kwargs.enable_thinking` plus a fixed `reasoning_budget` of 8192 / 16384 / 32768 (16384 is the NVIDIA default, 32768 the documented max), capped at `floor(max_tokens / 2)`; `none` or a zero budget sends `enable_thinking: false` without a budget. Registered under `nemotron-omni` and in the family list ahead of the generic Nemotron regex. `sync:manifest` added the id to the `fallback.model`, `fallback.priorityList`, `context.summarizationModel` and `fallback.visionModel` enums and bumped `MODELS_CACHE_VERSION` to 25. README, `docs/models.md` and the bug report template list the model.
+- **Live probes (2026-10-05).** Hosted streaming splits reasoning into `reasoning_content`; `enable_thinking: false` returns content only (with a leading `\n`). Native `tool_calls` stream with `finish_reason: tool_calls`, including parallel calls, `tool_choice: "required"`, and tool-result round trips with `content: ""` or `null`. `image_url` data URIs work, two images per message included. `reasoning_budget` is enforced both top-level and in `chat_template_kwargs` (64 cut reasoning to ~140 chars). `low_effort` / `medium_effort` / `reasoning_effort` are accepted and ignored. `max_tokens` is not validated (65,537 and 131,072 accepted). A request without `chat_template_kwargs` once returned the reasoning trace duplicated into `content` ending in `<unk>` runs, so the adapter always sends `enable_thinking`. The endpoint is often saturated: `ResourceExhausted: Worker local total request limit reached (16/16)` arrives as HTTP 503 or as an in-stream `{"error":{...,"code":500}}` after HTTP 200; the latter maps to `server_error`, is retried as transient, then fails over. `npm run probe:context:262k` accepted 262,143 prompt tokens with `max_tokens: 1` (HTTP 200), confirming the 262,144 window.
+
+### Fixed
+
+- **Retry budget shrinks `reasoning_budget` (`src/provider/request-builder.ts`).** Hosted NIM lets a `reasoning_budget` above `max_tokens` override the output cap (budget 4096 with `max_tokens: 512` returned 3839 completion tokens on Omni). `NimRequestBuilder.applyRequestBudget` now sets `chat_template_kwargs.reasoning_budget` to `floor(max_tokens / 2)` when the recalculated retry `max_tokens` is at or below it, so a retry near the context limit cannot overrun the window. Applies to Lightning too.
+
 ## [1.4.1] - 2026-10-05
 
 ### Fixed

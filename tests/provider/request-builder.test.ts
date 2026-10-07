@@ -207,6 +207,48 @@ describe("NimRequestBuilder context accounting", () => {
   });
 });
 
+describe("NimRequestBuilder.applyRequestBudget", () => {
+  const budgetOptions = {
+    effectiveContextWindow: 10_000,
+    modelMaxOutputTokens: 65_536,
+    requestedMaxTokens: 65_536,
+    safetyMarginPercent: 1,
+  };
+
+  it("shrinks reasoning_budget when a retry leaves max_tokens at or below it", () => {
+    const body = NimRequestBuilder.applyRequestBudget(
+      {
+        model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        messages: [{ role: "user", content: "x ".repeat(8_000) }],
+        max_tokens: 8_000,
+        chat_template_kwargs: { enable_thinking: true, reasoning_budget: 4_000 },
+      },
+      budgetOptions,
+    );
+
+    expect(body.max_tokens).toBeLessThanOrEqual(4_000);
+    expect(body.chat_template_kwargs).toEqual({
+      enable_thinking: true,
+      reasoning_budget: Math.floor(body.max_tokens! / 2),
+    });
+  });
+
+  it("keeps reasoning_budget when it still fits under max_tokens", () => {
+    const body = NimRequestBuilder.applyRequestBudget(
+      {
+        model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        messages: [{ role: "user", content: "hello" }],
+        max_tokens: 8_000,
+        chat_template_kwargs: { enable_thinking: true, reasoning_budget: 4_000 },
+      },
+      { ...budgetOptions, effectiveContextWindow: 100_000 },
+    );
+
+    expect(body.max_tokens).toBe(8_000);
+    expect(body.chat_template_kwargs).toEqual({ enable_thinking: true, reasoning_budget: 4_000 });
+  });
+});
+
 describe("NimRequestBuilder.convertMessagesWithProfile", () => {
   const customAdapter = {
     ...getModelAdapter("deepseek-ai/deepseek-v4-flash-0731"),

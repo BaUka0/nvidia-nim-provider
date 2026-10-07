@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Added
+
+- Nemotron 3 Nano Omni 30B in the model picker: a fast, light model that reads screenshots, scanned documents and charts as well as text. It has a 256K context window, calls tools in agent mode, and offers None, Medium, High and XHigh reasoning (High by default). It is tuned for English. You can also pick it as the image backup model with `nvidia-nim.fallback.visionModel` in the Settings UI or `settings.json`.
+
 ## [1.4.1] - 2026-10-05
 
 ### Fixed
