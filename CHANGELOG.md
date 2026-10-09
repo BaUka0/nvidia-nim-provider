@@ -17,6 +17,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - When a reply stalls or gets cut off while the model is still thinking, the model now picks up from the end of its own reasoning. Before, it never saw that reasoning, started the whole think over, and on slow models with a high reasoning level this could repeat until the turn came back empty and moved to another model. The same applies when a model finishes thinking without an answer or a tool call.
 - The extension's internal recovery messages no longer contain bracketed tags such as `[NIM_LOOP_BREAKER]`. Models read those tags and sometimes discussed them in their reasoning instead of continuing the task.
 - When a model's thinking starts repeating itself and is stopped, it now gets a short instruction to move on rather than being told to continue output it never wrote.
+- When an NVIDIA NIM model is at capacity ("ResourceExhausted"), the request moves to your backup model right away instead of retrying the busy model for several seconds first. The busy model is then skipped for two minutes, so the following turns in an agent session do not wait on it again.
 
 ## [1.4.1] - 2026-10-05
 

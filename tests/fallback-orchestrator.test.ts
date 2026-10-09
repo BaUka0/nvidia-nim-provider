@@ -286,6 +286,13 @@ describe("fallbackCapacityLabel", () => {
     );
     expect(
       fallbackCapacityLabel(
+        new NvidiaApiError("rate_limited", "ResourceExhausted: Worker local total request limit", {
+          status: 500,
+        }),
+      ),
+    ).toBe("Overloaded");
+    expect(
+      fallbackCapacityLabel(
         new NvidiaApiError("empty_stream", "no content", { operation: "invalid_tool_call" }),
       ),
     ).toBe("Invalid tool call");

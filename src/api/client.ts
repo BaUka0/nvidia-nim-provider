@@ -19,7 +19,12 @@ import {
   NimChatRequest,
   NimStreamResponse,
 } from "../types";
-import { classifyApiError, isRetryableApiStatus, NvidiaApiError } from "./errors";
+import {
+  classifyApiError,
+  isModelCapacityDetail,
+  isRetryableApiStatus,
+  NvidiaApiError,
+} from "./errors";
 
 /**
  * Read Retry-After header value (seconds or HTTP-date) if present.
@@ -295,8 +300,9 @@ async function readResponseDetail(response: Response): Promise<string | undefine
 async function classifyResponseError(
   response: Response,
   context: { operation: string; model?: string },
+  readDetail?: string,
 ): Promise<Error> {
-  const detail = await readResponseDetail(response);
+  const detail = readDetail ?? (await readResponseDetail(response));
   return classifyApiError(new Error(`HTTP ${response.status} ${response.statusText}`), {
     ...context,
     status: response.status,
@@ -324,6 +330,12 @@ export async function fetchWithRetry(
       if (response.ok || !isRetryableApiStatus(response.status)) {
         return response;
       }
+      // A saturated model answers 503 ResourceExhausted; retrying the same
+      // pool only delays failover, so surface it at once.
+      const peekedDetail = response.status === 503 ? await readResponseDetail(response) : undefined;
+      if (isModelCapacityDetail(peekedDetail)) {
+        throw await classifyResponseError(response, classificationContext, peekedDetail);
+      }
       if (i < maxRetries - 1) {
         lastError = new Error(`HTTP ${response.status} ${response.statusText}`);
         await discardResponseBody(response);
@@ -335,7 +347,7 @@ export async function fetchWithRetry(
         );
         await waitForRetry(delay, signal);
       } else {
-        throw await classifyResponseError(response, classificationContext);
+        throw await classifyResponseError(response, classificationContext, peekedDetail);
       }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { LanguageModelChatInformation } from "vscode";
 import { copyModelKeyBinding } from "../api/key-resolver";
-import { isFirstTokenTimeout, NvidiaApiError } from "../api/errors";
+import { isFirstTokenTimeout, isModelCapacityError, NvidiaApiError } from "../api/errors";
 import { calculateSafetyMargin, FallbackConfig } from "../shared/config";
 import { DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 import { NormalizedNvidiaModel } from "../models/catalog";
@@ -125,7 +125,7 @@ export function fallbackCapacityLabel(err: NvidiaApiError): string {
   if (err.kind === "context_overflow" || err.kind === "token_limit") {
     return "Context overflow";
   }
-  if (err.status === 529) {
+  if (err.status === 529 || isModelCapacityError(err)) {
     return "Overloaded";
   }
   return "Rate limited";

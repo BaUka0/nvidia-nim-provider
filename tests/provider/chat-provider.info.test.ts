@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import { fetchModelsOrThrow, streamChatCompletion } from "../../src/api/client";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../../src/api/key-resolver";
-import { NimChatModelProvider } from "../../src/provider/chat-provider";
-import { NvidiaApiError } from "../../src/api/errors";
+import { MODEL_CAPACITY_COOLDOWN_MS, NimChatModelProvider } from "../../src/provider/chat-provider";
+import { classifyApiError, NvidiaApiError } from "../../src/api/errors";
 import { MODELS_CACHE_VERSION } from "../../src/shared/constants";
 import {
   asRuntimeInfoCache,
@@ -1117,6 +1117,104 @@ describe("NimChatModelProvider", () => {
         (call: unknown[]) => (call[1] as { model: string }).model,
       );
       expect(requestedModels).toEqual(["z-ai/glm-5.3", LIGHTNING, "z-ai/glm-5.3"]);
+    });
+  });
+
+  describe("models at capacity (ResourceExhausted)", () => {
+    const LIGHTNING = "nvidia/nemotron-3.5-lightning-30b-a3b";
+    const glm = makeModel({
+      id: "z-ai/glm-5.3",
+      name: "GLM 5.3",
+      maxInputTokens: 900000,
+      maxOutputTokens: 65536,
+    });
+    const answer = async function* () {
+      yield { choices: [{ delta: { content: "ok" } }] };
+    };
+    const exhausted = async function* () {
+      throw classifyApiError(new Error("HTTP 500 Internal Server Error"), {
+        status: 500,
+        model: "z-ai/glm-5.3",
+        operation: "stream",
+        detail:
+          '{"message":"ResourceExhausted: Worker local total request limit reached (16/16)","type":"internal_server_error","code":500}',
+      });
+    };
+    const requestedModels = () =>
+      (streamChatCompletion as jest.Mock).mock.calls.map(
+        (call: unknown[]) => (call[1] as { model: string }).model,
+      );
+    const send = (prompt: string, progress = { report: jest.fn() }) =>
+      provider.provideLanguageModelChatResponse(
+        glm,
+        makeUserMessages(prompt),
+        makeChatOptions(),
+        progress,
+        makeToken(),
+      );
+    const useFallbackEnabled = (enabled: boolean) =>
+      (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+        get: jest.fn((key: string, defaultValue: unknown) =>
+          key === "fallback.enabled" ? enabled : defaultValue,
+        ),
+      }));
+
+    beforeEach(() => {
+      (globalState.get as jest.Mock).mockReturnValue(undefined);
+      (globalState.update as jest.Mock).mockResolvedValue(undefined);
+      (secrets.get as jest.Mock).mockResolvedValue("test-key");
+      (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
+        { id: "z-ai/glm-5.3", object: "model", owned_by: "integrate.api.nvidia.com" },
+        { id: LIGHTNING, object: "model", owned_by: "integrate.api.nvidia.com" },
+      ]);
+      useFallbackEnabled(true);
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+      (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+        get: jest.fn((_key: string, defaultValue: unknown) => defaultValue),
+      }));
+    });
+
+    it("falls back at once and skips the model on the next turns until the cooldown ends", async () => {
+      let now = 1_000_000;
+      jest.spyOn(Date, "now").mockImplementation(() => now);
+      (streamChatCompletion as jest.Mock)
+        .mockImplementationOnce(() => exhausted())
+        .mockImplementation(() => answer());
+
+      await send("Hi");
+      expect(requestedModels()).toEqual(["z-ai/glm-5.3", LIGHTNING]);
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        "Overloaded on GLM 5.3. Falling back to Nemotron 3.5 Lightning 30B.",
+      );
+
+      now += MODEL_CAPACITY_COOLDOWN_MS - 1000;
+      const second = { report: jest.fn() };
+      await send("Again", second);
+      expect(requestedModels()).toEqual(["z-ai/glm-5.3", LIGHTNING, LIGHTNING]);
+      expect(
+        second.report.mock.calls.some((c: unknown[]) =>
+          String((c[0] as { value?: unknown })?.value ?? "").includes("Overloaded on *GLM 5.3*"),
+        ),
+      ).toBe(true);
+
+      now += 2000;
+      await send("Later");
+      expect(requestedModels()).toEqual(["z-ai/glm-5.3", LIGHTNING, LIGHTNING, "z-ai/glm-5.3"]);
+    });
+
+    it("keeps calling the picked model when failover is off", async () => {
+      useFallbackEnabled(false);
+      (streamChatCompletion as jest.Mock)
+        .mockImplementationOnce(() => exhausted())
+        .mockImplementation(() => answer());
+
+      await expect(send("Hi")).rejects.toMatchObject({ kind: "rate_limited" });
+      await send("Again");
+
+      expect(requestedModels()).toEqual(["z-ai/glm-5.3", "z-ai/glm-5.3"]);
     });
   });
 });

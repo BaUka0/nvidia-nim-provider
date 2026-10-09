@@ -34,7 +34,12 @@ import {
   NvidiaLanguageModelChatInformation,
 } from "../models/discovery";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver";
-import { classifyApiError, createStructuredError, NvidiaApiError } from "../api/errors";
+import {
+  classifyApiError,
+  createStructuredError,
+  isModelCapacityError,
+  NvidiaApiError,
+} from "../api/errors";
 import { NimRequestBuilder } from "./request-builder";
 import { ContextLimitStore } from "./context-limit-store";
 import {
@@ -160,6 +165,27 @@ function createRetiredModelError(model: LanguageModelChatInformation): NvidiaApi
   );
 }
 
+/** Marks the synthetic error raised for a model still cooling down after ResourceExhausted. */
+const SATURATED_MODEL_OPERATION = "saturated_model";
+
+/**
+ * How long a model that answered ResourceExhausted is skipped while failover
+ * is on. NIM worker pools stayed full for minutes in practice, and every
+ * skipped turn saves a request that would only fail.
+ */
+export const MODEL_CAPACITY_COOLDOWN_MS = 2 * 60 * 1000;
+
+function createSaturatedModelError(
+  model: LanguageModelChatInformation,
+  remainingMs: number,
+): NvidiaApiError {
+  return createStructuredError(
+    "rate_limited",
+    `NVIDIA NIM model "${model.id}" answered ResourceExhausted (all workers busy) less than ${Math.round(MODEL_CAPACITY_COOLDOWN_MS / 60000)} minutes ago. It is skipped for another ${Math.ceil(remainingMs / 1000)}s.`,
+    { model: model.id, operation: SATURATED_MODEL_OPERATION },
+  );
+}
+
 export class NimChatModelProvider implements LanguageModelChatProvider {
   private readonly discoveryService: NvidiaModelDiscoveryService;
   /**
@@ -168,6 +194,8 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
    * and hidden from the picker until VS Code restarts.
    */
   private readonly retiredModelIds = new Set<string>();
+  /** Model id -> time until which it is skipped after answering ResourceExhausted. */
+  private readonly saturatedModelUntil = new Map<string, number>();
   private readonly apiKeyResolver: NvidiaApiKeyResolver;
   private readonly turnExecutor: ModelTurnExecutor;
   private readonly runtimeInfoCache = new BoundedMap<string, ChatRuntimeInfo>(
@@ -223,6 +251,28 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       `${modelId} returned HTTP 410 (end of life). Skipping it for the rest of this session and hiding it from the model picker.`,
     );
     this._onDidChangeLanguageModelChatInformation.fire();
+  }
+
+  private markModelSaturated(modelId: string): void {
+    this.saturatedModelUntil.set(modelId, Date.now() + MODEL_CAPACITY_COOLDOWN_MS);
+    outputLog(
+      "fallback",
+      `${modelId} is at capacity (ResourceExhausted). Skipping it for ${MODEL_CAPACITY_COOLDOWN_MS / 1000}s while failover is on.`,
+    );
+  }
+
+  /** Remaining cooldown for a saturated model, or 0 once it may be called again. */
+  private saturatedCooldownMs(modelId: string): number {
+    const until = this.saturatedModelUntil.get(modelId);
+    if (until === undefined) {
+      return 0;
+    }
+    const remaining = until - Date.now();
+    if (remaining <= 0) {
+      this.saturatedModelUntil.delete(modelId);
+      return 0;
+    }
+    return remaining;
   }
 
   private withoutRetiredModels<T extends { id: string }>(models: readonly T[]): T[] {
@@ -461,6 +511,15 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           if (this.retiredModelIds.has(currentModel.id)) {
             throw createRetiredModelError(currentModel);
           }
+          // Skip a saturated model only on the first pass of the chain: after
+          // a restart every candidate gets a real request again.
+          const saturatedMs =
+            nimConfig.fallback.enabled && chainState.chainRestarts === 0
+              ? this.saturatedCooldownMs(currentModel.id)
+              : 0;
+          if (saturatedMs > 0) {
+            throw createSaturatedModelError(currentModel, saturatedMs);
+          }
           const apiKey = await this.ensureApiKey(currentModel);
           if (!apiKey) {
             const message = buildMissingApiKeyFallback();
@@ -506,6 +565,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             err.status === 410
           ) {
             this.markModelRetired(currentModel.id);
+          }
+          if (
+            err instanceof NvidiaApiError &&
+            err.operation !== SATURATED_MODEL_OPERATION &&
+            isModelCapacityError(err)
+          ) {
+            this.markModelSaturated(currentModel.id);
           }
           const fallbackConfig = nimConfig.fallback;
           const priorDepth = chainState.depth;
