@@ -31,6 +31,7 @@ import {
 import { ToolCallStreamAggregator } from "./tool-call-aggregator";
 
 const MAX_TRACKED_VISIBLE_CHARS = 8192;
+const MAX_TRACKED_REASONING_CHARS = 8192;
 
 export type NimStreamUsage = {
   prompt_tokens?: number;
@@ -71,6 +72,11 @@ export interface StreamAttemptResult {
   lastFinishReason: string | null | undefined;
   lastUsage: NimStreamUsage | undefined;
   lastVisibleText: string;
+  /**
+   * Trailing reasoning text of this attempt. Lets a retry after a stall or a
+   * reasoning-only reply hand the model its own think instead of a blank nudge.
+   */
+  lastReasoningText: string;
   skippedToolCalls: SkippedToolCall[];
   repetitionTripped: boolean;
   trippedLine?: string;
@@ -114,6 +120,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   let firstToolCallAtMs: number | undefined;
   let lastUsage: NimStreamUsage | undefined;
   let lastVisibleText = "";
+  let lastReasoningText = "";
   let toolCallLoopKey: string | undefined;
   let toolParsingStateInitDurationMs: number | undefined;
   let timedOut = false;
@@ -315,6 +322,10 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     }
     sawReasoning = true;
     markFirstResponse();
+    lastReasoningText += text;
+    if (lastReasoningText.length > MAX_TRACKED_REASONING_CHARS) {
+      lastReasoningText = lastReasoningText.slice(-MAX_TRACKED_REASONING_CHARS);
+    }
     let crossedThreshold = false;
     if (!reasoningGuard.tripped) {
       crossedThreshold = reasoningGuard.add(text);
@@ -681,6 +692,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     lastFinishReason,
     lastUsage,
     lastVisibleText,
+    lastReasoningText,
     skippedToolCalls,
     repetitionTripped: repetitionGuard.tripped || reasoningGuard.tripped,
     trippedLine: repetitionGuard.trippedLine ?? reasoningGuard.trippedLine,

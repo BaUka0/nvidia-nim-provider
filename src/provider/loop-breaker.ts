@@ -152,13 +152,13 @@ export function detectToolCallHistoryLoop(
   return lastCall.key;
 }
 
-/**
- * Stable marker embedded in inter-turn loop-breaker messages so duplicate
- * injection can be detected exactly (a fragile substring prefix would both
- * false-positive on natural text and miss previously injected breakers).
+/*
+ * Breaker and nudge text goes to the model verbatim, so it carries no internal
+ * tags: a bracketed marker was read by the model as part of the instruction
+ * and discussed in its reasoning (#34). Injected turns live only in the HTTP
+ * body and never come back in Copilot history, so repeat injection is tracked
+ * in `recentInjectedLoops` instead of by scanning messages for a marker.
  */
-export const LOOP_BREAKER_MARKER = "[NIM_LOOP_BREAKER]";
-export const LOOP_BREAKER_ESCALATION_MARKER = "[NIM_LOOP_BREAKER_GO]";
 
 export type LoopBreakerNudgeReason =
   | "repetition_loop"
@@ -192,8 +192,72 @@ const LOOP_BREAKER_NUDGES: Record<LoopBreakerNudgeReason, string> = {
 const HISTORY_LOOP_ESCALATION_NUDGE =
   "The same loop is still going after the previous correction. Continue working. Change the tool or arguments, or proceed with the next step. Do not repeat the previous preamble or tool call.";
 
-export function buildLoopBreakerNudge(reason: LoopBreakerNudgeReason): NimChatMessage {
-  return { role: "user", content: `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_NUDGES[reason]}` };
+/**
+ * Nudges for an attempt that streamed reasoning but no visible text. Only
+ * visible text is carried into the retry, so the generic "continue from where
+ * you left off" points at nothing; these hand the model its reasoning tail.
+ */
+const REASONING_TAIL_NUDGES: Partial<Record<LoopBreakerNudgeReason, string>> = {
+  stream_timeout:
+    "Your previous reply stalled while you were still reasoning, before any answer or tool call.",
+  stream_dropped:
+    "The connection dropped while you were still reasoning, before any answer or tool call.",
+  output_truncated:
+    "Your previous reply hit the output token limit while you were still reasoning, before any answer or tool call.",
+  reasoning_only: "Your previous reply contained only reasoning, with no answer and no tool call.",
+};
+
+/** Retry after the reasoning guard stopped a looping think with no visible text. */
+const REASONING_LOOP_NUDGE =
+  "Your previous reasoning started repeating itself and was stopped. Do not go over the same points again. Call the next required tool or write the answer.";
+
+/** Upper bound on the reasoning tail quoted back into a retry nudge. */
+export const MAX_NUDGE_REASONING_TAIL_CHARS = 4000;
+
+export interface LoopBreakerNudgeContext {
+  /**
+   * Reasoning the failed attempt streamed when it produced no visible text
+   * and no tool call. Ignored for reasons that do not resume a stopped think.
+   */
+  reasoningTail?: string;
+  /** The repetition guard tripped inside reasoning, before any visible text. */
+  reasoningLoop?: boolean;
+}
+
+function trimReasoningTail(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= MAX_NUDGE_REASONING_TAIL_CHARS) {
+    return trimmed;
+  }
+  let tail = trimmed.slice(-MAX_NUDGE_REASONING_TAIL_CHARS);
+  const code = tail.charCodeAt(0);
+  if (code >= 0xdc00 && code <= 0xdfff) {
+    tail = tail.slice(1);
+  }
+  // Start at a word boundary so the quote does not open mid-token.
+  const firstSpace = tail.search(/\s/);
+  if (firstSpace > 0 && firstSpace < 80) {
+    tail = tail.slice(firstSpace + 1);
+  }
+  return `…${tail.trimStart()}`;
+}
+
+export function buildLoopBreakerNudge(
+  reason: LoopBreakerNudgeReason,
+  context: LoopBreakerNudgeContext = {},
+): NimChatMessage {
+  if (reason === "repetition_loop" && context.reasoningLoop) {
+    return { role: "user", content: REASONING_LOOP_NUDGE };
+  }
+  const tailLead = REASONING_TAIL_NUDGES[reason];
+  const tail = context.reasoningTail ? trimReasoningTail(context.reasoningTail) : "";
+  if (tailLead && tail) {
+    return {
+      role: "user",
+      content: `${tailLead} Your reasoning so far ended with:\n\n${tail}\n\nPick up from there without restarting the analysis: call the next required tool or write the answer.`,
+    };
+  }
+  return { role: "user", content: LOOP_BREAKER_NUDGES[reason] };
 }
 
 /**
@@ -205,56 +269,6 @@ export function buildToolCallLoopNotice(toolName: string | undefined, limit: num
   const tool = toolName ? `\`${toolName}\`` : "The same tool call";
   const times = `${limit} time${limit === 1 ? "" : "s"}`;
   return `> **NVIDIA NIM:** Stopped a repeated tool call. ${tool} already ran ${times} with the same arguments in this task, and the model kept asking for it again. Send a new message to continue.\n\n`;
-}
-
-/** Return the textual content of a message part, if any. */
-function partTextValue(part: unknown): string | undefined {
-  if (typeof part === "string") {
-    return part;
-  }
-  if (part && typeof part === "object") {
-    const p = part as { value?: unknown; text?: unknown };
-    if (typeof p.value === "string") return p.value;
-    if (typeof p.text === "string") return p.text;
-  }
-  return undefined;
-}
-
-function messagesContainMarker(
-  requestMessages: readonly { role: string; content: unknown }[],
-  historyMessages: readonly { content: readonly unknown[] }[],
-  marker: string,
-): boolean {
-  for (const m of requestMessages) {
-    if (typeof m.content === "string" && m.content.includes(marker)) {
-      return true;
-    }
-  }
-  for (const m of historyMessages) {
-    for (const part of m.content) {
-      const text = partTextValue(part);
-      if (text && text.includes(marker)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-/** True when a loop-breaker message is already present in the request or history. */
-export function hasLoopBreaker(
-  requestMessages: readonly { role: string; content: unknown }[],
-  historyMessages: readonly { content: readonly unknown[] }[],
-): boolean {
-  return messagesContainMarker(requestMessages, historyMessages, LOOP_BREAKER_MARKER);
-}
-
-/** True when the stronger follow-up breaker has already been injected. */
-export function hasEscalatedLoopBreaker(
-  requestMessages: readonly { role: string; content: unknown }[],
-  historyMessages: readonly { content: readonly unknown[] }[],
-): boolean {
-  return messagesContainMarker(requestMessages, historyMessages, LOOP_BREAKER_ESCALATION_MARKER);
 }
 
 export function buildHistoryLoopBreakerContent(
@@ -277,15 +291,15 @@ export function buildHistoryLoopBreakerContent(
   if (breakerNotices.length === 0) {
     return undefined;
   }
-  return `${LOOP_BREAKER_MARKER} ${breakerNotices.join(" ")}`;
+  return breakerNotices.join(" ");
 }
 
 /**
  * Inject a loop-breaker user turn when recent history is repeating.
- * First detection injects the standard nudge; a still-looping transcript
- * with a breaker already present gets one escalation. Returns the original
- * body when no loop is detected, the escalation is already present, or the
- * extra turn would exceed the token budget. Never aborts the Copilot turn.
+ * First detection injects the standard nudge; a loop that persists into the
+ * next request gets one escalation. Returns the original body when no loop is
+ * detected, the escalation was already sent, or the extra turn would exceed
+ * the token budget. Never aborts the Copilot turn.
  */
 export function injectHistoryLoopBreaker(options: {
   requestBody: NimChatRequest;
@@ -309,20 +323,12 @@ export function injectHistoryLoopBreaker(options: {
 
   const loopKey = historyLoopTool ?? historyLoopPreamble ?? loopContent;
   const previousInjections = recentInjectedLoops.get(loopKey) ?? 0;
-  const hasEscalatedMarker = hasEscalatedLoopBreaker(
-    options.requestBody.messages,
-    options.historyMessages,
-  );
-  const hasMarker = hasLoopBreaker(options.requestBody.messages, options.historyMessages);
-
-  if (hasEscalatedMarker || (hasMarker && previousInjections >= 1) || previousInjections >= 2) {
+  if (previousInjections >= 2) {
     return options.requestBody;
   }
 
-  const escalate = hasMarker || previousInjections >= 1;
-  const breakerContent = escalate
-    ? `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_ESCALATION_MARKER} ${HISTORY_LOOP_ESCALATION_NUDGE}`
-    : loopContent;
+  const escalate = previousInjections >= 1;
+  const breakerContent = escalate ? HISTORY_LOOP_ESCALATION_NUDGE : loopContent;
 
   recentInjectedLoops.set(loopKey, previousInjections + 1);
 

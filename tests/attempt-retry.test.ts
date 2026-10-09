@@ -12,6 +12,7 @@ function result(overrides: Partial<StreamAttemptResult> = {}): StreamAttemptResu
     lastFinishReason: "stop",
     lastUsage: undefined,
     lastVisibleText: "",
+    lastReasoningText: "",
     skippedToolCalls: [],
     repetitionTripped: false,
     toolCallLoopTripped: false,

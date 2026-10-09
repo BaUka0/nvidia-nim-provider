@@ -1,6 +1,5 @@
 import {
-  LOOP_BREAKER_ESCALATION_MARKER,
-  LOOP_BREAKER_MARKER,
+  MAX_NUDGE_REASONING_TAIL_CHARS,
   buildLoopBreakerNudge,
   injectHistoryLoopBreaker,
   resetInjectedLoopsForTests,
@@ -32,7 +31,7 @@ describe("injectHistoryLoopBreaker", () => {
       modelId: "test-model",
       applyBudget: (body) => body,
     });
-    expect(result.messages.at(-1)?.content).toEqual(expect.stringContaining(LOOP_BREAKER_MARKER));
+    expect(result.messages.at(-1)?.content).toEqual(expect.stringContaining("repeated"));
   });
 
   it("drops the breaker only on token_limit", () => {
@@ -64,7 +63,7 @@ describe("injectHistoryLoopBreaker", () => {
       modelId: "test-model",
       applyBudget: (body) => body,
     });
-    expect(result.messages.at(-1)?.content).toEqual(expect.stringContaining(LOOP_BREAKER_MARKER));
+    expect(result.messages.at(-1)?.content).toEqual(expect.stringContaining("repeated"));
   });
 
   it("ignores fallback notice headers when checking for repeating preambles", () => {
@@ -124,56 +123,7 @@ describe("injectHistoryLoopBreaker", () => {
       modelId: "test-model",
       applyBudget: (body) => body,
     });
-    expect(result.messages.at(-1)?.content).toEqual(expect.stringContaining(LOOP_BREAKER_MARKER));
-  });
-
-  it("escalates when a breaker is already present after a hard loop", () => {
-    const requestBodyWithBreaker: NimChatRequest = {
-      model: "test",
-      messages: [{ role: "user", content: `${LOOP_BREAKER_MARKER} already` }],
-    };
-    const history = Array.from({ length: 4 }, () => ({
-      role: 2,
-      content: [{ value: "Let me fix the formatting issue:" }],
-    }));
-
-    const result = injectHistoryLoopBreaker({
-      requestBody: requestBodyWithBreaker,
-      historyMessages: history,
-      modelId: "test-model",
-      applyBudget: (body) => body,
-    });
-    expect(result.messages).toHaveLength(2);
-    expect(result.messages.at(-1)?.content).toEqual(
-      expect.stringContaining(LOOP_BREAKER_ESCALATION_MARKER),
-    );
-  });
-
-  it("does not stack a third breaker after escalation", () => {
-    const requestBodyWithEscalation: NimChatRequest = {
-      model: "test",
-      messages: [
-        {
-          role: "user",
-          content: `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_ESCALATION_MARKER} already`,
-        },
-      ],
-    };
-    const history = Array.from({ length: 4 }, () => ({
-      role: 2,
-      content: [{ value: "Let me fix the formatting issue:" }],
-    }));
-
-    const result = injectHistoryLoopBreaker({
-      requestBody: requestBodyWithEscalation,
-      historyMessages: history,
-      modelId: "test-model",
-      applyBudget: (body) => body,
-    });
-    expect(result.messages).toHaveLength(1);
-    expect(result.messages[0]?.content).toBe(
-      `${LOOP_BREAKER_MARKER} ${LOOP_BREAKER_ESCALATION_MARKER} already`,
-    );
+    expect(result.messages.at(-1)?.content).toEqual(expect.stringContaining("identical arguments"));
   });
 
   it("escalates automatically across sequential turns when the loop persists", () => {
@@ -194,10 +144,8 @@ describe("injectHistoryLoopBreaker", () => {
       modelId: "test-model",
       applyBudget: (body) => body,
     });
-    expect(turn1.messages.at(-1)?.content).toEqual(expect.stringContaining(LOOP_BREAKER_MARKER));
-    expect(turn1.messages.at(-1)?.content).not.toEqual(
-      expect.stringContaining(LOOP_BREAKER_ESCALATION_MARKER),
-    );
+    expect(turn1.messages.at(-1)?.content).toEqual(expect.stringContaining("identical arguments"));
+    expect(turn1.messages.at(-1)?.content).not.toEqual(expect.stringContaining("still going"));
 
     // Turn 2: same history, fresh request body (as Copilot does) -> escalates
     const turn2 = injectHistoryLoopBreaker({
@@ -206,9 +154,7 @@ describe("injectHistoryLoopBreaker", () => {
       modelId: "test-model",
       applyBudget: (body) => body,
     });
-    expect(turn2.messages.at(-1)?.content).toEqual(
-      expect.stringContaining(LOOP_BREAKER_ESCALATION_MARKER),
-    );
+    expect(turn2.messages.at(-1)?.content).toEqual(expect.stringContaining("still going"));
 
     // Turn 3: same history, fresh request body -> does not duplicate
     const turn3 = injectHistoryLoopBreaker({
@@ -322,7 +268,64 @@ describe("buildLoopBreakerNudge", () => {
   it("nudges a stalled stream to continue from the partial reply", () => {
     const nudge = buildLoopBreakerNudge("stream_timeout");
     expect(nudge.role).toBe("user");
-    expect(nudge.content).toContain(LOOP_BREAKER_MARKER);
     expect(nudge.content).toContain("stalled");
+  });
+
+  it("never exposes internal marker tags to the model", () => {
+    const reasons = [
+      "repetition_loop",
+      "tool_call_loop",
+      "hanging_colon",
+      "output_truncated",
+      "content_filter",
+      "stream_timeout",
+      "stream_dropped",
+      "reasoning_only",
+    ] as const;
+    for (const reason of reasons) {
+      const plain = buildLoopBreakerNudge(reason);
+      const withTail = buildLoopBreakerNudge(reason, { reasoningTail: "Checking the parser." });
+      for (const nudge of [plain, withTail]) {
+        expect(nudge.content).not.toMatch(/\[NIM_/);
+      }
+    }
+  });
+
+  it("quotes the reasoning tail when a think stalls before any answer", () => {
+    const nudge = buildLoopBreakerNudge("stream_timeout", {
+      reasoningTail: "So the fix belongs in flush().",
+    });
+    expect(nudge.content).toContain("still reasoning");
+    expect(nudge.content).toContain("So the fix belongs in flush().");
+    expect(nudge.content).toContain("without restarting the analysis");
+  });
+
+  it("quotes the reasoning tail for a reasoning-only reply", () => {
+    const nudge = buildLoopBreakerNudge("reasoning_only", { reasoningTail: "Done editing." });
+    expect(nudge.content).toContain("contained only reasoning");
+    expect(nudge.content).toContain("Done editing.");
+  });
+
+  it("caps the quoted tail and keeps its end", () => {
+    const head = "head ".repeat(2000);
+    const nudge = buildLoopBreakerNudge("stream_dropped", { reasoningTail: `${head}final step` });
+    const content = typeof nudge.content === "string" ? nudge.content : "";
+    expect(content).toContain("final step");
+    expect(content).toContain("…");
+    expect(content.length).toBeLessThan(MAX_NUDGE_REASONING_TAIL_CHARS + 400);
+  });
+
+  it("does not quote reasoning for reasons that do not resume a think", () => {
+    const nudge = buildLoopBreakerNudge("hanging_colon", { reasoningTail: "secret plan" });
+    expect(nudge.content).not.toContain("secret plan");
+  });
+
+  it("does not quote a looping think back to the model", () => {
+    const nudge = buildLoopBreakerNudge("repetition_loop", {
+      reasoningTail: "Wait, let me re-check. Wait, let me re-check.",
+      reasoningLoop: true,
+    });
+    expect(nudge.content).toContain("repeating itself");
+    expect(nudge.content).not.toContain("re-check");
   });
 });

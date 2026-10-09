@@ -2,6 +2,14 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Fixed
+
+- **Loop-breaker marker tags removed from model-visible text (`src/provider/loop-breaker.ts`).** `LOOP_BREAKER_MARKER` (`[NIM_LOOP_BREAKER]`) and `LOOP_BREAKER_ESCALATION_MARKER` (`[NIM_LOOP_BREAKER_GO]`) were prefixed to every retry nudge and history breaker, and GLM-5.3 on Max read them as part of the instruction. Both constants, `hasLoopBreaker`, `hasEscalatedLoopBreaker` and `messagesContainMarker` are deleted. Injected turns live only in the HTTP body and never return in Copilot history, so the marker scan could only match text the model echoed back; escalation now relies on `recentInjectedLoops` alone (first detection: standard breaker, second: `HISTORY_LOOP_ESCALATION_NUDGE`, then nothing), which is what the sequential-turn path already did. Addresses #34.
+- **Mid-think retries carry the reasoning tail (`src/provider/stream-pump.ts`, `src/provider/loop-breaker.ts`, `src/provider/turn-executor.ts`, `src/provider/attempt-loop.ts`).** `StreamAttemptResult.lastReasoningText` keeps the last 8,192 chars of reasoning per attempt. `dispatchAttemptOutcome` replays only `lastVisibleText`, so a `stream_timeout`, `stream_dropped`, `output_truncated` or `reasoning_only` retry with no visible text and no tool call used to send "continue from where you left off" with nothing to continue from, and the model restarted the think; with `maxLoopContinues` 2 this could end in `[EMPTY_STREAM]` and a failover hop. `buildLoopBreakerNudge(reason, { reasoningTail, reasoningLoop })` now quotes the tail (capped at `MAX_NUDGE_REASONING_TAIL_CHARS` = 4,000, cut at a word boundary) for those reasons. A `repetition_loop` tripped by the reasoning guard before visible text gets `REASONING_LOOP_NUDGE` and no quote, so the loop is not fed back. `AttemptLoopState.retryNudgeFallback` holds the plain nudge, tried when the quoted one does not fit `applyBudget`; other nudge assignments clear it. Addresses #34.
+- **Tests.** `loop-breaker.test.ts`: marker assertions replaced with content checks, the two marker-seeded escalation cases removed (the in-memory escalation case stays), new `buildLoopBreakerNudge` cases (no `[NIM_` tags for any reason, tail quoted for a stall and a reasoning-only reply, tail capped with its end kept, no quote for `hanging_colon`, no quote for a reasoning loop). `turn-executor.test.ts`: the nudge receives the reasoning tail after a mid-think stall. `chat-provider.stream.test.ts`: retry bodies carry no marker, a GLM-5.3 stall mid-think quotes the reasoning back, the reasoning-loop retry says the think was repeating without quoting it, and the reasoning-only retry includes the reasoning.
+
 ## [1.4.1] - 2026-10-05
 
 ### Fixed

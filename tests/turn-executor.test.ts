@@ -68,6 +68,7 @@ function makeResult(overrides: Partial<StreamAttemptResult> = {}): StreamAttempt
     lastFinishReason: "stop",
     lastUsage: undefined,
     lastVisibleText: "",
+    lastReasoningText: "",
     skippedToolCalls: [],
     repetitionTripped: false,
     toolCallLoopTripped: false,
@@ -145,6 +146,28 @@ describe("ModelTurnExecutor.executeTurn", () => {
     expect(runStreamAttemptMock).toHaveBeenCalledTimes(2);
   });
 
+  it("passes the reasoning tail to the nudge when a stall happens mid-think", async () => {
+    buildNudgeMock.mockReturnValue({ role: "user", content: "resume" });
+    runStreamAttemptMock
+      .mockResolvedValueOnce(
+        makeResult({
+          reportedContent: true,
+          sawReasoning: true,
+          timedOut: true,
+          lastFinishReason: undefined,
+          lastReasoningText: "Next I patch flush().",
+        }),
+      )
+      .mockResolvedValueOnce(makeResult({ reportedVisibleContent: true, lastVisibleText: "Done" }));
+
+    await expect(executor().executeTurn(makeInput(makeConfig()))).resolves.toBeUndefined();
+
+    expect(buildNudgeMock).toHaveBeenCalledWith("stream_timeout", {
+      reasoningTail: "Next I patch flush().",
+      reasoningLoop: false,
+    });
+  });
+
   it("auto-continues after a repetition loop and appends the nudge", async () => {
     buildNudgeMock.mockReturnValue({ role: "user", content: "continue now" });
     runStreamAttemptMock
@@ -160,7 +183,10 @@ describe("ModelTurnExecutor.executeTurn", () => {
 
     await expect(executor().executeTurn(makeInput(makeConfig()))).resolves.toBeUndefined();
 
-    expect(buildNudgeMock).toHaveBeenCalledWith("repetition_loop");
+    expect(buildNudgeMock).toHaveBeenCalledWith("repetition_loop", {
+      reasoningTail: undefined,
+      reasoningLoop: false,
+    });
     expect(runStreamAttemptMock).toHaveBeenCalledTimes(2);
     const secondCall = runStreamAttemptMock.mock.calls[1][0];
     expect(secondCall.requestBody.messages).toHaveLength(2);
