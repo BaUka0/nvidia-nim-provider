@@ -8,8 +8,10 @@ import {
   buildSessionLogFilename,
   buildTurnReportFilename,
   clipHeadTail,
+  findReusedToolCallIds,
   formatSessionLogsPayload,
   formatTurnReportsPayload,
+  inferHarness,
   inferReasoningModeFromRequest,
   recordTurnReport,
   resetTurnReportsForTests,
@@ -189,6 +191,92 @@ describe("turn-report", () => {
       recordedAt: "2026-08-29T12:00:01.000Z",
     });
     expect(clean.trippedDetector).toBeUndefined();
+  });
+
+  it("records emitted tool calls, the request tail and the Copilot harness (issue #29)", () => {
+    const request: NimChatRequest = {
+      model: "nvidia/nemotron-3-ultra-550b-a55b",
+      messages: [
+        { role: "user", content: "add logging" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { id: "call_view", type: "function", function: { name: "view", arguments: "{}" } },
+          ],
+        },
+        { role: "tool", content: "file body", tool_call_id: "call_view" },
+      ],
+      tools: ["bash", "view", "edit", "task"].map((name) => ({
+        type: "function" as const,
+        function: { name },
+      })),
+    };
+    const report = recordTurnReport({
+      outcome: "ok",
+      modelId: request.model,
+      requestBody: request,
+      requestTail: "tool_result",
+      sawToolCall: true,
+      emittedToolCall: true,
+      emittedToolCalls: [{ id: "call_edit", name: "edit" }],
+      finishReason: "tool_calls",
+      recordedAt: "2026-10-05T22:24:33.301Z",
+    });
+
+    expect(report.harness).toBe("copilot");
+    expect(report.requestTail).toBe("tool_result");
+    expect(report.emittedToolCalls).toEqual([{ id: "call_edit", name: "edit" }]);
+    expect(report.reusedToolCallIds).toBeUndefined();
+
+    const payload = JSON.parse(formatTurnReportsPayload() ?? "{}") as {
+      turns: { harness?: string; emittedToolCalls: { id: string; name: string }[] }[];
+    };
+    expect(payload.turns.at(-1)?.harness).toBe("copilot");
+    expect(payload.turns.at(-1)?.emittedToolCalls).toEqual([{ id: "call_edit", name: "edit" }]);
+
+    // A turn without tools carries an empty list and no harness or tail.
+    const bare = recordTurnReport({ outcome: "ok", modelId: request.model });
+    expect(bare.emittedToolCalls).toEqual([]);
+    expect(bare.harness).toBeUndefined();
+    expect(bare.requestTail).toBeUndefined();
+  });
+
+  it("flags tool call ids reused from history or repeated within one reply", () => {
+    const request: NimChatRequest = {
+      model: "nvidia/nemotron-3-ultra-550b-a55b",
+      messages: [
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { id: "call_0", type: "function", function: { name: "view", arguments: "{}" } },
+          ],
+        },
+        { role: "tool", content: "ok", tool_call_id: "call_0" },
+      ],
+    };
+    expect(
+      findReusedToolCallIds(
+        [
+          { id: "call_0", name: "view" },
+          { id: "call_1", name: "edit" },
+          { id: "call_1", name: "edit" },
+          { id: "call_2", name: "bash" },
+        ],
+        request,
+      ),
+    ).toEqual(["call_0", "call_1"]);
+    expect(findReusedToolCallIds([{ id: "call_9", name: "view" }], request)).toEqual([]);
+    expect(findReusedToolCallIds([{ id: "call_9", name: "view" }], undefined)).toEqual([]);
+  });
+
+  it("infers the harness from the offered tool set", () => {
+    expect(inferHarness(["bash", "read_bash", "view", "create", "edit", "task"])).toBe("copilot");
+    expect(inferHarness(["powershell", "view", "edit", "usages", "problems"])).toBe("copilot");
+    expect(inferHarness(["read_file", "replace_string_in_file", "run_in_terminal"])).toBe("local");
+    expect(inferHarness(["edit", "view"])).toBeUndefined();
+    expect(inferHarness([])).toBeUndefined();
   });
 
   it("builds a Downloads path and timestamped filename", () => {

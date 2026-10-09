@@ -2256,6 +2256,12 @@ describe("NimChatModelProvider", () => {
     expect(toolCalls[0][0].input).toEqual(
       expect.objectContaining({ newString: "return 2;", explanation: "Applied edit to /tmp/a.ts" }),
     );
+    // Only the resent call reached VS Code, and the report says which one.
+    expect(getTurnReports()[0].emittedToolCalls).toEqual([]);
+    expect(getTurnReports().at(-1)).toMatchObject({
+      requestTail: "user",
+      emittedToolCalls: [{ id: "edit_2", name: "replace_string_in_file" }],
+    });
   });
 
   it("tells the user when the model keeps repeating a dropped call after auto-continue", async () => {

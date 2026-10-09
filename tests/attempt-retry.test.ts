@@ -8,6 +8,7 @@ function result(overrides: Partial<StreamAttemptResult> = {}): StreamAttemptResu
     reportedVisibleContent: false,
     sawToolCall: false,
     emittedToolCall: false,
+    emittedToolCalls: [],
     sawReasoning: false,
     lastFinishReason: "stop",
     lastUsage: undefined,

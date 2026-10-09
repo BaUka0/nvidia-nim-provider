@@ -4,6 +4,14 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Added
+
+- Save Last Turn Report now records which tools the model called, whether the turn followed tool output or a new message, and whether it came from a Copilot agent session or a local chat session. This makes agent sessions that stop after a tool call easier to diagnose.
+
+### Changed
+
+- When Save Session Logs or Save Last Turn Report finds nothing to save, the message now explains that with several VS Code windows open, Copilot agent sessions are recorded in the window you opened first.
+
 ### Fixed
 
 - When a reply stalls or gets cut off while the model is still thinking, the model now picks up from the end of its own reasoning. Before, it never saw that reasoning, started the whole think over, and on slow models with a high reasoning level this could repeat until the turn came back empty and moved to another model. The same applies when a model finishes thinking without an answer or a tool call.

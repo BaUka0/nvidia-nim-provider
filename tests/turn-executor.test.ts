@@ -64,6 +64,7 @@ function makeResult(overrides: Partial<StreamAttemptResult> = {}): StreamAttempt
     reportedVisibleContent: false,
     sawToolCall: false,
     emittedToolCall: false,
+    emittedToolCalls: [],
     sawReasoning: false,
     lastFinishReason: "stop",
     lastUsage: undefined,
@@ -133,6 +134,41 @@ describe("ModelTurnExecutor.executeTurn", () => {
 
     await expect(executor().executeTurn(makeInput(makeConfig()))).resolves.toBeUndefined();
     expect(runStreamAttemptMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("records the emitted tool calls and a tool-result request tail", async () => {
+    runStreamAttemptMock.mockResolvedValue(
+      makeResult({
+        reportedVisibleContent: true,
+        sawToolCall: true,
+        emittedToolCall: true,
+        emittedToolCalls: [{ id: "call_edit", name: "edit" }],
+        lastFinishReason: "tool_calls",
+      }),
+    );
+    const messages = [
+      { role: 1, content: [{ value: "add logging" }] },
+      { role: 2, content: [{ callId: "call_view", name: "view", input: {} }] },
+      { role: 1, content: [{ callId: "call_view", content: [{ value: "file body" }] }] },
+    ] as never;
+
+    await executor().executeTurn(makeInput(makeConfig(), { messages }));
+
+    expect(getTurnReports()[0]).toMatchObject({
+      outcome: "ok",
+      requestTail: "tool_result",
+      emittedToolCalls: [{ id: "call_edit", name: "edit" }],
+    });
+  });
+
+  it("marks a plain prompt as a user request tail", async () => {
+    runStreamAttemptMock.mockResolvedValue(
+      makeResult({ reportedVisibleContent: true, lastVisibleText: "Hello" }),
+    );
+
+    await executor().executeTurn(makeInput(makeConfig()));
+
+    expect(getTurnReports()[0]).toMatchObject({ requestTail: "user", emittedToolCalls: [] });
   });
 
   it("retries an empty stream and then completes", async () => {
