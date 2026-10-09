@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import { fetchModelsOrThrow, streamChatCompletion } from "../../src/api/client";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
-import { LOOP_BREAKER_MARKER } from "../../src/provider/loop-breaker";
 import { ApiErrorKind, NvidiaApiError } from "../../src/api/errors";
 import { getApiKeyFingerprint } from "../../src/api/key-resolver";
 import {
@@ -2020,10 +2019,56 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(JSON.stringify(retryBody.messages)).not.toContain("NIM_LOOP_BREAKER");
     expect(JSON.stringify(retryBody.messages)).toContain("next action");
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Calling the tool next." }),
+    );
+  });
+
+  it("quotes the reasoning tail back when a stream stalls mid-think", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "fallback.enabled") return false;
+        return defaultValue;
+      }),
+    }));
+    const stalledThink = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "The parser drops the last chunk. " } }] };
+      yield { choices: [{ delta: { reasoning_content: "Next I should patch flush()." } }] };
+      throw new NvidiaApiError("timeout", "NVIDIA NIM streaming timeout: no data received for 60s");
+    };
+    const continueStream = async function* () {
+      yield { choices: [{ delta: { content: "Patched flush()." }, finish_reason: "stop" }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => stalledThink())
+      .mockImplementationOnce(() => continueStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "z-ai/glm-5.3",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Fix the parser"),
+      makeChatOptions(),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    const nudge = retryBody.messages.at(-1);
+    expect(nudge.role).toBe("user");
+    expect(nudge.content).not.toContain("NIM_LOOP_BREAKER");
+    expect(nudge.content).toContain("stalled while you were still reasoning");
+    expect(nudge.content).toContain("Next I should patch flush().");
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Patched flush()." }),
     );
   });
 
@@ -2062,7 +2107,7 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(JSON.stringify(retryBody.messages)).not.toContain("NIM_LOOP_BREAKER");
     expect(JSON.stringify(retryBody.messages)).toContain("stalled");
     expect(JSON.stringify(retryBody.messages)).toContain("Working on the next change");
     expect(progress.report).toHaveBeenCalledWith(
@@ -2112,7 +2157,7 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(JSON.stringify(retryBody.messages)).not.toContain("NIM_LOOP_BREAKER");
     expect(JSON.stringify(retryBody.messages)).toContain("connection dropped");
     expect(JSON.stringify(retryBody.messages)).toContain("Now let's run the tests");
     expect(getTurnReports()[0]).toMatchObject({
@@ -2378,7 +2423,7 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(3);
     const retryBody = (streamChatCompletion as jest.Mock).mock.calls[2][1];
-    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(JSON.stringify(retryBody.messages)).not.toContain("NIM_LOOP_BREAKER");
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Calling the tool next." }),
     );
@@ -2500,7 +2545,7 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(JSON.stringify(retryBody.messages)).not.toContain("NIM_LOOP_BREAKER");
     expect(JSON.stringify(retryBody.messages)).toContain("safety filter");
     expect(progress.report).toHaveBeenCalledWith(expect.objectContaining({ value: " world" }));
     expect(progress.report).not.toHaveBeenCalledWith(
@@ -2572,7 +2617,10 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(JSON.stringify(retryBody.messages)).toContain(LOOP_BREAKER_MARKER);
+    expect(JSON.stringify(retryBody.messages)).not.toContain("NIM_LOOP_BREAKER");
+    // The looping think is not quoted back: that would feed the loop.
+    expect(retryBody.messages.at(-1).content).toContain("repeating itself");
+    expect(retryBody.messages.at(-1).content).not.toContain("!!!!!");
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Here is the direct answer." }),
     );
@@ -4223,6 +4271,7 @@ describe("NimChatModelProvider", () => {
     const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
     expect(retryBody.model).toBe("deepseek-ai/deepseek-v4");
     expect(retryBody.messages.at(-1).content).toContain("contained only reasoning");
+    expect(retryBody.messages.at(-1).content).toContain("thinking only");
 
     const thinkingReports = progress.report.mock.calls.filter((c) => c[0] instanceof ThinkingPart);
     expect(thinkingReports).toHaveLength(2);
