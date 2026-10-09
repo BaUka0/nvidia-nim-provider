@@ -8,6 +8,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 - Save Last Turn Report now records which tools the model called, whether the turn followed tool output or a new message, and whether it came from a Copilot agent session or a local chat session. This makes agent sessions that stop after a tool call easier to diagnose.
 
+### Changed
+
+- When Save Session Logs or Save Last Turn Report finds nothing to save, the message now explains that with several VS Code windows open, Copilot agent sessions are recorded in the window you opened first.
+
 ## [1.4.1] - 2026-10-05
 
 ### Fixed

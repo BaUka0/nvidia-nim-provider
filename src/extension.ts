@@ -98,10 +98,16 @@ async function saveDiagnosticsFile(input: {
   }
 }
 
+// Copilot agent sessions run in a host process shared by all windows, which
+// sends model requests through the extension host of the first window opened.
+// Reports land in that window's memory, so other windows see none.
+const EMPTY_DIAGNOSTICS_HINT =
+  "Send a chat message first, then run this command again. For Copilot agent sessions, run it in the VS Code window you opened first.";
+
 async function saveSessionLogs(): Promise<void> {
   await saveDiagnosticsFile({
     payload: formatSessionLogsPayload(),
-    emptyWarning: `${PROVIDER_DISPLAY_NAME} has no session logs yet. Send a chat message first, then run this command again.`,
+    emptyWarning: `${PROVIDER_DISPLAY_NAME} has no session logs yet. ${EMPTY_DIAGNOSTICS_HINT}`,
     filename: buildSessionLogFilename(),
     saveLabel: "Save session logs",
   });
@@ -110,7 +116,7 @@ async function saveSessionLogs(): Promise<void> {
 async function saveLastTurnReport(): Promise<void> {
   await saveDiagnosticsFile({
     payload: formatTurnReportsPayload(),
-    emptyWarning: `${PROVIDER_DISPLAY_NAME} has no turn reports yet. Send a chat message first, then run this command again.`,
+    emptyWarning: `${PROVIDER_DISPLAY_NAME} has no turn reports yet. ${EMPTY_DIAGNOSTICS_HINT}`,
     filename: buildTurnReportFilename(),
     saveLabel: "Save turn report",
   });
