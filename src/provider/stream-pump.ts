@@ -62,11 +62,18 @@ export interface StreamAttemptInput {
   onVisibleContentReported?: () => void;
 }
 
+export interface EmittedToolCall {
+  readonly id: string;
+  readonly name: string;
+}
+
 export interface StreamAttemptResult {
   reportedContent: boolean;
   reportedVisibleContent: boolean;
   sawToolCall: boolean;
   emittedToolCall: boolean;
+  /** Tool calls handed to VS Code this attempt, in emission order. */
+  emittedToolCalls: EmittedToolCall[];
   sawReasoning: boolean;
   lastFinishReason: string | null | undefined;
   lastUsage: NimStreamUsage | undefined;
@@ -105,6 +112,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   let heldAnswer = "";
   let sawToolCall = false;
   let emittedToolCall = false;
+  const emittedToolCalls: EmittedToolCall[] = [];
   let reportedContent = false;
   let reportedVisibleContent = false;
   let sawReasoning = false;
@@ -213,6 +221,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
         flushPendingText();
         reportPart(new vscode.LanguageModelToolCallPart(id, name, args));
         emittedToolCall = true;
+        emittedToolCalls.push({ id, name });
         if (firstToolCallAtMs === undefined) {
           firstToolCallAtMs = Date.now();
         }
@@ -677,6 +686,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     reportedVisibleContent,
     sawToolCall,
     emittedToolCall,
+    emittedToolCalls,
     sawReasoning,
     lastFinishReason,
     lastUsage,

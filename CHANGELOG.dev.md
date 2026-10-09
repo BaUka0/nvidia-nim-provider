@@ -2,6 +2,16 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Added
+
+- **Tool-call trail in turn reports (`src/shared/turn-report.ts`, `src/provider/stream-pump.ts`, `src/provider/turn-executor.ts`).** `StreamAttemptResult.emittedToolCalls` collects `{ id, name }` for every `LanguageModelToolCallPart` handed to VS Code. `TurnReport` gains `emittedToolCalls`; `reusedToolCallIds` (emitted ids already in the request history's assistant `tool_calls` or repeated within the reply, omitted when empty); `requestTail` (`user` / `tool_result` / `assistant`, read from the host's last `LanguageModelChatMessage` rather than the NIM body, since retries append nudges); and `harness` (`copilot` when the tool set has `view` + `edit` + `bash` or `powershell`, `local` for `read_file` / `run_in_terminal` / `replace_string_in_file`). In #29 every request ended with `tool_calls` and no further request arrived, but the report could not show which call the Copilot harness stopped after. Addresses #29.
+
+### Changed
+
+- **Empty diagnostics warning names the first window (`src/extension.ts`).** VS Code 1.140 runs Copilot sessions in a single agent host process shared by all windows. That process sends `vscode.lm` requests through the extension host of the first window it connected to. Turn reports and session events live in module memory per extension host, so `saveSessionLogs` / `saveLastTurnReport` in any other window find nothing. This showed up when testing an Extension Development Host next to a window running the Marketplace build: the requests went to the Marketplace build. Both empty warnings now share `EMPTY_DIAGNOSTICS_HINT`, which says to run the command in the window opened first. `docs/troubleshooting.md` says the same. Addresses #29.
+
 ## [1.4.1] - 2026-10-05
 
 ### Fixed
