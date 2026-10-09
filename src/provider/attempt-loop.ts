@@ -13,6 +13,8 @@ import type { ChatRuntimeMetadataSource } from "./turn-executor";
 /** Mutable attempt-loop state; recreated on every restart of the failover chain. */
 export interface AttemptLoopState {
   retryNudge?: NimChatMessage;
+  /** Shorter nudge tried when `retryNudge` does not fit the context budget. */
+  retryNudgeFallback?: NimChatMessage;
   lastRetryReason?: "invalid_tool_call";
   lastInvalidToolSkipNames: string[];
   transientRetryCount: number;

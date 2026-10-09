@@ -408,11 +408,21 @@ export class ModelTurnExecutor {
 
           let attemptBody = cloneNimChatRequest(baselineRequestBody);
           if (state.retryNudge) {
-            attemptBody = appendChatMessage(attemptBody, state.retryNudge);
-            try {
-              attemptBody = applyBudget(attemptBody);
-            } catch {
-              debugLog("streamRetry", "retry nudge dropped: context budget exceeded");
+            // A nudge quoting the reasoning tail can outgrow the budget; fall
+            // back to the short form before giving up on the retry.
+            const nudges = state.retryNudgeFallback
+              ? [state.retryNudge, state.retryNudgeFallback]
+              : [state.retryNudge];
+            let nudgedBody: NimChatRequest | undefined;
+            for (const nudge of nudges) {
+              try {
+                nudgedBody = applyBudget(appendChatMessage(attemptBody, nudge));
+                break;
+              } catch {
+                debugLog("streamRetry", "retry nudge dropped: context budget exceeded");
+              }
+            }
+            if (!nudgedBody) {
               if (state.lastRetryReason === "invalid_tool_call") {
                 reportState.failingAttemptHasVisibleContent = false;
                 throw createInvalidToolExhaustionError(
@@ -423,6 +433,7 @@ export class ModelTurnExecutor {
               }
               break;
             }
+            attemptBody = nudgedBody;
           }
           activeRequestBody = attemptBody;
 
@@ -699,6 +710,7 @@ export class ModelTurnExecutor {
         `${isServerError ? "Server" : "Network"} error during stream (retry ${state.transientRetryCount}/${input.maxNetworkRetries}): ${streamErr instanceof Error ? streamErr.message : String(streamErr)}`,
       );
       if (isNetworkError) {
+        state.retryNudgeFallback = undefined;
         state.retryNudge = {
           role: "user",
           content:
@@ -847,7 +859,19 @@ export class ModelTurnExecutor {
     if (isLoopRetryReason(retryReason)) {
       state.loopContinueCount += 1;
       retryReasonHistory.push(retryReason);
-      state.retryNudge = buildLoopBreakerNudge(retryReason);
+      // Only visible text is replayed into the retry. When the attempt stopped
+      // mid-think, quote the reasoning tail back so the model resumes it
+      // instead of restarting a long think from scratch.
+      const thinkOnly =
+        result.sawReasoning &&
+        !result.sawToolCall &&
+        !result.emittedToolCall &&
+        result.lastVisibleText.trim().length === 0;
+      state.retryNudge = buildLoopBreakerNudge(retryReason, {
+        reasoningTail: thinkOnly ? result.lastReasoningText : undefined,
+        reasoningLoop: thinkOnly && retryReason === "repetition_loop",
+      });
+      state.retryNudgeFallback = thinkOnly ? buildLoopBreakerNudge(retryReason) : undefined;
       logLoopAutoContinue({
         modelId: model.id,
         retryReason,
@@ -884,6 +908,7 @@ export class ModelTurnExecutor {
       state.lastInvalidToolSkipNames = skippedToolCallNames;
       retryReasonHistory.push("invalid_tool_call");
       state.retryNudge = { role: "user", content: retryMessage };
+      state.retryNudgeFallback = undefined;
       return { action: "continue", baselineRequestBody };
     }
 
@@ -921,6 +946,7 @@ export class ModelTurnExecutor {
       state.emptyStreamRetryCount += 1;
       retryReasonHistory.push("empty_stream");
       state.retryNudge = undefined;
+      state.retryNudgeFallback = undefined;
       debugLog(
         "emptyStreamRetry",
         `Empty stream (no text/tool/reasoning surfaced); retry ${state.emptyStreamRetryCount}/${input.maxEmptyStreamRetries}. lastFinishReason=${String(result.lastFinishReason)}, chunks=${result.streamChunkCount}`,
