@@ -968,10 +968,10 @@ describe("activate", () => {
     await saveTurnReport?.();
 
     expect(mockShowWarningMessage).toHaveBeenCalledWith(
-      "NVIDIA NIM has no session logs yet. Send a chat message first, then run this command again.",
+      "NVIDIA NIM has no session logs yet. Send a chat message first, then run this command again. For Copilot agent sessions, run it in the VS Code window you opened first.",
     );
     expect(mockShowWarningMessage).toHaveBeenCalledWith(
-      "NVIDIA NIM has no turn reports yet. Send a chat message first, then run this command again.",
+      "NVIDIA NIM has no turn reports yet. Send a chat message first, then run this command again. For Copilot agent sessions, run it in the VS Code window you opened first.",
     );
     expect(fs.writeFile).not.toHaveBeenCalled();
   });

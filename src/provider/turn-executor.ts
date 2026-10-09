@@ -17,7 +17,7 @@ import { DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 import { FetchAttemptBudget, httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { StatusBarManager, TokenBreakdown } from "../shared/status-bar";
-import { recordTurnReport, TurnReportOutcome } from "../shared/turn-report";
+import { recordTurnReport, TurnReportOutcome, TurnReportRequestTail } from "../shared/turn-report";
 import { extractPrefixGram } from "../shared/cycle-detection";
 import { NimChatRequest, NimTool } from "../types";
 import { AttemptRetryEvaluation, evaluateAttemptRetry, isLoopRetryReason } from "./attempt-retry";
@@ -113,10 +113,39 @@ function errorFields(error: unknown): { errorKind?: string; errorMessage?: strin
   return { errorKind: "unknown", errorMessage: String(error) };
 }
 
+/**
+ * Classify the host's last message, so a report shows whether the turn
+ * answered tool output or a new prompt. Retries append nudges to the NIM body,
+ * so this reads the VS Code messages instead.
+ */
+function describeRequestTail(
+  messages: readonly LanguageModelChatMessage[] | undefined,
+): TurnReportRequestTail | undefined {
+  const last = messages?.at(-1);
+  if (!last) {
+    return undefined;
+  }
+  if (last.role === vscode.LanguageModelChatMessageRole.Assistant) {
+    return "assistant";
+  }
+  if (last.role !== vscode.LanguageModelChatMessageRole.User) {
+    return undefined;
+  }
+  const hasToolResult = last.content.some((part) => {
+    if (typeof part !== "object" || part === null) {
+      return false;
+    }
+    const candidate = part as { callId?: unknown; content?: unknown };
+    return typeof candidate.callId === "string" && Array.isArray(candidate.content);
+  });
+  return hasToolResult ? "tool_result" : "user";
+}
+
 function recordAttemptTurn(options: {
   outcome: TurnReportOutcome;
   modelId: string;
   body?: NimChatRequest;
+  messages?: readonly LanguageModelChatMessage[];
   result?: StreamAttemptResult;
   durationMs?: number;
   autoContinueFired?: boolean;
@@ -128,8 +157,10 @@ function recordAttemptTurn(options: {
     outcome: options.outcome,
     modelId: options.modelId,
     requestBody: options.body,
+    requestTail: describeRequestTail(options.messages),
     sawToolCall: options.result?.sawToolCall,
     emittedToolCall: options.result?.emittedToolCall,
+    emittedToolCalls: options.result?.emittedToolCalls,
     skippedToolCalls: options.result?.skippedToolCalls,
     finishReason: options.result?.lastFinishReason,
     streamChunkCount: options.result?.streamChunkCount,
@@ -515,6 +546,7 @@ export class ModelTurnExecutor {
             result,
             evaluation,
             attemptBody,
+            messages,
             model,
             state,
             baselineRequestBody,
@@ -578,6 +610,7 @@ export class ModelTurnExecutor {
           outcome: "error",
           modelId: model.id,
           body: activeRequestBody,
+          messages,
           error: emptyError,
         });
         throw emptyError;
@@ -591,6 +624,7 @@ export class ModelTurnExecutor {
           outcome: cancelled ? "cancelled" : "error",
           modelId: model.id,
           body: activeRequestBody,
+          messages,
           error: err,
         });
       }
@@ -651,6 +685,7 @@ export class ModelTurnExecutor {
       outcome: cancelled ? "cancelled" : willTransientRetry ? "retry" : "error",
       modelId: input.model.id,
       body: input.attemptBody,
+      messages: input.messages,
       durationMs: Date.now() - input.attemptStartedAtMs,
       retryReasonHistory: input.retryReasonHistory,
       error: streamErr,
@@ -748,6 +783,7 @@ export class ModelTurnExecutor {
     result: StreamAttemptResult;
     evaluation: AttemptRetryEvaluation;
     attemptBody: NimChatRequest;
+    messages: readonly LanguageModelChatMessage[];
     model: LanguageModelChatInformation;
     state: AttemptLoopState;
     baselineRequestBody: NimChatRequest;
@@ -801,6 +837,7 @@ export class ModelTurnExecutor {
       outcome: retryReason !== undefined ? "retry" : "ok",
       modelId: model.id,
       body: input.attemptBody,
+      messages: input.messages,
       result,
       durationMs: Date.now() - input.attemptStartedAtMs,
       autoContinueFired: isLoopRetryReason(retryReason),

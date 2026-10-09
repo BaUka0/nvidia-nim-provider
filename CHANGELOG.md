@@ -7,6 +7,11 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 ### Added
 
 - Nemotron 3 Nano Omni 30B in the model picker: a fast, light model that reads screenshots, scanned documents and charts as well as text. It has a 256K context window, calls tools in agent mode, and offers None, Medium, High and XHigh reasoning (High by default). It is tuned for English. You can also pick it as the image backup model with `nvidia-nim.fallback.visionModel` in the Settings UI or `settings.json`.
+- Save Last Turn Report now records which tools the model called, whether the turn followed tool output or a new message, and whether it came from a Copilot agent session or a local chat session. This makes agent sessions that stop after a tool call easier to diagnose.
+
+### Changed
+
+- When Save Session Logs or Save Last Turn Report finds nothing to save, the message now explains that with several VS Code windows open, Copilot agent sessions are recorded in the window you opened first.
 
 ## [1.4.1] - 2026-10-05
 
