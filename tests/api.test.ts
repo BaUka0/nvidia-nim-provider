@@ -6,7 +6,7 @@ import {
   streamChatCompletion,
 } from "../src/api/client";
 import { exponentialRetryDelayMs } from "../src/shared/cancellation";
-import { classifyApiError, NvidiaApiError } from "../src/api/errors";
+import { classifyApiError, isModelCapacityError, NvidiaApiError } from "../src/api/errors";
 import { NvidiaModelSummary, NimStreamResponse } from "../src/types";
 import { makeAbortSignal, makeFetchResponse } from "./helpers/fakes";
 
@@ -148,6 +148,50 @@ describe("fetchWithRetry", () => {
     expect(body.cancel).toHaveBeenCalledTimes(1);
   });
 
+  it("does not retry HTTP 503 ResourceExhausted", async () => {
+    const detail =
+      '{"error":{"message":"ResourceExhausted: Worker local total request limit reached (16/16)","type":"Service Unavailable","code":503}}';
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        headers: { get: () => null },
+        text: async () => detail,
+        body: { cancel: jest.fn().mockResolvedValue(undefined) },
+      }),
+    );
+
+    const error = await fetchWithRetry("https://example.test", { method: "POST" }, 3, {
+      operation: "stream",
+      model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    }).catch((caught: unknown) => caught);
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(error).toMatchObject({ name: "NvidiaApiError", kind: "rate_limited", status: 503 });
+    expect(isModelCapacityError(error)).toBe(true);
+  });
+
+  it("keeps the body of a final plain HTTP 503 in the classified error", async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        headers: { get: () => null },
+        text: async () => "upstream maintenance",
+        body: { cancel: jest.fn().mockResolvedValue(undefined) },
+      }),
+    );
+
+    const error = await fetchWithRetry("https://example.test", { method: "GET" }, 1).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toMatchObject({ kind: "server_error", status: 503 });
+    expect((error as Error).message).toContain("upstream maintenance");
+  });
+
   it("includes the final retryable response body in the classified error", async () => {
     global.fetch = jest.fn().mockResolvedValue(
       makeFetchResponse({
@@ -263,6 +307,34 @@ describe("classifyApiError", () => {
       status: 410,
     });
     expect(error.message).toMatch(/end of life/i);
+  });
+
+  it.each([500, 503])(
+    "classifies HTTP %s ResourceExhausted as a model capacity error",
+    (status) => {
+      const detail = `{"message":"ResourceExhausted: Worker local total request limit reached (16/16)","code":${status}}`;
+      const error = classifyApiError(new Error(`HTTP ${status}`), {
+        status,
+        detail,
+        model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        operation: "stream",
+      });
+      expect(error).toMatchObject({ kind: "rate_limited", code: "RATE_LIMITED", status });
+      expect(error.message).toContain("is at capacity");
+      expect(error.message).toContain("16/16");
+      expect(isModelCapacityError(error)).toBe(true);
+    },
+  );
+
+  it("keeps other server errors and plain rate limits apart from capacity errors", () => {
+    const server = classifyApiError(new Error("HTTP 500"), {
+      status: 500,
+      detail: '{"message":"Internal error"}',
+    });
+    const rateLimited = classifyApiError(new Error("HTTP 429"), { status: 429 });
+    expect(server).toMatchObject({ kind: "server_error" });
+    expect(isModelCapacityError(server)).toBe(false);
+    expect(isModelCapacityError(rateLimited)).toBe(false);
   });
 });
 

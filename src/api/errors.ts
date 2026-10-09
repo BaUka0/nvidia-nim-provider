@@ -90,6 +90,27 @@ export const ERROR_MESSAGES: Record<string, StructuredError> = {
 const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504, 529]);
 
 /**
+ * NIM answers a model whose workers are all busy with HTTP 500 or 503 and a
+ * `ResourceExhausted: Worker local total request limit reached (16/16)` body.
+ * Retrying within seconds hits the same full pool, so this is a capacity
+ * error like 429 / 529, not a server fault.
+ */
+const MODEL_CAPACITY_PATTERN = /\bResourceExhausted\b|worker local total request limit/i;
+
+export function isModelCapacityDetail(detail: string | undefined): boolean {
+  return typeof detail === "string" && MODEL_CAPACITY_PATTERN.test(detail);
+}
+
+/** A rate_limited error raised because the model itself had no free workers. */
+export function isModelCapacityError(err: unknown): boolean {
+  return (
+    (err instanceof NvidiaApiError || (err instanceof Error && err.name === "NvidiaApiError")) &&
+    (err as NvidiaApiError).kind === "rate_limited" &&
+    MODEL_CAPACITY_PATTERN.test(err.message)
+  );
+}
+
+/**
  * Patterns that indicate the server rejected the request due to context overflow.
  * Covers common OpenAI-compatible and NVIDIA NIM error message formats.
  */
@@ -299,6 +320,10 @@ function buildClassifiedMessage(
   let cause = structured.cause;
   if (kind === "auth_failed") {
     cause = "Authentication failed. Your API key may be invalid or expired.";
+  } else if (kind === "rate_limited" && isModelCapacityDetail(originalDetail)) {
+    cause = context.model
+      ? `NVIDIA NIM model "${context.model}" is at capacity: all of its workers are busy.`
+      : "The NVIDIA NIM model is at capacity: all of its workers are busy.";
   } else if (kind === "rate_limited") {
     cause = context.status === 529 ? "Service temporarily overloaded." : "Rate limited.";
   } else if (kind === "model_unavailable" && context.status === 410) {
@@ -348,6 +373,9 @@ export function classifyApiError(error: unknown, context: ApiErrorContext = {}):
   const detail = context.detail;
   if (kind === "invalid_request" && status === 400 && isContextOverflowError(detail)) {
     kind = "context_overflow";
+  }
+  if (kind === "server_error" && isModelCapacityDetail(detail)) {
+    kind = "rate_limited";
   }
   const contextOverflow =
     kind === "context_overflow" && detail ? parseContextOverflowDetail(detail) : undefined;

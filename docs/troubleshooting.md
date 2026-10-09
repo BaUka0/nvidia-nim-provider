@@ -37,6 +37,11 @@ If something goes wrong, save the session file. Debug logging does not need to b
 - **Cause:** NVIDIA NIM accepted the request but the model backend is overloaded. This can arrive as an HTTP status or as an error object inside the stream.
 - **Fix:** The extension retries the same model, then failsover to the backup if the retry still returns nothing. Wait a minute if every candidate is overloaded. You do not need to switch models by hand.
 
+### ResourceExhausted: Worker local total request limit reached
+
+- **Cause:** Every NVIDIA NIM worker for that model is busy. It arrives as HTTP 500 or 503 and can last for minutes, typically on newly added or popular models.
+- **Fix:** With `"nvidia-nim.fallback.enabled": true` (Settings UI or `settings.json`), the extension skips the retries and moves straight to the backup model. It then keeps using the backup for the next two minutes before trying the picked model again. With failover off, you get the error right away. Pick another model or try again later.
+
 ### Request timed out waiting for stream data
 
 - **Cause:** Slow network, high server load, or a large prompt (many tools / long history) that takes more than the idle deadline to start streaming.

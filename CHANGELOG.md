@@ -12,6 +12,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 - When Save Session Logs or Save Last Turn Report finds nothing to save, the message now explains that with several VS Code windows open, Copilot agent sessions are recorded in the window you opened first.
 
+### Fixed
+
+- When an NVIDIA NIM model is at capacity ("ResourceExhausted"), the request moves to your backup model right away instead of retrying the busy model for several seconds first. The busy model is then skipped for two minutes, so the following turns in an agent session do not wait on it again.
+
 ## [1.4.1] - 2026-10-05
 
 ### Fixed
