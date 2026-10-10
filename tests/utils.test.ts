@@ -374,6 +374,69 @@ describe("convertMessages with tools", () => {
     expect(result[0].content).toBe("Sunny, 25C");
   });
 
+  it("replaces an image in a tool result with a placeholder for text-only models", () => {
+    const png = new Uint8Array(2048).fill(137);
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [
+          new vscode.LanguageModelToolResultPart("call_1", [
+            new vscode.LanguageModelTextPart("Screenshot taken."),
+            new vscode.LanguageModelDataPart(png, "image/png"),
+          ]),
+        ],
+      },
+    ];
+    const result = convertMessages(makeChatMessages(...messages));
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("tool");
+    expect(result[0].content).toBe("Screenshot taken.\n[Image: image/png, 2 KB]");
+  });
+
+  it("sends an image from a tool result to a vision model after the tool message", () => {
+    const png = new Uint8Array([137, 80, 78, 71]);
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [
+          new vscode.LanguageModelToolResultPart("call_1", [
+            new vscode.LanguageModelDataPart(png, "image/png"),
+          ]),
+        ],
+      },
+    ];
+    const result = convertMessages(makeChatMessages(...messages), { supportsVision: true });
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({
+      role: "tool",
+      tool_call_id: "call_1",
+      content: "[Image: image/png, 4 bytes]",
+    });
+    expect(result[1].role).toBe("user");
+    expect(result[1].content).toEqual([
+      { type: "text", text: "Images returned by the tool calls above." },
+      {
+        type: "image_url",
+        image_url: { url: `data:image/png;base64,${Buffer.from(png).toString("base64")}` },
+      },
+    ]);
+  });
+
+  it("describes binary tool output instead of dumping its bytes", () => {
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [
+          new vscode.LanguageModelToolResultPart("call_1", [
+            new vscode.LanguageModelDataPart(new Uint8Array(10), "application/octet-stream"),
+          ]),
+        ],
+      },
+    ];
+    const result = convertMessages(makeChatMessages(...messages));
+    expect(result[0].content).toBe("[Binary data: application/octet-stream, 10 bytes]");
+  });
+
   it("converts structured tool result parts via value field", () => {
     const messages = [
       {

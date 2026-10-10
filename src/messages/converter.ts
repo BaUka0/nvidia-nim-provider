@@ -12,6 +12,7 @@ import {
   getTextPartValue,
   getThinkingPartValue,
   getToolCallInfo,
+  getToolResultImages,
   getToolResultTexts,
   truncatePreservingSurrogates,
 } from "./parts";
@@ -101,6 +102,13 @@ export function stripFallbackNotices(text: string): string {
     .trimStart();
 }
 
+const TOOL_RESULT_IMAGES_LABEL = "Images returned by the tool calls above.";
+
+function toImageUrlPart(img: { mimeType: string; data: Uint8Array }): NimContentPart {
+  const base64 = Buffer.from(img.data).toString("base64");
+  return { type: "image_url", image_url: { url: `data:${img.mimeType};base64,${base64}` } };
+}
+
 export function convertMessages(
   messages: readonly vscode.LanguageModelChatMessage[],
   options?: { maxToolResultChars?: number; supportsVision?: boolean },
@@ -118,6 +126,7 @@ export function convertMessages(
     const textParts: string[] = [];
     const thinkingParts: string[] = [];
     const imageParts: NimContentPart[] = [];
+    const toolResultImageParts: NimContentPart[] = [];
     const toolCalls: Array<{ id?: string; name?: string; args?: Record<string, unknown> }> = [];
     const toolResults: Array<{ callId: string; content: string }> = [];
 
@@ -134,6 +143,11 @@ export function convertMessages(
           callId: toolResultPart.callId,
           content: getToolResultTexts(part).join("\n").trim(),
         });
+        if (options?.supportsVision) {
+          for (const img of getToolResultImages(part)) {
+            toolResultImageParts.push(toImageUrlPart(img));
+          }
+        }
         continue;
       }
 
@@ -150,11 +164,7 @@ export function convertMessages(
       }
       const img = extractImageData(part);
       if (img && options?.supportsVision) {
-        const base64 = Buffer.from(img.data).toString("base64");
-        imageParts.push({
-          type: "image_url",
-          image_url: { url: `data:${img.mimeType};base64,${base64}` },
-        });
+        imageParts.push(toImageUrlPart(img));
         continue;
       }
       if (img) {
@@ -199,6 +209,15 @@ export function convertMessages(
         tool_call_id: tr.callId,
         content,
       });
+    }
+
+    // OpenAI-style tool messages carry text only, so images a tool returned
+    // follow the tool results as a user message.
+    if (toolResultImageParts.length > 0) {
+      textParts.unshift(
+        textParts.length > 0 ? `${TOOL_RESULT_IMAGES_LABEL}\n\n` : TOOL_RESULT_IMAGES_LABEL,
+      );
+      imageParts.unshift(...toolResultImageParts);
     }
 
     const hasTextOrImage = textParts.length > 0 || imageParts.length > 0;

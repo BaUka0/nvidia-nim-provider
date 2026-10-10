@@ -31,6 +31,7 @@ export {
   extractStandaloneXmlParameters,
   parseTextEmbeddedToolCalls,
   getIncompleteTextToolCallName,
+  TextParseContext,
 } from "./embedded-parser";
 
 export { PROPERTY_ALIAS_GROUPS } from "./argument-repair";

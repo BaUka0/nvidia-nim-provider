@@ -21,6 +21,7 @@ import {
   getToolSchemaMap,
   parseTextEmbeddedToolCalls,
   SkippedToolCall,
+  TextParseContext,
 } from "../tools/parser";
 import { collectChoiceToolCalls } from "../tools/stream-tool-calls";
 import {
@@ -251,6 +252,9 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     return (parsedToolSchemas ??= getToolSchemaMap(input.options));
   };
 
+  const answerParseContext = new TextParseContext();
+  const thinkingParseContext = new TextParseContext();
+
   const toolsOffered = (input.options.tools?.length ?? 0) > 0;
   const shouldHoldAnswer = (): boolean =>
     toolsOffered && input.reasoningIsolationExpected && sawReasoning;
@@ -269,9 +273,11 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     }
 
     const pending = isThinking ? pendingThinkingEmbeddedContent : pendingTextEmbeddedContent;
+    const parseContext = isThinking ? thinkingParseContext : answerParseContext;
     const { segments, incompleteText, extractedParams } = parseTextEmbeddedToolCalls(
       pending + text,
       getToolSchemas(),
+      { contextPrefix: parseContext.prefix() },
     );
     const nextPending = incompleteText.length > MAX_EMBEDDED_TOOL_TEXT_CHARS ? "" : incompleteText;
     if (isThinking) {
@@ -296,6 +302,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
 
     for (const segment of segments) {
       if (segment.type === "text") {
+        parseContext.append(segment.text);
         if (isThinking) {
           emitThinking(segment.text);
         } else {
@@ -576,7 +583,10 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   router.flush();
 
   if (heldAnswer) {
-    const preview = parseTextEmbeddedToolCalls(heldAnswer, getToolSchemas(), { atStreamEnd: true });
+    const preview = parseTextEmbeddedToolCalls(heldAnswer, getToolSchemas(), {
+      atStreamEnd: true,
+      contextPrefix: answerParseContext.prefix(),
+    });
     const heldHasTool = preview.segments.some(
       (segment) => segment.type === "toolCall" || segment.type === "invalidToolCall",
     );
@@ -605,6 +615,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   if (pendingTextEmbeddedContent) {
     const parsed = parseTextEmbeddedToolCalls(pendingTextEmbeddedContent, getToolSchemas(), {
       atStreamEnd: true,
+      contextPrefix: answerParseContext.prefix(),
     });
     pendingTextEmbeddedContent = "";
     if (parsed.extractedParams && Object.keys(parsed.extractedParams).length > 0) {
@@ -653,6 +664,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   if (pendingThinkingEmbeddedContent) {
     const parsed = parseTextEmbeddedToolCalls(pendingThinkingEmbeddedContent, getToolSchemas(), {
       atStreamEnd: true,
+      contextPrefix: thinkingParseContext.prefix(),
     });
     pendingThinkingEmbeddedContent = "";
     for (const segment of parsed.segments) {

@@ -12,6 +12,7 @@ import {
   parseToolArguments,
   repairToolArguments,
   stripKnownControlText,
+  TextParseContext,
 } from "../src/tools/parser";
 import { ToolCallStreamAggregator } from "../src/provider/tool-call-aggregator";
 import { makeChatOptions } from "./helpers/fakes";
@@ -2500,5 +2501,98 @@ describe("tool argument parsing and validation", () => {
       const prose = 'Note that "filePath" is a required parameter for reading files.';
       expect(getIncompleteTextToolCallName(prose, toolSchemas)).toBeUndefined();
     });
+  });
+});
+
+describe("text tool calls across chunks and at stream end", () => {
+  const readFileCall =
+    "<tool_call>\n<function=read_file>\n<parameter=path>\na.txt\n</parameter>\n</function>\n</tool_call>";
+  const toolCalls = (result: ReturnType<typeof parseTextEmbeddedToolCalls>) =>
+    result.segments.filter((segment) => segment.type === "toolCall");
+  const visibleText = (result: ReturnType<typeof parseTextEmbeddedToolCalls>) =>
+    result.segments.map((segment) => (segment.type === "text" ? segment.text : "")).join("");
+
+  it("emits a held closing code fence as text when the stream ends", () => {
+    const midStream = parseTextEmbeddedToolCalls("code\n```", undefined);
+    expect(midStream.incompleteText).toBe("```");
+
+    const ended = parseTextEmbeddedToolCalls("```", undefined, { atStreamEnd: true });
+    expect(ended.incompleteText).toBe("");
+    expect(visibleText(ended)).toBe("```");
+  });
+
+  it("emits a held tag-like tail as text when the stream ends", () => {
+    const ended = parseTextEmbeddedToolCalls("Use x<p", undefined, { atStreamEnd: true });
+    expect(ended.incompleteText).toBe("");
+    expect(visibleText(ended)).toBe("Use x<p");
+  });
+
+  it("keeps a truncated named tool call incomplete at stream end", () => {
+    const truncated = "<tool_call>\n<function=read_file>\n<parameter=path>\na.t";
+    const ended = parseTextEmbeddedToolCalls(truncated, undefined, { atStreamEnd: true });
+    expect(ended.segments).toEqual([]);
+    expect(ended.incompleteText).toBe(truncated);
+  });
+
+  it("commits an XML call that is only missing its closing tags at stream end", () => {
+    const unclosed =
+      "<tool_call>\n<function=read_file>\n<parameter=path>\na.txt\n</parameter>\n</function>\n";
+    const midStream = parseTextEmbeddedToolCalls(unclosed, undefined);
+    expect(toolCalls(midStream)).toEqual([]);
+
+    const ended = parseTextEmbeddedToolCalls(unclosed, undefined, { atStreamEnd: true });
+    expect(ended.incompleteText).toBe("");
+    expect(toolCalls(ended)).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+  });
+
+  it("holds a chunk that ends inside the name attribute", () => {
+    const first = parseTextEmbeddedToolCalls('Let me check.\n<invoke name="read_fi', undefined);
+    expect(visibleText(first)).toBe("Let me check.\n");
+    expect(first.incompleteText).toBe('<invoke name="read_fi');
+
+    const second = parseTextEmbeddedToolCalls(
+      `${first.incompleteText}le"><parameter name="path">a.txt</parameter></invoke>`,
+      undefined,
+    );
+    expect(toolCalls(second)).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+  });
+
+  it("extracts a real call that follows a fenced example", () => {
+    const text = `Format:\n\`\`\`xml\n<tool_call>x</tool_call>\n\`\`\`\n\n${readFileCall}`;
+    const result = parseTextEmbeddedToolCalls(text, undefined);
+    expect(toolCalls(result)).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+    expect(visibleText(result)).toContain("<tool_call>x</tool_call>");
+  });
+
+  it("does not run an example inside a fence opened in an earlier chunk", () => {
+    const context = new TextParseContext();
+    const first = parseTextEmbeddedToolCalls("Format example:\n```xml\n", undefined, {
+      contextPrefix: context.prefix(),
+    });
+    context.append(visibleText(first));
+
+    const second = parseTextEmbeddedToolCalls(`${readFileCall}\n\`\`\``, undefined, {
+      contextPrefix: context.prefix(),
+      atStreamEnd: true,
+    });
+    expect(toolCalls(second)).toEqual([]);
+    expect(visibleText(second)).toContain("<function=read_file>");
+  });
+
+  it("parses a call after a fence that an earlier chunk closed", () => {
+    const context = new TextParseContext();
+    context.append("```xml\n<tool_call>x</tool_call>\n```\n");
+    expect(context.prefix()).toBe("");
+
+    const result = parseTextEmbeddedToolCalls(readFileCall, undefined, {
+      contextPrefix: context.prefix(),
+    });
+    expect(toolCalls(result)).toHaveLength(1);
   });
 });

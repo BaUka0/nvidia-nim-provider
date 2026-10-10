@@ -2,6 +2,14 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Fixed
+
+- **Stream-end tail in the text tool parser (`src/tools/embedded-parser.ts`).** With `atStreamEnd`, a trailing partial-token prefix (e.g. a closing ```` ``` ```` without a newline, or `<p`) is now emitted as text. Before, it came back as `incompleteText`, and the answer path in `stream-pump.ts` drops `incompleteText` unless it names a tool. An XML construct still incomplete at stream end stays in `incompleteText` only when `getIncompleteTextToolCallName` finds a name, so truncated calls are still reported as skipped.
+- **Images in tool results (`src/messages/parts.ts`, `converter.ts`, `token-estimate.ts`).** `getToolResultTexts` fell through to `JSON.stringify` for image `LanguageModelDataPart`s, producing an index-keyed byte dump. Image and other binary parts now become `[Image: image/png, 245 KB]` / `[Binary data: …]` placeholders. For `supportsVision` models, `getToolResultImages` collects them and `convertMessages` appends them as `image_url` parts in a user message after the tool messages, since OpenAI-style `tool` messages carry text only. Oversized images keep only the placeholder instead of failing the request. `estimatePartTokens` counts tool-result images.
+- **XML text tool calls (`src/tools/xml-tool-scanner.ts`, `embedded-parser.ts`, `json-tool-scanner.ts`, `stream-pump.ts`).** `readXmlTag` returns `incomplete` for a chunk that ends inside `name="…`, so the fragment is held instead of leaking as text. `findXmlConstructStart` / `findJsonConstructStart` take a `from` offset and the parser skips candidates inside a code fence, so a fenced example no longer hides a later real call. `scanToolRegion` commits at stream end when only closing tags are missing (server stop on `</tool_call>`). New `TextParseContext` tracks fence parity and the current line of emitted text per channel; `stream-pump.ts` passes its `prefix()` as `contextPrefix`, so a fence opened in an earlier delta still protects examples in later deltas.
+
 ## [1.5.0] - 2026-10-10
 
 ### Added

@@ -158,7 +158,11 @@ export function parseDeepSeekTextEmbeddedToolCallContent(
 export function parseTextEmbeddedToolCalls(
   text: string,
   toolSchemas?: ReadonlyMap<string, ToolSchema>,
-  options?: { atStreamEnd?: boolean },
+  options?: {
+    atStreamEnd?: boolean;
+    /** Text already emitted before `text`, e.g. from `TextParseContext.prefix()`. */
+    contextPrefix?: string;
+  },
 ): ParsedTextToolCallResult {
   const beginToken = "<|tool_call_begin|>";
   const argBeginToken = "<|tool_call_argument_begin|>";
@@ -198,7 +202,9 @@ export function parseTextEmbeddedToolCalls(
   let remaining = text;
   let incompleteText = "";
 
+  const atStreamEnd = options?.atStreamEnd === true;
   const textContextPrefix = (): string =>
+    (options?.contextPrefix ?? "") +
     segments.map((segment) => (segment.type === "text" ? segment.text : "")).join("");
 
   const appendText = (value: string): void => {
@@ -216,14 +222,28 @@ export function parseTextEmbeddedToolCalls(
 
   while (remaining.length > 0) {
     const accumulatedSoFar = textContextPrefix();
-    const xmlStartIndex = findXmlConstructStart(remaining, accumulatedSoFar);
-    const jsonStart = findJsonConstructStart(remaining, accumulatedSoFar, knownProperties);
 
     const isInsideCodeFence = (offset: number): boolean => {
       const textUpToOffset = accumulatedSoFar + remaining.slice(0, offset);
       const matches = textUpToOffset.match(/```/g);
       return matches !== null && matches.length % 2 === 1;
     };
+
+    // A fenced example must not hide a real call that follows the fence, so
+    // keep searching past candidates that sit inside a code fence.
+    let xmlStartIndex = findXmlConstructStart(remaining, accumulatedSoFar);
+    while (xmlStartIndex !== -1 && isInsideCodeFence(xmlStartIndex)) {
+      xmlStartIndex = findXmlConstructStart(remaining, accumulatedSoFar, xmlStartIndex + 1);
+    }
+    let jsonStart = findJsonConstructStart(remaining, accumulatedSoFar, knownProperties);
+    while (jsonStart && isInsideCodeFence(jsonStart.index)) {
+      jsonStart = findJsonConstructStart(
+        remaining,
+        accumulatedSoFar,
+        knownProperties,
+        jsonStart.index + 1,
+      );
+    }
 
     const tokenMatches = [
       {
@@ -270,6 +290,7 @@ export function parseTextEmbeddedToolCalls(
     if (!nextTokenMatch) {
       const partialBeginIndex = findTrailingTokenPrefixStartAny(remaining, partialTokens);
       if (
+        atStreamEnd ||
         partialBeginIndex === -1 ||
         isInsideCodeFence(partialBeginIndex) ||
         isTokenInStringOrRegexLiteral(
@@ -309,9 +330,16 @@ export function parseTextEmbeddedToolCalls(
         remaining,
         parseEmbeddedToolParameterValue,
         isValidToolIdentifier,
+        atStreamEnd,
       );
       if (scanned.status === "incomplete") {
-        incompleteText = remaining;
+        // At stream end nothing more will arrive: a cut-off call stays
+        // incomplete so the caller can report it, anything else is text.
+        if (atStreamEnd && !getIncompleteTextToolCallName(remaining, toolSchemas)) {
+          appendText(remaining);
+        } else {
+          incompleteText = remaining;
+        }
         break;
       }
       if (scanned.status === "not-a-tag") {
@@ -337,7 +365,7 @@ export function parseTextEmbeddedToolCalls(
         remaining,
         toolSchemas,
         isValidToolIdentifier,
-        options?.atStreamEnd === true,
+        atStreamEnd,
       );
       if (scanned.status === "incomplete") {
         incompleteText = remaining;
@@ -484,4 +512,49 @@ export function getIncompleteTextToolCallName(
   }
 
   return undefined;
+}
+
+const CODE_FENCE = "```";
+const MAX_CONTEXT_LINE_CHARS = 2048;
+const KEPT_CONTEXT_LINE_CHARS = 512;
+
+/**
+ * Tracks text already emitted from a stream so the next parse call knows
+ * whether it starts inside a code fence or mid-line. A fence opened in an
+ * earlier chunk then still protects tool-call examples in later chunks.
+ */
+export class TextParseContext {
+  private settledFenceCount = 0;
+  private lineTail = "";
+
+  append(text: string): void {
+    if (!text) {
+      return;
+    }
+    const combined = this.lineTail + text;
+    const newlineIndex = combined.lastIndexOf("\n");
+    if (newlineIndex !== -1) {
+      this.settle(combined.slice(0, newlineIndex + 1));
+      this.lineTail = combined.slice(newlineIndex + 1);
+    } else {
+      this.lineTail = combined;
+    }
+    if (this.lineTail.length > MAX_CONTEXT_LINE_CHARS) {
+      // Keep backtick runs whole so a fence is never split across the cut.
+      let cut = this.lineTail.length - KEPT_CONTEXT_LINE_CHARS;
+      while (cut > 0 && this.lineTail[cut - 1] === "`") {
+        cut -= 1;
+      }
+      this.settle(this.lineTail.slice(0, cut));
+      this.lineTail = this.lineTail.slice(cut);
+    }
+  }
+
+  prefix(): string {
+    return (this.settledFenceCount % 2 === 1 ? `${CODE_FENCE}\n` : "") + this.lineTail;
+  }
+
+  private settle(text: string): void {
+    this.settledFenceCount += text.split(CODE_FENCE).length - 1;
+  }
 }
