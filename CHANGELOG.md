@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Changed
+
+- When a model is at capacity ("ResourceExhausted"), your next message goes to the model you picked again instead of staying on the backup model for two minutes. These overloads usually clear within seconds, and the request still moves to the backup right away if the model is still busy.
+
 ## [1.5.0] - 2026-10-10
 
 ### Added
