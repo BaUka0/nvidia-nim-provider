@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Added
+
+- **Copilot vs Local harness section (`docs/troubleshooting.md`, `docs/images/harness-selector.png`).** VS Code 1.141 moves new sessions to the Copilot harness through the `chat.defaultToCopilotHarness` / `chat.editor.preferCopilotHarness` experiments (`experiment: { mode: "startup" }`, default `false`), so users land there without changing settings. The section lists what differs for BYOK models: the agent host builds their `configSchema` from `reasoningEffort` only (`AgentHostByokLmHandler.listModels`), so `contextSize` never reaches the picker; the loopback BYOK proxy replies only after the `vscode.lm` call completes; Copilot requests from every window go to the first window. It shows the harness selector with an annotated screenshot and the `chat.defaultToCopilotHarness: false` override. Addresses #40.
+
 ## [1.5.0] - 2026-10-10
 
 ### Added

@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Added
+
+- The troubleshooting guide now explains the Copilot and Local chat modes: recent VS Code builds can move chat to Copilot on their own, where Context Size is missing and replies appear only once finished. It shows where to switch back to Local and how to make Local the default.
+
 ## [1.5.0] - 2026-10-10
 
 ### Added
