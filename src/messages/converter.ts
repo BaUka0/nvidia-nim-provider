@@ -84,16 +84,18 @@ function buildToolDescription(
 }
 
 /**
- * Strips in-chat fallback notices from assistant messages (e.g. injected during failover hops).
- * Prevents models from mimicking or echoing fallback banners in subsequent conversation turns.
+ * Strips the extension's in-chat notices from assistant messages: fallback
+ * banners (`⚡ NVIDIA NIM Fallback:`) and `NVIDIA NIM:` notices such as the
+ * repeated-tool-call and leaked-token ones. Models otherwise copy them into
+ * later replies.
  */
 export function stripFallbackNotices(text: string): string {
-  if (!text.includes("NVIDIA NIM Fallback")) {
+  if (!text.includes("NVIDIA NIM")) {
     return text;
   }
   return text
     .replace(
-      /(?:^|\r?\n)>?\s*⚡\s*\*{0,2}NVIDIA NIM Fallback:?\*{0,2}(?:[^\r\n]*(?:\r?\n>[^\r\n]*)*)/gi,
+      /(?:^|\r?\n)>?\s*(?:⚡\s*\*{0,2}NVIDIA NIM Fallback:?\*{0,2}|\*\*NVIDIA NIM:\*\*)(?:[^\r\n]*(?:\r?\n>[^\r\n]*)*)/gi,
       "",
     )
     .replace(/\n{3,}/g, "\n\n")

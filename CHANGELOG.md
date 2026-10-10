@@ -8,6 +8,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 - When a reply comes back with raw template tokens such as `<|close|>` scattered through the text, a short note now follows it saying the model's deployment on NVIDIA's side is likely producing corrupted output and that switching models should help. Tokens inside code blocks or inline code are ignored, so replies that discuss chat templates are not flagged.
 
+### Fixed
+
+- Models no longer see the extension's own chat notes, such as the note about a repeated tool call, in the conversation history. Some models copied them into their later replies.
+
 ## [1.5.0] - 2026-10-10
 
 ### Added
