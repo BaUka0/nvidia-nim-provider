@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { fetchModelsOrThrow, streamChatCompletion } from "../../src/api/client";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../../src/api/key-resolver";
-import { MODEL_CAPACITY_COOLDOWN_MS, NimChatModelProvider } from "../../src/provider/chat-provider";
+import { NimChatModelProvider } from "../../src/provider/chat-provider";
 import { classifyApiError, NvidiaApiError } from "../../src/api/errors";
 import { MODELS_CACHE_VERSION } from "../../src/shared/constants";
 import {
@@ -1177,9 +1177,7 @@ describe("NimChatModelProvider", () => {
       }));
     });
 
-    it("falls back at once and skips the model on the next turns until the cooldown ends", async () => {
-      let now = 1_000_000;
-      jest.spyOn(Date, "now").mockImplementation(() => now);
+    it("falls back at once and tries the picked model again on the next turn", async () => {
       (streamChatCompletion as jest.Mock)
         .mockImplementationOnce(() => exhausted())
         .mockImplementation(() => answer());
@@ -1190,19 +1188,8 @@ describe("NimChatModelProvider", () => {
         "Overloaded on GLM 5.3. Falling back to Nemotron 3.5 Lightning 30B.",
       );
 
-      now += MODEL_CAPACITY_COOLDOWN_MS - 1000;
-      const second = { report: jest.fn() };
-      await send("Again", second);
-      expect(requestedModels()).toEqual(["z-ai/glm-5.3", LIGHTNING, LIGHTNING]);
-      expect(
-        second.report.mock.calls.some((c: unknown[]) =>
-          String((c[0] as { value?: unknown })?.value ?? "").includes("Overloaded on *GLM 5.3*"),
-        ),
-      ).toBe(true);
-
-      now += 2000;
-      await send("Later");
-      expect(requestedModels()).toEqual(["z-ai/glm-5.3", LIGHTNING, LIGHTNING, "z-ai/glm-5.3"]);
+      await send("Again");
+      expect(requestedModels()).toEqual(["z-ai/glm-5.3", LIGHTNING, "z-ai/glm-5.3"]);
     });
 
     it("keeps calling the picked model when failover is off", async () => {

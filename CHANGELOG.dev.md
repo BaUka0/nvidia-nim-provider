@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Changed
+
+- **ResourceExhausted cooldown removed (`src/provider/chat-provider.ts`).** `saturatedModelUntil`, `markModelSaturated`, `saturatedCooldownMs`, `createSaturatedModelError`, `SATURATED_MODEL_OPERATION` and `MODEL_CAPACITY_COOLDOWN_MS` are gone. Since 1.5.0 a capacity error is classified `rate_limited` and fails over without transient retries, so calling a still-saturated model costs one fast failed request; the 2-minute skip saved only that, while keeping users off their picked model long after the overload, which in practice usually clears within seconds. The capacity classification in `errors.ts` / `client.ts` and the "Overloaded" fallback label stay. `chat-provider.info.test.ts`: the cooldown case now checks that the next turn calls the picked model again. `docs/troubleshooting.md` updated. Addresses #37.
+
 ## [1.5.0] - 2026-10-10
 
 ### Added
