@@ -15,6 +15,24 @@ If something goes wrong, save the session file. Debug logging does not need to b
 
 ---
 
+## Copilot vs Local Chat Sessions
+
+VS Code runs chat sessions through one of several harnesses. The button under the chat input shows which one the current session uses. Recent VS Code builds switch some users to the **Copilot** harness on their own, without changing any setting, so you may be on it without having picked it.
+
+NVIDIA NIM models work in both, but the Copilot harness behaves differently:
+
+- **No Context Size option.** Copilot sessions only take the reasoning level from the model picker. Context Size is available in Local sessions only.
+- **The reply appears all at once.** VS Code holds back the whole reply, including thinking and fallback notices, until the model finishes. Local sessions show it as it streams.
+- **Several windows open.** Copilot sessions from every window reach NVIDIA NIM through the window you opened first, so logs and the session file live there.
+
+To switch a session back, click the harness button (1) and pick **Local** (2):
+
+![Harness selector under the chat input](images/harness-selector.png)
+
+To start new sessions in Local by default, set `"chat.defaultToCopilotHarness": false` in the Settings UI or `settings.json`.
+
+---
+
 ## Common Error Codes and Fixes
 
 ### HTTP 401 Unauthorized / Invalid API Key

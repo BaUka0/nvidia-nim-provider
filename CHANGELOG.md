@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Added
+
+- The troubleshooting guide now explains the Copilot and Local chat modes: recent VS Code builds can move chat to Copilot on their own, where Context Size is missing and replies appear only once finished. It shows where to switch back to Local and how to make Local the default.
+
 ### Changed
 
 - When a model is at capacity ("ResourceExhausted"), your next message goes to the model you picked again instead of staying on the backup model for two minutes. These overloads usually clear within seconds, and the request still moves to the backup right away if the model is still busy.
