@@ -2,6 +2,7 @@ import { ConfigManager } from "../src/shared/config";
 import {
   buildInvalidToolCallRetryMessage,
   buildToolCallCanonicalKey,
+  countLeakedTemplateTokens,
   extractStandaloneXmlParameters,
   getIncompleteTextToolCallName,
   getToolSchemaMap,
@@ -1399,6 +1400,19 @@ describe("tool argument parsing and validation", () => {
       "<|python_tag|><|start_header_id|>assistant<|end_header_id|>Hello [gMASK]<sop> world!<|eot_id|></parameter></function></tool_call>";
 
     expect(stripKnownControlText(rawText)).toBe("Hello  world!");
+  });
+
+  it("counts leaked chat-template tokens outside code only", () => {
+    expect(countLeakedTemplateTokens("Plain reply with a | pipe and <b>html</b>.")).toBe(0);
+    expect(countLeakedTemplateTokens("fooc<|close|>bar 雨<|close|> baz<｜end▁of▁sentence｜>")).toBe(
+      3,
+    );
+    expect(
+      countLeakedTemplateTokens(
+        "Kimi ends turns with `<|im_end|>`:\n```python\nEOS = '<|im_end|>'\nBOS = '<|im_start|>'\n```\nDone.",
+      ),
+    ).toBe(0);
+    expect(countLeakedTemplateTokens("Unclosed fence\n```\n<|close|><|close|>")).toBe(0);
   });
 
   it("preserves source code containing XML token string literals without corrupting text", () => {
