@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Added
+
+- **Leaked template token notice (`src/tools/embedded-parser.ts`, `src/provider/stream-pump.ts`, `src/provider/turn-executor.ts`).** `countLeakedTemplateTokens` counts `<|word|>` / `<｜word｜>` tokens left in visible text after `stripKnownControlText`, skipping fenced (including unclosed) and inline code. `StreamAttemptResult.leakedTemplateTokens` runs it over `lastVisibleText` (last 8,192 chars) once per attempt. The turn executor sums it across attempts. When the total reaches `LEAKED_TEMPLATE_TOKEN_THRESHOLD` (2) and the turn made no tool call, it appends a `> **NVIDIA NIM:**` notice suggesting a model switch and writes a `leakedTokens` output log line. Detection is post-hoc: the reply is already on screen, and in #37 the Kimi K3 deployment was degraded for every request, so a retry or failover before display was not worth holding back every reply. Tests: `tools-parser.test.ts` (counting, code exclusion), `chat-provider.stream.test.ts` (notice on a garbled reply, none when tokens are quoted). Addresses #37.
+
 ## [1.5.0] - 2026-10-10
 
 ### Added
