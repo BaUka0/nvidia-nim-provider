@@ -125,6 +125,39 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("appends a notice when the reply leaks chat-template tokens", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const runTurn = async (chunks: string[]) => {
+      const mockStream = async function* () {
+        for (const content of chunks) {
+          yield { choices: [{ delta: { content } }] };
+        }
+        yield { choices: [{ delta: {}, finish_reason: "stop" }] };
+      };
+      (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+      const progress = { report: jest.fn() };
+      await provider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "meta/llama-3.3-70b-instruct",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        }),
+        makeUserMessages("Hi"),
+        makeChatOptions(),
+        progress,
+        makeToken(),
+      );
+      return progress.report.mock.calls.map((c: unknown[]) => (c[0] as { value?: string }).value);
+    };
+
+    const garbled = await runTurn(["foo<|close|>雨 bar", "<|close|>baz"]);
+    expect(garbled.at(-1)).toContain("raw chat-template tokens");
+
+    const quoted = await runTurn(["Kimi ends turns with `<|im_end|>` and `<|close|>`."]);
+    expect(quoted.join("")).not.toContain("raw chat-template tokens");
+  });
+
   it("strips think tags even when the stream splits tag boundaries", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
 
