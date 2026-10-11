@@ -6,7 +6,12 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ### Added
 
+- **Leaked template token notice (`src/tools/embedded-parser.ts`, `src/provider/stream-pump.ts`, `src/provider/turn-executor.ts`).** `countLeakedTemplateTokens` counts `<|word|>` / `<｜word｜>` tokens left in visible text after `stripKnownControlText`, skipping fenced (including unclosed) and inline code. `StreamAttemptResult.leakedTemplateTokens` runs it over `lastVisibleText` (last 8,192 chars) once per attempt. The turn executor sums it across attempts. When the total reaches `LEAKED_TEMPLATE_TOKEN_THRESHOLD` (2) and the turn made no tool call, it appends a `> **NVIDIA NIM:**` notice suggesting a model switch and writes a `leakedTokens` output log line. Detection is post-hoc: the reply is already on screen, and in #37 the Kimi K3 deployment was degraded for every request, so a retry or failover before display was not worth holding back every reply. Tests: `tools-parser.test.ts` (counting, code exclusion), `chat-provider.stream.test.ts` (notice on a garbled reply, none when tokens are quoted). Addresses #37.
 - **Copilot vs Local harness section (`docs/troubleshooting.md`, `docs/images/harness-selector.png`).** VS Code 1.141 moves new sessions to the Copilot harness through the `chat.defaultToCopilotHarness` / `chat.editor.preferCopilotHarness` experiments (`experiment: { mode: "startup" }`, default `false`), so users land there without changing settings. The section lists what differs for BYOK models: the agent host builds their `configSchema` from `reasoningEffort` only (`AgentHostByokLmHandler.listModels`), so `contextSize` never reaches the picker; the loopback BYOK proxy replies only after the `vscode.lm` call completes; Copilot requests from every window go to the first window. It shows the harness selector with an annotated screenshot and the `chat.defaultToCopilotHarness: false` override. Addresses #40.
+
+### Fixed
+
+- **`NVIDIA NIM:` notices stripped from history (`src/messages/converter.ts`).** `stripFallbackNotices` only matched `⚡ NVIDIA NIM Fallback:` banners, so the leaked-token notice and the repeated-tool-call notice went back to the model with the assistant turn. In a manual test Muse Glimmer copied the leaked-token notice into its next two replies, rewording it each time. The pattern now also matches `> **NVIDIA NIM:**` blockquotes. `utils.test.ts` covers a notice appended after the answer.
 
 ## [1.5.0] - 2026-10-10
 

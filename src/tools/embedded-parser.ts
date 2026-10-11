@@ -113,6 +113,22 @@ export function stripKnownControlText(text: string, contextPrefix = ""): string 
     .join("");
 }
 
+const TEMPLATE_TOKEN_PATTERN = /<[|｜][A-Za-z_][\w▁.-]{0,40}[|｜]>/g;
+
+/**
+ * Counts chat-template tokens such as `<|close|>` or `<｜end▁of▁sentence｜>`
+ * left in reply text after `stripKnownControlText`, skipping fenced and inline
+ * code. A healthy reply shows none outside code; several mean the deployment
+ * is emitting garbage.
+ */
+export function countLeakedTemplateTokens(text: string): number {
+  if (!text.includes("<|") && !text.includes("<｜")) {
+    return 0;
+  }
+  const prose = text.replace(/```[\s\S]*?(?:```|$)/g, "").replace(/`[^`\n]*`/g, "");
+  return prose.match(TEMPLATE_TOKEN_PATTERN)?.length ?? 0;
+}
+
 export function extractStandaloneXmlParameters(text: string): {
   cleanText: string;
   extractedParams: Record<string, unknown>;

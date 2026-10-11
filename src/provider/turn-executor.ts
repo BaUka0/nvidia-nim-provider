@@ -81,6 +81,12 @@ function isTransientStreamError(err: unknown): boolean {
 
 const INVALID_TOOL_EXHAUSTION_OPERATION = "invalid_tool_call";
 
+/** One stray template token can be a quote; this many means a broken reply. */
+const LEAKED_TEMPLATE_TOKEN_THRESHOLD = 2;
+
+const LEAKED_TEMPLATE_TOKEN_NOTICE =
+  "\n\n> **NVIDIA NIM:** This reply contains raw chat-template tokens, which usually means the model's deployment on NVIDIA's side is producing corrupted output. Switching to another model in the picker should help until it recovers.\n\n";
+
 function createInvalidToolExhaustionError(
   modelLabel: string,
   retryCount: number,
@@ -227,6 +233,7 @@ export class ModelTurnExecutor {
 
     let hasReportedVisibleContent = false;
     let sawToolCallOverall = false;
+    let leakedTemplateTokens = 0;
     const contextWindow = runtimeInfo.contextWindow;
     const supportsVision = runtimeInfo.supportsVision;
     const supportsTools = runtimeInfo.supportsTools;
@@ -266,6 +273,7 @@ export class ModelTurnExecutor {
       if (result.sawToolCall) {
         sawToolCallOverall = true;
       }
+      leakedTemplateTokens += result.leakedTemplateTokens ?? 0;
     };
 
     try {
@@ -625,6 +633,14 @@ export class ModelTurnExecutor {
           error: emptyError,
         });
         throw emptyError;
+      }
+
+      if (leakedTemplateTokens >= LEAKED_TEMPLATE_TOKEN_THRESHOLD && !sawToolCallOverall) {
+        progress.report(new vscode.LanguageModelTextPart(LEAKED_TEMPLATE_TOKEN_NOTICE));
+        outputLog(
+          "leakedTokens",
+          `Reply from ${model.id} contained ${leakedTemplateTokens} raw chat-template token(s) outside code; the deployment is likely producing corrupted output.`,
+        );
       }
 
       emitUsageAndStatus(finalUsage, activeRequestBody!);
