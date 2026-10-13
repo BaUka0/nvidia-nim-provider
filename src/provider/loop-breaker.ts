@@ -3,7 +3,7 @@ import { NimChatMessage, NimChatRequest } from "../types";
 import { debugLog, outputLog } from "../shared/logging";
 import { LanguageModelChatMessageRole } from "vscode";
 import { normalizeLineForRepetition } from "./repetition-guard";
-import { replayTaskToolCalls } from "../tools/parser";
+import { findTaskStartIndex, replayTaskToolCalls } from "../tools/parser";
 import { cloneNimChatRequest } from "./request-snapshot";
 import { BoundedMap } from "../shared/bounded-map";
 import { DEFAULT_TOOLS_CONFIG } from "../shared/config";
@@ -11,6 +11,7 @@ import { stripFallbackNotices } from "../messages/converter";
 import { extractPrefixGram } from "../shared/cycle-detection";
 
 const MAX_INJECTED_LOOPS_TRACKED = 128;
+/** Breakers already sent, keyed by task and loop, so the budget resets per task. */
 const recentInjectedLoops = new BoundedMap<string, number>(MAX_INJECTED_LOOPS_TRACKED);
 
 export function resetInjectedLoopsForTests(): void {
@@ -42,8 +43,13 @@ function countTrailingMatches(values: readonly string[], cap: number): number {
   return consecutive;
 }
 
-/** Extract the first non-empty text line from an assistant message. */
-function extractAssistantFirstLine(content: unknown): string | undefined {
+/**
+ * An assistant turn that is only a preamble: text ending in a colon and no
+ * tool call, so the turn stopped right before the action it announced (#13).
+ * Returns its first non-empty line, or undefined for any other turn. Healthy
+ * agent turns open the same way ("Now I'll…") but carry the tool call.
+ */
+function extractHangingPreamble(content: unknown): string | undefined {
   let fullText = "";
   if (typeof content === "string") {
     fullText = content;
@@ -52,6 +58,9 @@ function extractAssistantFirstLine(content: unknown): string | undefined {
     for (const part of content) {
       if (part == null || typeof part !== "object") continue;
       const p = part as Record<string, unknown>;
+      if (typeof p.name === "string") {
+        return undefined;
+      }
       if (typeof p.value === "string") {
         parts.push(p.value);
       } else if (typeof p.text === "string") {
@@ -60,22 +69,47 @@ function extractAssistantFirstLine(content: unknown): string | undefined {
     }
     fullText = parts.join("\n");
   }
-  if (!fullText) {
-    return undefined;
-  }
-  const stripped = stripFallbackNotices(fullText);
-  if (!stripped) {
+  const stripped = fullText ? stripFallbackNotices(fullText).trimEnd() : "";
+  if (!stripped.endsWith(":") && !stripped.endsWith("：")) {
     return undefined;
   }
   return stripped.split(/\r?\n/).find((l) => l.trim().length > 0) ?? stripped;
 }
 
+/** Text of a message's typed parts, for keying the current task. */
+function messageText(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content
+    .map((part) =>
+      part !== null &&
+      typeof part === "object" &&
+      typeof (part as { value?: unknown }).value === "string"
+        ? (part as { value: string }).value
+        : "",
+    )
+    .join("");
+}
+
+/** Identifies the current task: the typed user message that started it. */
+function taskKey(messages: readonly { role: unknown; content: unknown }[]): string {
+  const startIndex = findTaskStartIndex(messages);
+  const opener = startIndex > 0 ? messageText(messages[startIndex - 1].content) : "";
+  return `${startIndex}:${opener.slice(0, 200)}`;
+}
+
 /**
- * Detects inter-turn preamble loops by inspecting recent assistant messages.
- * Returns the normalized repeated preamble if a loop is detected, otherwise
- * undefined. Looks at the last `windowSize` assistant messages and checks
- * whether the same normalized first line appears `minRepeats` times
- * consecutively from the end, or `threshold` times within the window.
+ * Detects inter-turn preamble loops: assistant turns that stop on a preamble
+ * without the tool call it announced. Returns the normalized repeated
+ * preamble if a loop is detected, otherwise undefined. Looks at the last
+ * `windowSize` hanging preambles and checks whether the same normalized first
+ * line, or the same two-word opening ("let me", "давайте я"), appears
+ * `minRepeats` times consecutively from the end, or `threshold` times within
+ * the window. Each such turn ends the Copilot turn, so they span user turns.
  */
 export function detectHistoryLoop(
   messages: readonly { role: unknown; content: unknown }[],
@@ -85,21 +119,21 @@ export function detectHistoryLoop(
   const minRepeats = options.minRepeats ?? 3;
   const threshold = options.threshold ?? 3;
 
-  const assistantFirstLines: string[] = [];
+  const preambles: string[] = [];
   for (const msg of messages) {
     if (!isAssistantRole(msg.role)) {
       continue;
     }
-    const firstLine = extractAssistantFirstLine(msg.content);
-    if (firstLine !== undefined) {
-      assistantFirstLines.push(firstLine);
+    const preamble = extractHangingPreamble(msg.content);
+    if (preamble !== undefined) {
+      preambles.push(preamble);
     }
   }
 
-  if (assistantFirstLines.length < minRepeats) {
+  if (preambles.length < minRepeats) {
     return undefined;
   }
-  const recent = assistantFirstLines.slice(-windowSize).map(normalizeLineForRepetition);
+  const recent = preambles.slice(-windowSize).map(normalizeLineForRepetition);
   const lastNormalized = recent[recent.length - 1] ?? "";
 
   // 1. Exact full-line match check
@@ -113,7 +147,7 @@ export function detectHistoryLoop(
     }
   }
 
-  // 2. Leading prefix N-gram check across assistant turns (e.g. "let me", "давайте я")
+  // 2. Leading prefix N-gram check (e.g. "let me", "давайте я")
   const recentPrefixes = recent.map((l) => extractPrefixGram(l, 2));
   const lastPrefix = recentPrefixes[recentPrefixes.length - 1] ?? "";
   if (lastPrefix.length >= 4) {
@@ -321,7 +355,7 @@ export function injectHistoryLoopBreaker(options: {
     return options.requestBody;
   }
 
-  const loopKey = historyLoopTool ?? historyLoopPreamble ?? loopContent;
+  const loopKey = `${taskKey(options.historyMessages)}\u0000${historyLoopTool ?? historyLoopPreamble ?? loopContent}`;
   const previousInjections = recentInjectedLoops.get(loopKey) ?? 0;
   if (previousInjections >= 2) {
     return options.requestBody;
@@ -329,8 +363,6 @@ export function injectHistoryLoopBreaker(options: {
 
   const escalate = previousInjections >= 1;
   const breakerContent = escalate ? HISTORY_LOOP_ESCALATION_NUDGE : loopContent;
-
-  recentInjectedLoops.set(loopKey, previousInjections + 1);
 
   const trippedLine = historyLoopTool ?? historyLoopPreamble;
   debugLog("repetitionGuard", {
@@ -361,7 +393,10 @@ export function injectHistoryLoopBreaker(options: {
     messages: [...options.requestBody.messages, breakerTurn],
   };
   try {
-    return options.applyBudget(bodyWithBreaker);
+    const budgeted = options.applyBudget(bodyWithBreaker);
+    // Count only a breaker that was sent, so a dropped one is not escalated.
+    recentInjectedLoops.set(loopKey, previousInjections + 1);
+    return budgeted;
   } catch (error) {
     if (error instanceof NvidiaApiError && error.kind === "token_limit") {
       debugLog("repetitionGuard", "breaker dropped: context budget exceeded");
