@@ -217,6 +217,32 @@ describe("summarizeOldMessages", () => {
     expect(userMessage?.content).toContain("Earlier content clipped");
   });
 
+  it("drops the oldest turns first when the payload is over budget", async () => {
+    const completionMock = chatCompletion as jest.Mock;
+    completionMock.mockResolvedValueOnce("Summary");
+
+    await summarizeOldMessages(
+      [
+        { role: "user", content: `oldest-start ${"a".repeat(30000)} oldest-end` },
+        { role: "assistant", content: `middle-start ${"b".repeat(30000)} middle-end` },
+        { role: "user", content: "newest turn" },
+      ],
+      "test-key",
+      "test-agent",
+    );
+
+    const request = completionMock.mock.calls.at(-1)?.[1];
+    const text: string = request?.messages.find(
+      (message: NimChatMessage) => message.role === "user",
+    )?.content;
+    expect(text.length).toBeLessThanOrEqual(48000);
+    expect(text.startsWith("[Earlier content clipped before summarization.]")).toBe(true);
+    expect(text).toContain("newest turn");
+    expect(text).toContain("middle-start");
+    expect(text).toContain("oldest-end");
+    expect(text).not.toContain("oldest-start");
+  });
+
   it("falls back to truncation when the API returns an empty summary", async () => {
     const completionMock = chatCompletion as jest.Mock;
     completionMock.mockResolvedValueOnce("   ");

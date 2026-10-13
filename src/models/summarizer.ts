@@ -4,11 +4,7 @@ import { NimChatMessage } from "../types";
 import { findToolCallOwnerIndex } from "../messages/tool-call-pairing";
 import { FALLBACK_MODEL_ID } from "./catalog";
 import { withReasoningOff } from "./adapters";
-import {
-  estimateNimMessagesTokens,
-  truncateMessagesForContext,
-  truncatePreservingSurrogates,
-} from "../messages/converter";
+import { estimateNimMessagesTokens, truncateMessagesForContext } from "../messages/converter";
 import { DEFAULT_NETWORK_CONFIG } from "../shared/config";
 import { COMPACTION_RECENT_FRACTION } from "../shared/constants";
 import { FetchAttemptBudget, httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
@@ -34,67 +30,93 @@ const SUMMARIZATION_PROMPT = `Summarize the following conversation concisely, pr
 Do not include greetings, pleasantries, or filler. Focus on technical substance.
 Return only the summary, no meta-commentary.`;
 const MAX_SUMMARIZATION_INPUT_CHARS = 48000;
-const SUMMARIZATION_TRUNCATION_NOTICE = "\n[Earlier content clipped before summarization.]";
+const SUMMARIZATION_TRUNCATION_NOTICE = "[Earlier content clipped before summarization.]\n\n";
+const LINE_SEPARATOR = "\n\n";
 
+/** Last `maxChars` UTF-16 units of `text`, never starting on a lone low surrogate. */
+function takeTailPreservingSurrogates(text: string, maxChars: number): string {
+  if (maxChars <= 0) {
+    return "";
+  }
+  if (text.length <= maxChars) {
+    return text;
+  }
+  let start = text.length - maxChars;
+  const code = text.charCodeAt(start);
+  if (code >= 0xdc00 && code <= 0xdfff) {
+    start += 1;
+  }
+  return text.slice(start);
+}
+
+function messageToSummaryLine(
+  msg: NimChatMessage,
+): { prefix: string; content: string } | undefined {
+  const role =
+    msg.role === "user"
+      ? "User"
+      : msg.role === "assistant"
+        ? "Assistant"
+        : msg.role === "tool"
+          ? "Tool Result"
+          : "System";
+  const content =
+    typeof msg.content === "string"
+      ? msg.content
+      : msg.content
+          .map((part) => {
+            if (part.type === "image_url") {
+              return "[image omitted from summary]";
+            }
+            if (part.type === "text" && typeof part.text === "string") {
+              return part.text;
+            }
+            return JSON.stringify(part);
+          })
+          .join(" ");
+  const metadata = [
+    msg.reasoning_content ? `[reasoning]: ${msg.reasoning_content}` : "",
+    msg.tool_call_id ? `[tool_call_id]: ${msg.tool_call_id}` : "",
+    msg.tool_calls?.length ? `[tool_calls]: ${JSON.stringify(msg.tool_calls)}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const summaryContent = [content, metadata].filter(Boolean).join(" ");
+  return summaryContent.trim() ? { prefix: `[${role}]: `, content: summaryContent } : undefined;
+}
+
+/**
+ * Flatten old turns for the summarizer. Over budget, the oldest content is
+ * dropped first: the turns closest to the verbatim recent tail matter most.
+ */
 function messagesToText(messages: NimChatMessage[]): string {
-  const lines: string[] = [];
-  let remainingChars = MAX_SUMMARIZATION_INPUT_CHARS;
-  let wasClipped = false;
-  for (const [index, msg] of messages.entries()) {
-    if (remainingChars <= 0) {
-      wasClipped = index < messages.length;
-      break;
-    }
-    const role =
-      msg.role === "user"
-        ? "User"
-        : msg.role === "assistant"
-          ? "Assistant"
-          : msg.role === "tool"
-            ? "Tool Result"
-            : "System";
-    const content =
-      typeof msg.content === "string"
-        ? msg.content
-        : msg.content
-            .map((part) => {
-              if (part.type === "image_url") {
-                return "[image omitted from summary]";
-              }
-              if (part.type === "text" && typeof part.text === "string") {
-                return part.text;
-              }
-              return JSON.stringify(part);
-            })
-            .join(" ");
-    const metadata = [
-      msg.reasoning_content ? `[reasoning]: ${msg.reasoning_content}` : "",
-      msg.tool_call_id ? `[tool_call_id]: ${msg.tool_call_id}` : "",
-      msg.tool_calls?.length ? `[tool_calls]: ${JSON.stringify(msg.tool_calls)}` : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
-    const summaryContent = [content, metadata].filter(Boolean).join(" ");
-    if (summaryContent.trim()) {
-      const prefix = `[${role}]: `;
-      const availableContentChars = Math.max(0, remainingChars - prefix.length);
-      if (summaryContent.length > availableContentChars) {
-        wasClipped = true;
-      }
-      const clippedContent = truncatePreservingSurrogates(summaryContent, availableContentChars);
-      lines.push(`${prefix}${clippedContent}`);
-      remainingChars -= prefix.length + clippedContent.length;
-    }
+  const lines = messages
+    .map(messageToSummaryLine)
+    .filter((line): line is { prefix: string; content: string } => line !== undefined);
+  const full = lines.map((line) => line.prefix + line.content).join(LINE_SEPARATOR);
+  if (full.length <= MAX_SUMMARIZATION_INPUT_CHARS) {
+    return full;
   }
-  const result = lines.join("\n\n");
-  if (!wasClipped) {
-    return result;
+
+  const budget = MAX_SUMMARIZATION_INPUT_CHARS - SUMMARIZATION_TRUNCATION_NOTICE.length;
+  const kept: string[] = [];
+  let used = 0;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const separatorLength = kept.length > 0 ? LINE_SEPARATOR.length : 0;
+    const { prefix, content } = lines[i];
+    if (used + separatorLength + prefix.length + content.length <= budget) {
+      kept.unshift(prefix + content);
+      used += separatorLength + prefix.length + content.length;
+      continue;
+    }
+    // Keep the end of the boundary message, next to the turns that follow it.
+    const room = budget - used - separatorLength - prefix.length - 1;
+    if (room > 0) {
+      kept.unshift(`${prefix}…${takeTailPreservingSurrogates(content, room)}`);
+    }
+    break;
   }
-  const bodyLimit = Math.max(
-    0,
-    MAX_SUMMARIZATION_INPUT_CHARS - SUMMARIZATION_TRUNCATION_NOTICE.length,
-  );
-  return `${truncatePreservingSurrogates(result, bodyLimit)}${SUMMARIZATION_TRUNCATION_NOTICE}`;
+  return SUMMARIZATION_TRUNCATION_NOTICE + kept.join(LINE_SEPARATOR);
 }
 
 /**

@@ -12,6 +12,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - When a long conversation is summarized to fit the model, your latest message is always kept word for word. Before, a very long message, such as a pasted file, could be folded into the summary along with your question.
 - A short "first token" timeout no longer cuts off requests that are waiting out a rate limit. Before, if NVIDIA asked to retry after a pause longer than the timeout, the request failed with a "no data received" timeout instead of retrying.
 - A model setting left empty or set to a non-text value in `settings.json` now falls back to the default model. Before, it could make every chat request fail.
+- When an old part of a long conversation is too large to summarize in full, the oldest turns are now the ones left out. Before, the turns just before the kept recent messages were cut instead, so the summary could miss what happened most recently.
 - The troubleshooting guide's steps for making Local the default chat mode were incomplete: VS Code could still move every new chat back to Copilot after you picked Local. The guide now lists both settings to turn off, how to bring back a missing Local option, and what to do when your organization controls it.
 
 ## [1.6.0] - 2026-10-11
