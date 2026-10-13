@@ -128,4 +128,19 @@ describe("output-channel", () => {
     expect(mockAppendLine).toHaveBeenCalledTimes(2);
     expect(getSessionEvents()).toHaveLength(2);
   });
+
+  it("counts logged message bodies at their real size against the session cap", async () => {
+    const { debugLog, getSessionEvents, resetSessionLogsForTests, setDeveloperLogOptions } =
+      await import("../src/shared/logging");
+    resetSessionLogsForTests();
+    setDeveloperLogOptions({ logUserMessages: true });
+
+    const body = [{ role: "user", content: "x".repeat(100 * 1024) }];
+    for (let i = 0; i < 5; i += 1) {
+      debugLog("Outgoing request messages", body, "messages");
+    }
+
+    // 256 KB holds two 100 KB bodies; the oldest are evicted.
+    expect(getSessionEvents()).toHaveLength(2);
+  });
 });
