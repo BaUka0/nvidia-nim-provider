@@ -17,6 +17,7 @@ import { MAX_EMBEDDED_TOOL_TEXT_CHARS } from "../shared/constants";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { NimChatRequest } from "../types";
 import {
+  countLeakedTemplateTokens,
   getIncompleteTextToolCallName,
   getToolSchemaMap,
   parseTextEmbeddedToolCalls,
@@ -105,6 +106,11 @@ export interface StreamAttemptResult {
    * partial reply must not be accepted as a finished turn.
    */
   streamDropped?: boolean;
+  /**
+   * Chat-template tokens (`<|close|>` and the like) left in the visible reply
+   * outside code. Several of them mean the deployment is producing garbage.
+   */
+  leakedTemplateTokens?: number;
 }
 
 /**
@@ -730,5 +736,6 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     toolParsingStateInitDurationMs,
     timedOut,
     streamDropped,
+    leakedTemplateTokens: countLeakedTemplateTokens(lastVisibleText),
   };
 }

@@ -15,6 +15,31 @@ If something goes wrong, save the session file. Debug logging does not need to b
 
 ---
 
+## Copilot vs Local Chat Sessions
+
+VS Code runs chat sessions through one of several harnesses. The button under the chat input shows which one the current session uses. Recent VS Code builds switch some users to the **Copilot** harness on their own, without changing any setting, so you may be on it without having picked it.
+
+NVIDIA NIM models work in both, but the Copilot harness behaves differently:
+
+- **No Context Size option.** Copilot sessions only take the reasoning level from the model picker. Context Size is available in Local sessions only.
+- **The reply appears all at once.** VS Code holds back the whole reply, including thinking and fallback notices, until the model finishes. Local sessions show it as it streams.
+- **Several windows open.** Copilot sessions from every window reach NVIDIA NIM through the window you opened first, so logs and the session file live there.
+
+To switch a session back, click the harness button (1) and pick **Local** (2):
+
+![Harness selector under the chat input](images/harness-selector.png)
+
+To start new sessions in Local by default, turn off both of these in the Settings UI or `settings.json`. VS Code can turn either one on for you, and the second one switches every new session back to Copilot even after you pick Local:
+
+```json
+"chat.defaultToCopilotHarness": false,
+"chat.editor.preferCopilotHarness": false
+```
+
+If **Local** is missing from the harness button, also set `"chat.editor.localAgent.enabled": true`. If your organization manages `chat.editor.preferCopilotHarness` through a policy, you cannot change it yourself; ask your administrator.
+
+---
+
 ## Common Error Codes and Fixes
 
 ### HTTP 401 Unauthorized / Invalid API Key
@@ -39,8 +64,8 @@ If something goes wrong, save the session file. Debug logging does not need to b
 
 ### ResourceExhausted: Worker local total request limit reached
 
-- **Cause:** Every NVIDIA NIM worker for that model is busy. It arrives as HTTP 500 or 503 and can last for minutes, typically on newly added or popular models.
-- **Fix:** With `"nvidia-nim.fallback.enabled": true` (Settings UI or `settings.json`), the extension skips the retries and moves straight to the backup model. It then keeps using the backup for the next two minutes before trying the picked model again. With failover off, you get the error right away. Pick another model or try again later.
+- **Cause:** Every NVIDIA NIM worker for that model is busy. It arrives as HTTP 500 or 503, typically on newly added or popular models, and usually clears within seconds.
+- **Fix:** With `"nvidia-nim.fallback.enabled": true` (Settings UI or `settings.json`), the extension skips the retries and moves straight to the backup model. The next message tries the picked model again. With failover off, you get the error right away. Pick another model or try again later.
 
 ### Request timed out waiting for stream data
 

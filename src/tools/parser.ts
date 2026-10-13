@@ -28,6 +28,7 @@ export {
 export {
   isValidToolIdentifier,
   stripKnownControlText,
+  countLeakedTemplateTokens,
   extractStandaloneXmlParameters,
   parseTextEmbeddedToolCalls,
   getIncompleteTextToolCallName,

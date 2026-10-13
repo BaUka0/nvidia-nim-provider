@@ -9,6 +9,22 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Answers that end with a code block keep their closing fence. Before, the last three backticks could be dropped, leaving the block unclosed.
 - Screenshots and other images returned by tools now reach models with image input. Before, the model received the raw image bytes as text, cut off at the tool output limit, which also wasted context. Models without image input get a short note that an image was returned.
 - Models that write tool calls as text handle more cases. A call split across chunks inside its tool name is no longer printed into the chat, an example tool call inside a code block is no longer run, a real call that follows such an example is no longer missed, and a call that is cut off only after its last argument is still run.
+- The troubleshooting guide's steps for making Local the default chat mode were incomplete: VS Code could still move every new chat back to Copilot after you picked Local. The guide now lists both settings to turn off, how to bring back a missing Local option, and what to do when your organization controls it.
+
+## [1.6.0] - 2026-10-11
+
+### Added
+
+- When a reply comes back with raw template tokens such as `<|close|>` scattered through the text, a short note now follows it saying the model's deployment on NVIDIA's side is likely producing corrupted output and that switching models should help. Tokens inside code blocks or inline code are ignored, so replies that discuss chat templates are not flagged.
+- The troubleshooting guide now explains the Copilot and Local chat modes: recent VS Code builds can move chat to Copilot on their own, where Context Size is missing and replies appear only once finished. It shows where to switch back to Local and how to make Local the default.
+
+### Changed
+
+- When a model is at capacity ("ResourceExhausted"), your next message goes to the model you picked again instead of staying on the backup model for two minutes. These overloads usually clear within seconds, and the request still moves to the backup right away if the model is still busy.
+
+### Fixed
+
+- Models no longer see the extension's own chat notes, such as the note about a repeated tool call, in the conversation history. Some models copied them into their later replies.
 
 ## [1.5.0] - 2026-10-10
 
