@@ -234,6 +234,61 @@ export function getToolCallInfo(
   return undefined;
 }
 
+function binaryByteLength(part: LegacyPart): number | undefined {
+  for (const candidate of [part.data, part.bytes]) {
+    if (candidate instanceof Uint8Array || Array.isArray(candidate)) {
+      return candidate.length;
+    }
+    if (typeof candidate === "string") {
+      const payload = candidate.startsWith("data:")
+        ? candidate.slice(candidate.indexOf(",") + 1)
+        : candidate;
+      return Math.floor((payload.replace(/\s/g, "").length * 3) / 4);
+    }
+  }
+  return part.buffer instanceof ArrayBuffer ? part.buffer.byteLength : undefined;
+}
+
+function describeBinaryPart(part: unknown): string | undefined {
+  if (typeof part !== "object" || part === null) {
+    return undefined;
+  }
+  const p = part as LegacyPart;
+  if (typeof p.mimeType !== "string") {
+    return undefined;
+  }
+  const byteLength = binaryByteLength(p);
+  if (byteLength === undefined) {
+    return undefined;
+  }
+  const size = byteLength >= 1024 ? `${Math.round(byteLength / 1024)} KB` : `${byteLength} bytes`;
+  const kind = p.mimeType.startsWith("image/") ? "Image" : "Binary data";
+  return `[${kind}: ${p.mimeType}, ${size}]`;
+}
+
+/**
+ * Images inside a tool result. Oversized or undecodable images are skipped;
+ * the tool text still carries their placeholder.
+ */
+export function getToolResultImages(part: unknown): Array<{ mimeType: string; data: Uint8Array }> {
+  const images: Array<{ mimeType: string; data: Uint8Array }> = [];
+  const p = asObjectRecord(part);
+  if (!p || typeof p.callId !== "string" || !Array.isArray(p.content)) {
+    return images;
+  }
+  for (const inner of p.content) {
+    try {
+      const img = extractImageData(inner);
+      if (img) {
+        images.push(img);
+      }
+    } catch {
+      // Over the chat image limit: keep the placeholder only.
+    }
+  }
+  return images;
+}
+
 export function getToolResultTexts(part: unknown): string[] {
   const results: string[] = [];
   if (typeof part !== "object" || part === null) {
@@ -263,6 +318,14 @@ export function getToolResultTexts(part: unknown): string[] {
       const tv = getTextPartValue(inner) ?? getDataPartTextValue(inner);
       if (tv !== undefined) {
         results.push(tv);
+        continue;
+      }
+      // Images and other binary payloads stay out of the text: serializing a
+      // Uint8Array yields an index-keyed byte dump. Images reach vision models
+      // separately through getToolResultImages.
+      const binary = describeBinaryPart(inner);
+      if (binary) {
+        results.push(binary);
         continue;
       }
       debugLog("Unhandled tool result part", inner);

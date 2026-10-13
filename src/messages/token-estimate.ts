@@ -5,6 +5,7 @@ import {
   getDataPartTextValue,
   getTextPartValue,
   getToolCallInfo,
+  getToolResultImages,
   getToolResultTexts,
 } from "./parts";
 
@@ -59,7 +60,11 @@ export function estimatePartTokens(part: unknown): number {
   ) {
     const texts = getToolResultTexts(part);
     const joined = texts.join("\n").trim();
-    return joined ? estimateTokens(joined) : 2;
+    const imageTokens = getToolResultImages(part).reduce(
+      (sum, img) => sum + imageTokensForBytes(img.data.length),
+      0,
+    );
+    return (joined ? estimateTokens(joined) : 2) + imageTokens;
   }
 
   // Text part or text-decodable data part.

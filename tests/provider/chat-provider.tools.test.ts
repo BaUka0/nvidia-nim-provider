@@ -271,6 +271,34 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it("keeps a closing code fence that ends the answer", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const mockStream = async function* () {
+      yield { choices: [{ delta: { content: "Example:\n```ts\nconst a = 1;\n" } }] };
+      yield { choices: [{ delta: { content: "```" }, finish_reason: "stop" }] };
+    };
+    (streamChatCompletion as jest.Mock).mockReturnValue(mockStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({ id: "kimi-k2.6", maxInputTokens: 100000, maxOutputTokens: 65536 }),
+      makeUserMessages("Hi"),
+      makeChatOptions({
+        modelOptions: {},
+        tools: [{ name: "get_weather", description: "Get weather", inputSchema: {} }],
+      }),
+      progress,
+      makeToken(),
+    );
+
+    const text = progress.report.mock.calls
+      .map(([part]) => (part as { value?: unknown }).value)
+      .filter((value): value is string => typeof value === "string")
+      .join("");
+    expect(text).toBe("Example:\n```ts\nconst a = 1;\n```");
+  });
+
   it("sends required tool choice when tool mode requires a tool", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (globalState.get as jest.Mock).mockImplementation((key: string) =>

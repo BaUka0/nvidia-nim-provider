@@ -222,10 +222,18 @@ function readXmlTag(text: string, index: number): ParsedXmlTag | undefined {
       cursor += name.length;
     } else {
       cursor = skipWhitespace(text, cursor);
-      const attrMatch = text.slice(cursor).match(/^name\s*=\s*"([^"]*)"/i);
+      const attrText = text.slice(cursor);
+      const attrMatch = attrText.match(/^name\s*=\s*"([^"]*)"/i);
       if (attrMatch) {
         name = attrMatch[1];
         cursor += attrMatch[0].length;
+      } else if (
+        attrText.length > 0 &&
+        ("name".startsWith(attrText.toLowerCase()) ||
+          /^name\s*(?:=\s*(?:"[^"\n<>]*)?)?$/i.test(attrText))
+      ) {
+        // The chunk ended inside the name attribute: `<invoke name="read_fi`.
+        return { kind, closing: false, rawLength: 0, incomplete: true };
       }
     }
   }
@@ -420,6 +428,7 @@ function scanToolRegion(
   firstTag: ParsedXmlTag,
   parseValue: (raw: string) => unknown,
   isValidName: (name: string) => boolean,
+  atStreamEnd: boolean,
 ): XmlScanResult {
   const stack: StackFrame[] = [{ kind: firstTag.kind }];
   let cursor = firstTag.rawLength;
@@ -443,6 +452,11 @@ function scanToolRegion(
 
     cursor = skipWhitespace(text, cursor);
     if (cursor >= text.length) {
+      // Every parameter is closed and only closing tags are missing, e.g. a
+      // server stop sequence on </tool_call>: the call itself is complete.
+      if (atStreamEnd) {
+        break;
+      }
       return { status: "incomplete" };
     }
 
@@ -468,6 +482,10 @@ function scanToolRegion(
 
     const tag = readXmlTag(text, cursor);
     if (tag?.incomplete) {
+      if (atStreamEnd && tag.closing) {
+        cursor = text.length;
+        break;
+      }
       return { status: "incomplete" };
     }
     if (!tag) {
@@ -534,8 +552,8 @@ function scanToolRegion(
   return { status: "complete", consumed: cursor };
 }
 
-export function findXmlConstructStart(text: string, contextPrefix = ""): number {
-  let pos = 0;
+export function findXmlConstructStart(text: string, contextPrefix = "", from = 0): number {
+  let pos = from;
   while (pos < text.length) {
     const lt = text.indexOf("<", pos);
     if (lt === -1) {
@@ -561,6 +579,7 @@ export function scanXmlToolConstruct(
   text: string,
   parseValue: (raw: string) => unknown,
   isValidName: (name: string) => boolean,
+  atStreamEnd = false,
 ): XmlScanResult {
   const tag = readXmlTag(text, 0);
   if (tag?.incomplete) {
@@ -622,7 +641,7 @@ export function scanXmlToolConstruct(
     return { status: "not-a-tag", skip: tag.rawLength };
   }
 
-  return scanToolRegion(text, tag, parseValue, isValidName);
+  return scanToolRegion(text, tag, parseValue, isValidName, atStreamEnd);
 }
 
 export function extractStandaloneXmlParameters(

@@ -120,8 +120,9 @@ export function findJsonConstructStart(
   text: string,
   contextPrefix = "",
   knownProperties: ReadonlySet<string>,
+  from = 0,
 ): { index: number; kind: "fenced" | "raw" } | undefined {
-  let pos = 0;
+  let pos = from;
   while (pos < text.length) {
     const candidates = [
       { index: text.indexOf("```", pos), kind: "fenced" as const },
