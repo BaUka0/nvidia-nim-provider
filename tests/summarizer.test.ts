@@ -88,6 +88,19 @@ describe("splitMessagesForSummarization", () => {
     expect(recentMessages[recentMessages.length - 1].content).toBe("Recent answer");
   });
 
+  it("keeps the newest message verbatim even when it alone exceeds the budget", () => {
+    const question = `${"pasted file line\n".repeat(2000)}What is wrong here?`;
+    const messages: NimChatMessage[] = [
+      { role: "system", content: "System prompt" },
+      { role: "user", content: "Old question" },
+      { role: "assistant", content: "Old answer" },
+      { role: "user", content: question },
+    ];
+    const { oldMessages, recentMessages } = splitMessagesForSummarization(messages, 100);
+    expect(oldMessages.map((message) => message.content)).toEqual(["Old question", "Old answer"]);
+    expect(recentMessages.at(-1)?.content).toBe(question);
+  });
+
   it("handles single-message conversations", () => {
     const messages: NimChatMessage[] = [{ role: "user", content: "Hello" }];
     const { oldMessages, recentMessages } = splitMessagesForSummarization(messages, 1000);
