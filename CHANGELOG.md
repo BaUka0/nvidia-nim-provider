@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Fixed
+
+- The troubleshooting guide's steps for making Local the default chat mode were incomplete: VS Code could still move every new chat back to Copilot after you picked Local. The guide now lists both settings to turn off, how to bring back a missing Local option, and what to do when your organization controls it.
+
 ## [1.6.0] - 2026-10-11
 
 ### Added

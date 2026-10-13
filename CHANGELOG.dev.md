@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Fixed
+
+- **Local-by-default instructions (`docs/troubleshooting.md`).** `chat.defaultToCopilotHarness: false` alone does not keep users on Local. In VS Code 1.141 `Ike()` (workbench) skips a remembered `chat.userSelectedSessionType` of Local when `chat.editor.preferCopilotHarness` is on, and maps a computed Local default to `AgentHostCopilot` (`selectionReason: "copilotPreference"`). Both settings are `experiment: { mode: "startup" }`, so ExP can enable either one. The guide now lists both overrides, `chat.editor.localAgent.enabled: true` for when the experiment hides Local from the picker, and the `ChatEditorPreferCopilotHarness` policy, which users cannot override. Addresses #40.
+
 ## [1.6.0] - 2026-10-11
 
 ### Added

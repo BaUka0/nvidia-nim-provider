@@ -29,7 +29,14 @@ To switch a session back, click the harness button (1) and pick **Local** (2):
 
 ![Harness selector under the chat input](images/harness-selector.png)
 
-To start new sessions in Local by default, set `"chat.defaultToCopilotHarness": false` in the Settings UI or `settings.json`.
+To start new sessions in Local by default, turn off both of these in the Settings UI or `settings.json`. VS Code can turn either one on for you, and the second one switches every new session back to Copilot even after you pick Local:
+
+```json
+"chat.defaultToCopilotHarness": false,
+"chat.editor.preferCopilotHarness": false
+```
+
+If **Local** is missing from the harness button, also set `"chat.editor.localAgent.enabled": true`. If your organization manages `chat.editor.preferCopilotHarness` through a policy, you cannot change it yourself; ask your administrator.
 
 ---
 
