@@ -11,12 +11,13 @@ function warnUnknownConfig(message: string): void {
  * (e.g. a manual `settings.json` edit that bypasses the picker enum) fall
  * back to the provided default instead of failing later at request time.
  */
-function sanitizeKnownModelId(raw: string, fallbackId: string): string {
-  const id = raw.trim();
+function sanitizeKnownModelId(raw: unknown, fallbackId: string): string {
+  // `null` or a number in settings.json bypasses the schema default.
+  const id = typeof raw === "string" ? raw.trim() : "";
   if (!id) {
     return fallbackId;
   }
-  if (id in MODEL_LIST) {
+  if (Object.hasOwn(MODEL_LIST, id)) {
     return id;
   }
   warnUnknownConfig(`Unknown model id "${id}" in settings; using "${fallbackId}" instead.`);
@@ -196,7 +197,7 @@ export class ConfigManager {
           .map((id) => id.trim())
           .filter((id) => id.length > 0)
           .filter((id) => {
-            if (id in MODEL_LIST) {
+            if (Object.hasOwn(MODEL_LIST, id)) {
               return true;
             }
             warnUnknownConfig(`Unknown model id "${id}" in fallback.priorityList; skipping.`);

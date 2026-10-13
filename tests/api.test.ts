@@ -32,6 +32,65 @@ describe("fetchWithRetry", () => {
     jest.useRealTimers();
   });
 
+  it("does not count the Retry-After wait against the attempt deadline", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(Math, "random").mockReturnValue(0.5);
+    const body = { cancel: jest.fn().mockResolvedValue(undefined) };
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          ok: false,
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: { get: (name: string) => (name === "retry-after" ? "5" : null) },
+          body,
+        }),
+      )
+      .mockResolvedValueOnce(makeFetchResponse({ ok: true, status: 200, statusText: "OK" }));
+    global.fetch = fetchMock;
+
+    const pending = fetchWithRetry(
+      "https://example.test",
+      { method: "GET" },
+      2,
+      {},
+      {
+        attemptTimeoutMs: 1000,
+      },
+    );
+    await jest.advanceTimersByTimeAsync(5000);
+    const response = await pending;
+
+    expect(response.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails with a timeout when one attempt hangs past its deadline", async () => {
+    jest.useFakeTimers();
+    const fetchMock = jest.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const pending = fetchWithRetry(
+      "https://example.test",
+      { method: "GET" },
+      3,
+      {},
+      {
+        attemptTimeoutMs: 1000,
+      },
+    );
+    const assertion = expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
+    await jest.advanceTimersByTimeAsync(1000);
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("releases a retryable response body before the next attempt", async () => {
     jest.spyOn(Math, "random").mockReturnValue(0);
     const order: string[] = [];

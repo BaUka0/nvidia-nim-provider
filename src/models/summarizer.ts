@@ -184,7 +184,10 @@ export function splitMessagesForSummarization(
 
   for (let i = nonSystemMessages.length - 1; i >= 0; i -= 1) {
     const messageTokens = estimateNimMessagesTokens([nonSystemMessages[i]]);
-    if (recentTokenCount + messageTokens > recentBudget) {
+    // The newest message always stays verbatim, even when it alone exceeds
+    // the budget: summarizing it would bury the user's current request.
+    const isNewest = i === nonSystemMessages.length - 1;
+    if (!isNewest && recentTokenCount + messageTokens > recentBudget) {
       splitIndex = i + 1;
       break;
     }

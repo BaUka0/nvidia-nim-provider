@@ -315,6 +315,7 @@ export async function fetchWithRetry(
   init: RequestInit,
   retries?: number,
   errorContext: { operation?: string; model?: string } = {},
+  options: { attemptTimeoutMs?: number } = {},
 ): Promise<Response> {
   const maxRetries = httpAttemptsFromConfig(retries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries);
   let lastError: Error | undefined;
@@ -325,8 +326,22 @@ export async function fetchWithRetry(
   };
   for (let i = 0; i < maxRetries; i++) {
     throwIfAborted(signal);
+    // The deadline covers each connection attempt only, never the backoff
+    // between attempts: a long Retry-After must not turn a 429 into a timeout.
+    const attemptTimeout =
+      options.attemptTimeoutMs !== undefined
+        ? withRequestTimeout(signal, options.attemptTimeoutMs)
+        : undefined;
     try {
-      const response = await fetch(url, init);
+      let response: Response;
+      try {
+        response = await fetch(
+          url,
+          attemptTimeout ? { ...init, signal: attemptTimeout.signal } : init,
+        );
+      } finally {
+        attemptTimeout?.cleanup();
+      }
       if (response.ok || !isRetryableApiStatus(response.status)) {
         return response;
       }
@@ -351,6 +366,9 @@ export async function fetchWithRetry(
       }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      if (attemptTimeout?.signal.aborted && !signal?.aborted) {
+        throw errorForAbortedSignal(attemptTimeout.signal);
+      }
       if (lastError.name === "AbortError" || signal?.aborted) {
         throw signal ? errorForAbortedSignal(signal) : lastError;
       }
@@ -559,7 +577,6 @@ export async function* streamChatCompletion(
       ? firstTokenTimeoutMs
       : Math.max(INITIAL_CONNECTION_TIMEOUT_MS, idleTimeoutMs);
 
-  const requestTimeout = withRequestTimeout(signal, initialConnectionTimeoutMs);
   let response: Response;
   try {
     response = await fetchWithRetry(
@@ -568,10 +585,11 @@ export async function* streamChatCompletion(
         method: "POST",
         headers: buildHeaders(apiKey, userAgent),
         body: JSON.stringify(requestBody),
-        signal: requestTimeout.signal,
+        signal,
       },
       Math.max(1, fetchAttempts),
       { operation: "stream", model: requestBody.model },
+      { attemptTimeoutMs: initialConnectionTimeoutMs },
     );
   } catch (error) {
     if (signal?.aborted && !isTimeoutAbortReason(signal.reason)) {
@@ -582,8 +600,6 @@ export async function* streamChatCompletion(
       model: requestBody.model,
       timeoutKind: "connection",
     });
-  } finally {
-    requestTimeout.cleanup();
   }
 
   if (!response.ok) {

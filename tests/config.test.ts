@@ -121,6 +121,17 @@ describe("ConfigManager", () => {
       mockStore["fallback.priorityList"] = ["moonshotai/kimi-k3", "vendor/not-a-real-model"];
       expect(ConfigManager.getFallbackConfig().priorityList).toEqual(["moonshotai/kimi-k3"]);
     });
+
+    it("falls back to the default model for non-string or inherited ids", () => {
+      mockStore["fallback.model"] = null;
+      mockStore["fallback.visionModel"] = 42;
+      mockStore["fallback.priorityList"] = ["toString", "moonshotai/kimi-k3"];
+
+      const config = ConfigManager.getFallbackConfig();
+      expect(config.model).toBe(DEFAULT_FALLBACK_CONFIG.model);
+      expect(config.visionModel).toBe(DEFAULT_FALLBACK_CONFIG.visionModel);
+      expect(config.priorityList).toEqual(["moonshotai/kimi-k3"]);
+    });
   });
 
   describe("getNetworkConfig", () => {
