@@ -33,6 +33,8 @@ let logStreamChunks = false;
 let logUserMessages = false;
 let debugEnabledCache: boolean | undefined;
 let sessionEvents: SessionLogEvent[] = [];
+/** Character cost of each entry in `sessionEvents`, kept in lockstep. */
+let sessionEventSizes: number[] = [];
 let sessionChars = 0;
 
 /** Called from activation / config changes; avoids a logging ↔ config import cycle. */
@@ -55,16 +57,30 @@ export function getSessionEvents(): readonly SessionLogEvent[] {
 
 export function resetSessionLogsForTests(): void {
   sessionEvents = [];
+  sessionEventSizes = [];
   sessionChars = 0;
 }
 
+const UNSIZED_EVENT_CHARS = 128;
+
 function eventSize(event: SessionLogEvent): number {
-  return event.label.length + (typeof event.value === "string" ? event.value.length : 128);
+  if (typeof event.value === "string") {
+    return event.label.length + event.value.length;
+  }
+  // Objects count at their serialized size: a logged request body can carry
+  // whole conversations and base64 images.
+  try {
+    return event.label.length + (JSON.stringify(event.value)?.length ?? 0);
+  } catch {
+    return event.label.length + UNSIZED_EVENT_CHARS;
+  }
 }
 
 function appendSessionEvent(event: SessionLogEvent): void {
+  const size = eventSize(event);
   sessionEvents.push(event);
-  sessionChars += eventSize(event);
+  sessionEventSizes.push(size);
+  sessionChars += size;
   while (
     sessionEvents.length > MAX_SESSION_EVENTS ||
     (sessionChars > MAX_SESSION_CHARS && sessionEvents.length > 0)
@@ -73,7 +89,7 @@ function appendSessionEvent(event: SessionLogEvent): void {
     if (!removed) {
       break;
     }
-    sessionChars -= eventSize(removed);
+    sessionChars -= sessionEventSizes.shift() ?? 0;
     if (sessionChars < 0) {
       sessionChars = 0;
     }

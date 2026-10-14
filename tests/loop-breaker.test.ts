@@ -167,6 +167,108 @@ describe("injectHistoryLoopBreaker", () => {
     expect(turn3.messages[0]?.content).toBe("hi");
   });
 
+  it("does not treat agent turns that open the same way and call a tool as a loop", () => {
+    const step = (text: string, path: string) => ({
+      role: 2,
+      content: [{ value: text }, { callId: path, name: "read_file", input: { path } }],
+    });
+    const history = [
+      step("Now I'll read the config:", "a.json"),
+      { role: 1, content: [{ callId: "a.json", content: [{ value: "{}" }] }] },
+      step("Now I'll read the adapter:", "b.ts"),
+      { role: 1, content: [{ callId: "b.ts", content: [{ value: "export {}" }] }] },
+      step("Now I'll read the tests:", "c.test.ts"),
+    ];
+    const result = injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: history,
+      modelId: "test-model",
+      applyBudget: (body) => body,
+    });
+    expect(result).toBe(requestBody);
+  });
+
+  it("ignores full answers that happen to share an opening", () => {
+    const history = [
+      { role: 2, content: [{ value: "Here is the fix.\n\nChange the import." }] },
+      { role: 2, content: [{ value: "Here is the updated test.\n\nIt now passes." }] },
+      { role: 2, content: [{ value: "Here is the summary.\n\nAll done." }] },
+    ];
+    const result = injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: history,
+      modelId: "test-model",
+      applyBudget: (body) => body,
+    });
+    expect(result).toBe(requestBody);
+  });
+
+  it("still catches hanging preambles across user turns", () => {
+    const history = [
+      { role: 2, content: [{ value: "Let me take a screenshot to see the page:" }] },
+      { role: 1, content: [{ value: "continue" }] },
+      { role: 2, content: [{ value: "Let me navigate to the login page:" }] },
+      { role: 1, content: [{ value: "continue" }] },
+      { role: 2, content: [{ value: "Let me click the Sign in button:" }] },
+    ];
+    const result = injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: history,
+      modelId: "test-model",
+      applyBudget: (body) => body,
+    });
+    expect(result.messages.at(-1)?.content).toEqual(expect.stringContaining('"let me"'));
+  });
+
+  it("gives a new task its own breaker budget for the same loop", () => {
+    const loopingTask = (question: string) => [
+      { role: 1, content: [{ value: question }] },
+      ...Array.from({ length: 3 }, () => ({
+        role: 2,
+        content: [{ value: "Let me fix the formatting issue:" }],
+      })),
+    ];
+    const inject = (historyMessages: ReturnType<typeof loopingTask>) =>
+      injectHistoryLoopBreaker({
+        requestBody,
+        historyMessages,
+        modelId: "test-model",
+        applyBudget: (body) => body,
+      });
+
+    const first = loopingTask("fix the file");
+    inject(first);
+    inject(first);
+    expect(inject(first)).toBe(requestBody);
+
+    const second = [...first, ...loopingTask("fix the other file")];
+    const fresh = inject(second);
+    expect(fresh.messages.at(-1)?.content).toEqual(expect.stringContaining("repeated"));
+    expect(fresh.messages.at(-1)?.content).not.toEqual(expect.stringContaining("still going"));
+  });
+
+  it("does not escalate after a breaker that was dropped for the token budget", () => {
+    const history = Array.from({ length: 3 }, () => ({
+      role: 2,
+      content: [{ value: "Let me fix the formatting issue:" }],
+    }));
+    injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: history,
+      modelId: "test-model",
+      applyBudget: () => {
+        throw createStructuredError("token_limit", "too large");
+      },
+    });
+    const next = injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: history,
+      modelId: "test-model",
+      applyBudget: (body) => body,
+    });
+    expect(next.messages.at(-1)?.content).not.toEqual(expect.stringContaining("still going"));
+  });
+
   it("logs trippedLine and detector when injecting a preamble breaker", () => {
     const history = [
       { role: 2, content: [{ value: "Let me fix the formatting issue:" }] },

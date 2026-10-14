@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { fetchModelsOrThrow, streamChatCompletion } from "../../src/api/client";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
 import { ApiErrorKind, NvidiaApiError } from "../../src/api/errors";
-import { getApiKeyFingerprint } from "../../src/api/key-resolver";
+import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../../src/api/key-resolver";
 import {
   getLanguageModelThinkingPart,
   asCancellationToken,
@@ -2014,6 +2014,34 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).not.toHaveBeenCalled();
     expect(progress.report).not.toHaveBeenCalled();
+  });
+
+  it("does not borrow another group's key for a model whose group was removed", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue(undefined);
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue(undefined);
+    const resolver = (provider as unknown as { apiKeyResolver: NvidiaApiKeyResolver })
+      .apiKeyResolver;
+    const staleModel = makeModel({
+      id: "kimi-k2.6",
+      maxInputTokens: 100000,
+      maxOutputTokens: 65536,
+    });
+    resolver.registerModelKey(staleModel, "key-a", "group-a");
+    resolver.registerModelKey(makeModel({ id: "z-ai/glm-5.3" }), "key-b", "group-b");
+    resolver.clearRuntimeBindings("group-a");
+
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        staleModel,
+        makeUserMessages("Hi"),
+        makeChatOptions(),
+        { report: jest.fn() },
+        makeToken(),
+      ),
+    ).rejects.toThrow(/NVIDIA NIM API key/);
+
+    expect(vscode.window.showInputBox).toHaveBeenCalled();
+    expect(streamChatCompletion).not.toHaveBeenCalled();
   });
 
   const readFileTool = {

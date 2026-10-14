@@ -75,6 +75,19 @@ function isTaskBoundary(message: HistoryMessage): boolean {
 }
 
 /**
+ * Index of the first message of the current task: the one after the last
+ * typed user message, or 0 when there is none.
+ */
+export function findTaskStartIndex(messages: readonly HistoryMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (isTaskBoundary(messages[i])) {
+      return i + 1;
+    }
+  }
+  return 0;
+}
+
+/**
  * Replays the tool calls of the current task (assistant turns after the last
  * typed user message) into a fresh tracker, so the identical-call limit spans
  * agent-loop iterations instead of resetting on every request.
@@ -83,14 +96,7 @@ export function replayTaskToolCalls(messages: readonly HistoryMessage[]): {
   tracker: IdenticalToolCallTracker;
   lastCall: TrackedToolCall | undefined;
 } {
-  let startIndex = 0;
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (isTaskBoundary(messages[i])) {
-      startIndex = i + 1;
-      break;
-    }
-  }
-
+  const startIndex = findTaskStartIndex(messages);
   const tracker = new IdenticalToolCallTracker();
   let lastCall: TrackedToolCall | undefined;
   for (let i = startIndex; i < messages.length; i += 1) {

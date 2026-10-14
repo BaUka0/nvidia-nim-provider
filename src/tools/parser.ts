@@ -23,6 +23,7 @@ export {
   TrackedToolCall,
   exceedsIdenticalCallLimit,
   replayTaskToolCalls,
+  findTaskStartIndex,
 } from "./tool-call-repeats";
 
 export {

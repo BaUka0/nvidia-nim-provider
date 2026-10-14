@@ -535,9 +535,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             throw toHostChatError(err);
           }
 
-          const modelApiKey =
-            (await this.apiKeyResolver.resolveForModel(currentModel))?.value ??
-            (await this.apiKeyResolver.resolveForTool())?.value;
+          const modelApiKey = (await this.apiKeyResolver.resolveForModel(currentModel))?.value;
           const hasImages = NimRequestBuilder.hasImageInput(messages);
           const fallbackModel = getFallbackModel(
             currentModel.id,
@@ -621,15 +619,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
   }
 
   private async ensureApiKey(model: LanguageModelChatInformation): Promise<string | undefined> {
+    // resolveForModel already falls back to the only runtime key or the legacy
+    // key where that is safe. When it returns nothing, the model kept a binding
+    // to a removed or changed key group; borrowing another group's key would
+    // send the request under the wrong account, so ask the user instead.
     const resolved = await this.apiKeyResolver.resolveForModel(model);
     if (resolved) {
       return resolved.value;
-    }
-
-    const fallbackKey = await this.apiKeyResolver.resolveForTool();
-    if (fallbackKey) {
-      this.apiKeyResolver.registerModelKey(model, fallbackKey.value);
-      return fallbackKey.value;
     }
 
     // Assign the in-flight promise before any await so parallel callers share
