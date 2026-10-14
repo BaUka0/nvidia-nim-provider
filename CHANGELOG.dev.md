@@ -2,7 +2,7 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
-## [Unreleased]
+## [1.6.1] - 2026-10-14
 
 ### Fixed
 
