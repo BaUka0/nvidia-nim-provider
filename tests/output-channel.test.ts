@@ -135,12 +135,51 @@ describe("output-channel", () => {
     resetSessionLogsForTests();
     setDeveloperLogOptions({ logUserMessages: true });
 
-    const body = [{ role: "user", content: "x".repeat(100 * 1024) }];
-    for (let i = 0; i < 5; i += 1) {
+    const body = [{ role: "user", content: "x".repeat(50 * 1024) }];
+    for (let i = 0; i < 8; i += 1) {
       debugLog("Outgoing request messages", body, "messages");
     }
 
-    // 256 KB holds two 100 KB bodies; the oldest are evicted.
-    expect(getSessionEvents()).toHaveLength(2);
+    // 256 KB holds five 50 KB bodies; the oldest are evicted.
+    expect(getSessionEvents()).toHaveLength(5);
+  });
+
+  it("keeps the tail of an oversized body instead of flushing the log", async () => {
+    const { debugLog, getSessionEvents, resetSessionLogsForTests, setDeveloperLogOptions } =
+      await import("../src/shared/logging");
+    resetSessionLogsForTests();
+    setDeveloperLogOptions({ logUserMessages: true });
+
+    debugLog("budget", { estimatedInputTokens: 1 });
+    debugLog(
+      "Outgoing request messages",
+      [{ role: "user", content: `${"x".repeat(600 * 1024)}newest message` }],
+      "messages",
+    );
+
+    const events = getSessionEvents();
+    expect(events.map((event) => event.label)).toEqual(["budget", "Outgoing request messages"]);
+    const value = events[1].value as string;
+    expect(value.length).toBeLessThanOrEqual(64 * 1024);
+    expect(value).toMatch(/^…\[\d+ chars omitted\] /);
+    expect(value).toContain("newest message");
+  });
+
+  it("evicts request bodies before technical events", async () => {
+    const { debugLog, getSessionEvents, resetSessionLogsForTests, setDeveloperLogOptions } =
+      await import("../src/shared/logging");
+    resetSessionLogsForTests();
+    setDeveloperLogOptions({ logUserMessages: true });
+
+    debugLog("activate", "Extension activated.");
+    for (let i = 0; i < 6; i += 1) {
+      debugLog("Outgoing request messages", "y".repeat(60 * 1024), "messages");
+      debugLog("stream timing", { attempt: i });
+    }
+
+    const labels = getSessionEvents().map((event) => event.label);
+    expect(labels[0]).toBe("activate");
+    expect(labels.filter((label) => label === "stream timing")).toHaveLength(6);
+    expect(labels.filter((label) => label === "Outgoing request messages").length).toBeLessThan(6);
   });
 });

@@ -62,37 +62,65 @@ export function resetSessionLogsForTests(): void {
 }
 
 const UNSIZED_EVENT_CHARS = 128;
+/** One event may take at most a quarter of the session cap. */
+const MAX_EVENT_CHARS = MAX_SESSION_CHARS / 4;
 
-function eventSize(event: SessionLogEvent): number {
-  if (typeof event.value === "string") {
-    return event.label.length + event.value.length;
+function serializeValue(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
   }
-  // Objects count at their serialized size: a logged request body can carry
-  // whole conversations and base64 images.
   try {
-    return event.label.length + (JSON.stringify(event.value)?.length ?? 0);
+    return JSON.stringify(value);
   } catch {
-    return event.label.length + UNSIZED_EVENT_CHARS;
+    return undefined;
   }
 }
 
-function appendSessionEvent(event: SessionLogEvent): void {
-  const size = eventSize(event);
+/**
+ * Size an event at its serialized length: a logged request body can carry
+ * whole conversations and base64 images. An oversized value keeps only its
+ * end, where the newest messages are, so one body cannot flush the whole log.
+ */
+function fitEvent(event: SessionLogEvent): { event: SessionLogEvent; size: number } {
+  const text = serializeValue(event.value);
+  if (text === undefined) {
+    return { event, size: event.label.length + UNSIZED_EVENT_CHARS };
+  }
+  if (text.length <= MAX_EVENT_CHARS) {
+    return { event, size: event.label.length + text.length };
+  }
+  let kept = text.slice(-(MAX_EVENT_CHARS - 64));
+  const code = kept.charCodeAt(0);
+  if (code >= 0xdc00 && code <= 0xdfff) {
+    kept = kept.slice(1);
+  }
+  const value = `…[${text.length - kept.length} chars omitted] ${kept}`;
+  return { event: { ...event, value }, size: event.label.length + value.length };
+}
+
+/** Opt-in stream chunks and request bodies go before technical events. */
+function isVerboseEvent(event: SessionLogEvent): boolean {
+  return event.kind === "chunk" || event.kind === "messages";
+}
+
+function evictOldestSessionEvent(): void {
+  const verboseIndex = sessionEvents.findIndex(isVerboseEvent);
+  const index = verboseIndex === -1 ? 0 : verboseIndex;
+  sessionEvents.splice(index, 1);
+  const [size] = sessionEventSizes.splice(index, 1);
+  sessionChars = Math.max(0, sessionChars - (size ?? 0));
+}
+
+function appendSessionEvent(rawEvent: SessionLogEvent): void {
+  const { event, size } = fitEvent(rawEvent);
   sessionEvents.push(event);
   sessionEventSizes.push(size);
   sessionChars += size;
   while (
-    sessionEvents.length > MAX_SESSION_EVENTS ||
-    (sessionChars > MAX_SESSION_CHARS && sessionEvents.length > 0)
+    sessionEvents.length > 0 &&
+    (sessionEvents.length > MAX_SESSION_EVENTS || sessionChars > MAX_SESSION_CHARS)
   ) {
-    const removed = sessionEvents.shift();
-    if (!removed) {
-      break;
-    }
-    sessionChars -= sessionEventSizes.shift() ?? 0;
-    if (sessionChars < 0) {
-      sessionChars = 0;
-    }
+    evictOldestSessionEvent();
   }
 }
 
