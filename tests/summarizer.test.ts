@@ -101,6 +101,19 @@ describe("splitMessagesForSummarization", () => {
     expect(recentMessages.at(-1)?.content).toBe(question);
   });
 
+  it("summarizes a newest message that cannot fit the request at all", () => {
+    const pastedLog = `${"log line\n".repeat(5000)}What went wrong?`;
+    const messages: NimChatMessage[] = [
+      { role: "system", content: "System prompt" },
+      { role: "user", content: "Old question" },
+      { role: "assistant", content: "Old answer" },
+      { role: "user", content: pastedLog },
+    ];
+    const { oldMessages, recentMessages } = splitMessagesForSummarization(messages, 100, 1000);
+    expect(oldMessages.at(-1)?.content).toBe(pastedLog);
+    expect(recentMessages.filter((message) => message.role !== "system")).toEqual([]);
+  });
+
   it("handles single-message conversations", () => {
     const messages: NimChatMessage[] = [{ role: "user", content: "Hello" }];
     const { oldMessages, recentMessages } = splitMessagesForSummarization(messages, 1000);

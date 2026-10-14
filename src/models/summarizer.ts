@@ -196,6 +196,7 @@ export async function summarizeOldMessages(
 export function splitMessagesForSummarization(
   messages: NimChatMessage[],
   maxRecentTokens: number,
+  maxNewestTokens = Number.POSITIVE_INFINITY,
 ): { oldMessages: NimChatMessage[]; recentMessages: NimChatMessage[] } {
   const systemMessages = messages.filter((message) => message.role === "system");
   const nonSystemMessages = messages.filter((message) => message.role !== "system");
@@ -206,10 +207,11 @@ export function splitMessagesForSummarization(
 
   for (let i = nonSystemMessages.length - 1; i >= 0; i -= 1) {
     const messageTokens = estimateNimMessagesTokens([nonSystemMessages[i]]);
-    // The newest message always stays verbatim, even when it alone exceeds
-    // the budget: summarizing it would bury the user's current request.
-    const isNewest = i === nonSystemMessages.length - 1;
-    if (!isNewest && recentTokenCount + messageTokens > recentBudget) {
+    // The newest message stays verbatim even when it alone exceeds the recent
+    // budget: summarizing it would bury the user's current request. One that
+    // cannot fit the request at all (a huge pasted file) is summarized instead.
+    const keepNewest = i === nonSystemMessages.length - 1 && messageTokens <= maxNewestTokens;
+    if (!keepNewest && recentTokenCount + messageTokens > recentBudget) {
       splitIndex = i + 1;
       break;
     }
@@ -253,6 +255,8 @@ export function splitMessagesForSummarization(
 
 export interface CompactConversationOptions {
   maxRecentTokens: number;
+  /** Largest newest message kept verbatim; a bigger one is summarized. */
+  maxNewestTokens?: number;
   apiKey: string;
   userAgent: string;
   signal?: AbortSignal;
@@ -274,6 +278,7 @@ export async function compactConversationHistory(
   const { oldMessages, recentMessages } = splitMessagesForSummarization(
     messages,
     options.maxRecentTokens,
+    options.maxNewestTokens,
   );
   if (oldMessages.length === 0) {
     return {
@@ -335,6 +340,7 @@ export async function compactAndFit(options: CompactAndFitOptions): Promise<Comp
 
   const compactedResult = await compactConversationHistory(options.messages, {
     maxRecentTokens: recentTokenBudget,
+    maxNewestTokens: messageTokenBudget,
     apiKey: options.summarizationOptions.apiKey,
     userAgent: options.summarizationOptions.userAgent,
     signal: options.summarizationOptions.signal,
