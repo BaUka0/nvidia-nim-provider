@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Added
+
+- Step 5 Preview from StepFun is now in the model list. It has a 1M-token context window, up to 65,536 output tokens, tool calling, and image input. It always reasons, and its reasoning appears in the Thinking block; there is no Reasoning Mode to choose, because NVIDIA's endpoint does not let it be turned down or off. It is a preview model, so NVIDIA may withdraw it on short notice.
+
 ### Removed
 
 - Kimi K3 is removed from the model list. NVIDIA retired it on October 15, 2026, and it no longer answers requests. If it was set as your backup or summarization model, the default model is used instead; pick another one in the Settings UI or `settings.json` if you prefer.

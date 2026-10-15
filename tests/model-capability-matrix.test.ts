@@ -8,6 +8,7 @@ import {
   ReasoningParameterFormat,
   ReasoningRouting,
   ToolCallProtocol,
+  withReasoningOff,
 } from "../src/models/adapters";
 import { ReasoningStreamRouter } from "../src/messages/reasoning-router";
 import { ToolCallStreamAggregator } from "../src/provider/tool-call-aggregator";
@@ -200,6 +201,18 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     contentOnlyRouting: "text",
     thinkTag: "think",
   },
+  {
+    // Always reasons; every off switch leaks the trace into content.
+    modelId: "stepfun-ai/step-5-preview",
+    reasoningModes: [],
+    reasoningCases: [],
+    reasoningParameterFormat: "none",
+    toolCallProtocol: "native-and-text",
+    reasoningRouting: "direct-content",
+    contentOnlyMode: "none",
+    contentOnlyRouting: "text",
+    thinkTag: "think",
+  },
 ];
 
 function getReasoningFields(request: NimChatRequest): Record<string, unknown> {
@@ -266,6 +279,13 @@ describe("curated model capability matrix", () => {
       expect(getReasoningFields(request)).toEqual(reasoningCase.expectedFields);
     },
   );
+
+  it("Step 5 Preview sends no reasoning parameter, even for internal reasoning-off calls", () => {
+    const request: NimChatRequest = { model: "stepfun-ai/step-5-preview", messages: [] };
+
+    expect(getModelAdapter(request.model).applyReasoningMode).toBeUndefined();
+    expect(getReasoningFields(withReasoningOff(request))).toEqual({});
+  });
 
   it.each(CAPABILITY_MATRIX)(
     "$modelId has an explicit content-only routing expectation",

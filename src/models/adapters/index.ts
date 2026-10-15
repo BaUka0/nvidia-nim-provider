@@ -9,6 +9,7 @@ import { NemotronLightningAdapter } from "./nemotron-lightning";
 import { NemotronSuperAdapter } from "./nemotron-super";
 import { MuseGlimmerAdapter } from "./muse-glimmer";
 import { GlmAdapter } from "./glm";
+import { StepfunAdapter } from "./stepfun";
 
 export {
   ModelAdapter,
@@ -34,6 +35,7 @@ const nemotronSuperAdapter = new NemotronSuperAdapter();
 const nemotronAdapter = new NemotronAdapter();
 const museGlimmerAdapter = new MuseGlimmerAdapter();
 const glmAdapter = new GlmAdapter();
+const stepfunAdapter = new StepfunAdapter();
 
 const ADAPTERS_BY_ID: Record<CatalogAdapterId, ModelAdapter> = {
   deepseek: deepseekAdapter,
@@ -43,6 +45,7 @@ const ADAPTERS_BY_ID: Record<CatalogAdapterId, ModelAdapter> = {
   "nemotron-lightning": nemotronLightningAdapter,
   "muse-glimmer": museGlimmerAdapter,
   glm: glmAdapter,
+  stepfun: stepfunAdapter,
 };
 
 /** Family regex for uncatalogued successor IDs only. Curated IDs never reach this list. */
@@ -54,6 +57,7 @@ const FAMILY_ADAPTERS: ModelAdapter[] = [
   nemotronAdapter,
   museGlimmerAdapter,
   glmAdapter,
+  stepfunAdapter,
 ];
 
 const DEFAULT_ADAPTER = new DefaultAdapter();

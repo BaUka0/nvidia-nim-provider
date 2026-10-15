@@ -15,8 +15,9 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 | **Muse Glimmer** | `Muse Glimmer` | **17** | 131,072 | 32,768 | `None` to `Max` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
 | **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **13** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; default text fallback and summarizer |
 | **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **13** | 1,000,000 | 32,768 | `None`, `Low`, `High` | No | Workhorse for everyday coding |
+| **Step 5 Preview** | `Step 5 Preview` | — | 1,048,576 | 65,536 | Always on | Yes | StepFun preview with tools and image input |
 
-Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`).
+Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`). Step 5 Preview has no published score yet.
 
 ---
 
@@ -34,6 +35,8 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 
 **DeepSeek V4.1 Flash.** Multimodal MoE model with 1M context and up to 262,144 output tokens, NVIDIA's default for this model. Reasoning shares that budget with the answer. Strong on algorithms, debugging, schema design, SQL, and refactors. Native vision support for visual code analysis and diagrams. Reasoning: `None`, `Low`, `High`, `Max`.
 
+**Step 5 Preview.** StepFun's preview model with 1M context, tools, and image input. NVIDIA has not published a model card for it yet, so the 65,536-token output cap is a conservative choice rather than a documented limit. It always reasons, and the reasoning shows in the Thinking block. There is no Reasoning Mode to pick: NVIDIA accepts effort levels for it but they make no difference, and switching thinking off moves the reasoning into the answer text instead of stopping it. Preview models can be withdrawn on short notice.
+
 
 ---
 
@@ -50,5 +53,5 @@ Reasoning is on by default: `High` for every model except Nemotron 3.5 Lightning
 1. Per model: choose **Reasoning Mode** next to the model in the Copilot model picker. This choice wins over the setting.
 2. As the default for all models: `nvidia-nim.reasoning.mode` in the VS Code Settings UI or `settings.json`. It becomes the preselected Reasoning Mode in the picker. A model without that mode uses its closest one, and once you set it, it applies to Lightning too.
 
-Summaries of long conversations and image analysis always run with reasoning off, so their short replies are not used up by thinking.
+Summaries of long conversations and image analysis always run with reasoning off, so their short replies are not used up by thinking. Step 5 Preview is the exception: it always reasons, so it is a poor choice for `nvidia-nim.context.summarizationModel`.
 
