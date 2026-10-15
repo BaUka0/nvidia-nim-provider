@@ -42,14 +42,6 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsVision: true,
     adapter: "deepseek",
   },
-  "moonshotai/kimi-k3": {
-    displayName: "Kimi K3",
-    contextWindow: 1048576,
-    maxOutputTokens: 65536,
-    supportsTools: true,
-    supportsVision: true,
-    adapter: "kimi",
-  },
   "nvidia/nemotron-3-ultra-550b-a55b": {
     displayName: "Nemotron 3 Ultra 550B",
     contextWindow: 1000000,

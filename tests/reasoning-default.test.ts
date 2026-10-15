@@ -79,13 +79,11 @@ describe("default reasoning mode", () => {
   });
 
   it("makes the model picker default follow the setting", () => {
-    expect(pickerDefault("moonshotai/kimi-k3")).toBe("high");
     expect(pickerDefault(LIGHTNING)).toBe("medium");
 
     setReasoningSetting("none");
 
     expect(pickerDefault(ULTRA)).toBe("none");
-    expect(pickerDefault("moonshotai/kimi-k3")).toBe("low");
     expect(pickerDefault(LIGHTNING)).toBe("none");
   });
 

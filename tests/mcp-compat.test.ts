@@ -95,7 +95,7 @@ describe("NimVisionClient", () => {
       supportsVision: true,
     };
     const modelB = {
-      id: "moonshotai/kimi-k3",
+      id: "z-ai/glm-5.3-flash",
       displayName: "Vision Model B",
       contextWindow: 1048576,
       maxOutputTokens: 65536,

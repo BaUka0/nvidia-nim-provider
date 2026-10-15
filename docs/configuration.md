@@ -67,11 +67,11 @@ These settings control automatic re-routing when an NVIDIA NIM endpoint returns 
 
 ### Reasoning & Thinking (`nvidia-nim.reasoning.*`)
 
-Controls the thinking process for reasoning models (like DeepSeek V4, Nemotron Super, and Kimi K3).
+Controls the thinking process for reasoning models (like DeepSeek V4, Nemotron Super, and GLM 5.3).
 
 | Setting | Default | Options | What it does |
 | :--- | :--- | :--- | :--- |
-| `nvidia-nim.reasoning.mode` | `high` | `none`, `on`, `medium`, `high`, `max` | Default reasoning depth. It is the preselected Reasoning Mode in the model picker; a mode picked there for one model overrides it. A model without the chosen mode uses its closest one (Kimi K3 always thinks, so `none` becomes `low`). Nemotron 3.5 Lightning uses `medium` until you set this, because its reasoning shares the answer's token budget. |
+| `nvidia-nim.reasoning.mode` | `high` | `none`, `on`, `medium`, `high`, `max` | Default reasoning depth. It is the preselected Reasoning Mode in the model picker; a mode picked there for one model overrides it. A model without the chosen mode uses its closest one (GLM 5.3 has no `none`, so it uses `low`). Nemotron 3.5 Lightning uses `medium` until you set this, because its reasoning shares the answer's token budget. |
 
 ---
 

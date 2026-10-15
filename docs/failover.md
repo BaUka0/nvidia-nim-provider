@@ -37,7 +37,7 @@ If the request is text-only, failover uses `nvidia-nim.fallback.model` (default 
 
 Set `nvidia-nim.fallback.priorityList` to an ordered list of model IDs to try before the single text/vision fallbacks. On each failover step, the next healthy candidate is picked; unknown, unavailable, and already-tried models are skipped.
 
-**Example:** `["moonshotai/kimi-k3", "meta/muse-glimmer-30b"]` tries Kimi K3 first, then Muse Glimmer, and only then the regular fallbacks. If every candidate fails, the error message lists the full tried chain with the last underlying error.
+**Example:** `["z-ai/glm-5.3-flash", "meta/muse-glimmer-30b"]` tries GLM 5.3 Flash first, then Muse Glimmer, and only then the regular fallbacks. If every candidate fails, the error message lists the full tried chain with the last underlying error.
 
 If every candidate **times out** with no visible answer, `nvidia-nim.fallback.maxChainRestarts` (default `2`) starts the same chain again from the original model. Set it to `0` to keep the old one-pass behavior. Mid-stream stalls after text or thinking already went to Copilot are not hopped to another model; those abort the HTTP stream and nudge the same model to keep going (`nvidia-nim.generation.maxLoopContinues`).
 
@@ -45,7 +45,7 @@ If every candidate **times out** with no visible answer, `nvidia-nim.fallback.ma
 
 ## Collision Protection
 
-If you are already on the backup model (e.g. `Muse Glimmer`) and *it* hits a rate limit, the extension detects the conflict and routes to the next healthy vision-capable model in the catalog (such as `Kimi K3`).
+If you are already on the backup model (e.g. `Muse Glimmer`) and *it* hits a rate limit, the extension detects the conflict and routes to the next healthy vision-capable model in the catalog (such as `GLM 5.3 Flash`).
 
 ---
 

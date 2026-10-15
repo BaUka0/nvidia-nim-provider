@@ -16,7 +16,7 @@ describe("normalizeNvidiaModels", () => {
   it("keeps whitelisted models and applies overrides", () => {
     const raw: NvidiaModelSummary[] = [
       {
-        id: "moonshotai/kimi-k3",
+        id: "z-ai/glm-5.3",
       },
       {
         id: "unknown/model-that-should-be-filtered",
@@ -25,12 +25,12 @@ describe("normalizeNvidiaModels", () => {
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       {
-        id: "moonshotai/kimi-k3",
-        displayName: "Kimi K3",
+        id: "z-ai/glm-5.3",
+        displayName: "GLM 5.3",
         contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
-        supportsVision: true,
+        supportsVision: false,
       },
     ]);
   });
@@ -93,12 +93,12 @@ describe("normalizeNvidiaModels", () => {
   });
 
   it("deduplicates exact duplicate model ids from the NVIDIA catalog", () => {
-    const raw: NvidiaModelSummary[] = [{ id: "moonshotai/kimi-k3" }, { id: "moonshotai/kimi-k3" }];
+    const raw: NvidiaModelSummary[] = [{ id: "z-ai/glm-5.3" }, { id: "z-ai/glm-5.3" }];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
-        id: "moonshotai/kimi-k3",
-        displayName: "Kimi K3",
+        id: "z-ai/glm-5.3",
+        displayName: "GLM 5.3",
       }),
     ]);
   });

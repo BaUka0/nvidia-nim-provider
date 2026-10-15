@@ -69,24 +69,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "think",
   },
   {
-    modelId: "moonshotai/kimi-k3",
-    // Thinking is always on; the NIM reference allows only low, high, or max.
-    reasoningModes: ["low", "high", "max"],
-    reasoningCases: [
-      // A "none" request maps onto the lowest supported effort.
-      { mode: "none", expectedFields: { reasoning_effort: "low" } },
-      { mode: "low", expectedFields: { reasoning_effort: "low" } },
-      { mode: "high", expectedFields: { reasoning_effort: "high" } },
-      { mode: "max", expectedFields: { reasoning_effort: "max" } },
-    ],
-    reasoningParameterFormat: "reasoning_effort",
-    toolCallProtocol: "native-and-text",
-    reasoningRouting: "isolated",
-    contentOnlyMode: "low",
-    contentOnlyRouting: "text",
-    thinkTag: "think",
-  },
-  {
     modelId: "nvidia/nemotron-3-ultra-550b-a55b",
     reasoningModes: ["none", "medium", "high"],
     reasoningCases: [

@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Removed
+
+- **Kimi K3 end of life (`src/models/catalog.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`, docs, `tests/*`).** `moonshotai/kimi-k3` left `/v1/models`, and `POST /chat/completions` returns `410 Gone` ("reached its end of life on 2026-10-15T08:00:00Z"). Removed from `MODEL_LIST`; `sync:manifest` dropped it from the settings enums and `CURATED_MODEL_IDS` and bumped `MODELS_CACHE_VERSION` to 25. A leftover `fallback.*` / `summarizationModel` value fails the catalog check in `sanitizeKnownModelId` and resolves to the default. `KimiAdapter`, the `kimi` `CatalogAdapterId` and its family regex stay for a future Kimi model. Tests that used the catalog entry now use GLM 5.3 / GLM 5.3 Flash; the Kimi row left the capability matrix, adapter tests still dispatch by id. Addresses #46.
+
 ## [1.6.1] - 2026-10-14
 
 ### Fixed

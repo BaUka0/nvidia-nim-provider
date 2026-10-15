@@ -19,7 +19,7 @@ Direct access to NVIDIA NIM reasoning models inside GitHub Copilot Chat. No prox
 
 </div>
 
-NVIDIA provides free API on [build.nvidia.com](https://build.nvidia.com/models). You can run DeepSeek V4, Nemotron, GLM, and Kimi directly inside Copilot without any monthly provider subscription.
+NVIDIA provides free API on [build.nvidia.com](https://build.nvidia.com/models). You can run DeepSeek V4, Nemotron, and GLM directly inside Copilot without any monthly provider subscription.
 
 ---
 
@@ -52,7 +52,6 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | Model | Intelligence Index | Context Window | Reasoning Modes | Tools | Vision | Notes |
 | :--- | :---: | :---: | :--- | :---: | :---: | :--- |
 | **GLM 5.3** | **45** | 1M | `Low`, `High`, `Max` | Yes | No | Flagship reasoning model, complex agentic coding |
-| **Kimi K3** | **44** | 1M | `Low`, `High`, `Max` | Yes | Yes | Long-context multimodal work, repo-scale jobs |
 | **GLM 5.3 Flash** | **42** | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
 | **DeepSeek V4.1 Flash** | **39** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, agentic coding, architecture |
 | **Nemotron 3 Ultra 550B** | **23** | 1M | `None`, `Medium`, `High` | Yes | No | Heavy multi-step reasoning, technical docs |
@@ -111,7 +110,7 @@ To enable BYOK models for the agent host:
    "chat.agentHost.byokModels.enabled": true
    ```
 3. Recommended settings for heavy agent sessions:
-   * **Recommended Models:** `z-ai/glm-5.3` or `moonshotai/kimi-k3` for multi-step reasoning and deep codebase context.
+   * **Recommended Models:** `z-ai/glm-5.3` for multi-step reasoning and deep codebase context.
    * **TTFT Timeout:** Set `"nvidia-nim.fallback.firstTokenTimeoutSeconds": 120` (or `180`) to allow NVIDIA NIM time for KV-cache prefill on large prompts with multiple MCP tools.
    * **Idle Watchdog:** `"nvidia-nim.network.streamIdleTimeout": 120` (or `180`) ensures stalled streams are cleanly aborted and failed over.
    * **Failover Restarts:** `"nvidia-nim.fallback.maxChainRestarts": 2` automatically retries the model chain with backoff if upstream endpoints hit transient 503/529 overload.

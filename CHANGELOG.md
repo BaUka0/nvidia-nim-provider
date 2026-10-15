@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Removed
+
+- Kimi K3 is removed from the model list. NVIDIA retired it on October 15, 2026, and it no longer answers requests. If it was set as your backup or summarization model, the default model is used instead; pick another one in the Settings UI or `settings.json` if you prefer.
+
 ## [1.6.1] - 2026-10-14
 
 ### Fixed

@@ -1327,8 +1327,8 @@ describe("NimChatModelProvider", () => {
       key === "nvidia-nim.models"
         ? [
             {
-              id: "moonshotai/kimi-k3",
-              displayName: "Kimi K3",
+              id: "z-ai/glm-5.3-flash",
+              displayName: "GLM 5.3 Flash",
               contextWindow: 70000,
               maxOutputTokens: 200000,
               supportsTools: true,
@@ -1348,7 +1348,7 @@ describe("NimChatModelProvider", () => {
     const prompt = "a".repeat(900);
 
     await provider.provideLanguageModelChatResponse(
-      makeModel({ id: "moonshotai/kimi-k3", maxInputTokens: 5000, maxOutputTokens: 200000 }),
+      makeModel({ id: "z-ai/glm-5.3-flash", maxInputTokens: 5000, maxOutputTokens: 200000 }),
       makeMessages({ role: 1, content: [{ value: prompt }] }),
       makeChatOptions({
         modelOptions: { max_tokens: 120000 },
@@ -3084,8 +3084,8 @@ describe("NimChatModelProvider", () => {
       key === "nvidia-nim.models"
         ? [
             {
-              id: "moonshotai/kimi-k3",
-              displayName: "Kimi K3",
+              id: "z-ai/glm-5.3-flash",
+              displayName: "GLM 5.3 Flash",
               contextWindow: 1048576,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -3146,8 +3146,8 @@ describe("NimChatModelProvider", () => {
 
     await customProvider.provideLanguageModelChatResponse(
       makeModel({
-        id: "moonshotai/kimi-k3",
-        name: "Kimi K3",
+        id: "z-ai/glm-5.3-flash",
+        name: "GLM 5.3 Flash",
         maxInputTokens: 200000,
         maxOutputTokens: 65536,
       }),
@@ -3176,8 +3176,8 @@ describe("NimChatModelProvider", () => {
       key === "nvidia-nim.models"
         ? [
             {
-              id: "moonshotai/kimi-k3",
-              displayName: "Kimi K3",
+              id: "z-ai/glm-5.3-flash",
+              displayName: "GLM 5.3 Flash",
               contextWindow: 262144,
               maxOutputTokens: 262144,
               supportsTools: true,
@@ -3213,8 +3213,8 @@ describe("NimChatModelProvider", () => {
     await expect(
       customProvider.provideLanguageModelChatResponse(
         makeModel({
-          id: "moonshotai/kimi-k3",
-          name: "Kimi K3",
+          id: "z-ai/glm-5.3-flash",
+          name: "GLM 5.3 Flash",
           maxInputTokens: 200000,
           maxOutputTokens: 65536,
         }),
@@ -3415,8 +3415,8 @@ describe("NimChatModelProvider", () => {
       key === "nvidia-nim.models"
         ? [
             {
-              id: "moonshotai/kimi-k3",
-              displayName: "Kimi K3",
+              id: "z-ai/glm-5.3-flash",
+              displayName: "GLM 5.3 Flash",
               contextWindow: 5000,
               maxOutputTokens: 1000,
               supportsTools: true,
@@ -3438,7 +3438,7 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       makeModel({
-        id: "moonshotai/kimi-k3",
+        id: "z-ai/glm-5.3-flash",
         maxInputTokens: 5000,
         maxOutputTokens: 1000,
         capabilities: { toolCalling: 128, imageInput: true },

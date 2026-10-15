@@ -2,7 +2,6 @@ const DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1";
 const CURATED_MODEL_IDS = new Set([
   "deepseek-ai/deepseek-v4.1-flash",
   "meta/muse-glimmer-30b",
-  "moonshotai/kimi-k3",
   "nvidia/nemotron-3-super-120b-a12b",
   "nvidia/nemotron-3-ultra-550b-a55b",
   "nvidia/nemotron-3.5-lightning-30b-a3b",
