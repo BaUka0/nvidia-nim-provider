@@ -9,6 +9,7 @@ import {
   stripFallbackNotices,
 } from "../src/messages/converter";
 import { filterThinkTagsFromChunk, flushThinkTagFilter } from "../src/messages/think-filter";
+import { MESSAGE_OVERHEAD_TOKENS, TOOL_OVERHEAD_TOKENS } from "../src/messages/token-estimate";
 import {
   findEarliestIndex,
   findTrailingPartialStart,
@@ -179,7 +180,7 @@ describe("estimateMessagesTokens", () => {
       { content: [new vscode.LanguageModelTextPart("world")] },
     ];
     expect(estimateMessagesTokens(messages)).toBe(
-      estimateTokens("Hello") + estimateTokens("world"),
+      2 * MESSAGE_OVERHEAD_TOKENS + estimateTokens("Hello") + estimateTokens("world"),
     );
   });
 
@@ -200,7 +201,8 @@ describe("estimateMessagesTokens", () => {
     ];
     const result = estimateMessagesTokens(messages);
     expect(result).toBe(
-      estimateTokens(longContent) +
+      2 * MESSAGE_OVERHEAD_TOKENS +
+        estimateTokens(longContent) +
         estimateTokens("read_file") +
         estimateTokens(JSON.stringify(args)),
     );
@@ -212,7 +214,7 @@ describe("estimateMessagesTokens", () => {
     // `readonly unknown[]`, so a malformed part must not reject the whole count.
     const messages = [{ content: [null, undefined, 42, "text"] }];
     expect(() => estimateMessagesTokens(messages)).not.toThrow();
-    expect(estimateMessagesTokens(messages)).toBe(8);
+    expect(estimateMessagesTokens(messages)).toBe(MESSAGE_OVERHEAD_TOKENS + 8);
   });
 });
 
@@ -707,7 +709,8 @@ describe("estimateToolsTokens", () => {
     ];
     const result = estimateToolsTokens(tools);
     expect(result).toBe(
-      estimateTokens("read_file") +
+      TOOL_OVERHEAD_TOKENS +
+        estimateTokens("read_file") +
         estimateTokens("Read a file from disk") +
         estimateTokens(
           JSON.stringify({ type: "object", properties: { filePath: { type: "string" } } }),
@@ -729,6 +732,7 @@ describe("estimateToolsTokens", () => {
     ];
     const result = estimateToolsTokens(tools);
     const expected =
+      2 * TOOL_OVERHEAD_TOKENS +
       estimateTokens("tool_a") +
       estimateTokens("Does A") +
       estimateTokens(JSON.stringify({ type: "object" })) +

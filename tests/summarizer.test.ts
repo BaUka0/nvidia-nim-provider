@@ -1,6 +1,7 @@
 import { NimChatMessage } from "../src/types";
 import { chatCompletion } from "../src/api/client";
 import { estimateNimMessagesTokens, truncateMessagesForContext } from "../src/messages/converter";
+import { MESSAGE_OVERHEAD_TOKENS } from "../src/messages/token-estimate";
 import {
   compactAndFit,
   splitMessagesForSummarization,
@@ -138,7 +139,9 @@ describe("splitMessagesForSummarization", () => {
       { role: "user", content: "Continue" },
     ];
 
-    const { oldMessages, recentMessages } = splitMessagesForSummarization(messages, 8);
+    // Fits the tool result and the user turn, but not the tool call before them.
+    const budget = 2 * MESSAGE_OVERHEAD_TOKENS + 8;
+    const { oldMessages, recentMessages } = splitMessagesForSummarization(messages, budget);
 
     expect(oldMessages).toHaveLength(0);
     expect(recentMessages.map((message) => message.role)).toEqual(["assistant", "tool", "user"]);

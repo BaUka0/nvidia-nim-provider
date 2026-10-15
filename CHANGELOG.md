@@ -12,6 +12,12 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 - Kimi K3 is removed from the model list. NVIDIA retired it on October 15, 2026, and it no longer answers requests. If it was set as your backup or summarization model, the default model is used instead; pick another one in the Settings UI or `settings.json` if you prefer.
 
+### Fixed
+
+- Long chats with screenshots no longer run past the model's context window unnoticed. Images were counted by file size, so a typical screenshot cost about eight times more than the extension expected. They are now counted by their size in pixels, the way the models charge for them. Muse Glimmer, with the smallest window, was hit hardest: it answered such requests with a server error instead of having the conversation shortened.
+- Context usage is counted more accurately in conversations with many short messages or many tools, so long agent sessions are shortened before they overflow rather than after.
+- The README no longer says NVIDIA NIM models work in VS Code's separate Agents window. They do not yet. The models do work in Copilot sessions in the regular chat view, and the README now explains how to turn that on.
+
 ## [1.6.1] - 2026-10-14
 
 ### Fixed

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { estimateTokens } from "../../src/messages/converter";
-import { IMAGE_BYTES_PER_TOKEN, IMAGE_TOKEN_FLOOR } from "../../src/messages/token-estimate";
+import { MESSAGE_OVERHEAD_TOKENS } from "../../src/messages/token-estimate";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
 import {
   asRequestMessage,
@@ -35,7 +35,7 @@ describe("NimChatModelProvider.provideTokenCount", () => {
     const text = "The quick brown fox jumps over the lazy dog";
     await expect(
       provider.provideTokenCount(model, msg(1, [new vscode.LanguageModelTextPart(text)]), token),
-    ).resolves.toBe(estimateTokens(text));
+    ).resolves.toBe(MESSAGE_OVERHEAD_TOKENS + estimateTokens(text));
   });
 
   it("counts tool result parts by their inner content, not a flat 2 tokens", async () => {
@@ -49,7 +49,7 @@ describe("NimChatModelProvider.provideTokenCount", () => {
       ]),
       token,
     );
-    expect(result).toBe(estimateTokens(longContent));
+    expect(result).toBe(MESSAGE_OVERHEAD_TOKENS + estimateTokens(longContent));
     expect(result).toBeGreaterThan(2);
   });
 
@@ -60,7 +60,7 @@ describe("NimChatModelProvider.provideTokenCount", () => {
       msg(1, [new vscode.LanguageModelToolResultPart("call_1", [{ value }])]),
       token,
     );
-    expect(result).toBe(estimateTokens(JSON.stringify(value)));
+    expect(result).toBe(MESSAGE_OVERHEAD_TOKENS + estimateTokens(JSON.stringify(value)));
     expect(result).toBeGreaterThan(2);
   });
 
@@ -71,7 +71,9 @@ describe("NimChatModelProvider.provideTokenCount", () => {
       msg(2, [new vscode.LanguageModelToolCallPart("call_1", "read_file", args)]),
       token,
     );
-    expect(result).toBe(estimateTokens("read_file") + estimateTokens(JSON.stringify(args)));
+    expect(result).toBe(
+      MESSAGE_OVERHEAD_TOKENS + estimateTokens("read_file") + estimateTokens(JSON.stringify(args)),
+    );
     expect(result).toBeGreaterThan(2);
   });
 
@@ -83,18 +85,22 @@ describe("NimChatModelProvider.provideTokenCount", () => {
       msg(1, [new vscode.LanguageModelDataPart(data, "application/json")]),
       token,
     );
-    expect(result).toBe(estimateTokens(json));
+    expect(result).toBe(MESSAGE_OVERHEAD_TOKENS + estimateTokens(json));
   });
 
-  it("counts image data parts with a size-aware heuristic", async () => {
+  it("counts image data parts by pixel size, not byte size", async () => {
+    // A 1024x1024 PNG header: 37 x 37 patches of 28 px + 2, as Muse Glimmer reports.
     const bytes = new Uint8Array(3000);
+    bytes.set([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+    ]);
+    bytes.set([0, 0, 4, 0, 0, 0, 4, 0], 16);
     const result = await provider.provideTokenCount(
       model,
       msg(1, [new vscode.LanguageModelDataPart(bytes, "image/png")]),
       token,
     );
-    expect(result).toBe(Math.max(IMAGE_TOKEN_FLOOR, Math.ceil(3000 / IMAGE_BYTES_PER_TOKEN)));
-    expect(result).toBeGreaterThan(2);
+    expect(result).toBe(MESSAGE_OVERHEAD_TOKENS + 1371);
   });
 
   it("sums multiple heterogeneous parts in one message", async () => {
@@ -102,6 +108,7 @@ describe("NimChatModelProvider.provideTokenCount", () => {
     const args = { filePath: "/tmp/x.md", startLine: 1, endLine: 5 };
     const toolResult = "Sunny, 25C and humid with a chance of rain later";
     const expected =
+      MESSAGE_OVERHEAD_TOKENS +
       estimateTokens(text) +
       estimateTokens("read_file") +
       estimateTokens(JSON.stringify(args)) +

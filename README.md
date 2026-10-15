@@ -99,9 +99,9 @@ Alternatively, run `NVIDIA NIM: Manage NVIDIA NIM API Key` from the Command Pale
 
 Pick any NVIDIA NIM model in Copilot Chat or Copilot Agent Mode.
 
-### 5. Autonomous Workflows (VS Code Agents Window)
+### 5. Copilot Agent Sessions
 
-NVIDIA NIM models work natively in VS Code's dedicated **Agents window** (`chat.agentHost`) for autonomous multi-step coding sessions, file editing, and terminal tasks.
+NVIDIA NIM models also work in chat sessions run by the **Copilot** harness (VS Code's agent host) in the regular chat view. These sessions differ from Local ones; see [Copilot vs Local Chat Sessions](docs/troubleshooting.md#copilot-vs-local-chat-sessions). The separate **Agents window** does not load the extension yet, so NVIDIA NIM models are not available there.
 
 To enable BYOK models for the agent host:
 

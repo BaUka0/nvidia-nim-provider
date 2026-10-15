@@ -22,6 +22,7 @@ import {
 import { getTurnReports, resetTurnReportsForTests } from "../../src/shared/turn-report";
 import { setDeveloperLogOptions } from "../../src/shared/logging";
 import * as cancellation from "../../src/shared/cancellation";
+import { MESSAGE_OVERHEAD_TOKENS } from "../../src/messages/token-estimate";
 
 jest.mock("../../src/api/client", () => ({
   fetchModelsOrThrow: jest.fn(),
@@ -1359,7 +1360,7 @@ describe("NimChatModelProvider", () => {
 
     const requestBody = (streamChatCompletion as jest.Mock).mock.calls.at(-1)?.[1];
     // calculateSafetyMargin() floors at 4096 for a 70000-token window.
-    const expectedRemainingBudget = 70000 - 300 - 4096;
+    const expectedRemainingBudget = 70000 - (300 + MESSAGE_OVERHEAD_TOKENS) - 4096;
 
     expect(requestBody.max_tokens).toBe(expectedRemainingBudget);
   });
