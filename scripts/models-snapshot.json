@@ -290,6 +290,11 @@
     "created": 735790403
   },
   {
+    "id": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+    "owned_by": "nvidia",
+    "created": 735790403
+  },
+  {
     "id": "nvidia/nemotron-4-340b-instruct",
     "owned_by": "nvidia",
     "created": 735790403
