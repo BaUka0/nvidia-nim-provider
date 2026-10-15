@@ -16,7 +16,7 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 | **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **13** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; default text fallback and summarizer |
 | **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **13** | 1,000,000 | 32,768 | `None`, `Low`, `High` | No | Workhorse for everyday coding |
 | **Nemotron 3.5 Super VL 120B** | `Nemotron 3.5 Super VL 120B` | — | 1,048,576 | 131,072 | `None`, `Low`, `High` | Yes | Coding, tools, and image input in one model |
-| **Step 5 Preview** | `Step 5 Preview` | — | 1,048,576 | 65,536 | Always on | Yes | StepFun preview with tools and image input |
+| **Step 5 Preview** | `Step 5 Preview` | — | 1,048,576 | 262,144 | Always on | Yes | StepFun preview with tools and image input |
 
 Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`). Step 5 Preview and Nemotron 3.5 Super VL have no published score yet.
 
@@ -38,7 +38,7 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 
 **DeepSeek V4.1 Flash.** Multimodal MoE model with 1M context and up to 262,144 output tokens, NVIDIA's default for this model. Reasoning shares that budget with the answer. Strong on algorithms, debugging, schema design, SQL, and refactors. Native vision support for visual code analysis and diagrams. Reasoning: `None`, `Low`, `High`, `Max`.
 
-**Step 5 Preview.** StepFun's preview model with 1M context, tools, and image input. NVIDIA has not published a model card for it yet, so the 65,536-token output cap is a conservative choice rather than a documented limit. It always reasons, and the reasoning shows in the Thinking block. There is no Reasoning Mode to pick: NVIDIA accepts effort levels for it but they make no difference, and switching thinking off moves the reasoning into the answer text instead of stopping it. Preview models can be withdrawn on short notice.
+**Step 5 Preview.** StepFun's 600B/27B-active preview model for agentic coding and professional work, with 1M context, tools, and image input. The model card allows output up to the full 1M context, but output and input share that window, so the extension caps output at 262,144 tokens and keeps about 775K for the conversation. It always reasons, and the reasoning shows in the Thinking block. There is no Reasoning Mode to pick: NVIDIA accepts effort levels for it but they make no difference, and switching thinking off moves the reasoning into the answer text instead of stopping it. Preview models can be withdrawn on short notice.
 
 
 ---

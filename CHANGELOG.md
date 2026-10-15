@@ -6,7 +6,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ### Added
 
-- Step 5 Preview from StepFun is now in the model list. It has a 1M-token context window, up to 65,536 output tokens, tool calling, and image input. It always reasons, and its reasoning appears in the Thinking block; there is no Reasoning Mode to choose, because NVIDIA's endpoint does not let it be turned down or off. It is a preview model, so NVIDIA may withdraw it on short notice.
+- Step 5 Preview from StepFun is now in the model list. It has a 1M-token context window, up to 262,144 output tokens, tool calling, and image input. It always reasons, and its reasoning appears in the Thinking block; there is no Reasoning Mode to choose, because NVIDIA's endpoint does not let it be turned down or off. It is a preview model, so NVIDIA may withdraw it on short notice.
 - Nemotron 3.5 Super VL 120B is now in the model list: NVIDIA's Super model with image input, a 1M-token context window, up to 131,072 output tokens, and tool calling. Reasoning Mode offers `None`, `Low`, and `High`; `Low` caps reasoning at 8,192 tokens, because NVIDIA's own low-effort switch makes no difference on this model.
 
 ### Removed

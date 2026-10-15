@@ -103,7 +103,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
   "stepfun-ai/step-5-preview": {
     displayName: "Step 5 Preview",
     contextWindow: 1048576,
-    maxOutputTokens: 65536,
+    maxOutputTokens: 262144,
     supportsTools: true,
     supportsVision: true,
     adapter: "stepfun",
