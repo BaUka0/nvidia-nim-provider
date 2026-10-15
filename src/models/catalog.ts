@@ -29,6 +29,7 @@ export type CatalogAdapterId =
   | "kimi"
   | "nemotron"
   | "nemotron-super"
+  | "nemotron-super-vl"
   | "nemotron-lightning"
   | "muse-glimmer"
   | "glm"
@@ -66,6 +67,14 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: false,
     adapter: "nemotron-lightning",
+  },
+  "nvidia/nemotron-3.5-super-vl-120b-a12b": {
+    displayName: "Nemotron 3.5 Super VL 120B",
+    contextWindow: 1048576,
+    maxOutputTokens: 131072,
+    supportsTools: true,
+    supportsVision: true,
+    adapter: "nemotron-super-vl",
   },
   "meta/muse-glimmer-30b": {
     displayName: "Muse Glimmer",

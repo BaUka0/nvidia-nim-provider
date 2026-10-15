@@ -12,13 +12,13 @@ import {
 /**
  * Image cost follows pixel dimensions, not file size: NIM vision models bill one
  * token per 28×28 patch (GLM 5.3 Flash and Muse Glimmer match
- * `ceil(w/28) * ceil(h/28) + 2` exactly), Step 5 Preview charges at least ~170
- * per image, and no model was seen above ~8,000 for one image (measured
+ * `ceil(w/28) * ceil(h/28) + 2` exactly), Nemotron 3.5 Super VL charges at least
+ * 259 per image and Step 5 Preview at least 171, and no model was seen above ~8,000 for one image (measured
  * 2026-10-15). A 40 KB screenshot costs ~440 tokens, so byte-based counting
  * undercounted image-heavy chats about 8x.
  */
 export const IMAGE_PATCH_PIXELS = 28;
-export const IMAGE_TOKEN_FLOOR = 200;
+export const IMAGE_TOKEN_FLOOR = 260;
 export const IMAGE_TOKEN_CAP = 8192;
 /** Chat template tokens around each message (role header, separators): 3–7 measured. */
 export const MESSAGE_OVERHEAD_TOKENS = 7;

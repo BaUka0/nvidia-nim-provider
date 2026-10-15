@@ -15,9 +15,10 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 | **Muse Glimmer** | `Muse Glimmer` | **17** | 131,072 | 32,768 | `None` to `Max` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
 | **Nemotron 3.5 Lightning 30B** | `Nemotron 3.5 Lightning 30B` | **13** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; default text fallback and summarizer |
 | **Nemotron 3 Super 120B** | `Nemotron 3 Super 120B` | **13** | 1,000,000 | 32,768 | `None`, `Low`, `High` | No | Workhorse for everyday coding |
+| **Nemotron 3.5 Super VL 120B** | `Nemotron 3.5 Super VL 120B` | — | 1,048,576 | 131,072 | `None`, `Low`, `High` | Yes | Coding, tools, and image input in one model |
 | **Step 5 Preview** | `Step 5 Preview` | — | 1,048,576 | 65,536 | Always on | Yes | StepFun preview with tools and image input |
 
-Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`). Step 5 Preview has no published score yet.
+Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`). Step 5 Preview and Nemotron 3.5 Super VL have no published score yet.
 
 ---
 
@@ -28,6 +29,8 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 **GLM 5.3 Flash.** Fast multimodal reasoning model with 1M context and up to 131,072 output tokens. Reasoning: `Low` (instant answer), `High`, `Max`.
 
 **Nemotron 3 Super 120B.** MoE reasoning model for everyday coding, 1M context, up to 32,768 output tokens. Reasoning: `None` (standard), `Low` (quick pass), `High` (thorough). NVIDIA briefly retired it on October 3, 2026 and restored it the next day, so it is not used as a default.
+
+**Nemotron 3.5 Super VL 120B.** Vision-language successor to Super: 120B/12B-active MoE with image input, 1M context, and up to 131,072 output tokens. Reasoning: `None` (off), `Low` (reasoning capped at 8,192 tokens, or half the output limit if that is smaller), `High` (no cap). NVIDIA's own low-effort switch has no effect on this model, so `Low` uses a reasoning budget instead. Tool calls, including several in parallel, work natively.
 
 **Nemotron 3.5 Lightning 30B.** Default text fallback and summarization model. Compact 30B/3B-active MoE for fast agentic turns. 1M context, up to 32,768 output tokens. Reasoning: `None`, `Medium`, `High`, `XHigh`; defaults to `Medium` because reasoning shares the answer's token budget. Text-only; vision requests fail over to `fallback.visionModel`.
 

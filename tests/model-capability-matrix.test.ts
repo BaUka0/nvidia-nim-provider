@@ -118,6 +118,24 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "think",
   },
   {
+    modelId: "nvidia/nemotron-3.5-super-vl-120b-a12b",
+    reasoningModes: ["none", "low", "high"],
+    reasoningCases: [
+      { mode: "none", expectedFields: { chat_template_kwargs: { enable_thinking: false } } },
+      {
+        mode: "low",
+        expectedFields: { chat_template_kwargs: { enable_thinking: true, reasoning_budget: 8192 } },
+      },
+      { mode: "high", expectedFields: { chat_template_kwargs: { enable_thinking: true } } },
+    ],
+    reasoningParameterFormat: "chat_template_kwargs",
+    toolCallProtocol: "native-and-text",
+    reasoningRouting: "isolated",
+    contentOnlyMode: "none",
+    contentOnlyRouting: "text",
+    thinkTag: "think",
+  },
+  {
     modelId: "nvidia/nemotron-3.5-lightning-30b-a3b",
     reasoningModes: ["none", "medium", "high", "xhigh"],
     reasoningCases: [
@@ -479,5 +497,33 @@ describe("curated model capability matrix", () => {
         },
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("Nemotron 3.5 Super VL reasoning budget", () => {
+  const adapter = getModelAdapter("nvidia/nemotron-3.5-super-vl-120b-a12b");
+  const request = (maxTokens?: number): NimChatRequest => ({
+    model: "nvidia/nemotron-3.5-super-vl-120b-a12b",
+    messages: [],
+    ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+  });
+
+  it("keeps half of a small max_tokens for the answer in Low", () => {
+    const body = request(6000);
+    adapter.applyReasoningMode?.(body, "low");
+    expect(body.chat_template_kwargs).toEqual({ enable_thinking: true, reasoning_budget: 3000 });
+  });
+
+  it("drops a leftover budget when switching back to High", () => {
+    const body = request(65536);
+    adapter.applyReasoningMode?.(body, "low");
+    adapter.applyReasoningMode?.(body, "high");
+    expect(body.chat_template_kwargs).toEqual({ enable_thinking: true });
+  });
+
+  it("does not send low_effort, which hosted NIM ignores for this model", () => {
+    const body = request(65536);
+    adapter.applyReasoningMode?.(body, "low");
+    expect(body.chat_template_kwargs).not.toHaveProperty("low_effort");
   });
 });

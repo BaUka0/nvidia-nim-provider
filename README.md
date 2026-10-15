@@ -58,6 +58,7 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | **Muse Glimmer** | **17** | 131K | `None` to `Max` | Yes | Yes | Visual UX/UI work; default vision fallback |
 | **Nemotron 3.5 Lightning 30B** | **13** | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Fast agentic turns; default text fallback and summarizer |
 | **Nemotron 3 Super 120B** | **13** | 1M | `None`, `Low`, `High` | Yes | No | Workhorse for everyday coding |
+| **Nemotron 3.5 Super VL 120B** | — | 1M | `None`, `Low`, `High` | Yes | Yes | Coding, tools, and image input in one model |
 | **Step 5 Preview** | — | 1M | Always on | Yes | Yes | StepFun preview; reasoning cannot be turned off |
 
 Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`).
