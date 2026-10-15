@@ -180,11 +180,6 @@
     "created": 735790403
   },
   {
-    "id": "moonshotai/kimi-k3",
-    "owned_by": "moonshotai",
-    "created": 735790403
-  },
-  {
     "id": "nv-mistralai/mistral-nemo-12b-instruct",
     "owned_by": "nv-mistralai",
     "created": 735790403
@@ -362,6 +357,11 @@
   {
     "id": "snowflake/arctic-embed-l",
     "owned_by": "snowflake",
+    "created": 735790403
+  },
+  {
+    "id": "stepfun-ai/step-5-preview",
+    "owned_by": "stepfun-ai",
     "created": 735790403
   },
   {
