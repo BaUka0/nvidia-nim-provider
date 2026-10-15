@@ -23,6 +23,7 @@ import {
 } from "./shared/logging";
 import { StatusBarManager } from "./shared/status-bar";
 import { NimChatModelProvider } from "./provider/chat-provider";
+import { scheduleDeprecationCountdownRefresh } from "./models/deprecation";
 import { registerNimTools } from "./tools/vision";
 import { refreshModelsFromApi, resetRefreshQueue } from "./models/refresh";
 import { NvidiaApiKeyResolver } from "./api/key-resolver";
@@ -330,6 +331,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   const registration = vscode.lm.registerLanguageModelChatProvider(PROVIDER_VENDOR, provider);
   context.subscriptions.push(registration);
+  // Moves the picker's retirement countdown to the next day at midnight UTC.
+  context.subscriptions.push(
+    scheduleDeprecationCountdownRefresh(() => _provider?.refreshPickerInfo()),
+  );
 
   // Register tools and commands
   context.subscriptions.push(registerNimTools(context.secrets, context.globalState, keyResolver));

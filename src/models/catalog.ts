@@ -22,6 +22,12 @@ export interface NvidiaModelCatalogEntry {
   supportsVision: boolean;
   /** Adapter registry key. Family regex is only used for uncatalogued IDs. */
   adapter: CatalogAdapterId;
+  /**
+   * Day NVIDIA retires the model, as `YYYY-MM-DD` (UTC). The model picker
+   * shows a countdown to it. Read straight from MODEL_LIST at picker time,
+   * so it is left out of getCatalogDigest() and needs no cache bump.
+   */
+  deprecationDate?: string;
 }
 
 export type CatalogAdapterId =
@@ -59,6 +65,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: false,
     adapter: "nemotron-super",
+    deprecationDate: "2026-10-19",
   },
   "nvidia/nemotron-3.5-lightning-30b-a3b": {
     displayName: "Nemotron 3.5 Lightning",
@@ -91,6 +98,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: false,
     adapter: "glm",
+    deprecationDate: "2026-10-27",
   },
   "z-ai/glm-5.3-flash": {
     displayName: "GLM 5.3 Flash",

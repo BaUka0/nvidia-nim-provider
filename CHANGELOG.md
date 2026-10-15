@@ -2,6 +2,13 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Added
+
+- When NVIDIA announces that a model will be retired, its name in the model picker shows how many days are left, for example "GLM 5.3 (retires in 15 days)". In regular chat sessions the model's details also show a warning with the exact date. The count updates at midnight UTC. On the retirement day the name says "retires today", and after that it says "retired".
+- Nemotron 3 Super and GLM 5.3 now show a countdown in the model picker. NVIDIA retires Nemotron 3 Super on October 19, 2026, and GLM 5.3 on October 27, 2026. Pick another model before then. If one of them is set as your backup or summarization model, change it in the Settings UI or `settings.json`.
+
 ## [1.7.0] - 2026-10-15
 
 ### Added

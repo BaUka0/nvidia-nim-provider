@@ -14,6 +14,11 @@ import { outputLog } from "../shared/logging";
 import { getModelAdapter, resolveDefaultReasoningMode } from "./adapters";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../api/key-resolver";
 import { runSerializedModelCacheOperation } from "./cache";
+import {
+  DEPRECATION_WARNING_KEY,
+  formatDeprecatedModelName,
+  formatDeprecationWarning,
+} from "./deprecation";
 
 export interface NvidiaConfigurationProperty {
   type: "string" | "number" | "boolean" | "object" | "array";
@@ -44,6 +49,12 @@ export interface NvidiaLanguageModelChatInformation extends vscode.LanguageModel
   readonly maxOutputTokens: number;
   isUserSelectable: boolean;
   configurationSchema?: NvidiaConfigurationSchema;
+  /**
+   * Warning banners from the proposed `chatProvider` API, keyed by category.
+   * VS Code passes it through without a proposal check and shows each value in
+   * the model picker card and hover. Carries the retirement countdown.
+   */
+  warningText?: Readonly<Record<string, string>>;
 }
 
 /** Smaller "Context Size" picker tiers, in input tokens. */
@@ -221,6 +232,7 @@ export class NvidiaModelDiscoveryService {
 
   public mapToChatInformation(
     models: readonly NormalizedNvidiaModel[],
+    now: Date = new Date(),
   ): NvidiaLanguageModelChatInformation[] {
     const info: NvidiaLanguageModelChatInformation[] = [];
 
@@ -268,10 +280,13 @@ export class NvidiaModelDiscoveryService {
       const configurationSchema: NvidiaConfigurationSchema | undefined =
         Object.keys(properties).length > 0 ? { properties } : undefined;
 
+      const { deprecationDate } = MODEL_LIST[model.id];
+      const deprecationWarning = formatDeprecationWarning(deprecationDate, now);
+
       const pickerName = model.displayName;
       info.push({
         id: model.id,
-        name: pickerName,
+        name: formatDeprecatedModelName(pickerName, deprecationDate, now),
         detail: PROVIDER_DISPLAY_NAME,
         tooltip: `${PROVIDER_DISPLAY_NAME} ${pickerName}`,
         family: PROVIDER_VENDOR,
@@ -286,6 +301,9 @@ export class NvidiaModelDiscoveryService {
           imageInput: model.supportsVision,
         },
         ...(configurationSchema ? { configurationSchema } : {}),
+        ...(deprecationWarning
+          ? { warningText: { [DEPRECATION_WARNING_KEY]: deprecationWarning } }
+          : {}),
       });
     }
     return info;

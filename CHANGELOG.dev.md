@@ -2,6 +2,13 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Added
+
+- **Retirement countdown in the model picker (`src/models/catalog.ts`, `src/models/deprecation.ts`, `src/models/discovery.ts`, `src/provider/chat-provider.ts`, `src/extension.ts`, `tests/deprecation.test.ts`).** `NvidiaModelCatalogEntry` gains an optional `deprecationDate` (`YYYY-MM-DD`, UTC). NIM's `/v1/models` returns only `id`, `object`, `created` and `owned_by`, so the date is curated by hand. `mapToChatInformation(models, now)` appends a countdown to `name` via `formatDeprecatedModelName` (`(retires in N days)`, `(retires tomorrow)`, `(retires today)`, `(retired)`) and sets `warningText.deprecation` from `formatDeprecationWarning`, which includes the full date. `tooltip` keeps the plain display name. `warningText` belongs to the proposed `chatProvider` API, but `extHostLanguageModels` copies it without a proposal check, as it does `maxContextWindowTokens` and `configurationSchema`. The 1.142 picker shows it as a warning banner in the model card of Local sessions only. In Copilot harness sessions `agentHostByokLmHandler.listModels` forwards only name, limits, vision and reasoning efforts in `IByokLmModelInfo`, and `agentHostLanguageModelProvider` rebuilds `warningText` from agent host notices, so the name is the only place the countdown appears there. Turn messages that use `model.name` (fallback, overflow and filter notices) carry the suffix too. `scheduleDeprecationCountdownRefresh` (registered in `activate`, disposed with the extension) calls the new `NimChatModelProvider.refreshPickerInfo()` at each midnight UTC. That method only fires `onDidChangeLanguageModelChatInformation` and leaves the model, runtime-info and context-limit caches alone. The timer is `unref()`ed so it never keeps a process alive, and no timer is created while no curated model has a date. `deprecationDate` is read from `MODEL_LIST` at picker time and is not stored in the normalized model cache, so it is left out of `getCatalogDigest()`, and adding a date needs no `MODELS_CACHE_VERSION` bump.
+- **Retirement dates for Nemotron 3 Super and GLM 5.3 (`src/models/catalog.ts`).** `nvidia/nemotron-3-super-120b-a12b` gets `deprecationDate: "2026-10-19"` and `z-ai/glm-5.3` gets `"2026-10-27"`. Source, checked 2026-10-15: the `DEPRECATION` endpoint attribute and the `deprecationNotice` ("This API will be deprecated on MM/DD/YYYY. It will no longer be supported after MM/DD/YYYY.") on their build.nvidia.com model pages. The pages of the other seven curated models carry neither field. `/v1/models` still lists both models.
+
 ## [1.7.0] - 2026-10-15
 
 ### Added

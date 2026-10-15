@@ -213,6 +213,14 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     this._onDidChangeLanguageModelChatInformation.fire();
   }
 
+  /**
+   * Asks VS Code to re-read the model list without touching any cache, so
+   * time-dependent picker text such as the retirement countdown is redrawn.
+   */
+  refreshPickerInfo(): void {
+    this._onDidChangeLanguageModelChatInformation.fire();
+  }
+
   private markModelRetired(modelId: string): void {
     if (this.retiredModelIds.has(modelId)) {
       return;

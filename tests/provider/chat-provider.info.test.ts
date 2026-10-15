@@ -103,7 +103,8 @@ describe("NimChatModelProvider", () => {
     expect(infos).toEqual([
       expect.objectContaining({
         id: "z-ai/glm-5.3",
-        name: "GLM 5.3",
+        // GLM 5.3 has a retirement date, so the name carries a countdown.
+        name: expect.stringMatching(/^GLM 5\.3\b/),
         detail: "NVIDIA NIM",
       }),
     ]);
@@ -229,7 +230,7 @@ describe("NimChatModelProvider", () => {
     expect(infos).toEqual([
       expect.objectContaining({
         id: "z-ai/glm-5.3",
-        name: "GLM 5.3",
+        name: expect.stringMatching(/^GLM 5\.3\b/),
         isUserSelectable: true,
       }),
     ]);
