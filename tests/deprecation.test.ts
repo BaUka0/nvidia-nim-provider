@@ -117,6 +117,7 @@ describe("model retirement countdown", () => {
       const info = withDeprecationDate(MODEL_ID, "2026-10-30", pickerInfo);
 
       expect(info.name).toBe("GLM 5.3 (retires in 15 days)");
+      expect(info.statusIcon?.id).toBe("warning");
       expect(info.tooltip).toBe("NVIDIA NIM GLM 5.3");
       expect(info.warningText).toEqual({
         [DEPRECATION_WARNING_KEY]:
@@ -128,6 +129,7 @@ describe("model retirement countdown", () => {
       const info = withDeprecationDate(MODEL_ID, undefined, pickerInfo);
 
       expect(info.name).toBe("GLM 5.3");
+      expect(info.statusIcon?.id).toBe("zap");
       expect(info).not.toHaveProperty("warningText");
     });
 

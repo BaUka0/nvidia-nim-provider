@@ -55,7 +55,18 @@ export interface NvidiaLanguageModelChatInformation extends vscode.LanguageModel
    * the model picker card and hover. Carries the retirement countdown.
    */
   warningText?: Readonly<Record<string, string>>;
+  /**
+   * Row icon from the proposed `chatProvider` API, passed through without a
+   * proposal check. In Local sessions the picker shows it in the model list
+   * and on the model button instead of the generic provider sparkle.
+   */
+  statusIcon?: vscode.ThemeIcon;
 }
+
+/** Picker icon for every curated model; matches the extension's lightning bolt. */
+const MODEL_STATUS_ICON = "zap";
+/** Picker icon for a model with a retirement date. */
+const DEPRECATED_MODEL_STATUS_ICON = "warning";
 
 /** Smaller "Context Size" picker tiers, in input tokens. */
 export const CONTEXT_SIZE_TIERS = [128_000, 256_000, 512_000] as const;
@@ -301,6 +312,9 @@ export class NvidiaModelDiscoveryService {
           imageInput: model.supportsVision,
         },
         ...(configurationSchema ? { configurationSchema } : {}),
+        statusIcon: new vscode.ThemeIcon(
+          deprecationWarning ? DEPRECATED_MODEL_STATUS_ICON : MODEL_STATUS_ICON,
+        ),
         ...(deprecationWarning
           ? { warningText: { [DEPRECATION_WARNING_KEY]: deprecationWarning } }
           : {}),

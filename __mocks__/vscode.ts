@@ -22,6 +22,13 @@ export class EventEmitter<T> {
   }
 }
 
+export class ThemeIcon {
+  constructor(
+    public readonly id: string,
+    public readonly color?: unknown,
+  ) {}
+}
+
 export class Disposable {
   static from(...disposables: { dispose: () => void }[]): { dispose: () => void } {
     return {
