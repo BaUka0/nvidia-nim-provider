@@ -44,3 +44,40 @@ jobs:
           git add scripts/models-snapshot.json
           git commit -m "chore: update NVIDIA NIM models snapshot [skip ci]"
           git push
+
+  deprecations:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Compile Catalog
+        run: npm run compile
+
+      # Fails the job when a date is missing or differs; unreachable pages are only warnings.
+      - name: Check Retirement Dates
+        id: deprecations
+        run: node scripts/check-deprecations.mjs --report scripts/deprecations-report.md
+
+      - name: Open or Update Retirement Dates Issue
+        if: always() && steps.deprecations.outputs.has_mismatch == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: NVIDIA NIM retirement dates out of sync
+        run: |
+          existing=$(gh issue list --state open --search "\"${TITLE}\" in:title" \
+            --json number,title --jq '.[] | select(.title == env.TITLE) | .number' | head -n 1)
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file scripts/deprecations-report.md
+          else
+            gh issue create --title "$TITLE" --body-file scripts/deprecations-report.md --label "enhancement"
+          fi

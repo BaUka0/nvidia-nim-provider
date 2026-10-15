@@ -376,6 +376,7 @@
     "lint": "eslint src/ tests/ scripts/",
     "lint:fix": "eslint src/ tests/ scripts/ --fix",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.mjs\"",
+    "check:deprecations": "node scripts/check-deprecations.mjs",
     "probe:models": "node scripts/nim-models-probe.mjs",
     "probe:context:262k": "node scripts/probe-context-262k.mjs",
     "probe:context:500k": "node scripts/probe-context-500k.mjs",

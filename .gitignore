@@ -35,6 +35,7 @@ agents.md
 *.log
 *.mp4
 scripts/models-diff.md
+scripts/deprecations-report.md
 
 # Session & turn report artifacts
 nvidia-nim-session-*.json
