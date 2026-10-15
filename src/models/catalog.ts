@@ -45,7 +45,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     adapter: "deepseek",
   },
   "nvidia/nemotron-3-ultra-550b-a55b": {
-    displayName: "Nemotron 3 Ultra 550B",
+    displayName: "Nemotron 3 Ultra",
     contextWindow: 1000000,
     maxOutputTokens: 32768,
     supportsTools: true,
@@ -53,7 +53,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     adapter: "nemotron",
   },
   "nvidia/nemotron-3-super-120b-a12b": {
-    displayName: "Nemotron 3 Super 120B",
+    displayName: "Nemotron 3 Super",
     contextWindow: 1000000,
     maxOutputTokens: 32768,
     supportsTools: true,
@@ -61,7 +61,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     adapter: "nemotron-super",
   },
   "nvidia/nemotron-3.5-lightning-30b-a3b": {
-    displayName: "Nemotron 3.5 Lightning 30B",
+    displayName: "Nemotron 3.5 Lightning",
     contextWindow: 1000000,
     maxOutputTokens: 32768,
     supportsTools: true,
@@ -69,7 +69,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     adapter: "nemotron-lightning",
   },
   "nvidia/nemotron-3.5-super-vl-120b-a12b": {
-    displayName: "Nemotron 3.5 Super VL 120B",
+    displayName: "Nemotron 3.5 Super VL",
     contextWindow: 1048576,
     maxOutputTokens: 131072,
     supportsTools: true,

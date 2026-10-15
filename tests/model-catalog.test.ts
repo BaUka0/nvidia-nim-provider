@@ -130,7 +130,7 @@ describe("normalizeNvidiaModels", () => {
 describe("getFallbackModel", () => {
   const lightning = {
     id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-    displayName: "Nemotron 3.5 Lightning 30B",
+    displayName: "Nemotron 3.5 Lightning",
     contextWindow: 1000000,
     maxOutputTokens: 32768,
     supportsTools: true,
@@ -161,7 +161,7 @@ describe("getFallbackModel", () => {
     supportsVision: false,
   };
 
-  it("selects Nemotron 3.5 Lightning 30B as the default text fallback", () => {
+  it("selects Nemotron 3.5 Lightning as the default text fallback", () => {
     expect(FALLBACK_MODEL_ID).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
     expect(getFallbackModel(kimi.id, [kimi, glm, lightning])).toEqual(lightning);
   });

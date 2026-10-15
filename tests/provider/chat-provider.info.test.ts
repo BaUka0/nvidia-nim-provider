@@ -585,7 +585,7 @@ describe("NimChatModelProvider", () => {
     const cachedModels = [
       {
         id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-        displayName: "Nemotron 3.5 Lightning 30B",
+        displayName: "Nemotron 3.5 Lightning",
         contextWindow: 1000000,
         maxOutputTokens: 32768,
         supportsTools: true,
@@ -612,12 +612,12 @@ describe("NimChatModelProvider", () => {
     expect(infos).toEqual([
       expect.objectContaining({
         id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-        name: "Nemotron 3.5 Lightning 30B",
+        name: "Nemotron 3.5 Lightning",
         detail: "NVIDIA NIM",
         isUserSelectable: true,
       }),
     ]);
-    expect(infos[0].tooltip).toBe("NVIDIA NIM Nemotron 3.5 Lightning 30B");
+    expect(infos[0].tooltip).toBe("NVIDIA NIM Nemotron 3.5 Lightning");
     expect(fetchModelsOrThrow).not.toHaveBeenCalled();
   });
 
@@ -1185,7 +1185,7 @@ describe("NimChatModelProvider", () => {
       await send("Hi");
       expect(requestedModels()).toEqual(["z-ai/glm-5.3", LIGHTNING]);
       expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-        "Overloaded on GLM 5.3. Falling back to Nemotron 3.5 Lightning 30B.",
+        "Overloaded on GLM 5.3. Falling back to Nemotron 3.5 Lightning.",
       );
 
       await send("Again");

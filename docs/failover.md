@@ -19,7 +19,7 @@ flowchart TD
     B -- Success 200 OK --> C[Stream Response to User]
     B -- Failure 429 / 503 / 404 / Timeout --> D{Request Type}
     D -- Contains Images --> E[Route turn to Vision Backup: Muse Glimmer]
-    D -- Text Only --> F[Route turn to Text Backup: Nemotron 3.5 Lightning 30B]
+    D -- Text Only --> F[Route turn to Text Backup: Nemotron 3.5 Lightning]
     E --> G[Stream Response with Fallback Banner]
     F --> G
     G --> H[Next Turn: Restores Primary Model]
@@ -29,7 +29,7 @@ flowchart TD
 
 ## Text vs. Vision Failover
 
-If the request is text-only, failover uses `nvidia-nim.fallback.model` (default `Nemotron 3.5 Lightning 30B`). If it contains images, text-only models would reject it, so the extension routes to `nvidia-nim.fallback.visionModel` (default `Muse Glimmer`).
+If the request is text-only, failover uses `nvidia-nim.fallback.model` (default `Nemotron 3.5 Lightning`). If it contains images, text-only models would reject it, so the extension routes to `nvidia-nim.fallback.visionModel` (default `Muse Glimmer`).
 
 ---
 

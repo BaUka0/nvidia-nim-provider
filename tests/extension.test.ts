@@ -656,7 +656,7 @@ describe("activate", () => {
     const secondRawModels = [
       {
         id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-        name: "Nemotron 3.5 Lightning 30B",
+        name: "Nemotron 3.5 Lightning",
         capabilities: { chat: true, tool_calling: true, vision: false },
         metadata: { context_window: 1000000, max_output_tokens: 32768 },
       },

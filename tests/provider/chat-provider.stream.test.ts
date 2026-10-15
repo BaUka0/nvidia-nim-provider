@@ -2754,7 +2754,7 @@ describe("NimChatModelProvider", () => {
     [404, "Model unavailable", "model_unavailable"],
     [410, "Model unavailable", "model_unavailable"],
   ] as const)(
-    "falls back to Nemotron 3.5 Lightning 30B on HTTP %s",
+    "falls back to Nemotron 3.5 Lightning on HTTP %s",
     async (status: number, capacityLabel: string, kind: ApiErrorKind) => {
       (secrets.get as jest.Mock).mockResolvedValue("test-key");
       (globalState.get as jest.Mock).mockImplementation((key: string) =>
@@ -2770,7 +2770,7 @@ describe("NimChatModelProvider", () => {
               },
               {
                 id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-                displayName: "Nemotron 3.5 Lightning 30B",
+                displayName: "Nemotron 3.5 Lightning",
                 contextWindow: 1000000,
                 maxOutputTokens: 65536,
                 supportsTools: true,
@@ -2817,7 +2817,7 @@ describe("NimChatModelProvider", () => {
       const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
       expect(fallbackRequest.model).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
       expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-        `${capacityLabel} on Kimi k2.6. Falling back to Nemotron 3.5 Lightning 30B.`,
+        `${capacityLabel} on Kimi k2.6. Falling back to Nemotron 3.5 Lightning.`,
       );
       expect(progress.report).toHaveBeenCalledWith(
         expect.objectContaining({ value: "Fallback response" }),
@@ -2845,7 +2845,7 @@ describe("NimChatModelProvider", () => {
             },
             {
               id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-              displayName: "Nemotron 3.5 Lightning 30B",
+              displayName: "Nemotron 3.5 Lightning",
               contextWindow: 1000000,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -2919,7 +2919,7 @@ describe("NimChatModelProvider", () => {
             },
             {
               id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-              displayName: "Nemotron 3.5 Lightning 30B",
+              displayName: "Nemotron 3.5 Lightning",
               contextWindow: 1000000,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -3094,7 +3094,7 @@ describe("NimChatModelProvider", () => {
             },
             {
               id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-              displayName: "Nemotron 3.5 Lightning 30B",
+              displayName: "Nemotron 3.5 Lightning",
               contextWindow: 1000000,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -3724,7 +3724,7 @@ describe("NimChatModelProvider", () => {
             },
             {
               id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-              displayName: "Nemotron 3.5 Lightning 30B",
+              displayName: "Nemotron 3.5 Lightning",
               contextWindow: 1000000,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -3812,7 +3812,7 @@ describe("NimChatModelProvider", () => {
       expect.objectContaining({ value: "Fallback listing" }),
     );
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      expect.stringContaining("Falling back to Nemotron 3.5 Lightning 30B"),
+      expect.stringContaining("Falling back to Nemotron 3.5 Lightning"),
     );
   });
 
@@ -3908,7 +3908,7 @@ describe("NimChatModelProvider", () => {
             },
             {
               id: "nvidia/nemotron-3.5-lightning-30b-a3b",
-              displayName: "Nemotron 3.5 Lightning 30B",
+              displayName: "Nemotron 3.5 Lightning",
               contextWindow: 1000000,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -4491,7 +4491,7 @@ describe("NimChatModelProvider", () => {
           },
           {
             id: "nvidia/nemotron-3-ultra-550b-a55b",
-            displayName: "Nemotron 3 Ultra 550B",
+            displayName: "Nemotron 3 Ultra",
             contextWindow: 1000000,
             maxOutputTokens: 65536,
             supportsTools: true,
@@ -4559,10 +4559,10 @@ describe("NimChatModelProvider", () => {
       "meta/muse-glimmer-30b",
     ]);
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      "Rate limited on Kimi K3. Falling back to Nemotron 3 Ultra 550B.",
+      "Rate limited on Kimi K3. Falling back to Nemotron 3 Ultra.",
     );
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      "Rate limited on Nemotron 3 Ultra 550B. Falling back to Muse Glimmer.",
+      "Rate limited on Nemotron 3 Ultra. Falling back to Muse Glimmer.",
     );
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Priority chain response" }),
@@ -4591,7 +4591,7 @@ describe("NimChatModelProvider", () => {
           },
           {
             id: "nvidia/nemotron-3-ultra-550b-a55b",
-            displayName: "Nemotron 3 Ultra 550B",
+            displayName: "Nemotron 3 Ultra",
             contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,
@@ -4664,7 +4664,7 @@ describe("NimChatModelProvider", () => {
           },
           {
             id: "nvidia/nemotron-3-ultra-550b-a55b",
-            displayName: "Nemotron 3 Ultra 550B",
+            displayName: "Nemotron 3 Ultra",
             contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,
@@ -4745,7 +4745,7 @@ describe("NimChatModelProvider", () => {
           },
           {
             id: "nvidia/nemotron-3-ultra-550b-a55b",
-            displayName: "Nemotron 3 Ultra 550B",
+            displayName: "Nemotron 3 Ultra",
             contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,
@@ -4808,7 +4808,7 @@ describe("NimChatModelProvider", () => {
           },
           {
             id: "nvidia/nemotron-3-ultra-550b-a55b",
-            displayName: "Nemotron 3 Ultra 550B",
+            displayName: "Nemotron 3 Ultra",
             contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,

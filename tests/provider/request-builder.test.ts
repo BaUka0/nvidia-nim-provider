@@ -151,7 +151,7 @@ describe("NimRequestBuilder context accounting", () => {
 
     const nemotronModel = makeModel({
       id: "nvidia/nemotron-3-ultra-550b-a55b",
-      name: "Nemotron 3 Ultra 550B",
+      name: "Nemotron 3 Ultra",
       maxInputTokens: 100000,
       maxOutputTokens: 65536,
     });
@@ -378,7 +378,7 @@ describe("resolveReasoningMode", () => {
   it("applies toolTemperature: 0.6 for Nemotron when tools are enabled without forcing parallel_tool_calls", async () => {
     const nemotronModel = makeModel({
       id: "nvidia/nemotron-3-super-120b-a12b",
-      name: "Nemotron 3 Super 120B",
+      name: "Nemotron 3 Super",
       maxInputTokens: 100000,
       maxOutputTokens: 16384,
     });
@@ -414,7 +414,7 @@ describe("resolveReasoningMode", () => {
   it("does not set parallel_tool_calls when tools are disabled for Nemotron", async () => {
     const nemotronModel = makeModel({
       id: "nvidia/nemotron-3-super-120b-a12b",
-      name: "Nemotron 3 Super 120B",
+      name: "Nemotron 3 Super",
       maxInputTokens: 100000,
       maxOutputTokens: 16384,
     });
