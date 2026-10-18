@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Removed
+
+- **Nemotron 3 Super end of life (`src/models/catalog.ts`, `src/models/adapters/nemotron-super.ts`, `src/models/adapters/index.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`, docs, `.github/ISSUE_TEMPLATE/bug_report.yml`, `tests/*`).** `nvidia/nemotron-3-super-120b-a12b` reaches its `deprecationDate` of 2026-10-19 and is removed from `MODEL_LIST`. Probed the same day, it was still listed in `/v1/models` and still answered `POST /chat/completions` with 200. `sync:manifest` dropped it from the settings enums and `CURATED_MODEL_IDS` and bumped `MODELS_CACHE_VERSION` to 31. A leftover `fallback.*` / `summarizationModel` value fails the catalog check in `sanitizeKnownModelId` and resolves to the default. Unlike `KimiAdapter` after Kimi K3, `NemotronSuperAdapter` (the `low_effort` mapping) and the `nemotron-super` `CatalogAdapterId` are deleted: its regex matched only `nemotron-3-super`, and Nemotron 3.5 Super VL already has its own `NemotronSuperVlAdapter` because `low_effort` does nothing there. An uncatalogued `nemotron-3-super` id would now get the generic `NemotronAdapter`. The Super row left the capability matrix, and its adapter and card-compliance tests are gone. The repetition guard tests and comments about the Super 120B loop from #7 keep the old name.
+
 ## [1.8.0] - 2026-10-16
 
 ### Added

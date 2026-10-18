@@ -6,7 +6,7 @@ import { DeepSeekAdapter } from "./deepseek";
 import { KimiAdapter } from "./kimi";
 import { NemotronAdapter } from "./nemotron";
 import { NemotronLightningAdapter } from "./nemotron-lightning";
-import { NemotronSuperAdapter, NemotronSuperVlAdapter } from "./nemotron-super";
+import { NemotronSuperVlAdapter } from "./nemotron-super";
 import { MuseGlimmerAdapter } from "./muse-glimmer";
 import { GlmAdapter } from "./glm";
 import { StepfunAdapter } from "./stepfun";
@@ -31,7 +31,6 @@ class DefaultAdapter extends BaseModelAdapter {
 const deepseekAdapter = new DeepSeekAdapter();
 const kimiAdapter = new KimiAdapter();
 const nemotronLightningAdapter = new NemotronLightningAdapter();
-const nemotronSuperAdapter = new NemotronSuperAdapter();
 const nemotronSuperVlAdapter = new NemotronSuperVlAdapter();
 const nemotronAdapter = new NemotronAdapter();
 const museGlimmerAdapter = new MuseGlimmerAdapter();
@@ -42,7 +41,6 @@ const ADAPTERS_BY_ID: Record<CatalogAdapterId, ModelAdapter> = {
   deepseek: deepseekAdapter,
   kimi: kimiAdapter,
   nemotron: nemotronAdapter,
-  "nemotron-super": nemotronSuperAdapter,
   "nemotron-super-vl": nemotronSuperVlAdapter,
   "nemotron-lightning": nemotronLightningAdapter,
   "muse-glimmer": museGlimmerAdapter,
@@ -55,7 +53,6 @@ const FAMILY_ADAPTERS: ModelAdapter[] = [
   deepseekAdapter,
   kimiAdapter,
   nemotronLightningAdapter,
-  nemotronSuperAdapter,
   nemotronSuperVlAdapter,
   nemotronAdapter,
   museGlimmerAdapter,

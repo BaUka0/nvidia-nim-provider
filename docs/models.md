@@ -16,7 +16,6 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 | **Nemotron 3 Ultra** | `Nemotron 3 Ultra` | **23** | 1,000,000 | 32,768 | `None`, `Medium`, `High` | No | Heavy multi-step reasoning, system design, enterprise docs |
 | **Muse Glimmer** | `Muse Glimmer` | **17** | 131,072 | 32,768 | `None` to `Max` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
 | **Nemotron 3.5 Lightning** | `Nemotron 3.5 Lightning` | **13** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; default text fallback and summarizer |
-| **Nemotron 3 Super** | `Nemotron 3 Super` | **13** | 1,000,000 | 32,768 | `None`, `Low`, `High` | No | Workhorse for everyday coding |
 
 Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`).
 
@@ -28,9 +27,7 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 
 **GLM 5.3 Flash.** Fast multimodal reasoning model with 1M context and up to 131,072 output tokens. Reasoning: `Low` (instant answer), `High`, `Max`.
 
-**Nemotron 3 Super.** MoE reasoning model for everyday coding, 1M context, up to 32,768 output tokens. Reasoning: `None` (standard), `Low` (quick pass), `High` (thorough). NVIDIA briefly retired it on October 3, 2026 and restored it the next day, so it is not used as a default.
-
-**Nemotron 3.5 Super VL.** Vision-language successor to Super: 120B/12B-active MoE with image input, 1M context, and up to 131,072 output tokens. Reasoning: `None` (off), `Low` (reasoning capped at 8,192 tokens, or half the output limit if that is smaller), `High` (no cap). NVIDIA's own low-effort switch has no effect on this model, so `Low` uses a reasoning budget instead. Tool calls, including several in parallel, work natively.
+**Nemotron 3.5 Super VL.** Vision-language successor to Nemotron 3 Super: 120B/12B-active MoE with image input, 1M context, and up to 131,072 output tokens. Reasoning: `None` (off), `Low` (reasoning capped at 8,192 tokens, or half the output limit if that is smaller), `High` (no cap). NVIDIA's own low-effort switch has no effect on this model, so `Low` uses a reasoning budget instead. Tool calls, including several in parallel, work natively.
 
 **Nemotron 3.5 Lightning.** Default text fallback and summarization model. Compact 30B/3B-active MoE for fast agentic turns. 1M context, up to 32,768 output tokens. Reasoning: `None`, `Medium`, `High`, `XHigh`; defaults to `Medium` because reasoning shares the answer's token budget. Text-only; vision requests fail over to `fallback.visionModel`.
 
@@ -47,7 +44,7 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 
 ### Collapsible Thinking Blocks
 
-DeepSeek V4, Nemotron Super, and GLM 5.3 / GLM 5.3 Flash produce an internal stream of logical thought before the final answer. The extension filters `<thought>`, `<think>`, and `[THINK]` tags and renders them via VS Code's `LanguageModelThinkingPart`. In Copilot Chat you see a collapsible **Thinking...** bar; click to expand and read the step-by-step reasoning, or leave it collapsed to focus on the response.
+DeepSeek V4, Nemotron 3.5 Super VL, and GLM 5.3 / GLM 5.3 Flash produce an internal stream of logical thought before the final answer. The extension filters `<thought>`, `<think>`, and `[THINK]` tags and renders them via VS Code's `LanguageModelThinkingPart`. In Copilot Chat you see a collapsible **Thinking...** bar; click to expand and read the step-by-step reasoning, or leave it collapsed to focus on the response.
 
 ### Controlling Reasoning Effort
 
