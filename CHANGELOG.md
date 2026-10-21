@@ -2,11 +2,11 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
-## [Unreleased]
+## [1.8.1] - 2026-10-21
 
 ### Removed
 
-- Nemotron 3 Super is removed from the model list. NVIDIA retires it on October 19, 2026. If it was set as your backup or summarization model, the default model is used instead; pick another one in the Settings UI or `settings.json` if you prefer. Nemotron 3.5 Super VL stays in the list.
+- Nemotron 3 Super is removed from the model list. NVIDIA retired it on October 19, 2026, and it no longer answers requests. If it was set as your backup or summarization model, the default model is used instead; pick another one in the Settings UI or `settings.json` if you prefer. Nemotron 3.5 Super VL stays in the list.
 
 ## [1.8.0] - 2026-10-16
 
