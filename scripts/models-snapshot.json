@@ -285,6 +285,16 @@
     "created": 735790403
   },
   {
+    "id": "nvidia/nemotron-3.5-embed-1b",
+    "owned_by": "nvidia",
+    "created": 735790403
+  },
+  {
+    "id": "nvidia/nemotron-3.5-embed-8b",
+    "owned_by": "nvidia",
+    "created": 735790403
+  },
+  {
     "id": "nvidia/nemotron-3.5-lightning-30b-a3b",
     "owned_by": "nvidia",
     "created": 735790403
