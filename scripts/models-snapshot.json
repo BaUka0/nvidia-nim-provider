@@ -285,6 +285,11 @@
     "created": 735790403
   },
   {
+    "id": "nvidia/nemotron-3.5-bolt-e4b",
+    "owned_by": "nvidia",
+    "created": 735790403
+  },
+  {
     "id": "nvidia/nemotron-3.5-content-safety",
     "owned_by": "nvidia",
     "created": 735790403
