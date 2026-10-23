@@ -111,6 +111,30 @@ describe("applyReasoningMode", () => {
     expect(request.reasoning_effort).toBe("max");
   });
 
+  it("exposes MiniMax M3.1 Flash reasoning effort modes in chat_template_kwargs", () => {
+    const adapter = getModelAdapter("minimaxai/minimax-m3.1-flash");
+    const request: NimChatRequest = {
+      model: "minimaxai/minimax-m3.1-flash",
+      messages: [],
+    };
+
+    expect(adapter.supportedReasoningModes).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(adapter.getProfile({ toolsEnabled: true }).defaultTemperature).toBe(1);
+
+    adapter.applyReasoningMode!(request, "high");
+    expect(request.chat_template_kwargs).toEqual({ reasoning_effort: "high" });
+    expect(request.reasoning_effort).toBeUndefined();
+
+    adapter.applyReasoningMode!(request, "xhigh");
+    expect(request.chat_template_kwargs).toEqual({ reasoning_effort: "xhigh" });
+
+    adapter.applyReasoningMode!(request, "max");
+    expect(request.chat_template_kwargs).toEqual({ reasoning_effort: "max" });
+
+    adapter.applyReasoningMode!(request, "none");
+    expect(request.chat_template_kwargs).toEqual({ reasoning_effort: "low" });
+  });
+
   it("exposes GLM reasoning effort modes and maps selected modes", () => {
     const adapter = getModelAdapter("z-ai/glm-5.3-flash");
     const request: NimChatRequest = {

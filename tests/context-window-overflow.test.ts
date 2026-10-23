@@ -195,6 +195,20 @@ describe("classifyApiError context overflow", () => {
     expect((classified as NvidiaApiError).contextOverflow?.reportedMaximum).toBe(262144);
     expect((classified as NvidiaApiError).contextOverflow?.actualUsage).toBe(270981);
   });
+
+  it("classifies structured JSON context_length detail as context_overflow", () => {
+    const detail =
+      '{"message":"Invalid request","type":"Bad Request","code":400,"details":{"type":"context_length","limit":262144,"actual":262323}}';
+    const classified = classifyApiError(new Error(`HTTP 400 Bad Request: ${detail}`), {
+      status: 400,
+      operation: "stream",
+      detail,
+    });
+    expect(classified).toBeInstanceOf(NvidiaApiError);
+    expect((classified as NvidiaApiError).kind).toBe("context_overflow");
+    expect((classified as NvidiaApiError).contextOverflow?.reportedMaximum).toBe(262144);
+    expect((classified as NvidiaApiError).contextOverflow?.actualUsage).toBe(262323);
+  });
 });
 
 describe("calculateSafetyMargin", () => {

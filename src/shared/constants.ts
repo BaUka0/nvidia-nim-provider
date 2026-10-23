@@ -13,13 +13,13 @@ export const MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY = "nvidia-nim.modelsCacheKey
  * curated catalog changes, so an install with an older cached model list
  * re-fetches instead of serving entries normalized against a previous catalog.
  */
-export const MODELS_CACHE_VERSION = 31;
+export const MODELS_CACHE_VERSION = 32;
 
 /**
  * Digest of MODEL_LIST recorded when {@link MODELS_CACHE_VERSION} was last
  * bumped; a mismatch means the catalog changed and the version was not raised.
  */
-export const MODELS_CACHE_CATALOG_DIGEST = "f8cd5bd2";
+export const MODELS_CACHE_CATALOG_DIGEST = "3f9756ff";
 export const MIGRATION_DONE_KEY = "nvidia-nim.legacyMigrationDone";
 export const DEBUG_STATE_KEY = "nvidia-nim.debug";
 export const DEBUG_ENV_VAR = "NVIDIA_NIM_DEBUG";

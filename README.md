@@ -53,6 +53,7 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | :--- | :---: | :---: | :--- | :---: | :---: | :--- |
 | **GLM 5.3** | **45** | 1M | `Low`, `High`, `Max` | Yes | No | Flagship reasoning model, complex agentic coding |
 | **Step 5 Preview** | **44** | 1M | Always on | Yes | Yes | StepFun preview; reasoning cannot be turned off |
+| **MiniMax M3.1 Flash** | **43** | 262K | `Low` to `Max` | Yes | Yes | Fast multimodal MoE for agentic coding and visual input |
 | **GLM 5.3 Flash** | **42** | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
 | **DeepSeek V4.1 Flash** | **39** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, agentic coding, architecture |
 | **Nemotron 3.5 Super VL** | **26** | 1M | `None`, `Low`, `High` | Yes | Yes | Coding, tools, and image input in one model |

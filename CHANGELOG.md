@@ -2,6 +2,16 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Added
+
+- MiniMax M3.1 Flash is now in the model list: a fast multimodal model with a 262,144-token context window on NVIDIA NIM, up to 65,536 output tokens, tool calling, and image input. Reasoning Mode offers `Low`, `Medium`, `High`, `XHigh`, and `Max`, and its thinking is adaptive so short questions can be answered without a long delay while harder tasks show their reasoning in the Thinking block. It scores 43 on the Artificial Analysis Intelligence Index.
+
+### Fixed
+
+- When a conversation exceeds the model's context window and NVIDIA returns its newer structured error response, the extension now recognizes it as a context limit error and shortens the conversation automatically instead of stopping the turn.
+
 ## [1.8.1] - 2026-10-21
 
 ### Removed

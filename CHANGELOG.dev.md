@@ -2,6 +2,16 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Added
+
+- **MiniMax M3.1 Flash (`src/models/catalog.ts`, `src/models/adapters/minimax.ts`, `src/models/adapters/index.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`, docs, `.github/ISSUE_TEMPLATE/bug_report.yml`, `tests/model-capability-matrix.test.ts`, `tests/model-profile.test.ts`).** `minimaxai/minimax-m3.1-flash` added to `MODEL_LIST` with `contextWindow: 262144`, `maxOutputTokens: 65536`, tools and vision, and the `minimax` `CatalogAdapterId`. While the model card prose mentions architectural support up to 1M tokens depending on serving configuration, the hosted NIM endpoint metadata (`attributes.specifications.contextLength: 262144`) and live probes on 2026-10-23 confirm a hard server limit of 262,144 tokens (`prompt_tokens + max_tokens <= 262144`), and the OpenAPI schema and playground cap `max_tokens` at 65,536 (recommended temperature 1.0, top_p 0.95). In the Hugging Face `chat_template.jinja`, thinking is always adaptive (`Current thinking mode: adaptive`) and cannot be turned off (`thinking_mode` and `enable_thinking` are ignored; even `reasoning_effort: "none"` or `"minimal"` produced 889 and 1,023 reasoning tokens on a multi-step counting task). Effort is controlled via `chat_template_kwargs.reasoning_effort` (`low`, `medium`, `high`, `xhigh`, `max`), which injects `<effort>…</effort>` into the prompt (+9 prompt tokens for single-token levels) and scales reasoning depth (`low`: 109 reasoning tokens, `high`: 183, `max`: 225 on the same prompt). Reasoning arrives in `delta.reasoning_content` with `usage.completion_tokens_details.reasoning_tokens` populated and never leaks `<mm:think>` into `content`; on trivial turns (`"Hi"`), adaptive mode emits 0 reasoning tokens and answers directly. Streamed native parallel `tool_calls`, tool-result round trips without `reasoning_content` on the assistant message, and base64 PNG `image_url` data URIs all verified on hosted NIM. `MinimaxAdapter` exposes `["low", "medium", "high", "xhigh", "max"]` with `reasoningParameterFormat: "chat_template_kwargs"`, mapping `withReasoningOff` (`"none"`) to `"low"`. `sync:manifest` added the id to the settings enums (including `fallback.visionModel`) and `CURATED_MODEL_IDS`, and bumped `MODELS_CACHE_VERSION` to 32. Docs list its Artificial Analysis Intelligence Index as 43, between Step 5 Preview and GLM 5.3 Flash. Addresses #50.
+
+### Fixed
+
+- **Structured JSON context overflow classification (`src/api/errors.ts`, `tests/context-window-overflow.test.ts`).** Hosted NIM returns `{"message":"Invalid request","type":"Bad Request","code":400,"details":{"type":"context_length","limit":262144,"actual":262323}}` when `prompt_tokens + max_tokens` exceeds the endpoint's context window on `minimaxai/minimax-m3.1-flash`. `CONTEXT_OVERFLOW_PATTERNS` now matches `"type":"context_length"`, and `parseContextOverflowDetail` extracts `reportedMaximum` from `"limit":N` alongside `actualUsage` from `"actual":N`, so overflow compaction triggers instead of failing with `invalid_request`.
+
 ## [1.8.1] - 2026-10-21
 
 ### Removed

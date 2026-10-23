@@ -160,6 +160,23 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "think",
   },
   {
+    modelId: "minimaxai/minimax-m3.1-flash",
+    reasoningModes: ["low", "medium", "high", "xhigh", "max"],
+    reasoningCases: [
+      { mode: "none", expectedFields: { chat_template_kwargs: { reasoning_effort: "low" } } },
+      ...["low", "medium", "high", "xhigh", "max"].map((mode) => ({
+        mode,
+        expectedFields: { chat_template_kwargs: { reasoning_effort: mode } },
+      })),
+    ],
+    reasoningParameterFormat: "chat_template_kwargs",
+    toolCallProtocol: "native-and-text",
+    reasoningRouting: "isolated",
+    contentOnlyMode: "low",
+    contentOnlyRouting: "text",
+    thinkTag: "mm:think",
+  },
+  {
     modelId: "z-ai/glm-5.3",
     reasoningModes: ["low", "high", "max"],
     reasoningCases: [

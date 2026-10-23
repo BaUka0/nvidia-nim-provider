@@ -37,6 +37,7 @@ export type CatalogAdapterId =
   | "nemotron-super-vl"
   | "nemotron-lightning"
   | "muse-glimmer"
+  | "minimax"
   | "glm"
   | "stepfun";
 
@@ -80,6 +81,14 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: true,
     adapter: "muse-glimmer",
+  },
+  "minimaxai/minimax-m3.1-flash": {
+    displayName: "MiniMax M3.1 Flash",
+    contextWindow: 262144,
+    maxOutputTokens: 65536,
+    supportsTools: true,
+    supportsVision: true,
+    adapter: "minimax",
   },
   "z-ai/glm-5.3": {
     displayName: "GLM 5.3",

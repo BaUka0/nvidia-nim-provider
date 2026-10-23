@@ -126,6 +126,7 @@ const CONTEXT_OVERFLOW_PATTERNS = [
   /max(?:imum)?[^.\n]{0,40}tokens?\s+(?:limit\s+)?exceed(?:s|ed)?/i,
   /exceed(?:s|ed)?[^.\n]{0,40}max(?:imum)?[^.\n]{0,40}tokens?/i,
   /max(?:imum)?\s+(?:context\s+)?(?:length|tokens?)\s+(?:limit\s+)?(?:is|of)\s+\d/i,
+  /"type"\s*:\s*"context_length"/i,
 ];
 
 /**
@@ -134,6 +135,7 @@ const CONTEXT_OVERFLOW_PATTERNS = [
  *   "Maximum context length is 204800 tokens"
  *   "prompt is too long: 1048576 > 1048575"
  *   "token limit exceeded: 1000001 > 1000000"
+ *   '{"details":{"type":"context_length","limit":262144,"actual":262323}}'
  */
 export function parseContextOverflowDetail(detail: string): ContextOverflowInfo {
   const result: ContextOverflowInfo = {};
@@ -142,6 +144,7 @@ export function parseContextOverflowDetail(detail: string): ContextOverflowInfo 
   const maxMatch =
     detail.match(/(?:maximum|max|limit).*?context.*?length.*?(?:is|=|:|of)\s*(\d[\d_,]*)/i) ??
     detail.match(/(?:maximum|max|limit).*?(?:token|context).*?(?:is|=|:|of)\s*(\d[\d_,]*)/i) ??
+    detail.match(/"context_length"[^}]*?"limit"\s*:\s*(\d[\d_,]*)/i) ??
     detail.match(/(?:is|=|>)\s*(\d[\d_,]*)(?:\s*(?:token|>))/i);
   if (maxMatch) {
     result.reportedMaximum = parseNumericValue(maxMatch[1]);

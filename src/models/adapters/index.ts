@@ -8,6 +8,7 @@ import { NemotronAdapter } from "./nemotron";
 import { NemotronLightningAdapter } from "./nemotron-lightning";
 import { NemotronSuperVlAdapter } from "./nemotron-super";
 import { MuseGlimmerAdapter } from "./muse-glimmer";
+import { MinimaxAdapter } from "./minimax";
 import { GlmAdapter } from "./glm";
 import { StepfunAdapter } from "./stepfun";
 
@@ -34,6 +35,7 @@ const nemotronLightningAdapter = new NemotronLightningAdapter();
 const nemotronSuperVlAdapter = new NemotronSuperVlAdapter();
 const nemotronAdapter = new NemotronAdapter();
 const museGlimmerAdapter = new MuseGlimmerAdapter();
+const minimaxAdapter = new MinimaxAdapter();
 const glmAdapter = new GlmAdapter();
 const stepfunAdapter = new StepfunAdapter();
 
@@ -44,6 +46,7 @@ const ADAPTERS_BY_ID: Record<CatalogAdapterId, ModelAdapter> = {
   "nemotron-super-vl": nemotronSuperVlAdapter,
   "nemotron-lightning": nemotronLightningAdapter,
   "muse-glimmer": museGlimmerAdapter,
+  minimax: minimaxAdapter,
   glm: glmAdapter,
   stepfun: stepfunAdapter,
 };
@@ -56,6 +59,7 @@ const FAMILY_ADAPTERS: ModelAdapter[] = [
   nemotronSuperVlAdapter,
   nemotronAdapter,
   museGlimmerAdapter,
+  minimaxAdapter,
   glmAdapter,
   stepfunAdapter,
 ];

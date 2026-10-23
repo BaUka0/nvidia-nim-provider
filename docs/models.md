@@ -10,6 +10,7 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 | :--- | :--- | :---: | :---: | :---: | :--- | :---: | :--- |
 | **GLM 5.3** | `GLM 5.3` | **45** | 1,048,576 | 65,536 | `Low`, `High`, `Max` | No | Flagship reasoning model, complex agentic coding, deep problem solving |
 | **Step 5 Preview** | `Step 5 Preview` | **44** | 1,048,576 | 262,144 | Always on | Yes | StepFun preview with tools and image input |
+| **MiniMax M3.1 Flash** | `MiniMax M3.1 Flash` | **43** | 262,144 | 65,536 | `Low` to `Max` | Yes | Fast multimodal MoE for agentic coding and visual input |
 | **GLM 5.3 Flash** | `GLM 5.3 Flash` | **42** | 1,048,576 | 131,072 | `Low`, `High`, `Max` | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
 | **DeepSeek V4.1 Flash** | `DeepSeek V4.1 Flash` | **39** | 1,048,576 | 262,144 | `None`, `Low`, `High`, `Max` | Yes | Hard algorithmic work, multimodal coding, complex refactors |
 | **Nemotron 3.5 Super VL** | `Nemotron 3.5 Super VL` | **26** | 1,048,576 | 131,072 | `None`, `Low`, `High` | Yes | Coding, tools, and image input in one model |
@@ -36,6 +37,8 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 **DeepSeek V4.1 Flash.** Multimodal MoE model with 1M context and up to 262,144 output tokens, NVIDIA's default for this model. Reasoning shares that budget with the answer. Strong on algorithms, debugging, schema design, SQL, and refactors. Native vision support for visual code analysis and diagrams. Reasoning: `None`, `Low`, `High`, `Max`.
 
 **Step 5 Preview.** StepFun's 600B/27B-active preview model for agentic coding and professional work, with 1M context, tools, and image input. The model card allows output up to the full 1M context, but output and input share that window, so the extension caps output at 262,144 tokens and keeps about 775K for the conversation. It always reasons, and the reasoning shows in the Thinking block. There is no Reasoning Mode to pick: NVIDIA accepts effort levels for it but they make no difference, and switching thinking off moves the reasoning into the answer text instead of stopping it. Preview models can be withdrawn on short notice.
+
+**MiniMax M3.1 Flash.** Native multimodal MoE model (428B total, 23B active) with a 262,144-token context window on NVIDIA NIM, up to 65,536 output tokens, tool calling, and image input. Thinking is adaptive: on trivial turns it can answer directly, and on harder turns it reasons in the Thinking block at the selected effort level (`Low`, `Medium`, `High`, `XHigh`, `Max`).
 
 
 ---
