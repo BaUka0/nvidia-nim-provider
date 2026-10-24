@@ -1230,4 +1230,231 @@ describe("NimChatModelProvider", () => {
     ).toBe(true);
     expect((streamChatCompletion as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
   });
+
+  it("strips echoed (empty message) and [Request interrupted by user] placeholders and retries instead of ending the turn", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const echoedPlaceholderStream = async function* () {
+      yield { choices: [{ delta: { content: "\n\n" } }] };
+      yield { choices: [{ delta: { content: "(empty " } }] };
+      yield { choices: [{ delta: { content: "message)" }, finish_reason: "stop" }] };
+    };
+    const recoveredStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_step5_1",
+                  type: "function",
+                  function: {
+                    name: "read_file",
+                    arguments: '{"filePath":"/tmp/a.ts","startLine":1,"endLine":20}',
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock)
+      .mockImplementationOnce(() => echoedPlaceholderStream())
+      .mockImplementationOnce(() => recoveredStream());
+
+    const progress = { report: jest.fn() };
+    const token = makeToken();
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "stepfun-ai/step-5-preview",
+        maxInputTokens: 262144,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Read /tmp/a.ts"),
+      makeChatOptions({
+        modelOptions: {},
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file from disk",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "number" },
+                endLine: { type: "number" },
+              },
+              required: ["filePath"],
+            },
+          },
+        ],
+      }),
+      progress,
+      token,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    const nonEmptyTextReports = progress.report.mock.calls.filter((c: unknown[]) => {
+      const val = (c[0] as { value?: unknown })?.value;
+      return typeof val === "string" && val.trim().length > 0;
+    });
+    expect(toolCallReports).toHaveLength(1);
+    expect(toolCallReports[0][0].name).toBe("read_file");
+    expect(nonEmptyTextReports).toHaveLength(0);
+  });
+
+  it('recovers a tool call when step-5-preview leaks <parameter=startLine"> tags without a <function=...> header', async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const leakedParamStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              reasoning_content: "Let's read lines 10-20 of /tmp/a.ts.",
+            },
+          },
+        ],
+      };
+      yield {
+        choices: [
+          {
+            delta: {
+              content:
+                '\n\n<parameter=filePath>/tmp/a.ts</parameter>\n\n<parameter=startLine">10</parameter>\n\n<parameter=endLine">20</parameter>\n</function>\n</tool_call>\n',
+            },
+            finish_reason: "stop",
+          },
+        ],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock).mockImplementationOnce(() => leakedParamStream());
+
+    const progress = { report: jest.fn() };
+    const token = makeToken();
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "stepfun-ai/step-5-preview",
+        maxInputTokens: 262144,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Read /tmp/a.ts lines 10-20"),
+      makeChatOptions({
+        modelOptions: {},
+        tools: [
+          {
+            name: "read_file",
+            description: "Read a file from disk",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "number" },
+                endLine: { type: "number" },
+              },
+              required: ["filePath"],
+            },
+          },
+        ],
+      }),
+      progress,
+      token,
+    );
+
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    const visibleTextReports = progress.report.mock.calls.filter((c: unknown[]) => {
+      const val = (c[0] as { value?: unknown })?.value;
+      return typeof val === "string" && val.includes("<parameter");
+    });
+
+    expect(toolCallReports).toHaveLength(1);
+    expect(toolCallReports[0][0].name).toBe("read_file");
+    expect(toolCallReports[0][0].input).toEqual({
+      filePath: "/tmp/a.ts",
+      startLine: 10,
+      endLine: 20,
+    });
+    expect(visibleTextReports).toHaveLength(0);
+  });
+
+  it("does not trip the reasoning phrase guard on repetitive XML tool call payloads folded from heldAnswer", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const repeatedBoilerplate =
+      "export const sharedConfigurationHeaderForTestingPurposesOnly = true;\n";
+    const heldToolStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              reasoning_content: "I will create two files and update one file.",
+            },
+          },
+        ],
+      };
+      yield {
+        choices: [
+          {
+            delta: {
+              content:
+                `<tool_call><function=create_file><parameter=filePath>/tmp/one.ts</parameter><parameter=content>${repeatedBoilerplate.repeat(4)}</parameter></function></tool_call>\n` +
+                `<tool_call><function=create_file><parameter=filePath>/tmp/two.ts</parameter><parameter=content>${repeatedBoilerplate.repeat(4)}</parameter></function></tool_call>`,
+            },
+            finish_reason: "stop",
+          },
+        ],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock).mockImplementationOnce(() => heldToolStream());
+
+    const progress = { report: jest.fn() };
+    const token = makeToken();
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "stepfun-ai/step-5-preview",
+        maxInputTokens: 262144,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Create the two files"),
+      makeChatOptions({
+        modelOptions: {},
+        tools: [
+          {
+            name: "create_file",
+            description: "Create a file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                content: { type: "string" },
+              },
+              required: ["filePath", "content"],
+            },
+          },
+        ],
+      }),
+      progress,
+      token,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    expect(toolCallReports).toHaveLength(2);
+  });
 });

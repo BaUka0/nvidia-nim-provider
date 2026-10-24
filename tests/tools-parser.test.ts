@@ -2609,4 +2609,42 @@ describe("text tool calls across chunks and at stream end", () => {
     });
     expect(toolCalls(result)).toHaveLength(1);
   });
+
+  it("holds and strips chunk-split (empty message) and [Request interrupted by user] echoes outside code fences", () => {
+    const first = parseTextEmbeddedToolCalls("\n\n(empty mes", undefined);
+    expect(visibleText(first)).toBe("\n\n");
+    expect(first.incompleteText).toBe("(empty mes");
+
+    const second = parseTextEmbeddedToolCalls(`${first.incompleteText}sage)`, undefined, {
+      atStreamEnd: true,
+    });
+    expect(visibleText(second)).toBe("");
+    expect(second.incompleteText).toBe("");
+
+    const interruptedFirst = parseTextEmbeddedToolCalls("\n\n[Request interrupted", undefined);
+    expect(interruptedFirst.incompleteText).toBe("[Request interrupted");
+    const interruptedSecond = parseTextEmbeddedToolCalls(
+      `${interruptedFirst.incompleteText} by user]`,
+      undefined,
+      { atStreamEnd: true },
+    );
+    expect(visibleText(interruptedSecond)).toBe("");
+
+    const fenced = parseTextEmbeddedToolCalls("```text\n(empty message)\n```", undefined, {
+      atStreamEnd: true,
+    });
+    expect(visibleText(fenced)).toContain("(empty message)");
+  });
+
+  it("extracts standalone XML parameters with stray trailing quotes without leaking markup into visible text", () => {
+    const leaked =
+      '\n\n<parameter=filePath>/tmp/a.ts</parameter>\n\n<parameter=startLine">10</parameter>\n\n<parameter=endLine">20</parameter>\n</function>\n</tool_call>\n';
+    const parsed = parseTextEmbeddedToolCalls(leaked, undefined, { atStreamEnd: true });
+    expect(visibleText(parsed).trim()).toBe("");
+    expect(parsed.extractedParams).toEqual({
+      filePath: "/tmp/a.ts",
+      startLine: 10,
+      endLine: 20,
+    });
+  });
 });

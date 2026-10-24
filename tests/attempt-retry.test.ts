@@ -158,6 +158,23 @@ describe("evaluateAttemptRetry", () => {
     expect(evaluation.retryReason).toBe("repetition_loop");
   });
 
+  it("does not auto-continue a repetition loop after a tool call was already emitted", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        repetitionTripped: true,
+        trippedDetector: "phrase",
+        sawReasoning: true,
+        sawToolCall: true,
+        emittedToolCall: true,
+        emittedToolCalls: [{ id: "text_tool_1", name: "create_file" }],
+        reportedContent: true,
+        reportedVisibleContent: true,
+      }),
+    });
+    expect(evaluation.retryReason).toBeUndefined();
+  });
+
   it("auto-continues a stream stall after visible text", () => {
     const evaluation = evaluateAttemptRetry({
       ...baseFacts,

@@ -209,28 +209,42 @@ function readXmlTag(text: string, index: number): ParsedXmlTag | undefined {
 
   let name: string | undefined;
   if (!closing) {
+    cursor = skipWhitespace(text, cursor);
     if (text[cursor] === "=") {
-      cursor += 1;
+      cursor = skipWhitespace(text, cursor + 1);
       if (cursor >= text.length) {
         return { kind, closing: false, rawLength: 0, incomplete: true };
       }
+      if (text[cursor] === '"' || text[cursor] === "'") {
+        cursor += 1;
+        if (cursor >= text.length) {
+          return { kind, closing: false, rawLength: 0, incomplete: true };
+        }
+      }
       const valueMatch = text.slice(cursor).match(IDENT_RE);
       if (!valueMatch) {
-        return { kind, closing: false, rawLength: 0, incomplete: true };
+        return undefined;
       }
       name = valueMatch[0];
       cursor += name.length;
+      if (cursor >= text.length) {
+        return { kind, closing: false, name, rawLength: 0, incomplete: true };
+      }
+      if (text[cursor] === '"' || text[cursor] === "'") {
+        cursor += 1;
+      }
     } else {
-      cursor = skipWhitespace(text, cursor);
       const attrText = text.slice(cursor);
-      const attrMatch = attrText.match(/^name\s*=\s*"([^"]*)"/i);
+      const attrMatch = attrText.match(
+        /^name\s*=\s*(?:"([^"\n<>]*)"|'([^'\n<>]*)'|([a-zA-Z][a-zA-Z0-9_.-]*)\s*["']?)/i,
+      );
       if (attrMatch) {
-        name = attrMatch[1];
+        name = attrMatch[1] ?? attrMatch[2] ?? attrMatch[3];
         cursor += attrMatch[0].length;
       } else if (
         attrText.length > 0 &&
         ("name".startsWith(attrText.toLowerCase()) ||
-          /^name\s*(?:=\s*(?:"[^"\n<>]*)?)?$/i.test(attrText))
+          /^name\s*(?:=\s*(?:"[^"\n<>]*|'[^'\n<>]*|[a-zA-Z0-9_.-]*)?)?$/i.test(attrText))
       ) {
         // The chunk ended inside the name attribute: `<invoke name="read_fi`.
         return { kind, closing: false, rawLength: 0, incomplete: true };
@@ -549,7 +563,11 @@ function scanToolRegion(
       toolCall: { name: toolName, args },
     };
   }
-  return { status: "complete", consumed: cursor };
+  return {
+    status: "complete",
+    consumed: cursor,
+    ...(Object.keys(args).length > 0 ? { extractedParams: args } : {}),
+  };
 }
 
 export function findXmlConstructStart(text: string, contextPrefix = "", from = 0): number {

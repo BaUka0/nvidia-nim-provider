@@ -18,6 +18,7 @@ import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { NimChatRequest } from "../types";
 import {
   countLeakedTemplateTokens,
+  findBestMatchingTool,
   getIncompleteTextToolCallName,
   getToolSchemaMap,
   parseTextEmbeddedToolCalls,
@@ -161,6 +162,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     if (!text || reasoningGuard.tripped) {
       return;
     }
+    const crossedThreshold = reasoningGuard.add(text);
     const thinkingResult = emitThinkingPart(input.progress, text);
     if (thinkingResult.didReport) {
       reportedContent = true;
@@ -169,6 +171,18 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
         reportedVisibleContent = true;
         input.onVisibleContentReported?.();
       }
+    }
+    if (crossedThreshold) {
+      debugLog("repetitionGuard", {
+        model: input.model.id,
+        trippedLine: reasoningGuard.trippedLine,
+        detector: reasoningGuard.trippedDetector,
+        source: "reasoning",
+      });
+      outputLog(
+        "repetitionGuard",
+        `Stopped degenerate repeat loop in reasoning (${reasoningGuard.trippedDetector}) on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
+      );
     }
   };
 
@@ -190,7 +204,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     reportedContent = true;
     input.onContentReported?.();
     if (
-      part instanceof vscode.LanguageModelTextPart ||
+      (part instanceof vscode.LanguageModelTextPart && part.value.trim().length > 0) ||
       part instanceof vscode.LanguageModelToolCallPart
     ) {
       reportedVisibleContent = true;
@@ -260,10 +274,30 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
 
   const answerParseContext = new TextParseContext();
   const thinkingParseContext = new TextParseContext();
+  const accumulatedExtractedParams: Record<string, unknown> = {};
+
+  const recordExtractedParams = (
+    extractedParams: Record<string, unknown> | undefined,
+    segments: readonly { type: string; name?: string; toolCall?: { name: string } }[],
+  ): void => {
+    if (!extractedParams || Object.keys(extractedParams).length === 0) {
+      return;
+    }
+    Object.assign(accumulatedExtractedParams, extractedParams);
+    const named = segments.find(
+      (segment) => segment.type === "toolCall" || segment.type === "invalidToolCall",
+    );
+    const toolName =
+      named?.type === "toolCall"
+        ? named.toolCall?.name
+        : named?.type === "invalidToolCall"
+          ? named.name
+          : undefined;
+    getToolAggregator().recordExtractedParameters(extractedParams, toolName);
+  };
 
   const toolsOffered = (input.options.tools?.length ?? 0) > 0;
-  const shouldHoldAnswer = (): boolean =>
-    toolsOffered && input.reasoningIsolationExpected && sawReasoning;
+  const shouldHoldAnswer = (): boolean => toolsOffered && sawReasoning;
 
   const processFilteredText = (text: string, isThinking: boolean): void => {
     if (!text) {
@@ -291,20 +325,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     } else {
       pendingTextEmbeddedContent = nextPending;
     }
-    if (extractedParams && Object.keys(extractedParams).length > 0) {
-      const named = segments.find(
-        (segment) => segment.type === "toolCall" || segment.type === "invalidToolCall",
-      );
-      const toolName =
-        named?.type === "toolCall"
-          ? named.toolCall.name
-          : named?.type === "invalidToolCall"
-            ? named.name
-            : undefined;
-      if (toolName) {
-        getToolAggregator().recordExtractedParameters(extractedParams, toolName);
-      }
-    }
+    recordExtractedParams(extractedParams, segments);
 
     for (const segment of segments) {
       if (segment.type === "text") {
@@ -348,23 +369,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     if (lastReasoningText.length > MAX_TRACKED_REASONING_CHARS) {
       lastReasoningText = lastReasoningText.slice(-MAX_TRACKED_REASONING_CHARS);
     }
-    let crossedThreshold = false;
-    if (!reasoningGuard.tripped) {
-      crossedThreshold = reasoningGuard.add(text);
-    }
     processFilteredText(text, true);
-    if (crossedThreshold) {
-      debugLog("repetitionGuard", {
-        model: input.model.id,
-        trippedLine: reasoningGuard.trippedLine,
-        detector: reasoningGuard.trippedDetector,
-        source: "reasoning",
-      });
-      outputLog(
-        "repetitionGuard",
-        `Stopped degenerate repeat loop in reasoning (${reasoningGuard.trippedDetector}) on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
-      );
-    }
   };
 
   const foldHeldAnswerIntoThinking = (): void => {
@@ -574,18 +579,6 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     );
   }
 
-  if (toolAggregator) {
-    toolAggregator.flushRemaining({
-      argumentsMayBeTruncated:
-        timedOut ||
-        streamDropped ||
-        consumptionStoppedEarly ||
-        lastFinishReason === "length" ||
-        lastFinishReason === "content_filter",
-    });
-    toolCallLoopKey ??= toolAggregator.getToolCallLoop()?.key;
-  }
-
   router.flush();
 
   if (heldAnswer) {
@@ -593,28 +586,14 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       atStreamEnd: true,
       contextPrefix: answerParseContext.prefix(),
     });
-    const heldHasTool = preview.segments.some(
-      (segment) => segment.type === "toolCall" || segment.type === "invalidToolCall",
-    );
+    const heldHasTool =
+      preview.segments.some(
+        (segment) => segment.type === "toolCall" || segment.type === "invalidToolCall",
+      ) || Boolean(preview.extractedParams && Object.keys(preview.extractedParams).length > 0);
     if (heldHasTool || emittedToolCall || sawToolCall || lastFinishReason === "tool_calls") {
       foldHeldAnswerIntoThinking();
     } else {
       releaseHeldAnswer();
-    }
-  }
-
-  if (lastFinishReason === "tool_calls" && !emittedToolCall) {
-    sawToolCall = true;
-    if (skippedToolCalls.length === 0) {
-      skippedToolCalls.push({
-        name: "tool_call",
-        required: [],
-        reason: "missing_payload",
-      });
-      debugLog("Missing tool call payload after finish_reason=tool_calls", {
-        streamChunkCount,
-        aggregatorSawToolCall: toolAggregator?.getSawToolCall() ?? false,
-      });
     }
   }
 
@@ -624,20 +603,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       contextPrefix: answerParseContext.prefix(),
     });
     pendingTextEmbeddedContent = "";
-    if (parsed.extractedParams && Object.keys(parsed.extractedParams).length > 0) {
-      const named = parsed.segments.find(
-        (segment) => segment.type === "toolCall" || segment.type === "invalidToolCall",
-      );
-      const toolName =
-        named?.type === "toolCall"
-          ? named.toolCall.name
-          : named?.type === "invalidToolCall"
-            ? named.name
-            : undefined;
-      if (toolName) {
-        getToolAggregator().recordExtractedParameters(parsed.extractedParams, toolName);
-      }
-    }
+    recordExtractedParams(parsed.extractedParams, parsed.segments);
     for (const segment of parsed.segments) {
       if (segment.type === "text") {
         pendingText += segment.text;
@@ -673,6 +639,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       contextPrefix: thinkingParseContext.prefix(),
     });
     pendingThinkingEmbeddedContent = "";
+    recordExtractedParams(parsed.extractedParams, parsed.segments);
     for (const segment of parsed.segments) {
       if (segment.type === "text") {
         emitThinking(segment.text);
@@ -689,6 +656,53 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       emitThinking(parsed.incompleteText);
     }
     toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
+  }
+
+  if (toolAggregator) {
+    toolAggregator.flushRemaining({
+      argumentsMayBeTruncated:
+        timedOut ||
+        streamDropped ||
+        consumptionStoppedEarly ||
+        lastFinishReason === "length" ||
+        lastFinishReason === "content_filter",
+    });
+    toolCallLoopKey ??= toolAggregator.getToolCallLoop()?.key;
+  }
+
+  if (!emittedToolCall && !sawToolCall && Object.keys(accumulatedExtractedParams).length > 0) {
+    const schemas = getToolSchemas();
+    const match = schemas ? findBestMatchingTool(accumulatedExtractedParams, schemas) : undefined;
+    if (match) {
+      sawToolCall = true;
+      getToolAggregator().tryEmitText(match.name, match.args);
+      toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
+    }
+    if (!emittedToolCall) {
+      sawToolCall = true;
+      if (skippedToolCalls.length === 0) {
+        skippedToolCalls.push({
+          name: match?.name ?? "tool_call",
+          required: match ? (schemas?.get(match.name)?.required ?? []) : [],
+          reason: "missing_payload",
+        });
+      }
+    }
+  }
+
+  if (lastFinishReason === "tool_calls" && !emittedToolCall && !toolCallLoopKey) {
+    sawToolCall = true;
+    if (skippedToolCalls.length === 0) {
+      skippedToolCalls.push({
+        name: "tool_call",
+        required: [],
+        reason: "missing_payload",
+      });
+      debugLog("Missing tool call payload after finish_reason=tool_calls", {
+        streamChunkCount,
+        aggregatorSawToolCall: toolAggregator?.getSawToolCall() ?? false,
+      });
+    }
   }
 
   if (pendingText) {

@@ -95,7 +95,8 @@ export function stripKnownControlText(text: string, contextPrefix = ""): string 
     sanitized = stripPatternOutsideLiterals(sanitized, pattern, contextPrefix);
   }
 
-  const orphanClose = /<\/(?:tool_calls|tool_call|function|parameter|tool_parameter|invoke)>/gi;
+  const orphanClose =
+    /<\/(?:tool_calls|tool_call|function|parameter|tool_parameter|invoke)>|\(empty message\)|\[Request interrupted by user\]/gi;
   if (!sanitized.includes("```")) {
     return stripPatternOutsideLiterals(sanitized, orphanClose, contextPrefix);
   }
@@ -208,6 +209,8 @@ export function parseTextEmbeddedToolCalls(
     "<|start_header_id|>",
     "<|im_start|>",
     "[gMASK]",
+    "(empty message)",
+    "[Request interrupted by user]",
     "```",
     "```json",
   ] as const;
@@ -502,22 +505,22 @@ export function getIncompleteTextToolCallName(
     return name && isValidToolIdentifier(name) ? name : undefined;
   }
 
-  const xmlHermesMatch = text.match(/<tool_call>\s*<function=([a-zA-Z0-9_.-]+)/i);
+  const xmlHermesMatch = text.match(/<tool_call>\s*<function=\s*["']?([a-zA-Z0-9_.-]+)/i);
   if (xmlHermesMatch) {
     return isValidToolIdentifier(xmlHermesMatch[1]) ? xmlHermesMatch[1].trim() : undefined;
   }
 
-  const xmlStandardMatch = text.match(/<tool_call\s+name="([a-zA-Z0-9_.-]+)"/i);
+  const xmlStandardMatch = text.match(/<tool_call\s+name=\s*["']?([a-zA-Z0-9_.-]+)/i);
   if (xmlStandardMatch) {
     return isValidToolIdentifier(xmlStandardMatch[1]) ? xmlStandardMatch[1].trim() : undefined;
   }
 
-  const xmlInvokeMatch = text.match(/<invoke\s+name="([a-zA-Z0-9_.-]+)"/i);
+  const xmlInvokeMatch = text.match(/<invoke\s+name=\s*["']?([a-zA-Z0-9_.-]+)/i);
   if (xmlInvokeMatch) {
     return isValidToolIdentifier(xmlInvokeMatch[1]) ? xmlInvokeMatch[1].trim() : undefined;
   }
 
-  const xmlFunctionMatch = text.match(/<function=([a-zA-Z0-9_.-]+)/i);
+  const xmlFunctionMatch = text.match(/<function=\s*["']?([a-zA-Z0-9_.-]+)/i);
   if (xmlFunctionMatch) {
     return isValidToolIdentifier(xmlFunctionMatch[1]) ? xmlFunctionMatch[1].trim() : undefined;
   }

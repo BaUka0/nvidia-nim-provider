@@ -91,12 +91,20 @@ function buildToolDescription(
  * later replies.
  */
 export function stripFallbackNotices(text: string): string {
-  if (!text.includes("NVIDIA NIM")) {
+  if (
+    !text.includes("NVIDIA NIM") &&
+    !text.includes("(empty message)") &&
+    !text.includes("[Request interrupted by user]")
+  ) {
     return text;
   }
   return text
     .replace(
       /(?:^|\r?\n)>?\s*(?:⚡\s*\*{0,2}NVIDIA NIM Fallback:?\*{0,2}|\*\*NVIDIA NIM:\*\*)(?:[^\r\n]*(?:\r?\n>[^\r\n]*)*)/gi,
+      "",
+    )
+    .replace(
+      /(?:^|\r?\n)\s*(?:\(empty message\)|\[Request interrupted by user\])\s*(?=\r?\n|$)/g,
       "",
     )
     .replace(/\n{3,}/g, "\n\n")
@@ -116,6 +124,7 @@ export function convertMessages(
   options?: { maxToolResultChars?: number; supportsVision?: boolean },
 ): NimChatMessage[] {
   const result: NimChatMessage[] = [];
+  let pendingAssistantThinking: string[] = [];
 
   for (const msg of messages) {
     const role =
@@ -124,6 +133,10 @@ export function convertMessages(
         : msg.role === vscode.LanguageModelChatMessageRole.Assistant
           ? "assistant"
           : "system";
+
+    if (role !== "assistant") {
+      pendingAssistantThinking = [];
+    }
 
     const textParts: string[] = [];
     const thinkingParts: string[] = [];
@@ -175,11 +188,17 @@ export function convertMessages(
       debugLog("convertMessages", `Unrecognized message part: ${JSON.stringify(part)}`);
     }
 
-    if (role === "assistant" && textParts.length > 0) {
-      const stripped = stripFallbackNotices(textParts.join(""));
-      textParts.length = 0;
-      if (stripped.length > 0) {
-        textParts.push(stripped);
+    if (role === "assistant") {
+      if (pendingAssistantThinking.length > 0) {
+        thinkingParts.unshift(...pendingAssistantThinking);
+        pendingAssistantThinking = [];
+      }
+      if (textParts.length > 0) {
+        const stripped = stripFallbackNotices(textParts.join(""));
+        textParts.length = 0;
+        if (stripped.trim().length > 0) {
+          textParts.push(stripped);
+        }
       }
     }
 
@@ -248,13 +267,16 @@ export function convertMessages(
         result.push(newMsg);
       }
     } else if (!isAssistantWithToolCalls && toolResults.length === 0 && !hasTextOrImage) {
-      const reasoning_content =
-        role === "assistant" && thinkingParts.length > 0 ? thinkingParts.join("\n") : undefined;
-      result.push({
-        role,
-        content: "(empty message)",
-        ...(reasoning_content !== undefined ? { reasoning_content } : {}),
-      });
+      if (role === "assistant") {
+        if (thinkingParts.length > 0) {
+          pendingAssistantThinking.push(...thinkingParts);
+        }
+      } else {
+        result.push({
+          role,
+          content: "(empty message)",
+        });
+      }
     }
   }
 

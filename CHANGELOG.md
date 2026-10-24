@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Fixed
+
+- Step 5 Preview no longer stops mid-task in multi-step agent sessions by replying with `(empty message)`, `[Request interrupted by user]`, or raw `<parameter=...>` tags instead of running the next tool. Earlier empty or interrupted assistant turns are left out of the conversation history sent to the model, echoed placeholder lines and whitespace-only replies are retried automatically, and malformed tool argument tags with stray quotes are parsed and executed cleanly.
+
 ## [1.9.0] - 2026-10-23
 
 ### Added

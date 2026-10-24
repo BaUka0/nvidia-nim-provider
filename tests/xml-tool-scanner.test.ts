@@ -58,6 +58,21 @@ describe("scanXmlToolConstruct", () => {
     const result = scanXmlToolConstruct(text, parseValue, isValidName);
     expect(result.status === "not-a-tag" || result.status === "complete").toBe(true);
   });
+
+  it("tolerates stray or balanced quotes on <function=...> and <parameter=...> tags", () => {
+    const text =
+      '<tool_call>\n<function=read_file">\n<parameter=filePath>/tmp/a.ts</parameter>\n<parameter=startLine">10</parameter>\n<parameter="endLine">20</parameter>\n</function>\n</tool_call>';
+    const result = scanXmlToolConstruct(text, parseValue, isValidName);
+    expect(result.status).toBe("complete");
+    if (result.status === "complete") {
+      expect(result.toolCall?.name).toBe("read_file");
+      expect(result.toolCall?.args).toEqual({
+        filePath: "/tmp/a.ts",
+        startLine: "10",
+        endLine: "20",
+      });
+    }
+  });
 });
 
 describe("extractStandaloneXmlParameters", () => {
@@ -69,5 +84,18 @@ describe("extractStandaloneXmlParameters", () => {
     expect(extractedParams).toEqual({ filePath: "/tmp/a.ts" });
     expect(cleanText).toContain("Hello");
     expect(cleanText).toContain("world");
+  });
+
+  it("extracts parameters when the model emits a stray trailing quote after the parameter name", () => {
+    const { cleanText, extractedParams } = extractStandaloneXmlParameters(
+      '\n\n<parameter=filePath>/tmp/a.ts</parameter>\n\n<parameter=startLine">10</parameter>\n\n<parameter=endLine">20</parameter>\n',
+      (raw) => raw.trim(),
+    );
+    expect(extractedParams).toEqual({
+      filePath: "/tmp/a.ts",
+      startLine: "10",
+      endLine: "20",
+    });
+    expect(cleanText.trim()).toBe("");
   });
 });

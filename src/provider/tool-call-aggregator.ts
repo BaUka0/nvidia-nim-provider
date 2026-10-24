@@ -51,6 +51,7 @@ export class ToolCallStreamAggregator {
   private completedToolCallIndices = new Set<number>();
   private anonymousToolCallIndex: number | undefined;
   private nextAnonymousToolCallIndex = 0;
+  private pendingExtractedParameters: Record<string, unknown> | undefined;
 
   private sawToolCall = false;
   private emittedToolCall = false;
@@ -89,18 +90,43 @@ export class ToolCallStreamAggregator {
   }
 
   public recordExtractedParameters(params: Record<string, unknown>, toolName?: string): void {
-    if (!toolName) {
+    const resolvedToolName = toolName ?? this.findActiveBufferedToolName();
+    if (!resolvedToolName) {
+      this.pendingExtractedParameters = {
+        ...(this.pendingExtractedParameters ?? {}),
+        ...params,
+      };
       return;
     }
     if (!this.requestContext) {
       this.requestContext = {};
     }
-    const sameTool = this.requestContext.extractedParametersToolName === toolName;
-    this.requestContext.extractedParametersToolName = toolName;
+    const sameTool = this.requestContext.extractedParametersToolName === resolvedToolName;
+    this.requestContext.extractedParametersToolName = resolvedToolName;
     this.requestContext.extractedParameters = {
       ...(sameTool ? (this.requestContext.extractedParameters ?? {}) : {}),
+      ...(this.pendingExtractedParameters ?? {}),
       ...params,
     };
+    this.pendingExtractedParameters = undefined;
+  }
+
+  private findActiveBufferedToolName(): string | undefined {
+    for (const [idx, buf] of this.toolCallBuffers.entries()) {
+      if (!this.completedToolCallIndices.has(idx) && buf.name) {
+        return buf.name;
+      }
+    }
+    return undefined;
+  }
+
+  private bindPendingExtractedParameters(toolName: string | undefined): void {
+    if (!toolName || !this.pendingExtractedParameters) {
+      return;
+    }
+    const pending = this.pendingExtractedParameters;
+    this.pendingExtractedParameters = undefined;
+    this.recordExtractedParameters(pending, toolName);
   }
 
   public tryEmitText(
@@ -113,6 +139,7 @@ export class ToolCallStreamAggregator {
       return false;
     }
     this.sawToolCall = true;
+    this.bindPendingExtractedParameters(name);
     const schema = this.toolSchemas.get(name);
     const repairedArgs = repairToolArguments(
       name,
@@ -275,6 +302,7 @@ export class ToolCallStreamAggregator {
       return false;
     }
     try {
+      this.bindPendingExtractedParameters(buf.name);
       const schema = this.toolSchemas.get(buf.name ?? "");
       const parsed = requireStrictJson
         ? parseToolArgumentsStrict(buf.args)

@@ -73,7 +73,73 @@ describe("convertMessages", () => {
       },
     ];
     const result = convertMessages(makeChatMessages(...messages));
-    expect(result).toEqual<NimChatMessage[]>([{ role: "assistant", content: "(empty message)" }]);
+    expect(result).toEqual<NimChatMessage[]>([]);
+  });
+
+  it("omits assistant messages consisting only of (empty message) or [Request interrupted by user] placeholders", () => {
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [new vscode.LanguageModelTextPart("Fix the bug")],
+      },
+      {
+        role: vscode.LanguageModelChatMessageRole.Assistant,
+        content: [new vscode.LanguageModelTextPart("\n\n(empty message)")],
+      },
+      {
+        role: vscode.LanguageModelChatMessageRole.Assistant,
+        content: [new vscode.LanguageModelTextPart("\n\n[Request interrupted by user]")],
+      },
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [new vscode.LanguageModelTextPart("Continue")],
+      },
+    ];
+    const result = convertMessages(makeChatMessages(...messages));
+    expect(result).toEqual<NimChatMessage[]>([
+      { role: "user", content: "Fix the bug" },
+      { role: "user", content: "Continue" },
+    ]);
+  });
+
+  it("carries thinking parts across split assistant messages onto the following tool_calls message without emitting (empty message)", () => {
+    class LanguageModelThinkingPart {
+      constructor(public value: string) {}
+    }
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.Assistant,
+        content: [new LanguageModelThinkingPart("Let me inspect the file first.")],
+      },
+      {
+        role: vscode.LanguageModelChatMessageRole.Assistant,
+        content: [
+          new vscode.LanguageModelToolCallPart("call_1", "read_file", {
+            filePath: "/tmp/a.ts",
+          }),
+        ],
+      },
+    ];
+    const result = convertMessages(
+      makeChatMessages(...(messages as unknown as vscode.LanguageModelChatMessage[])),
+    );
+    expect(result).toEqual<NimChatMessage[]>([
+      {
+        role: "assistant",
+        content: "",
+        reasoning_content: "Let me inspect the file first.",
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: {
+              name: "read_file",
+              arguments: JSON.stringify({ filePath: "/tmp/a.ts" }),
+            },
+          },
+        ],
+      },
+    ]);
   });
 
   it("converts system text message", () => {
