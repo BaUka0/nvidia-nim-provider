@@ -51,9 +51,9 @@ body:
     attributes:
       label: Last Turn Report
       description: |
-        Run Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → `NVIDIA NIM: Save Last Turn Report` right after the failing turn, then attach or paste the JSON.
-        Required: without it the issue cannot be diagnosed. API keys are automatically redacted.
-      placeholder: Attach report file or paste contents here...
+        Run Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → `NVIDIA NIM: Save Last Turn Report` right after the failing turn, then drag and drop the saved `nvidia-nim-turn-report-*.json` file into this box.
+        Required: attach the file itself. Pasted JSON is not accepted, and issues without an attached report file are closed automatically until one is added. API keys are automatically redacted.
+      placeholder: Drag and drop the nvidia-nim-turn-report-*.json file here...
     validations:
       required: true
 
@@ -62,8 +62,8 @@ body:
     attributes:
       label: Session Log (optional)
       description: |
-        Paste or attach the JSON log from Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → `NVIDIA NIM: Save Session Logs`.
+        Drag and drop the JSON log file saved via Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → `NVIDIA NIM: Save Session Logs`.
         Helpful for network errors (429, 503, 529), failover issues, and connection drops. API keys are automatically redacted.
-      placeholder: Attach log file or paste contents here...
+      placeholder: Drag and drop the nvidia-nim-session-*.json file here...
     validations:
       required: false

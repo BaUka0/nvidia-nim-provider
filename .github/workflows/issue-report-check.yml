@@ -1,0 +1,86 @@
+name: Bug Report File Check
+
+# Bug reports submitted through the issue form must attach the turn report as a file.
+# Pasted JSON is truncated, hard to read, and loses the surrounding session data.
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.issue.pull_request == null &&
+      !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
+    steps:
+      - name: Require Attached Turn Report
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const LABEL = 'needs-report';
+            const issue = context.payload.issue;
+            const body = issue.body ?? '';
+
+            // Only issues created from bug_report.yml carry this section header.
+            const header = '### Last Turn Report';
+            const start = body.indexOf(header);
+            if (start === -1) {
+              core.info('Not a bug report form issue; skipping.');
+              return;
+            }
+            const rest = body.slice(start + header.length);
+            const next = rest.search(/\n### /);
+            const section = next === -1 ? rest : rest.slice(0, next);
+
+            // Drag-and-drop uploads render as github.com/user-attachments/files/<id>/<name>
+            // (older uploads: github.com/<owner>/<repo>/files/<id>/<name>).
+            const attachment = /https:\/\/github\.com\/(?:user-attachments|[\w.-]+\/[\w.-]+)\/files\/\d+\/[^\s)\]]+\.(?:json|zip|txt|log)\b/i;
+            const hasFile = attachment.test(section);
+
+            const { owner, repo } = context.repo;
+            const issue_number = issue.number;
+            const labels = (issue.labels ?? []).map((l) => (typeof l === 'string' ? l : l.name));
+            const flagged = labels.includes(LABEL);
+
+            if (hasFile) {
+              if (!flagged) {
+                core.info('Report file attached.');
+                return;
+              }
+              await github.rest.issues.removeLabel({ owner, repo, issue_number, name: LABEL }).catch(() => {});
+              if (issue.state === 'closed') {
+                await github.rest.issues.update({ owner, repo, issue_number, state: 'open' });
+              }
+              await github.rest.issues.createComment({
+                owner, repo, issue_number,
+                body: 'Report file found, reopening.',
+              });
+              return;
+            }
+
+            if (flagged && issue.state === 'closed') {
+              core.info('Already flagged and closed.');
+              return;
+            }
+
+            await github.rest.issues.createLabel({
+              owner, repo, name: LABEL, color: 'd93f0b',
+              description: 'Bug report is missing the attached turn report file',
+            }).catch(() => {});
+            await github.rest.issues.addLabels({ owner, repo, issue_number, labels: [LABEL] });
+
+            if (!flagged) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number,
+                body: [
+                  'This bug report has no attached turn report file, so it is closed for now.',
+                  '',
+                  'Run `NVIDIA NIM: Save Last Turn Report` from the Command Palette right after the failing turn, then edit this issue and drag and drop the saved `nvidia-nim-turn-report-*.json` file into the **Last Turn Report** section. Pasted JSON text does not count. The issue reopens automatically once the file is attached.',
+                ].join('\n'),
+              });
+            }
+            await github.rest.issues.update({ owner, repo, issue_number, state: 'closed', state_reason: 'not_planned' });
