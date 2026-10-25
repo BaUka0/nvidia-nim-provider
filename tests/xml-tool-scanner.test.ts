@@ -98,4 +98,44 @@ describe("extractStandaloneXmlParameters", () => {
     });
     expect(cleanText.trim()).toBe("");
   });
+
+  it("extracts unclosed standalone parameters when the server stripped closing </parameter> tags", () => {
+    const raw =
+      '\n\n<parameter name="mode">sync\n\n<parameter name="timeout">920000\n\n<parameter name="explanation">Build the icon font with corrected nix-shell quoting\n\n<parameter name="goal">Generate the hinted icon font\n\n<parameter name="command">cd /home/orange/skin.cane && timeout 900 .venv/bin/python tools/build-icons.py 2>&1 | tail -40';
+    const { cleanText, extractedParams } = extractStandaloneXmlParameters(raw, (val) => val.trim());
+    expect(extractedParams).toEqual({
+      mode: "sync",
+      timeout: "920000",
+      explanation: "Build the icon font with corrected nix-shell quoting",
+      goal: "Generate the hinted icon font",
+      command:
+        "cd /home/orange/skin.cane && timeout 900 .venv/bin/python tools/build-icons.py 2>&1 | tail -40",
+    });
+    expect(cleanText.trim()).toBe("");
+  });
+
+  it("holds unclosed parameter tags during streaming and closes them at stream end", () => {
+    const raw = '<parameter name="mode">sync\n\n<parameter name="command">npm test';
+    expect(
+      scanXmlToolConstruct(
+        raw,
+        (val) => val.trim(),
+        () => true,
+        false,
+      ),
+    ).toEqual({ status: "incomplete" });
+
+    expect(
+      scanXmlToolConstruct(
+        raw,
+        (val) => val.trim(),
+        () => true,
+        true,
+      ),
+    ).toEqual({
+      status: "complete",
+      consumed: '<parameter name="mode">sync\n\n'.length,
+      extractedParams: { mode: "sync" },
+    });
+  });
 });

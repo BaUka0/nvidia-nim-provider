@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Fixed
+
+- Step 5 Preview no longer stops mid-turn when NVIDIA's server strips the closing tags from `<parameter name="...">` tool arguments, and any earlier turns with leaked parameter lines are cleaned from conversation history automatically.
+
 ## [1.9.1] - 2026-10-24
 
 ### Fixed

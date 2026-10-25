@@ -18,6 +18,7 @@ import {
 } from "./parts";
 import { estimateNimMessagesTokens } from "./token-estimate";
 import { pairToolCallsAndResults } from "./tool-call-pairing";
+import { extractStandaloneXmlParameters } from "../tools/xml-tool-scanner";
 
 export type { LegacyPart } from "./parts";
 export {
@@ -91,14 +92,19 @@ function buildToolDescription(
  * later replies.
  */
 export function stripFallbackNotices(text: string): string {
+  const hasLeakedParams = text.includes("<parameter") || text.includes("<tool_parameter");
   if (
     !text.includes("NVIDIA NIM") &&
     !text.includes("(empty message)") &&
-    !text.includes("[Request interrupted by user]")
+    !text.includes("[Request interrupted by user]") &&
+    !hasLeakedParams
   ) {
     return text;
   }
-  return text
+  const withoutLeakedParams = hasLeakedParams
+    ? extractStandaloneXmlParameters(text, (raw) => raw).cleanText
+    : text;
+  return withoutLeakedParams
     .replace(
       /(?:^|\r?\n)>?\s*(?:⚡\s*\*{0,2}NVIDIA NIM Fallback:?\*{0,2}|\*\*NVIDIA NIM:\*\*)(?:[^\r\n]*(?:\r?\n>[^\r\n]*)*)/gi,
       "",

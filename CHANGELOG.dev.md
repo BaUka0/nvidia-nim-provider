@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Fixed
+
+- **Unclosed `<parameter name="...">` recovery when NIM's server-side parser strips closing tags (`src/tools/xml-tool-scanner.ts`, `src/messages/converter.ts`, `tests/xml-tool-scanner.test.ts`, `tests/utils.test.ts`, `tests/provider/chat-provider.tools.test.ts`).** When `stepfun-ai/step-5-preview` emits `<parameter name="mode">` (or `<parameter=key">`), NIM's server-side XML tool parser consumes `<tool_call>`, `<function=...>`, and every closing `</parameter>`, `</function>`, and `</tool_call>` tag while dumping the unclosed `<parameter ...>value` segments into `delta.content` separated only by `\n\n`. `findParameterClose` now supports `allowImplicitClose` (`atStreamEnd` in `scanParameterValue` and `extractStandaloneXmlParameters`), terminating unclosed standalone parameter values at the next XML tool boundary tag or end of stream when no `</parameter>` is present, and `stripFallbackNotices` removes leaked standalone `<parameter>` / `<tool_parameter>` lines outside code fences and string literals from assistant history. Addresses #53.
+
 ## [1.9.1] - 2026-10-24
 
 ### Fixed

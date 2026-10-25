@@ -269,15 +269,30 @@ function readXmlTag(text: string, index: number): ParsedXmlTag | undefined {
   };
 }
 
+function isParameterBoundaryTag(tag: ParsedXmlTag): boolean {
+  if (tag.incomplete) {
+    return false;
+  }
+  if (tag.closing) {
+    return true;
+  }
+  if (isParameterKind(tag.kind) || tag.kind === "function" || tag.kind === "invoke") {
+    return Boolean(tag.name);
+  }
+  return tag.kind === "tool_call" || tag.kind === "tool_calls";
+}
+
 function findParameterClose(
   text: string,
   startIndex: number,
+  allowImplicitClose = false,
 ): { index: number; length: number } | undefined {
   let cursor = startIndex;
+  let firstBoundaryIndex: number | undefined;
   while (cursor < text.length) {
     const lt = text.indexOf("<", cursor);
     if (lt === -1) {
-      return undefined;
+      break;
     }
 
     const slice = text.slice(lt);
@@ -288,7 +303,22 @@ function findParameterClose(
       return { index: lt, length: "</tool_parameter>".length };
     }
 
+    if (
+      allowImplicitClose &&
+      firstBoundaryIndex === undefined &&
+      !isTokenInStringOrRegexLiteral(text, lt)
+    ) {
+      const nextTag = readXmlTag(text, lt);
+      if (nextTag && isParameterBoundaryTag(nextTag)) {
+        firstBoundaryIndex = lt;
+      }
+    }
+
     cursor = lt + 1;
+  }
+
+  if (allowImplicitClose) {
+    return { index: firstBoundaryIndex ?? text.length, length: 0 };
   }
   return undefined;
 }
@@ -421,8 +451,9 @@ function scanParameterValue(
   startIndex: number,
   parseValue: (raw: string) => unknown,
   key: string | undefined,
+  atStreamEnd = false,
 ): XmlScanResult {
-  const close = findParameterClose(text, startIndex);
+  const close = findParameterClose(text, startIndex, atStreamEnd);
   if (!close) {
     return { status: "incomplete" };
   }
@@ -621,7 +652,7 @@ export function scanXmlToolConstruct(
   }
 
   if (isParameterKind(tag.kind)) {
-    const scanned = scanParameterValue(text, tag.rawLength, parseValue, tag.name);
+    const scanned = scanParameterValue(text, tag.rawLength, parseValue, tag.name, atStreamEnd);
     if (scanned.status !== "complete") {
       return scanned;
     }
@@ -648,6 +679,9 @@ export function scanXmlToolConstruct(
     }
     const peek = isPlausibleToolContinuation(text, tag.rawLength);
     if (peek === "incomplete") {
+      if (atStreamEnd) {
+        return scanToolRegion(text, tag, parseValue, isValidName, atStreamEnd);
+      }
       return { status: "incomplete" };
     }
     if (peek === "no") {
@@ -692,7 +726,7 @@ export function extractStandaloneXmlParameters(
       isParameterKind(tag.kind) &&
       !isTokenInStringOrRegexLiteral(text, cursor)
     ) {
-      const scanned = scanParameterValue(text, cursor + tag.rawLength, parseValue, tag.name);
+      const scanned = scanParameterValue(text, cursor + tag.rawLength, parseValue, tag.name, true);
       if (scanned.status === "complete") {
         Object.assign(extractedParams, scanned.extractedParams);
         cursor = scanned.consumed;

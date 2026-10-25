@@ -1457,4 +1457,79 @@ describe("NimChatModelProvider", () => {
     );
     expect(toolCallReports).toHaveLength(2);
   });
+
+  it("recovers naked unclosed <parameter name=...> tags when the server stripped <tool_call>, <function=...>, and </parameter>", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+
+    const nakedParamStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              content:
+                '\n\n<parameter name="mode">sync\n\n<parameter name="timeout">920000\n\n<parameter name="explanation">Build the icon font with corrected nix-shell quoting\n\n<parameter name="goal">Generate the hinted icon font\n\n<parameter name="command">cd /home/orange/skin.cane && timeout 900 .venv/bin/python tools/build-icons.py 2>&1 | tail -40',
+            },
+            finish_reason: "stop",
+          },
+        ],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock).mockImplementationOnce(() => nakedParamStream());
+
+    const progress = { report: jest.fn() };
+    const token = makeToken();
+
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "stepfun-ai/step-5-preview",
+        maxInputTokens: 262144,
+        maxOutputTokens: 65536,
+      }),
+      makeUserMessages("Build the icon font"),
+      makeChatOptions({
+        modelOptions: {},
+        tools: [
+          {
+            name: "run_in_terminal",
+            description: "Run a shell command in the terminal",
+            inputSchema: {
+              type: "object",
+              properties: {
+                command: { type: "string" },
+                explanation: { type: "string" },
+                goal: { type: "string" },
+                mode: { type: "string", enum: ["sync", "async"] },
+                timeout: { type: "number" },
+              },
+              required: ["command", "explanation", "goal", "mode"],
+            },
+          },
+        ],
+      }),
+      progress,
+      token,
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    const toolCallReports = progress.report.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { callId?: string })?.callId,
+    );
+    const leakedParamTextReports = progress.report.mock.calls.filter((c: unknown[]) => {
+      const val = (c[0] as { value?: unknown })?.value;
+      return typeof val === "string" && val.includes("<parameter");
+    });
+
+    expect(toolCallReports).toHaveLength(1);
+    expect(toolCallReports[0][0].name).toBe("run_in_terminal");
+    expect(toolCallReports[0][0].input).toEqual({
+      mode: "sync",
+      timeout: 920000,
+      explanation: "Build the icon font with corrected nix-shell quoting",
+      goal: "Generate the hinted icon font",
+      command:
+        "cd /home/orange/skin.cane && timeout 900 .venv/bin/python tools/build-icons.py 2>&1 | tail -40",
+    });
+    expect(leakedParamTextReports).toHaveLength(0);
+  });
 });

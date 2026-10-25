@@ -859,4 +859,12 @@ describe("stripFallbackNotices", () => {
       "> **NVIDIA NIM:** This reply contains raw chat-template tokens. Switching models should help.\n\n";
     expect(stripFallbackNotices(text).trimEnd()).toBe("foo <|close|> bar <|close|>");
   });
+
+  it("strips leaked standalone <parameter> tags from assistant history while keeping fenced examples", () => {
+    const leaked = '\n\n<parameter name="mode">sync\n\n<parameter name="command">npm test';
+    expect(stripFallbackNotices(leaked)).toBe("");
+
+    const withFence = 'Example:\n```xml\n<parameter name="mode">sync</parameter>\n```';
+    expect(stripFallbackNotices(withFence)).toBe(withFence);
+  });
 });
