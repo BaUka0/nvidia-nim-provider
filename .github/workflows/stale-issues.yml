@@ -1,0 +1,35 @@
+name: Close Unanswered Issues
+
+# Issues labeled `needs info` are waiting on the reporter. If nobody touches the
+# issue for 5 days it is marked stale with a reminder, and closed 2 days later.
+# Any new comment or edit removes the stale mark and restarts the countdown.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v11
+        with:
+          any-of-issue-labels: "needs info"
+          days-before-issue-stale: 5
+          days-before-issue-close: 2
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          stale-issue-label: stale
+          remove-stale-when-updated: true
+          close-issue-reason: not_planned
+          stale-issue-message: >-
+            Still waiting on the requested info. Without it this issue closes in 2 days.
+            Run `NVIDIA NIM: Save Last Turn Report` after the failing turn and drag and drop
+            the saved `.json` file into a comment. Pasted JSON text does not count.
+          close-issue-message: >-
+            Closing, no reply to the info request. Open a new issue with the turn report
+            file attached if the problem comes back.
