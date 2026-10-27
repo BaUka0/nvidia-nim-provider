@@ -186,6 +186,8 @@ The resulting `.vsix` file can be installed via **Extensions → Install from VS
 
 ## Support
 
+This extension is maintained on a best-effort basis. Fixes for retired or changed NVIDIA NIM models still land, but replies to issues can take a while. Bug reports with the turn report file attached get priority: run `NVIDIA NIM: Save Last Turn Report` right after the failing turn and drag and drop the saved file into the issue. Reports without it are closed automatically.
+
 If this extension saves you time and makes working with NVIDIA NIM in Copilot Chat smoother, you can support its maintenance on [Ko-fi](https://ko-fi.com/baurzhanbissanov).
 
 ---
