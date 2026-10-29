@@ -120,6 +120,40 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
 export const FALLBACK_MODEL_ID = "nvidia/nemotron-3.5-lightning-30b-a3b";
 export const FALLBACK_VISION_MODEL_ID = "meta/muse-glimmer-30b";
 
+const MODEL_ALIAS_LOOKUP: ReadonlyMap<string, string> = (() => {
+  const entries = new Map<string, string>();
+  const shortIds = new Map<string, string>();
+  const duplicateShortIds = new Set<string>();
+  for (const id of Object.keys(MODEL_LIST)) {
+    entries.set(id.toLowerCase(), id);
+    const shortId = id.split("/").at(-1);
+    if (!shortId) {
+      continue;
+    }
+    if (shortIds.has(shortId)) {
+      duplicateShortIds.add(shortId);
+      shortIds.delete(shortId);
+      continue;
+    }
+    shortIds.set(shortId, id);
+  }
+  for (const [shortId, id] of shortIds) {
+    if (duplicateShortIds.has(shortId)) {
+      continue;
+    }
+    entries.set(shortId, id);
+  }
+  return entries;
+})();
+
+export function resolveCatalogModelId(rawId: string): string | undefined {
+  const normalized = rawId.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  return MODEL_ALIAS_LOOKUP.get(normalized);
+}
+
 /**
  * Stable digest of the curated catalog: sorted ids plus every curated field.
  * Must change whenever any of those fields changes, because cached model lists
@@ -227,11 +261,12 @@ export function normalizeNvidiaModels(models: NvidiaModelSummary[]): NormalizedN
   const normalizedModels: NormalizedNvidiaModel[] = [];
 
   for (const model of models) {
-    if (seenIds.has(model.id) || !(model.id in MODEL_LIST)) {
+    const resolvedModelId = resolveCatalogModelId(model.id);
+    if (!resolvedModelId || seenIds.has(resolvedModelId)) {
       continue;
     }
-    seenIds.add(model.id);
-    normalizedModels.push(normalizeNvidiaModel(model));
+    seenIds.add(resolvedModelId);
+    normalizedModels.push(normalizeNvidiaModel(resolvedModelId));
   }
 
   return normalizedModels;
@@ -259,10 +294,10 @@ export function isNormalizedNvidiaModel(value: unknown): value is NormalizedNvid
   );
 }
 
-function normalizeNvidiaModel(model: NvidiaModelSummary): NormalizedNvidiaModel {
-  const override = MODEL_LIST[model.id];
+function normalizeNvidiaModel(modelId: string): NormalizedNvidiaModel {
+  const override = MODEL_LIST[modelId];
   return {
-    id: model.id,
+    id: modelId,
     displayName: override.displayName,
     contextWindow: override.contextWindow,
     maxOutputTokens: override.maxOutputTokens,

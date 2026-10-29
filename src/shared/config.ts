@@ -1,5 +1,9 @@
 import * as vscode from "vscode";
-import { FALLBACK_MODEL_ID, FALLBACK_VISION_MODEL_ID, MODEL_LIST } from "../models/catalog";
+import {
+  FALLBACK_MODEL_ID,
+  FALLBACK_VISION_MODEL_ID,
+  resolveCatalogModelId,
+} from "../models/catalog";
 import { warnLog } from "./logging";
 
 function warnUnknownConfig(message: string): void {
@@ -17,8 +21,9 @@ function sanitizeKnownModelId(raw: unknown, fallbackId: string): string {
   if (!id) {
     return fallbackId;
   }
-  if (Object.hasOwn(MODEL_LIST, id)) {
-    return id;
+  const resolvedId = resolveCatalogModelId(id);
+  if (resolvedId) {
+    return resolvedId;
   }
   warnUnknownConfig(`Unknown model id "${id}" in settings; using "${fallbackId}" instead.`);
   return fallbackId;
@@ -196,13 +201,15 @@ export class ConfigManager {
           .filter((id): id is string => typeof id === "string")
           .map((id) => id.trim())
           .filter((id) => id.length > 0)
-          .filter((id) => {
-            if (Object.hasOwn(MODEL_LIST, id)) {
-              return true;
+          .map((id) => {
+            const resolvedId = resolveCatalogModelId(id);
+            if (resolvedId) {
+              return resolvedId;
             }
             warnUnknownConfig(`Unknown model id "${id}" in fallback.priorityList; skipping.`);
-            return false;
+            return "";
           })
+          .filter((id) => id.length > 0)
       : [];
 
     return {

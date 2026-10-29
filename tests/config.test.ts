@@ -46,8 +46,8 @@ describe("ConfigManager", () => {
 
     it("reads custom fallback settings", () => {
       mockStore["fallback.enabled"] = false;
-      mockStore["fallback.model"] = "z-ai/glm-5.3";
-      mockStore["fallback.visionModel"] = "z-ai/glm-5.3-flash";
+      mockStore["fallback.model"] = "GLM-5.3";
+      mockStore["fallback.visionModel"] = "GLM-5.3-Flash";
       mockStore["fallback.onTimeout"] = false;
       mockStore["fallback.onFirstTokenTimeout"] = false;
       mockStore["fallback.firstTokenTimeoutSeconds"] = 25;
@@ -103,13 +103,7 @@ describe("ConfigManager", () => {
     });
 
     it("sanitizes fallback.priorityList entries", () => {
-      mockStore["fallback.priorityList"] = [
-        "  z-ai/glm-5.3  ",
-        "",
-        42,
-        null,
-        "meta/muse-glimmer-30b",
-      ];
+      mockStore["fallback.priorityList"] = ["  GLM-5.3  ", "", 42, null, "meta/muse-glimmer-30b"];
       const config = ConfigManager.getFallbackConfig();
       expect(config.priorityList).toEqual(["z-ai/glm-5.3", "meta/muse-glimmer-30b"]);
 

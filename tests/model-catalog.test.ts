@@ -8,6 +8,7 @@ import {
   getFallbackModel,
   isNormalizedNvidiaModel,
   normalizeNvidiaModels,
+  resolveCatalogModelId,
 } from "../src/models/catalog";
 import { MODELS_CACHE_CATALOG_DIGEST } from "../src/shared/constants";
 import type { NvidiaModelSummary } from "../src/types";
@@ -103,6 +104,17 @@ describe("normalizeNvidiaModels", () => {
     ]);
   });
 
+  it("accepts case-insensitive short aliases from NVIDIA and maps them to catalog ids", () => {
+    const raw: NvidiaModelSummary[] = [{ id: "GLM-5.3-Flash" }];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([
+      expect.objectContaining({
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
+      }),
+    ]);
+  });
+
   it("detects whether cached values match the normalized NVIDIA model shape", () => {
     expect(
       isNormalizedNvidiaModel({
@@ -124,6 +136,14 @@ describe("normalizeNvidiaModels", () => {
         supportsVision: true,
       }),
     ).toBe(false);
+  });
+
+  describe("resolveCatalogModelId", () => {
+    it("resolves canonical and short-form model ids", () => {
+      expect(resolveCatalogModelId("z-ai/glm-5.3-flash")).toBe("z-ai/glm-5.3-flash");
+      expect(resolveCatalogModelId("GLM-5.3-Flash")).toBe("z-ai/glm-5.3-flash");
+      expect(resolveCatalogModelId("  glm-5.3-flash  ")).toBe("z-ai/glm-5.3-flash");
+    });
   });
 });
 
