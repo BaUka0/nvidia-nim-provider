@@ -2,11 +2,11 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
-## [Unreleased]
+## [1.9.3] - 2026-10-29
 
 ### Removed
 
-- GLM 5.3 is removed from the model list. NVIDIA retired it on October 27, 2026, and it no longer answers requests. If it was set as your backup or summarization model, the default model is used instead; pick another one in the Settings UI or `settings.json` if you prefer. GLM 5.3 Flash stays in the list.
+- GLM 5.3 is removed from the model list. NVIDIA retired it on October 28, 2026, and it no longer answers requests. If it was set as your backup or summarization model, the default model is used instead; pick another one in the Settings UI or `settings.json` if you prefer. GLM 5.3 Flash stays in the list.
 
 ## [1.9.2] - 2026-10-27
 
