@@ -175,6 +175,11 @@
     "created": 735790403
   },
   {
+    "id": "mistralai/mistral-large-4-1t-a52b",
+    "owned_by": "mistralai",
+    "created": 735790403
+  },
+  {
     "id": "mistralai/mixtral-8x22b-v0.1",
     "owned_by": "mistralai",
     "created": 735790403
