@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Added
+
+- **Mistral Large 4 (`src/models/catalog.ts`, `src/models/adapters/mistral.ts`, `src/models/adapters/index.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`, docs, `.github/ISSUE_TEMPLATE/bug_report.yml`, `tests/model-capability-matrix.test.ts`, `tests/model-profile.test.ts`).** `mistralai/mistral-large-4-1t-a52b` added to `MODEL_LIST` with `contextWindow: 1048576`, `maxOutputTokens: 262144`, tools and vision, and the new `mistral` `CatalogAdapterId`. The build.nvidia.com spec panel says "Context Length 262K", but that is the output cap: the playground's Max Tokens default is 262,144, the model card gives a combined 1M input/output window, `max_tokens` above 1,048,576 returns 400, and `scripts/probe-context-1048k.mjs` got 200 with `prompt_tokens: 1048575` on 2026-10-29 (a 280K prompt also returned 200). The NIM schema enumerates `reasoning_effort` `none` through `max`, but only `low`, `medium` and `high` are accepted; `none`, `minimal`, `xhigh` and `max` return a bare 400 `Invalid request`. `chat_template_kwargs` `thinking: false` / `enable_thinking: false` are ignored and the model keeps reasoning. Reasoning arrives in `delta.reasoning_content` with `reasoning_tokens` populated and no think tags in `content`; streamed native parallel `tool_calls` and base64 PNG `image_url` data URIs verified. `MistralAdapter` extends `ReasoningEffortAdapter` with `["low", "medium", "high"]`, so `withReasoningOff` (`"none"`) sends `low` and `xhigh` / `max` resolve to `high`; vendor sampling (temperature 1.0, top_p 0.95) matches the base defaults. `sync:manifest` added the id to the settings enums (including `fallback.visionModel`) and `CURATED_MODEL_IDS`, and bumped `MODELS_CACHE_VERSION` to 34. Docs list its Artificial Analysis Intelligence Index v5.0 score as 26, between Step 5 Preview and Nemotron 3.5 Super VL. Addresses #57.
+
 ## [1.9.3] - 2026-10-29
 
 ### Removed

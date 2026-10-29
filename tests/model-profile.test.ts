@@ -135,6 +135,30 @@ describe("applyReasoningMode", () => {
     expect(request.chat_template_kwargs).toEqual({ reasoning_effort: "low" });
   });
 
+  it("exposes Mistral Large 4 reasoning effort modes and never sends unsupported levels", () => {
+    const adapter = getModelAdapter("mistralai/mistral-large-4-1t-a52b");
+    const request: NimChatRequest = {
+      model: "mistralai/mistral-large-4-1t-a52b",
+      messages: [],
+    };
+
+    expect(adapter.supportedReasoningModes).toEqual(["low", "medium", "high"]);
+    expect(adapter.getProfile({ toolsEnabled: true })).toMatchObject({
+      defaultTemperature: 1,
+      defaultTopP: 0.95,
+    });
+
+    adapter.applyReasoningMode!(request, "medium");
+    expect(request.reasoning_effort).toBe("medium");
+    expect(request.chat_template_kwargs).toBeUndefined();
+
+    adapter.applyReasoningMode!(request, "xhigh");
+    expect(request.reasoning_effort).toBe("high");
+
+    adapter.applyReasoningMode!(request, "none");
+    expect(request.reasoning_effort).toBe("low");
+  });
+
   it("exposes GLM reasoning effort modes and maps selected modes", () => {
     const adapter = getModelAdapter("z-ai/glm-5.3-flash");
     const request: NimChatRequest = {

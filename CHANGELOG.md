@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Added
+
+- Mistral Large 4 is now in the model list: a large multimodal model with a 1M-token context window, up to 262,144 output tokens, tool calling, and image input. It always reasons and shows its reasoning in the Thinking block; Reasoning Mode offers `Low`, `Medium`, and `High`. It scores 26 on the Artificial Analysis Intelligence Index v5.
+
 ## [1.9.3] - 2026-10-29
 
 ### Removed

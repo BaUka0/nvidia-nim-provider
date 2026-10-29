@@ -177,6 +177,24 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "mm:think",
   },
   {
+    modelId: "mistralai/mistral-large-4-1t-a52b",
+    reasoningModes: ["low", "medium", "high"],
+    reasoningCases: [
+      { mode: "none", expectedFields: { reasoning_effort: "low" } },
+      ...["low", "medium", "high"].map((mode) => ({
+        mode,
+        expectedFields: { reasoning_effort: mode },
+      })),
+      { mode: "max", expectedFields: { reasoning_effort: "high" } },
+    ],
+    reasoningParameterFormat: "reasoning_effort",
+    toolCallProtocol: "native-and-text",
+    reasoningRouting: "isolated",
+    contentOnlyMode: "low",
+    contentOnlyRouting: "text",
+    thinkTag: "think",
+  },
+  {
     modelId: "z-ai/glm-5.3-flash",
     reasoningModes: ["low", "high", "max"],
     reasoningCases: [

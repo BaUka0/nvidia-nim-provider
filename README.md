@@ -51,16 +51,17 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 
 | Model | Intelligence Index | Context Window | Reasoning Modes | Tools | Vision | Notes |
 | :--- | :---: | :---: | :--- | :---: | :---: | :--- |
-| **Step 5 Preview** | **44** | 1M | Always on | Yes | Yes | StepFun preview; reasoning cannot be turned off |
-| **MiniMax M3.1 Flash** | **43** | 262K | `Low` to `Max` | Yes | Yes | Fast multimodal MoE for agentic coding and visual input |
-| **GLM 5.3 Flash** | **42** | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
-| **DeepSeek V4.1 Flash** | **39** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, agentic coding, architecture |
-| **Nemotron 3.5 Super VL** | **26** | 1M | `None`, `Low`, `High` | Yes | Yes | Coding, tools, and image input in one model |
-| **Nemotron 3 Ultra** | **23** | 1M | `None`, `Medium`, `High` | Yes | No | Heavy multi-step reasoning, technical docs |
-| **Muse Glimmer** | **17** | 131K | `None` to `Max` | Yes | Yes | Visual UX/UI work; default vision fallback |
-| **Nemotron 3.5 Lightning** | **13** | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Fast agentic turns; default text fallback and summarizer |
+| **DeepSeek V4.1 Flash** | **32** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, agentic coding, architecture |
+| **MiniMax M3.1 Flash** | **29** | 262K | `Low` to `Max` | Yes | Yes | Fast multimodal MoE for agentic coding and visual input |
+| **Step 5 Preview** | **29** | 1M | Always on | Yes | Yes | StepFun preview; reasoning cannot be turned off |
+| **Mistral Large 4** | **26** | 1M | `Low`, `Medium`, `High` | Yes | Yes | Large multimodal MoE for agentic coding and document analysis |
+| **Nemotron 3.5 Super VL** | **14** | 1M | `None`, `Low`, `High` | Yes | Yes | Coding, tools, and image input in one model |
+| **Nemotron 3 Ultra** | **12** | 1M | `None`, `Medium`, `High` | Yes | No | Heavy multi-step reasoning, technical docs |
+| **Muse Glimmer** | **6** | 131K | `None` to `Max` | Yes | Yes | Visual UX/UI work; default vision fallback |
+| **GLM 5.3 Flash** | N/A | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
+| **Nemotron 3.5 Lightning** | N/A | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Fast agentic turns; default text fallback and summarizer |
 
-Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`).
+Intelligence Index values are from the Artificial Analysis Intelligence Index v5.0 (checked 2026-10-30). GLM 5.3 Flash and Nemotron 3.5 Lightning have no v5 score yet.
 
 Reasoning is on by default: `High`, or `Medium` on Nemotron 3.5 Lightning. Step 5 Preview always reasons and has no Reasoning Mode. Change it per model with Reasoning Mode in the model picker, or for all models with `nvidia-nim.reasoning.mode`. Copilot agent sessions offer the reasoning level as well; Context Size is available in local chat sessions only.
 

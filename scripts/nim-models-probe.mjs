@@ -3,6 +3,7 @@ const CURATED_MODEL_IDS = new Set([
   "deepseek-ai/deepseek-v4.1-flash",
   "meta/muse-glimmer-30b",
   "minimaxai/minimax-m3.1-flash",
+  "mistralai/mistral-large-4-1t-a52b",
   "nvidia/nemotron-3-ultra-550b-a55b",
   "nvidia/nemotron-3.5-lightning-30b-a3b",
   "nvidia/nemotron-3.5-super-vl-120b-a12b",

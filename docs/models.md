@@ -8,16 +8,17 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 
 | Model | Picker Name | Intelligence Index | Context Limit | Max Output | Reasoning Modes | Vision | Notes |
 | :--- | :--- | :---: | :---: | :---: | :--- | :---: | :--- |
-| **Step 5 Preview** | `Step 5 Preview` | **44** | 1,048,576 | 262,144 | Always on | Yes | StepFun preview with tools and image input |
-| **MiniMax M3.1 Flash** | `MiniMax M3.1 Flash` | **43** | 262,144 | 65,536 | `Low` to `Max` | Yes | Fast multimodal MoE for agentic coding and visual input |
-| **GLM 5.3 Flash** | `GLM 5.3 Flash` | **42** | 1,048,576 | 131,072 | `Low`, `High`, `Max` | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
-| **DeepSeek V4.1 Flash** | `DeepSeek V4.1 Flash` | **39** | 1,048,576 | 262,144 | `None`, `Low`, `High`, `Max` | Yes | Hard algorithmic work, multimodal coding, complex refactors |
-| **Nemotron 3.5 Super VL** | `Nemotron 3.5 Super VL` | **26** | 1,048,576 | 131,072 | `None`, `Low`, `High` | Yes | Coding, tools, and image input in one model |
-| **Nemotron 3 Ultra** | `Nemotron 3 Ultra` | **23** | 1,000,000 | 32,768 | `None`, `Medium`, `High` | No | Heavy multi-step reasoning, system design, enterprise docs |
-| **Muse Glimmer** | `Muse Glimmer` | **17** | 131,072 | 32,768 | `None` to `Max` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
-| **Nemotron 3.5 Lightning** | `Nemotron 3.5 Lightning` | **13** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; default text fallback and summarizer |
+| **DeepSeek V4.1 Flash** | `DeepSeek V4.1 Flash` | **32** | 1,048,576 | 262,144 | `None`, `Low`, `High`, `Max` | Yes | Hard algorithmic work, multimodal coding, complex refactors |
+| **MiniMax M3.1 Flash** | `MiniMax M3.1 Flash` | **29** | 262,144 | 65,536 | `Low` to `Max` | Yes | Fast multimodal MoE for agentic coding and visual input |
+| **Step 5 Preview** | `Step 5 Preview` | **29** | 1,048,576 | 262,144 | Always on | Yes | StepFun preview with tools and image input |
+| **Mistral Large 4** | `Mistral Large 4` | **26** | 1,048,576 | 262,144 | `Low`, `Medium`, `High` | Yes | Large multimodal MoE for agentic coding, document and image analysis |
+| **Nemotron 3.5 Super VL** | `Nemotron 3.5 Super VL` | **14** | 1,048,576 | 131,072 | `None`, `Low`, `High` | Yes | Coding, tools, and image input in one model |
+| **Nemotron 3 Ultra** | `Nemotron 3 Ultra` | **12** | 1,000,000 | 32,768 | `None`, `Medium`, `High` | No | Heavy multi-step reasoning, system design, enterprise docs |
+| **Muse Glimmer** | `Muse Glimmer` | **6** | 131,072 | 32,768 | `None` to `Max` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
+| **GLM 5.3 Flash** | `GLM 5.3 Flash` | N/A | 1,048,576 | 131,072 | `Low`, `High`, `Max` | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
+| **Nemotron 3.5 Lightning** | `Nemotron 3.5 Lightning` | N/A | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; default text fallback and summarizer |
 
-Intelligence Index values are from the Artificial Analysis Intelligence Index (v4.3.2 verified; see `CHANGELOG.md`).
+Intelligence Index values are from the Artificial Analysis Intelligence Index v5.0 (checked 2026-10-30). GLM 5.3 Flash and Nemotron 3.5 Lightning have no v5 score yet.
 
 ---
 
@@ -36,6 +37,8 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 **Step 5 Preview.** StepFun's 600B/27B-active preview model for agentic coding and professional work, with 1M context, tools, and image input. The model card allows output up to the full 1M context, but output and input share that window, so the extension caps output at 262,144 tokens and keeps about 775K for the conversation. It always reasons, and the reasoning shows in the Thinking block. There is no Reasoning Mode to pick: NVIDIA accepts effort levels for it but they make no difference, and switching thinking off moves the reasoning into the answer text instead of stopping it. Preview models can be withdrawn on short notice.
 
 **MiniMax M3.1 Flash.** Native multimodal MoE model (428B total, 23B active) with a 262,144-token context window on NVIDIA NIM, up to 65,536 output tokens, tool calling, and image input. Thinking is adaptive: on trivial turns it can answer directly, and on harder turns it reasons in the Thinking block at the selected effort level (`Low`, `Medium`, `High`, `XHigh`, `Max`).
+
+**Mistral Large 4.** Mistral AI's multimodal MoE model (about 1T total, 49B active) with 1M context shared between input and output. NVIDIA allows up to 262,144 output tokens, so the extension keeps the rest for the conversation. It always reasons, and the reasoning shows in the Thinking block. Reasoning: `Low`, `Medium`, `High` (default); there is no way to switch it off, so `None` uses `Low`. Tool calls, including several in parallel, and image input work natively.
 
 
 ---

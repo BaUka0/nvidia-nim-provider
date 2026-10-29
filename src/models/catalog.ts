@@ -38,6 +38,7 @@ export type CatalogAdapterId =
   | "nemotron-lightning"
   | "muse-glimmer"
   | "minimax"
+  | "mistral"
   | "glm"
   | "stepfun";
 
@@ -89,6 +90,14 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: true,
     adapter: "minimax",
+  },
+  "mistralai/mistral-large-4-1t-a52b": {
+    displayName: "Mistral Large 4",
+    contextWindow: 1048576,
+    maxOutputTokens: 262144,
+    supportsTools: true,
+    supportsVision: true,
+    adapter: "mistral",
   },
   "z-ai/glm-5.3-flash": {
     displayName: "GLM 5.3 Flash",
