@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Removed
+
+- **GLM 5.3 end of life (`src/models/catalog.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`, docs, `.github/ISSUE_TEMPLATE/bug_report.yml`, `tests/*`).** `z-ai/glm-5.3` passed its `deprecationDate` of 2026-10-27; the `track-models` scan of 2026-10-28 found it gone from `/v1/models` (snapshot commit `0a6bc9c`), confirmed by a manual `/v1/models` check on 2026-10-29. Removed from `MODEL_LIST`; `sync:manifest` dropped it from the settings enums and `CURATED_MODEL_IDS` and bumped `MODELS_CACHE_VERSION` to 33. A leftover `fallback.*` / `summarizationModel` value fails the catalog check in `sanitizeKnownModelId` and resolves to the default. `GlmAdapter` and the `glm` `CatalogAdapterId` stay for `z-ai/glm-5.3-flash`. The GLM 5.3 row left the capability matrix. Tests that used the catalog entry now use GLM 5.3 Flash, or Nemotron 3 Ultra where the file already uses Flash as a second model or needs a text-only one; expected `maxOutputTokens` / `supportsVision` follow the Flash entry. No curated model carries a `deprecationDate` now, so `tests/deprecation.test.ts` sets one on Flash through `withDeprecationDate`. Addresses #54.
+
 ## [1.9.2] - 2026-10-27
 
 ### Fixed

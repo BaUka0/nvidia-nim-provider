@@ -86,8 +86,8 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "z-ai/glm-5.3",
-              displayName: "GLM 5.3",
+              id: "nvidia/nemotron-3-ultra-550b-a55b",
+              displayName: "Nemotron 3 Ultra",
               contextWindow: 1048576,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -104,8 +104,8 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     (globalState.get as jest.Mock).mockReturnValue([
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "nvidia/nemotron-3-ultra-550b-a55b",
+        displayName: "Nemotron 3 Ultra",
         contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
@@ -138,7 +138,7 @@ describe("NimChatModelProvider", () => {
 
     await provider.provideLanguageModelChatResponse(
       makeModel({
-        id: "z-ai/glm-5.3",
+        id: "nvidia/nemotron-3-ultra-550b-a55b",
         maxInputTokens: 100000,
         maxOutputTokens: 16384,
       }),
@@ -154,7 +154,7 @@ describe("NimChatModelProvider", () => {
     expect(streamChatCompletion).toHaveBeenCalledWith(
       "test-key",
       expect.objectContaining({
-        model: "z-ai/glm-5.3",
+        model: "nvidia/nemotron-3-ultra-550b-a55b",
         tools: expect.any(Array),
         tool_choice: "auto",
       }),

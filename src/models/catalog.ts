@@ -90,15 +90,6 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsVision: true,
     adapter: "minimax",
   },
-  "z-ai/glm-5.3": {
-    displayName: "GLM 5.3",
-    contextWindow: 1048576,
-    maxOutputTokens: 65536,
-    supportsTools: true,
-    supportsVision: false,
-    adapter: "glm",
-    deprecationDate: "2026-10-27",
-  },
   "z-ai/glm-5.3-flash": {
     displayName: "GLM 5.3 Flash",
     contextWindow: 1048576,

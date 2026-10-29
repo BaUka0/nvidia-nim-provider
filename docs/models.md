@@ -8,7 +8,6 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 
 | Model | Picker Name | Intelligence Index | Context Limit | Max Output | Reasoning Modes | Vision | Notes |
 | :--- | :--- | :---: | :---: | :---: | :--- | :---: | :--- |
-| **GLM 5.3** | `GLM 5.3` | **45** | 1,048,576 | 65,536 | `Low`, `High`, `Max` | No | Flagship reasoning model, complex agentic coding, deep problem solving |
 | **Step 5 Preview** | `Step 5 Preview` | **44** | 1,048,576 | 262,144 | Always on | Yes | StepFun preview with tools and image input |
 | **MiniMax M3.1 Flash** | `MiniMax M3.1 Flash` | **43** | 262,144 | 65,536 | `Low` to `Max` | Yes | Fast multimodal MoE for agentic coding and visual input |
 | **GLM 5.3 Flash** | `GLM 5.3 Flash` | **42** | 1,048,576 | 131,072 | `Low`, `High`, `Max` | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
@@ -23,8 +22,6 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 ---
 
 ## Per-Model Notes
-
-**GLM 5.3.** Flagship open-weights reasoning model with 1M context, up to 65,536 output tokens. Strong on multi-step reasoning, system architecture, and agentic workflows. Reasoning: `Low` (instant answer), `High`, `Max`. Text-only; vision requests fail over to `fallback.visionModel`.
 
 **GLM 5.3 Flash.** Fast multimodal reasoning model with 1M context and up to 131,072 output tokens. Reasoning: `Low` (instant answer), `High`, `Max`.
 
@@ -47,7 +44,7 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index (v
 
 ### Collapsible Thinking Blocks
 
-DeepSeek V4, Nemotron 3.5 Super VL, and GLM 5.3 / GLM 5.3 Flash produce an internal stream of logical thought before the final answer. The extension filters `<thought>`, `<think>`, and `[THINK]` tags and renders them via VS Code's `LanguageModelThinkingPart`. In Copilot Chat you see a collapsible **Thinking...** bar; click to expand and read the step-by-step reasoning, or leave it collapsed to focus on the response.
+DeepSeek V4, Nemotron 3.5 Super VL, and GLM 5.3 Flash produce an internal stream of logical thought before the final answer. The extension filters `<thought>`, `<think>`, and `[THINK]` tags and renders them via VS Code's `LanguageModelThinkingPart`. In Copilot Chat you see a collapsible **Thinking...** bar; click to expand and read the step-by-step reasoning, or leave it collapsed to focus on the response.
 
 ### Controlling Reasoning Effort
 

@@ -51,7 +51,6 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 
 | Model | Intelligence Index | Context Window | Reasoning Modes | Tools | Vision | Notes |
 | :--- | :---: | :---: | :--- | :---: | :---: | :--- |
-| **GLM 5.3** | **45** | 1M | `Low`, `High`, `Max` | Yes | No | Flagship reasoning model, complex agentic coding |
 | **Step 5 Preview** | **44** | 1M | Always on | Yes | Yes | StepFun preview; reasoning cannot be turned off |
 | **MiniMax M3.1 Flash** | **43** | 262K | `Low` to `Max` | Yes | Yes | Fast multimodal MoE for agentic coding and visual input |
 | **GLM 5.3 Flash** | **42** | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
@@ -112,7 +111,7 @@ To enable BYOK models for the agent host:
    "chat.agentHost.byokModels.enabled": true
    ```
 3. Recommended settings for heavy agent sessions:
-   * **Recommended Models:** `z-ai/glm-5.3` for multi-step reasoning and deep codebase context.
+   * **Recommended Models:** `z-ai/glm-5.3-flash` for multi-step reasoning and deep codebase context.
    * **TTFT Timeout:** Set `"nvidia-nim.fallback.firstTokenTimeoutSeconds": 120` (or `180`) to allow NVIDIA NIM time for KV-cache prefill on large prompts with multiple MCP tools.
    * **Idle Watchdog:** `"nvidia-nim.network.streamIdleTimeout": 120` (or `180`) ensures stalled streams are cleanly aborted and failed over.
    * **Failover Restarts:** `"nvidia-nim.fallback.maxChainRestarts": 2` automatically retries the model chain with backoff if upstream endpoints hit transient 503/529 overload.

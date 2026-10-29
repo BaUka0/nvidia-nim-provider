@@ -13,7 +13,7 @@ import { NvidiaModelDiscoveryService } from "../src/models/discovery";
 import { NimChatModelProvider } from "../src/provider/chat-provider";
 import { makeSecrets } from "./helpers/fakes";
 
-const MODEL_ID = "z-ai/glm-5.3";
+const MODEL_ID = "z-ai/glm-5.3-flash";
 
 function withDeprecationDate<T>(id: string, date: string | undefined, run: () => T): T {
   const entry = MODEL_LIST[id];
@@ -91,17 +91,17 @@ describe("model retirement countdown", () => {
     const now = new Date("2026-10-15T10:00:00Z");
 
     it.each([
-      ["2026-10-30", "GLM 5.3 (retires in 15 days)"],
-      ["2026-10-16", "GLM 5.3 (retires tomorrow)"],
-      ["2026-10-15", "GLM 5.3 (retires today)"],
-      ["2026-10-01", "GLM 5.3 (retired)"],
+      ["2026-10-30", "GLM 5.3 Flash (retires in 15 days)"],
+      ["2026-10-16", "GLM 5.3 Flash (retires tomorrow)"],
+      ["2026-10-15", "GLM 5.3 Flash (retires today)"],
+      ["2026-10-01", "GLM 5.3 Flash (retired)"],
     ])("%s gives %p", (date, expected) => {
-      expect(formatDeprecatedModelName("GLM 5.3", date, now)).toBe(expected);
+      expect(formatDeprecatedModelName("GLM 5.3 Flash", date, now)).toBe(expected);
     });
 
     it("keeps the name without a valid date", () => {
-      expect(formatDeprecatedModelName("GLM 5.3", undefined, now)).toBe("GLM 5.3");
-      expect(formatDeprecatedModelName("GLM 5.3", "2026-02-30", now)).toBe("GLM 5.3");
+      expect(formatDeprecatedModelName("GLM 5.3 Flash", undefined, now)).toBe("GLM 5.3 Flash");
+      expect(formatDeprecatedModelName("GLM 5.3 Flash", "2026-02-30", now)).toBe("GLM 5.3 Flash");
     });
   });
 
@@ -116,9 +116,9 @@ describe("model retirement countdown", () => {
     it("adds the countdown to the name and as a warning banner for a model with a retirement date", () => {
       const info = withDeprecationDate(MODEL_ID, "2026-10-30", pickerInfo);
 
-      expect(info.name).toBe("GLM 5.3 (retires in 15 days)");
+      expect(info.name).toBe("GLM 5.3 Flash (retires in 15 days)");
       expect(info.statusIcon?.id).toBe("warning");
-      expect(info.tooltip).toBe("NVIDIA NIM GLM 5.3");
+      expect(info.tooltip).toBe("NVIDIA NIM GLM 5.3 Flash");
       expect(info.warningText).toEqual({
         [DEPRECATION_WARNING_KEY]:
           "NVIDIA retires this model on October 30, 2026, in 15 days. Switch to another model before then.",
@@ -128,7 +128,7 @@ describe("model retirement countdown", () => {
     it("adds no warning for a model without a retirement date", () => {
       const info = withDeprecationDate(MODEL_ID, undefined, pickerInfo);
 
-      expect(info.name).toBe("GLM 5.3");
+      expect(info.name).toBe("GLM 5.3 Flash");
       expect(info.statusIcon?.id).toBe("zap");
       expect(info).not.toHaveProperty("warningText");
     });

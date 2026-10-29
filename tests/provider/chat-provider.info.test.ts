@@ -45,8 +45,8 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "z-ai/glm-5.3",
-              displayName: "GLM 5.3",
+              id: "z-ai/glm-5.3-flash",
+              displayName: "GLM 5.3 Flash",
               contextWindow: 1048576,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -74,7 +74,7 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
     (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       {
-        id: "z-ai/glm-5.3",
+        id: "z-ai/glm-5.3-flash",
         object: "model",
         owned_by: "integrate.api.nvidia.com",
       },
@@ -92,19 +92,18 @@ describe("NimChatModelProvider", () => {
     expect(fetchModelsOrThrow).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
-        maxOutputTokens: 65536,
+        maxOutputTokens: 131072,
         supportsTools: true,
-        supportsVision: false,
+        supportsVision: true,
       },
     ]);
     expect(infos).toEqual([
       expect.objectContaining({
-        id: "z-ai/glm-5.3",
-        // GLM 5.3 has a retirement date, so the name carries a countdown.
-        name: expect.stringMatching(/^GLM 5\.3\b/),
+        id: "z-ai/glm-5.3-flash",
+        name: "GLM 5.3 Flash",
         detail: "NVIDIA NIM",
       }),
     ]);
@@ -121,7 +120,7 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue(undefined);
     (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       {
-        id: "z-ai/glm-5.3",
+        id: "z-ai/glm-5.3-flash",
         object: "model",
         owned_by: "integrate.api.nvidia.com",
       },
@@ -140,7 +139,7 @@ describe("NimChatModelProvider", () => {
     expect(secrets.get).not.toHaveBeenCalledWith("nvidia-nim.apiKey");
     expect(infos).toEqual([
       expect.objectContaining({
-        id: "z-ai/glm-5.3",
+        id: "z-ai/glm-5.3-flash",
       }),
     ]);
     expect(infos[0]).not.toHaveProperty("apiKey");
@@ -151,8 +150,8 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "z-ai/glm-5.3",
-            displayName: "GLM 5.3",
+            id: "z-ai/glm-5.3-flash",
+            displayName: "GLM 5.3 Flash",
             contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,
@@ -179,8 +178,8 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "z-ai/glm-5.3",
-            displayName: "GLM 5.3",
+            id: "z-ai/glm-5.3-flash",
+            displayName: "GLM 5.3 Flash",
             contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,
@@ -214,7 +213,7 @@ describe("NimChatModelProvider", () => {
     (secrets.get as jest.Mock).mockResolvedValue("legacy-key");
     (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       {
-        id: "z-ai/glm-5.3",
+        id: "z-ai/glm-5.3-flash",
         object: "model",
         owned_by: "z-ai",
       },
@@ -229,7 +228,7 @@ describe("NimChatModelProvider", () => {
     expect(fetchModelsOrThrow).toHaveBeenCalledWith("legacy-key", undefined, "test-ua");
     expect(infos).toEqual([
       expect.objectContaining({
-        id: "z-ai/glm-5.3",
+        id: "z-ai/glm-5.3-flash",
         name: expect.stringMatching(/^GLM 5\.3\b/),
         isUserSelectable: true,
       }),
@@ -241,8 +240,8 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "z-ai/glm-5.3",
-            displayName: "GLM 5.3",
+            id: "z-ai/glm-5.3-flash",
+            displayName: "GLM 5.3 Flash",
             contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,
@@ -274,7 +273,7 @@ describe("NimChatModelProvider", () => {
     expect(groupInfos).toHaveLength(1);
     expect(groupInfos[0]).toEqual(
       expect.objectContaining({
-        id: "z-ai/glm-5.3",
+        id: "z-ai/glm-5.3-flash",
         isUserSelectable: true,
       }),
     );
@@ -286,8 +285,8 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "z-ai/glm-5.3",
-            displayName: "GLM 5.3",
+            id: "z-ai/glm-5.3-flash",
+            displayName: "GLM 5.3 Flash",
             contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,
@@ -331,8 +330,8 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "z-ai/glm-5.3",
-            displayName: "GLM 5.3",
+            id: "z-ai/glm-5.3-flash",
+            displayName: "GLM 5.3 Flash",
             contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,
@@ -374,7 +373,9 @@ describe("NimChatModelProvider", () => {
   it("keeps cloned models from duplicate provider groups bound to their own API keys", async () => {
     (globalState.get as jest.Mock).mockReturnValue(undefined);
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
-    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([{ id: "z-ai/glm-5.3", object: "model" }]);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
+      { id: "z-ai/glm-5.3-flash", object: "model" },
+    ]);
     (streamChatCompletion as jest.Mock).mockImplementation(() =>
       (async function* () {
         yield { choices: [{ delta: { content: "done" } }] };
@@ -422,8 +423,8 @@ describe("NimChatModelProvider", () => {
       if (key === "nvidia-nim.models") {
         return [
           {
-            id: "z-ai/glm-5.3",
-            displayName: "GLM 5.3",
+            id: "z-ai/glm-5.3-flash",
+            displayName: "GLM 5.3 Flash",
             contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,
@@ -482,7 +483,7 @@ describe("NimChatModelProvider", () => {
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
     (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       {
-        id: "z-ai/glm-5.3",
+        id: "z-ai/glm-5.3-flash",
         object: "model",
         owned_by: "integrate.api.nvidia.com",
       },
@@ -500,7 +501,7 @@ describe("NimChatModelProvider", () => {
     expect(fetchModelsOrThrow).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
     expect(infos[0]).toEqual(
       expect.objectContaining({
-        id: "z-ai/glm-5.3",
+        id: "z-ai/glm-5.3-flash",
         isUserSelectable: true,
       }),
     );
@@ -543,8 +544,8 @@ describe("NimChatModelProvider", () => {
   it("provideLanguageModelChatInformation returns cached normalized models for a configured provider group", async () => {
     const cachedModels = [
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
@@ -573,9 +574,9 @@ describe("NimChatModelProvider", () => {
       token,
     );
     expect(infos.length).toBe(1);
-    expect(infos[0].id).toBe("z-ai/glm-5.3");
+    expect(infos[0].id).toBe("z-ai/glm-5.3-flash");
     expect(infos[0].detail).toBe("NVIDIA NIM");
-    expect(infos[0].tooltip).toBe("NVIDIA NIM GLM 5.3");
+    expect(infos[0].tooltip).toBe("NVIDIA NIM GLM 5.3 Flash");
     expect(infos[0].family).toBe("nvidia-nim");
     expect(infos[0]).toEqual(expect.objectContaining({ isUserSelectable: true }));
     expect(globalState.get).toHaveBeenCalledWith("nvidia-nim.models");
@@ -625,8 +626,8 @@ describe("NimChatModelProvider", () => {
   it("does not refetch a fresh cache on repeated provider-group resolution", async () => {
     const cachedModels = [
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
@@ -660,8 +661,8 @@ describe("NimChatModelProvider", () => {
   it("migrates an older cache version during provider-group resolution", async () => {
     const cachedModels = [
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
@@ -677,7 +678,9 @@ describe("NimChatModelProvider", () => {
       return undefined;
     });
     (globalState.update as jest.Mock).mockResolvedValue(undefined);
-    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([{ id: "z-ai/glm-5.3", object: "model" }]);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
+      { id: "z-ai/glm-5.3-flash", object: "model" },
+    ]);
     const token = makeToken();
 
     const infos = await provider.provideLanguageModelChatInformation(
@@ -689,7 +692,7 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
-    expect(infos).toEqual([expect.objectContaining({ id: "z-ai/glm-5.3" })]);
+    expect(infos).toEqual([expect.objectContaining({ id: "z-ai/glm-5.3-flash" })]);
     expect(fetchModelsOrThrow).toHaveBeenCalledWith("configured-key", undefined, "test-ua");
   });
 
@@ -717,8 +720,8 @@ describe("NimChatModelProvider", () => {
   it("does not advertise image input for non-vision normalized models", async () => {
     const cachedModels = [
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
@@ -761,7 +764,7 @@ describe("NimChatModelProvider", () => {
   it("refreshes cached models when the provider-group key changes", async () => {
     const cachedModels = [
       {
-        id: "z-ai/glm-5.3",
+        id: "z-ai/glm-5.3-flash",
         displayName: "GLM-5.3",
         contextWindow: 131072,
         maxOutputTokens: 8192,
@@ -803,7 +806,7 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
-    expect(firstInfos[0].id).toBe("z-ai/glm-5.3");
+    expect(firstInfos[0].id).toBe("z-ai/glm-5.3-flash");
     expect(secondInfos[0].id).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
     expect(secondInfos[0]).toEqual(expect.objectContaining({ isUserSelectable: true }));
     expect(fetchModelsOrThrow).toHaveBeenCalledWith("key-b", undefined, "test-ua");
@@ -812,7 +815,7 @@ describe("NimChatModelProvider", () => {
   it("invalidates the model cache when model information changes", async () => {
     const cachedModels = [
       {
-        id: "z-ai/glm-5.3",
+        id: "z-ai/glm-5.3-flash",
         displayName: "GLM-5.3",
         contextWindow: 131072,
         maxOutputTokens: 8192,
@@ -855,7 +858,7 @@ describe("NimChatModelProvider", () => {
       token,
     );
 
-    expect(before[0].id).toBe("z-ai/glm-5.3");
+    expect(before[0].id).toBe("z-ai/glm-5.3-flash");
     expect(after[0].id).toBe("nvidia/nemotron-3.5-lightning-30b-a3b");
     expect(fetchModelsOrThrow).toHaveBeenCalledWith("key-a", undefined, "test-ua");
   });
@@ -984,8 +987,8 @@ describe("NimChatModelProvider", () => {
   it("preserves configured provider group key bindings across background groupless resolution calls", async () => {
     const cachedModels = [
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
@@ -1028,8 +1031,8 @@ describe("NimChatModelProvider", () => {
   describe("models retired with HTTP 410", () => {
     const LIGHTNING = "nvidia/nemotron-3.5-lightning-30b-a3b";
     const glm = makeModel({
-      id: "z-ai/glm-5.3",
-      name: "GLM 5.3",
+      id: "z-ai/glm-5.3-flash",
+      name: "GLM 5.3 Flash",
       maxInputTokens: 900000,
       maxOutputTokens: 65536,
     });
@@ -1053,7 +1056,7 @@ describe("NimChatModelProvider", () => {
       (globalState.update as jest.Mock).mockResolvedValue(undefined);
       (secrets.get as jest.Mock).mockResolvedValue("test-key");
       (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
-        { id: "z-ai/glm-5.3", object: "model", owned_by: "integrate.api.nvidia.com" },
+        { id: "z-ai/glm-5.3-flash", object: "model", owned_by: "integrate.api.nvidia.com" },
         { id: LIGHTNING, object: "model", owned_by: "integrate.api.nvidia.com" },
       ]);
     });
@@ -1086,7 +1089,7 @@ describe("NimChatModelProvider", () => {
       const requestedModels = (streamChatCompletion as jest.Mock).mock.calls.map(
         (call: unknown[]) => (call[1] as { model: string }).model,
       );
-      expect(requestedModels).toEqual(["z-ai/glm-5.3", LIGHTNING, LIGHTNING]);
+      expect(requestedModels).toEqual(["z-ai/glm-5.3-flash", LIGHTNING, LIGHTNING]);
       expect(hasFallbackNotice(first)).toBe(true);
       expect(hasFallbackNotice(second)).toBe(false);
       expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(1);
@@ -1117,15 +1120,15 @@ describe("NimChatModelProvider", () => {
       const requestedModels = (streamChatCompletion as jest.Mock).mock.calls.map(
         (call: unknown[]) => (call[1] as { model: string }).model,
       );
-      expect(requestedModels).toEqual(["z-ai/glm-5.3", LIGHTNING, "z-ai/glm-5.3"]);
+      expect(requestedModels).toEqual(["z-ai/glm-5.3-flash", LIGHTNING, "z-ai/glm-5.3-flash"]);
     });
   });
 
   describe("models at capacity (ResourceExhausted)", () => {
     const LIGHTNING = "nvidia/nemotron-3.5-lightning-30b-a3b";
     const glm = makeModel({
-      id: "z-ai/glm-5.3",
-      name: "GLM 5.3",
+      id: "z-ai/glm-5.3-flash",
+      name: "GLM 5.3 Flash",
       maxInputTokens: 900000,
       maxOutputTokens: 65536,
     });
@@ -1135,7 +1138,7 @@ describe("NimChatModelProvider", () => {
     const exhausted = async function* () {
       throw classifyApiError(new Error("HTTP 500 Internal Server Error"), {
         status: 500,
-        model: "z-ai/glm-5.3",
+        model: "z-ai/glm-5.3-flash",
         operation: "stream",
         detail:
           '{"message":"ResourceExhausted: Worker local total request limit reached (16/16)","type":"internal_server_error","code":500}',
@@ -1165,7 +1168,7 @@ describe("NimChatModelProvider", () => {
       (globalState.update as jest.Mock).mockResolvedValue(undefined);
       (secrets.get as jest.Mock).mockResolvedValue("test-key");
       (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
-        { id: "z-ai/glm-5.3", object: "model", owned_by: "integrate.api.nvidia.com" },
+        { id: "z-ai/glm-5.3-flash", object: "model", owned_by: "integrate.api.nvidia.com" },
         { id: LIGHTNING, object: "model", owned_by: "integrate.api.nvidia.com" },
       ]);
       useFallbackEnabled(true);
@@ -1184,13 +1187,13 @@ describe("NimChatModelProvider", () => {
         .mockImplementation(() => answer());
 
       await send("Hi");
-      expect(requestedModels()).toEqual(["z-ai/glm-5.3", LIGHTNING]);
+      expect(requestedModels()).toEqual(["z-ai/glm-5.3-flash", LIGHTNING]);
       expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-        "Overloaded on GLM 5.3. Falling back to Nemotron 3.5 Lightning.",
+        "Overloaded on GLM 5.3 Flash. Falling back to Nemotron 3.5 Lightning.",
       );
 
       await send("Again");
-      expect(requestedModels()).toEqual(["z-ai/glm-5.3", LIGHTNING, "z-ai/glm-5.3"]);
+      expect(requestedModels()).toEqual(["z-ai/glm-5.3-flash", LIGHTNING, "z-ai/glm-5.3-flash"]);
     });
 
     it("keeps calling the picked model when failover is off", async () => {
@@ -1202,7 +1205,7 @@ describe("NimChatModelProvider", () => {
       await expect(send("Hi")).rejects.toMatchObject({ kind: "rate_limited" });
       await send("Again");
 
-      expect(requestedModels()).toEqual(["z-ai/glm-5.3", "z-ai/glm-5.3"]);
+      expect(requestedModels()).toEqual(["z-ai/glm-5.3-flash", "z-ai/glm-5.3-flash"]);
     });
   });
 });

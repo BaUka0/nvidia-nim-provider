@@ -359,8 +359,8 @@ describe("activate", () => {
   it("refreshes cached models in the background on activation when an API key exists", async () => {
     const rawModels = [
       {
-        id: "z-ai/glm-5.3",
-        name: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        name: "GLM 5.3 Flash",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -404,12 +404,12 @@ describe("activate", () => {
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.rawModels", rawModels);
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
-        maxOutputTokens: 65536,
+        maxOutputTokens: 131072,
         supportsTools: true,
-        supportsVision: false,
+        supportsVision: true,
       },
     ]);
     expect(providerInstance.fireModelInfoChanged).toHaveBeenCalled();
@@ -419,8 +419,8 @@ describe("activate", () => {
   it("stores raw and normalized model caches when the refresh command succeeds", async () => {
     const rawModels = [
       {
-        id: "z-ai/glm-5.3",
-        name: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        name: "GLM 5.3 Flash",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -462,12 +462,12 @@ describe("activate", () => {
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.rawModels", rawModels);
     expect(globalState.update).toHaveBeenCalledWith("nvidia-nim.models", [
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
-        maxOutputTokens: 65536,
+        maxOutputTokens: 131072,
         supportsTools: true,
-        supportsVision: false,
+        supportsVision: true,
       },
     ]);
     expect(globalState.update).toHaveBeenCalledWith(
@@ -568,8 +568,8 @@ describe("activate", () => {
   it("rolls back the raw cache if normalized cache persistence fails", async () => {
     const rawModels = [
       {
-        id: "z-ai/glm-5.3",
-        name: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        name: "GLM 5.3 Flash",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -630,12 +630,12 @@ describe("activate", () => {
     expect(update).toHaveBeenNthCalledWith(1, "nvidia-nim.rawModels", rawModels);
     expect(update).toHaveBeenNthCalledWith(2, "nvidia-nim.models", [
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
-        maxOutputTokens: 65536,
+        maxOutputTokens: 131072,
         supportsTools: true,
-        supportsVision: false,
+        supportsVision: true,
       },
     ]);
     expect(update).toHaveBeenNthCalledWith(3, "nvidia-nim.rawModels", previousRawModels);
@@ -647,8 +647,8 @@ describe("activate", () => {
   it("waits for an in-flight refresh before starting another refresh", async () => {
     const firstRawModels = [
       {
-        id: "z-ai/glm-5.3",
-        name: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        name: "GLM 5.3 Flash",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },
@@ -684,7 +684,7 @@ describe("activate", () => {
             (model) =>
               typeof model === "object" &&
               model !== null &&
-              (model as { id?: string }).id === "z-ai/glm-5.3",
+              (model as { id?: string }).id === "z-ai/glm-5.3-flash",
           )
         ) {
           return firstModelsWrite.promise;
@@ -720,8 +720,8 @@ describe("activate", () => {
   it("preserves the normalized cache write error when rollback also fails", async () => {
     const rawModels = [
       {
-        id: "z-ai/glm-5.3",
-        name: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        name: "GLM 5.3 Flash",
         capabilities: { chat: true, tool_calling: true, vision: true },
         metadata: { context_window: 128000, max_output_tokens: 8192 },
       },

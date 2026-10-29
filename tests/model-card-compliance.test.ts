@@ -90,13 +90,13 @@ describe("NVIDIA model card compliance", () => {
   });
 
   it("still sends top_p to models that accept it", async () => {
-    const prepared = await prepare("z-ai/glm-5.3");
+    const prepared = await prepare("z-ai/glm-5.3-flash");
 
     expect(prepared.requestBody.top_p).toBe(0.95);
   });
 
   it("clamps temperature to the documented maximum of 1", async () => {
-    const prepared = await prepare("z-ai/glm-5.3", { temperature: 1.7 });
+    const prepared = await prepare("z-ai/glm-5.3-flash", { temperature: 1.7 });
 
     expect(prepared.requestBody.temperature).toBe(1);
   });

@@ -7,7 +7,6 @@ const CURATED_MODEL_IDS = new Set([
   "nvidia/nemotron-3.5-lightning-30b-a3b",
   "nvidia/nemotron-3.5-super-vl-120b-a12b",
   "stepfun-ai/step-5-preview",
-  "z-ai/glm-5.3",
   "z-ai/glm-5.3-flash",
 ]);
 

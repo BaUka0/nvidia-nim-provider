@@ -2028,7 +2028,11 @@ describe("NimChatModelProvider", () => {
       maxOutputTokens: 65536,
     });
     resolver.registerModelKey(staleModel, "key-a", "group-a");
-    resolver.registerModelKey(makeModel({ id: "z-ai/glm-5.3" }), "key-b", "group-b");
+    resolver.registerModelKey(
+      makeModel({ id: "nvidia/nemotron-3-ultra-550b-a55b" }),
+      "key-b",
+      "group-b",
+    );
     resolver.clearRuntimeBindings("group-a");
 
     await expect(
@@ -2112,7 +2116,7 @@ describe("NimChatModelProvider", () => {
     const progress = { report: jest.fn() };
     await provider.provideLanguageModelChatResponse(
       makeModel({
-        id: "z-ai/glm-5.3",
+        id: "nvidia/nemotron-3-ultra-550b-a55b",
         maxInputTokens: 100000,
         maxOutputTokens: 65536,
       }),
@@ -3015,8 +3019,8 @@ describe("NimChatModelProvider", () => {
               supportsVision: true,
             },
             {
-              id: "z-ai/glm-5.3",
-              displayName: "GLM 5.3",
+              id: "nvidia/nemotron-3-ultra-550b-a55b",
+              displayName: "Nemotron 3 Ultra",
               contextWindow: 1048576,
               maxOutputTokens: 65536,
               supportsTools: true,
@@ -3033,7 +3037,7 @@ describe("NimChatModelProvider", () => {
 
     (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
       get: jest.fn((key: string, defaultValue: unknown) => {
-        if (key === "fallback.model") return "z-ai/glm-5.3";
+        if (key === "fallback.model") return "nvidia/nemotron-3-ultra-550b-a55b";
         if (key === "fallback.enabled") return true;
         if (key === "fallback.showNoticeInChat") return true;
         return defaultValue;
@@ -3071,10 +3075,10 @@ describe("NimChatModelProvider", () => {
 
     expect(streamChatCompletion).toHaveBeenCalledTimes(2);
     const fallbackRequest = (streamChatCompletion as jest.Mock).mock.calls[1][1];
-    expect(fallbackRequest.model).toBe("z-ai/glm-5.3");
+    expect(fallbackRequest.model).toBe("nvidia/nemotron-3-ultra-550b-a55b");
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({
-        value: expect.stringContaining("GLM 5.3"),
+        value: expect.stringContaining("Nemotron 3 Ultra"),
       }),
     );
   });

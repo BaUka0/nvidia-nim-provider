@@ -33,7 +33,7 @@ function mapModel(id: string) {
 
 describe("Context Size picker option", () => {
   it("offers smaller tiers plus the full input budget on a 1M model, defaulting to full", () => {
-    const info = mapModel("z-ai/glm-5.3");
+    const info = mapModel("z-ai/glm-5.3-flash");
     const property = info.configurationSchema?.properties.contextSize;
 
     expect(property).toMatchObject({

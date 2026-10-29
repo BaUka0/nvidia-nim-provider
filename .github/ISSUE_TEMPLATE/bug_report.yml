@@ -18,7 +18,6 @@ body:
       label: Active Model
       description: Which model was selected when the issue occurred?
       options:
-        - "z-ai/glm-5.3"
         - "z-ai/glm-5.3-flash"
         - "deepseek-ai/deepseek-v4.1-flash"
         - "stepfun-ai/step-5-preview"

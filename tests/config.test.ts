@@ -46,7 +46,7 @@ describe("ConfigManager", () => {
 
     it("reads custom fallback settings", () => {
       mockStore["fallback.enabled"] = false;
-      mockStore["fallback.model"] = "z-ai/glm-5.3";
+      mockStore["fallback.model"] = "nvidia/nemotron-3-ultra-550b-a55b";
       mockStore["fallback.visionModel"] = "z-ai/glm-5.3-flash";
       mockStore["fallback.onTimeout"] = false;
       mockStore["fallback.onFirstTokenTimeout"] = false;
@@ -57,7 +57,7 @@ describe("ConfigManager", () => {
 
       const config = ConfigManager.getFallbackConfig();
       expect(config.enabled).toBe(false);
-      expect(config.model).toBe("z-ai/glm-5.3");
+      expect(config.model).toBe("nvidia/nemotron-3-ultra-550b-a55b");
       expect(config.visionModel).toBe("z-ai/glm-5.3-flash");
       expect(config.onTimeout).toBe(false);
       expect(config.onFirstTokenTimeout).toBe(false);
@@ -104,33 +104,41 @@ describe("ConfigManager", () => {
 
     it("sanitizes fallback.priorityList entries", () => {
       mockStore["fallback.priorityList"] = [
-        "  z-ai/glm-5.3  ",
+        "  nvidia/nemotron-3-ultra-550b-a55b  ",
         "",
         42,
         null,
         "meta/muse-glimmer-30b",
       ];
       const config = ConfigManager.getFallbackConfig();
-      expect(config.priorityList).toEqual(["z-ai/glm-5.3", "meta/muse-glimmer-30b"]);
+      expect(config.priorityList).toEqual([
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "meta/muse-glimmer-30b",
+      ]);
 
       mockStore["fallback.priorityList"] = "not-an-array";
       expect(ConfigManager.getFallbackConfig().priorityList).toEqual([]);
     });
 
     it("drops unknown catalog ids from fallback.priorityList", () => {
-      mockStore["fallback.priorityList"] = ["z-ai/glm-5.3", "vendor/not-a-real-model"];
-      expect(ConfigManager.getFallbackConfig().priorityList).toEqual(["z-ai/glm-5.3"]);
+      mockStore["fallback.priorityList"] = [
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "vendor/not-a-real-model",
+      ];
+      expect(ConfigManager.getFallbackConfig().priorityList).toEqual([
+        "nvidia/nemotron-3-ultra-550b-a55b",
+      ]);
     });
 
     it("falls back to the default model for non-string or inherited ids", () => {
       mockStore["fallback.model"] = null;
       mockStore["fallback.visionModel"] = 42;
-      mockStore["fallback.priorityList"] = ["toString", "z-ai/glm-5.3"];
+      mockStore["fallback.priorityList"] = ["toString", "nvidia/nemotron-3-ultra-550b-a55b"];
 
       const config = ConfigManager.getFallbackConfig();
       expect(config.model).toBe(DEFAULT_FALLBACK_CONFIG.model);
       expect(config.visionModel).toBe(DEFAULT_FALLBACK_CONFIG.visionModel);
-      expect(config.priorityList).toEqual(["z-ai/glm-5.3"]);
+      expect(config.priorityList).toEqual(["nvidia/nemotron-3-ultra-550b-a55b"]);
     });
   });
 

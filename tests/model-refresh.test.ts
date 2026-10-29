@@ -59,7 +59,9 @@ describe("model cache key ownership and refresh", () => {
     const secrets = { get: jest.fn(async () => undefined) };
     const resolver = new NvidiaApiKeyResolver(secrets);
     resolver.rememberRuntimeKey("provider-group-key");
-    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([{ id: "z-ai/glm-5.3", object: "model" }]);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
+      { id: "z-ai/glm-5.3-flash", object: "model" },
+    ]);
     const globalState = {
       get: jest.fn(() => undefined),
       update: jest.fn(async () => undefined),
@@ -93,8 +95,8 @@ describe("model cache key ownership and refresh", () => {
   it("does not retain stale normalized models when a changed key returns no curated models", async () => {
     const oldModels = [
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
@@ -140,8 +142,8 @@ describe("model cache key ownership and refresh", () => {
     const secrets = { get: jest.fn(async () => undefined) };
     (fetchModelsOrThrow as jest.Mock).mockResolvedValue([
       {
-        id: "z-ai/glm-5.3",
-        name: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        name: "GLM 5.3 Flash",
       },
     ]);
     const discovery = new NvidiaModelDiscoveryService(
@@ -153,14 +155,14 @@ describe("model cache key ownership and refresh", () => {
     const models = await discovery.getAvailableModels("same-key", { refreshStaleCache: true });
 
     expect(fetchModelsOrThrow).toHaveBeenCalledTimes(1);
-    expect(models.map((model) => model.id)).toEqual(["z-ai/glm-5.3"]);
+    expect(models.map((model) => model.id)).toEqual(["z-ai/glm-5.3-flash"]);
   });
 
   it("refreshes a legacy cache that has no key fingerprint before serving it", async () => {
     const cachedModels = [
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
@@ -190,8 +192,8 @@ describe("model cache key ownership and refresh", () => {
   it("refreshes a cache written by an older cache version", async () => {
     const cachedModels = [
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
         maxOutputTokens: 65536,
         supportsTools: true,
@@ -204,7 +206,7 @@ describe("model cache key ownership and refresh", () => {
       [MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY]: getApiKeyFingerprint("test-key"),
     });
     const secrets = { get: jest.fn(async () => undefined) };
-    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([{ id: "z-ai/glm-5.3" }]);
+    (fetchModelsOrThrow as jest.Mock).mockResolvedValue([{ id: "z-ai/glm-5.3-flash" }]);
     const discovery = new NvidiaModelDiscoveryService(
       secrets as never,
       "test-ua",
@@ -212,7 +214,7 @@ describe("model cache key ownership and refresh", () => {
     );
 
     await expect(discovery.getAvailableModels("test-key")).resolves.toEqual([
-      expect.objectContaining({ id: "z-ai/glm-5.3" }),
+      expect.objectContaining({ id: "z-ai/glm-5.3-flash" }),
     ]);
 
     expect(fetchModelsOrThrow).toHaveBeenCalledWith("test-key", undefined, "test-ua");
@@ -220,7 +222,7 @@ describe("model cache key ownership and refresh", () => {
   });
 
   it("writes the raw and normalized cache through discovery", async () => {
-    const rawModels = [{ id: "z-ai/glm-5.3" }];
+    const rawModels = [{ id: "z-ai/glm-5.3-flash" }];
     const globalState = createMutableGlobalState();
     const secrets = { get: jest.fn(async () => undefined) };
     (fetchModelsOrThrow as jest.Mock).mockResolvedValue(rawModels);
@@ -234,7 +236,7 @@ describe("model cache key ownership and refresh", () => {
 
     expect(globalState.values.get(RAW_MODELS_STATE_KEY)).toEqual(rawModels);
     expect(globalState.values.get(MODELS_STATE_KEY)).toEqual([
-      expect.objectContaining({ id: "z-ai/glm-5.3" }),
+      expect.objectContaining({ id: "z-ai/glm-5.3-flash" }),
     ]);
     expect(globalState.values.get(MODELS_CACHE_VERSION_STATE_KEY)).toBe(MODELS_CACHE_VERSION);
     expect(globalState.values.get(MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY)).toBe(
@@ -244,8 +246,8 @@ describe("model cache key ownership and refresh", () => {
 
   it("filters malformed and non-curated normalized cache entries", () => {
     const curatedModel = {
-      id: "z-ai/glm-5.3",
-      displayName: "GLM 5.3",
+      id: "z-ai/glm-5.3-flash",
+      displayName: "GLM 5.3 Flash",
       contextWindow: 1048576,
       maxOutputTokens: 65536,
       supportsTools: true,
@@ -269,16 +271,16 @@ describe("model cache key ownership and refresh", () => {
   });
 
   it("serializes discovery rollback before a queued manual refresh write", async () => {
-    const initialRawModels = [{ id: "z-ai/glm-5.3" }];
-    const { adapter: _adapter, ...glmCatalog } = MODEL_LIST["z-ai/glm-5.3"];
+    const initialRawModels = [{ id: "z-ai/glm-5.3-flash" }];
+    const { adapter: _adapter, ...glmCatalog } = MODEL_LIST["z-ai/glm-5.3-flash"];
     const initialNormalizedModels = [
       {
-        id: "z-ai/glm-5.3",
+        id: "z-ai/glm-5.3-flash",
         ...glmCatalog,
       },
     ];
     const discoveryRawModels = [{ id: "nvidia/nemotron-3.5-lightning-30b-a3b" }];
-    const manualRawModels = [{ id: "z-ai/glm-5.3" }];
+    const manualRawModels = [{ id: "z-ai/glm-5.3-flash" }];
     const discoveryWriteBlocked = createDeferred();
     const failDiscoveryWrite = createDeferred();
     let shouldFailDiscoveryWrite = true;
@@ -334,7 +336,7 @@ describe("model cache key ownership and refresh", () => {
     expect(fetchModelsOrThrow).toHaveBeenNthCalledWith(2, "manual-key", undefined, "manual-ua");
     expect(globalState.values.get(RAW_MODELS_STATE_KEY)).toEqual(manualRawModels);
     expect(globalState.values.get(MODELS_STATE_KEY)).toEqual([
-      expect.objectContaining({ id: "z-ai/glm-5.3" }),
+      expect.objectContaining({ id: "z-ai/glm-5.3-flash" }),
     ]);
     expect(globalState.values.get(MODELS_CACHE_VERSION_STATE_KEY)).toBe(MODELS_CACHE_VERSION);
     expect(globalState.values.get(MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY)).toBe(

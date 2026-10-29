@@ -16,7 +16,7 @@ describe("normalizeNvidiaModels", () => {
   it("keeps whitelisted models and applies overrides", () => {
     const raw: NvidiaModelSummary[] = [
       {
-        id: "z-ai/glm-5.3",
+        id: "z-ai/glm-5.3-flash",
       },
       {
         id: "unknown/model-that-should-be-filtered",
@@ -25,12 +25,12 @@ describe("normalizeNvidiaModels", () => {
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       {
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
         contextWindow: 1048576,
-        maxOutputTokens: 65536,
+        maxOutputTokens: 131072,
         supportsTools: true,
-        supportsVision: false,
+        supportsVision: true,
       },
     ]);
   });
@@ -93,12 +93,12 @@ describe("normalizeNvidiaModels", () => {
   });
 
   it("deduplicates exact duplicate model ids from the NVIDIA catalog", () => {
-    const raw: NvidiaModelSummary[] = [{ id: "z-ai/glm-5.3" }, { id: "z-ai/glm-5.3" }];
+    const raw: NvidiaModelSummary[] = [{ id: "z-ai/glm-5.3-flash" }, { id: "z-ai/glm-5.3-flash" }];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
-        id: "z-ai/glm-5.3",
-        displayName: "GLM 5.3",
+        id: "z-ai/glm-5.3-flash",
+        displayName: "GLM 5.3 Flash",
       }),
     ]);
   });
@@ -153,8 +153,8 @@ describe("getFallbackModel", () => {
     supportsVision: true,
   };
   const glm = {
-    id: "z-ai/glm-5.3",
-    displayName: "GLM 5.3",
+    id: "z-ai/glm-5.3-flash",
+    displayName: "GLM 5.3 Flash",
     contextWindow: 1048576,
     maxOutputTokens: 65536,
     supportsTools: true,
@@ -175,7 +175,7 @@ describe("getFallbackModel", () => {
       expect(
         getFallbackModel(kimi.id, [kimi, glm, lightning], {
           configuredFallbackModelId: FALLBACK_MODEL_ID,
-          priorityList: ["z-ai/glm-5.3", "meta/muse-glimmer-30b"],
+          priorityList: ["z-ai/glm-5.3-flash", "meta/muse-glimmer-30b"],
         }),
       ).toEqual(glm);
     });
@@ -184,7 +184,7 @@ describe("getFallbackModel", () => {
       expect(
         getFallbackModel(kimi.id, [kimi, glm], {
           configuredFallbackModelId: FALLBACK_MODEL_ID,
-          triedModelIds: ["z-ai/glm-5.3"],
+          triedModelIds: ["z-ai/glm-5.3-flash"],
         }),
       ).toBeUndefined();
     });
