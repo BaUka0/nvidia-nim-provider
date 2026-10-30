@@ -417,6 +417,7 @@ export class NimRequestBuilder {
     if (adapter.applyReasoningMode) {
       adapter.applyReasoningMode(requestBody, reasoningMode);
     }
+    adapter.applyRequestWorkaround?.(requestBody);
 
     const reasoningIsolationExpected = isReasoningIsolationExpected(adapter, reasoningMode);
 

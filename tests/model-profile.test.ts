@@ -159,6 +159,42 @@ describe("applyReasoningMode", () => {
     expect(request.reasoning_effort).toBe("low");
   });
 
+  it("continues a trailing assistant prefill on Mistral Large 4 instead of sending it as-is", () => {
+    const adapter = getModelAdapter("mistralai/mistral-large-4-1t-a52b");
+    const prefill: NimChatRequest = {
+      model: "mistralai/mistral-large-4-1t-a52b",
+      messages: [
+        { role: "user", content: "hi" },
+        { role: "assistant", content: "hello" },
+      ],
+    };
+    const userTail: NimChatRequest = {
+      model: "mistralai/mistral-large-4-1t-a52b",
+      messages: [{ role: "user", content: "hi" }],
+    };
+    const toolCallTail: NimChatRequest = {
+      model: "mistralai/mistral-large-4-1t-a52b",
+      messages: [
+        { role: "user", content: "hi" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { id: "call_1", type: "function", function: { name: "x", arguments: "{}" } },
+          ],
+        },
+      ],
+    };
+
+    adapter.applyRequestWorkaround!(prefill);
+    adapter.applyRequestWorkaround!(userTail);
+    adapter.applyRequestWorkaround!(toolCallTail);
+
+    expect(prefill).toMatchObject({ continue_final_message: true, add_generation_prompt: false });
+    expect(userTail).not.toHaveProperty("continue_final_message");
+    expect(toolCallTail).not.toHaveProperty("continue_final_message");
+  });
+
   it("exposes GLM reasoning effort modes and maps selected modes", () => {
     const adapter = getModelAdapter("z-ai/glm-5.3-flash");
     const request: NimChatRequest = {

@@ -41,6 +41,9 @@ export interface NimChatRequest {
   reasoning_effort?: string;
   enable_thinking?: boolean;
   chat_template_kwargs?: Record<string, unknown>;
+  /** vLLM: render the trailing assistant message open so the model continues it. */
+  continue_final_message?: boolean;
+  add_generation_prompt?: boolean;
   stream_options?: { include_usage: boolean };
 }
 

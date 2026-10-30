@@ -31,6 +31,8 @@ export interface ModelAdapter {
   getProfile(options: { toolsEnabled?: boolean }): NvidiaModelRequestProfile;
   applyMessagesWorkaround?(messages: NimChatMessage[]): NimChatMessage[];
   applyReasoningMode?(request: import("../../types").NimChatRequest, mode: string): void;
+  /** Final request-level fixes once the body and its messages are built. */
+  applyRequestWorkaround?(request: import("../../types").NimChatRequest): void;
   isContentOnlyMode?(mode: string): boolean;
   readonly supportedReasoningModes?: string[];
   /** Model-specific default used until the user sets `nvidia-nim.reasoning.mode`. */

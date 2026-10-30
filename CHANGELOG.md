@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Fixed
+
+- Mistral Large 4 no longer fails with "NVIDIA NIM rejected the request" when Copilot Chat asks it to continue a reply it already started. It now picks up where that reply left off.
+
 ## [1.10.0] - 2026-10-30
 
 ### Added

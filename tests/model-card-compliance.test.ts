@@ -95,6 +95,31 @@ describe("NVIDIA model card compliance", () => {
     expect(prepared.requestBody.top_p).toBe(0.95);
   });
 
+  // Mistral's chat template answers a trailing assistant message with a bare
+  // HTTP 400 unless the request asks vLLM to continue it.
+  it("marks a host assistant prefill for continuation on Mistral Large 4", async () => {
+    const id = "mistralai/mistral-large-4-1t-a52b";
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: makeModel({ id, name: id, maxInputTokens: 100_000, maxOutputTokens: 4096 }),
+      messages: makeChatMessages(
+        { role: 1, content: [new vscode.LanguageModelTextPart("hi")] },
+        { role: 2, content: [new vscode.LanguageModelTextPart("hello")] },
+      ),
+      options: makeChatOptions(),
+      contextWindow: 200_000,
+      supportsTools: false,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
+    });
+
+    expect(prepared.requestBody.messages.at(-1)?.role).toBe("assistant");
+    expect(prepared.requestBody.continue_final_message).toBe(true);
+    expect(prepared.requestBody.add_generation_prompt).toBe(false);
+    expect((await prepare(id)).requestBody).not.toHaveProperty("continue_final_message");
+  });
+
   it("clamps temperature to the documented maximum of 1", async () => {
     const prepared = await prepare("z-ai/glm-5.3-flash", { temperature: 1.7 });
 

@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Fixed
+
+- **Mistral Large 4 trailing assistant prefill (`src/models/adapters/mistral.ts`, `src/models/adapters/base.ts`, `src/provider/request-builder.ts`, `src/types.ts`, `tests/model-profile.test.ts`, `tests/model-card-compliance.test.ts`).** Hosted NIM returns a bare 400 `Invalid request` for `mistralai/mistral-large-4-1t-a52b` whenever the last message is `assistant` (with or without `tool_calls`); Mistral's own `prefix: true` is rejected too. Tool call id formats (`call_*`, `tool_<uuid>`, `toolu_*`), user after tool, `content: null` with `tool_calls`, multiple system messages and image parts all return 200, so the host's assistant-tail request (`requestTail: "assistant"`) is the only bare-400 shape found. New optional `ModelAdapter.applyRequestWorkaround(request)`, called by `prepareRequest` after `applyReasoningMode`; `MistralAdapter` sets vLLM's `continue_final_message: true` and `add_generation_prompt: false` when the tail is an assistant message without `tool_calls` (a dangling tool-call tail returns 200 with the flag but garbage output, so it is left alone). Retry nudges appended later leave a user tail; NIM still returns 200 with the flag set. Verified on hosted NIM on 2026-10-30. Addresses #58.
+
 ## [1.10.0] - 2026-10-30
 
 ### Added
