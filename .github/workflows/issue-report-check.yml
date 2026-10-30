@@ -24,6 +24,33 @@ jobs:
             const LABEL = 'needs-report';
             const issue = context.payload.issue;
             const body = issue.body ?? '';
+            const { owner, repo } = context.repo;
+            const issue_number = issue.number;
+            const labels = (issue.labels ?? []).map((l) => (typeof l === 'string' ? l : l.name));
+
+            // An error dump filed through feature_request.yml dodges the report check
+            // below: move it to bug and close it like a bug report without a file.
+            const featureHeader = '### What would you like to see?';
+            const errorDump = /NvidiaApiError|\[[A-Z_]+\] NVIDIA NIM|neuraldock\.nvidia-nim-agent-[\w.-]+[\\/]out[\\/]/;
+            if (body.includes(featureHeader) && errorDump.test(body)) {
+              const moved = labels.includes('bug');
+              await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'enhancement' }).catch(() => {});
+              if (!moved) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number, labels: ['bug'] });
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number,
+                  body: [
+                    'This is an error report, not a feature request, so it is closed.',
+                    '',
+                    'Open a new issue with the **Bug Report** form, run `NVIDIA NIM: Save Last Turn Report` from the Command Palette right after the failing turn, and drag and drop the saved `nvidia-nim-turn-report-*.json` file into the **Last Turn Report** section. Pasted JSON text does not count.',
+                  ].join('\n'),
+                });
+              }
+              if (issue.state !== 'closed') {
+                await github.rest.issues.update({ owner, repo, issue_number, state: 'closed', state_reason: 'not_planned' });
+              }
+              return;
+            }
 
             // Only issues created from bug_report.yml carry this section header.
             const header = '### Last Turn Report';
@@ -41,9 +68,6 @@ jobs:
             const attachment = /https:\/\/github\.com\/(?:user-attachments|[\w.-]+\/[\w.-]+)\/files\/\d+\/[^\s)\]]+\.(?:json|zip|txt|log)\b/i;
             const hasFile = attachment.test(section);
 
-            const { owner, repo } = context.repo;
-            const issue_number = issue.number;
-            const labels = (issue.labels ?? []).map((l) => (typeof l === 'string' ? l : l.name));
             const flagged = labels.includes(LABEL);
 
             if (hasFile) {

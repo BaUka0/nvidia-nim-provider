@@ -1,5 +1,5 @@
 name: Feature Request
-description: Suggest an idea, feature, or improvement.
+description: Suggest an idea, feature, or improvement. Errors and failed turns go to the Bug Report form.
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
@@ -7,7 +7,7 @@ body:
     id: description
     attributes:
       label: What would you like to see?
-      description: Describe the feature, model, or improvement you have in mind.
+      description: Describe the feature, model, or improvement you have in mind. Error messages and stack traces filed here are closed automatically; use the Bug Report form with the turn report file attached.
       placeholder: Tell us about your idea...
     validations:
       required: true
