@@ -7,6 +7,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 ### Fixed
 
 - Mistral Large 4 no longer fails with "NVIDIA NIM rejected the request" when Copilot Chat asks it to continue a reply it already started. It now picks up where that reply left off.
+- Mistral Large 4 no longer fails with "NVIDIA NIM rejected the request" after viewing several images at once with `view_image`. The images now reach the model together after all tool results.
 
 ## [1.10.0] - 2026-10-30
 

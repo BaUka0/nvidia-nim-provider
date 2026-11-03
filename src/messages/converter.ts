@@ -132,6 +132,36 @@ export function convertMessages(
   const result: NimChatMessage[] = [];
   let pendingAssistantThinking: string[] = [];
 
+  // Copilot sends each parallel tool result as its own user message. A user
+  // message emitted between them splits the run of tool messages, which
+  // Mistral Large 4's chat template rejects with a bare 400, so user content
+  // that came with tool results waits until the run ends.
+  let deferredToolTurn:
+    | { texts: string[]; toolImages: NimContentPart[]; images: NimContentPart[] }
+    | undefined;
+  const flushDeferredToolTurn = (): void => {
+    if (!deferredToolTurn) {
+      return;
+    }
+    const { texts, toolImages, images } = deferredToolTurn;
+    deferredToolTurn = undefined;
+    const ownText = texts.join("\n\n");
+    const text =
+      toolImages.length > 0
+        ? ownText
+          ? `${TOOL_RESULT_IMAGES_LABEL}\n\n${ownText}`
+          : TOOL_RESULT_IMAGES_LABEL
+        : ownText;
+    if (toolImages.length > 0 || images.length > 0) {
+      const contentParts: NimContentPart[] = [];
+      if (text) contentParts.push({ type: "text", text });
+      contentParts.push(...toolImages, ...images);
+      result.push({ role: "user", content: contentParts });
+    } else {
+      result.push({ role: "user", content: text || "(empty message)" });
+    }
+  };
+
   for (const msg of messages) {
     const role =
       msg.role === vscode.LanguageModelChatMessageRole.User
@@ -211,6 +241,7 @@ export function convertMessages(
     if (toolCalls.length > 0) {
       const assistantContent = textParts.join("");
       const reasoning_content = thinkingParts.length > 0 ? thinkingParts.join("\n") : undefined;
+      flushDeferredToolTurn();
       result.push({
         role: "assistant",
         content: assistantContent || "",
@@ -239,18 +270,23 @@ export function convertMessages(
     }
 
     // OpenAI-style tool messages carry text only, so images a tool returned
-    // follow the tool results as a user message.
-    if (toolResultImageParts.length > 0) {
-      textParts.unshift(
-        textParts.length > 0 ? `${TOOL_RESULT_IMAGES_LABEL}\n\n` : TOOL_RESULT_IMAGES_LABEL,
-      );
-      imageParts.unshift(...toolResultImageParts);
+    // follow the tool results as a user message once the run of tool
+    // messages ends.
+    if (role === "user" && toolResults.length > 0) {
+      if (textParts.length > 0 || imageParts.length > 0 || toolResultImageParts.length > 0) {
+        deferredToolTurn ??= { texts: [], toolImages: [], images: [] };
+        if (textParts.length > 0) deferredToolTurn.texts.push(textParts.join(""));
+        deferredToolTurn.toolImages.push(...toolResultImageParts);
+        deferredToolTurn.images.push(...imageParts);
+      }
+      continue;
     }
 
     const hasTextOrImage = textParts.length > 0 || imageParts.length > 0;
     const isAssistantWithToolCalls = role === "assistant" && toolCalls.length > 0;
 
     if (hasTextOrImage && !isAssistantWithToolCalls) {
+      flushDeferredToolTurn();
       const reasoning_content =
         role === "assistant" && thinkingParts.length > 0 ? thinkingParts.join("\n") : undefined;
       if (imageParts.length > 0) {
@@ -278,6 +314,7 @@ export function convertMessages(
           pendingAssistantThinking.push(...thinkingParts);
         }
       } else {
+        flushDeferredToolTurn();
         result.push({
           role,
           content: "(empty message)",
@@ -285,6 +322,7 @@ export function convertMessages(
       }
     }
   }
+  flushDeferredToolTurn();
 
   return result;
 }

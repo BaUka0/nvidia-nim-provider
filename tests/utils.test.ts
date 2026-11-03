@@ -490,6 +490,78 @@ describe("convertMessages with tools", () => {
     ]);
   });
 
+  it("keeps parallel tool results contiguous when each one returns an image", () => {
+    const first = new Uint8Array([137, 80, 78, 71, 1]);
+    const second = new Uint8Array([137, 80, 78, 71, 2]);
+    const url = (data: Uint8Array) =>
+      `data:image/png;base64,${Buffer.from(data).toString("base64")}`;
+    // Copilot sends each parallel tool result as its own user message.
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.Assistant,
+        content: [
+          new vscode.LanguageModelToolCallPart("call_1", "view_image", { filePath: "a.png" }),
+          new vscode.LanguageModelToolCallPart("call_2", "view_image", { filePath: "b.png" }),
+        ],
+      },
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [
+          new vscode.LanguageModelToolResultPart("call_1", [
+            new vscode.LanguageModelDataPart(first, "image/png"),
+          ]),
+        ],
+      },
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [
+          new vscode.LanguageModelToolResultPart("call_2", [
+            new vscode.LanguageModelDataPart(second, "image/png"),
+          ]),
+        ],
+      },
+    ];
+    const result = convertMessages(makeChatMessages(...messages), { supportsVision: true });
+    expect(result.map((m) => m.role)).toEqual(["assistant", "tool", "tool", "user"]);
+    expect(result[3].content).toEqual([
+      { type: "text", text: "Images returned by the tool calls above." },
+      { type: "image_url", image_url: { url: url(first) } },
+      { type: "image_url", image_url: { url: url(second) } },
+    ]);
+  });
+
+  it("moves text sent with a tool result after the whole run of tool messages", () => {
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.Assistant,
+        content: [
+          new vscode.LanguageModelToolCallPart("call_1", "read_file", { filePath: "a.ts" }),
+          new vscode.LanguageModelToolCallPart("call_2", "read_file", { filePath: "b.ts" }),
+        ],
+      },
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [
+          new vscode.LanguageModelToolResultPart("call_1", [new vscode.LanguageModelTextPart("a")]),
+          new vscode.LanguageModelTextPart("<reminder>keep going</reminder>"),
+        ],
+      },
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [
+          new vscode.LanguageModelToolResultPart("call_2", [new vscode.LanguageModelTextPart("b")]),
+        ],
+      },
+      {
+        role: vscode.LanguageModelChatMessageRole.Assistant,
+        content: [new vscode.LanguageModelTextPart("Done.")],
+      },
+    ];
+    const result = convertMessages(makeChatMessages(...messages));
+    expect(result.map((m) => m.role)).toEqual(["assistant", "tool", "tool", "user", "assistant"]);
+    expect(result[3].content).toBe("<reminder>keep going</reminder>");
+  });
+
   it("describes binary tool output instead of dumping its bytes", () => {
     const messages = [
       {
