@@ -7,7 +7,9 @@ body:
     id: description
     attributes:
       label: Problem Description
-      description: What happened, and what did you expect instead?
+      description: |
+        What happened, and what did you expect instead? Screenshots are welcome.
+        Do not attach files here: the turn report goes in Last Turn Report below, and issues with files in this field are closed automatically.
       placeholder: Describe what went wrong...
     validations:
       required: true
@@ -46,24 +48,25 @@ body:
     validations:
       required: false
 
-  - type: textarea
+  - type: upload
     id: last-turn-report
     attributes:
       label: Last Turn Report
       description: |
-        Run Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → `NVIDIA NIM: Save Last Turn Report` right after the failing turn, then drag and drop the saved `nvidia-nim-turn-report-*.json` file into this box.
-        Required: attach the file itself. Pasted JSON is not accepted, and issues without an attached report file are closed automatically until one is added. API keys are automatically redacted.
-      placeholder: Drag and drop the nvidia-nim-turn-report-*.json file here...
+        Run Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → `NVIDIA NIM: Save Last Turn Report` right after the failing turn, then upload the saved `nvidia-nim-turn-report-*.json` file here.
+        Required. API keys are automatically redacted.
     validations:
       required: true
+      accept: ".json"
 
-  - type: textarea
+  - type: upload
     id: session-log
     attributes:
       label: Session Log (optional)
       description: |
-        Drag and drop the JSON log file saved via Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → `NVIDIA NIM: Save Session Logs`.
+        Upload the `nvidia-nim-session-*.json` file saved via Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → `NVIDIA NIM: Save Session Logs`.
         Helpful for network errors (429, 503, 529), failover issues, and connection drops. API keys are automatically redacted.
-      placeholder: Drag and drop the nvidia-nim-session-*.json file here...
+        Leave this empty if you have no session log. A turn report uploaded here is rejected and the issue is closed until it is removed.
     validations:
       required: false
+      accept: ".json"
