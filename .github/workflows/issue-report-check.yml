@@ -2,168 +2,38 @@ name: Bug Report File Check
 
 # Bug reports submitted through the issue form must attach the turn report as a file.
 # Pasted JSON is truncated, hard to read, and loses the surrounding session data.
+# Titles that are a pasted error message are rewritten from the attached report.
+# The logic lives in .github/scripts/issue-report-check.js (tested in tests/issue-report-check.test.ts).
 
 on:
   issues:
     types: [opened, edited, reopened]
+  issue_comment:
+    types: [created, edited]
 
 permissions:
+  contents: read
   issues: write
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    # Comments only matter when the issue author attaches the report there.
     if: >-
       github.event.issue.pull_request == null &&
-      !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
+      !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) &&
+      (github.event_name == 'issues' || github.event.comment.user.login == github.event.issue.user.login)
     steps:
+      - uses: actions/checkout@v7
+        with:
+          # The catalog supplies model display names for issue titles.
+          sparse-checkout: |
+            .github/scripts/
+            src/models/catalog.ts
+          sparse-checkout-cone-mode: false
       - name: Require Attached Turn Report
         uses: actions/github-script@v8
         with:
           script: |
-            const LABEL = 'needs-report';
-            const issue = context.payload.issue;
-            const body = issue.body ?? '';
-            const { owner, repo } = context.repo;
-            const issue_number = issue.number;
-            const labels = (issue.labels ?? []).map((l) => (typeof l === 'string' ? l : l.name));
-
-            // A maintainer retitling the issue fires `edited` without touching the body.
-            if (context.payload.action === 'edited' && !context.payload.changes?.body) {
-              core.info('Body unchanged; skipping.');
-              return;
-            }
-
-            // An error dump filed through feature_request.yml dodges the report check
-            // below: move it to bug and close it like a bug report without a file.
-            const featureHeader = '### What would you like to see?';
-            const errorDump = /NvidiaApiError|\[[A-Z_]+\] NVIDIA NIM|neuraldock\.nvidia-nim-agent-[\w.-]+[\\/]out[\\/]/;
-            if (body.includes(featureHeader) && errorDump.test(body)) {
-              const moved = labels.includes('bug');
-              await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'enhancement' }).catch(() => {});
-              if (!moved) {
-                await github.rest.issues.addLabels({ owner, repo, issue_number, labels: ['bug'] });
-                await github.rest.issues.createComment({
-                  owner, repo, issue_number,
-                  body: [
-                    'This is an error report, not a feature request, so it is closed.',
-                    '',
-                    'Open a new issue with the **Bug Report** form, run `NVIDIA NIM: Save Last Turn Report` from the Command Palette right after the failing turn, and drag and drop the saved `nvidia-nim-turn-report-*.json` file into the **Last Turn Report** section. Pasted JSON text does not count.',
-                  ].join('\n'),
-                });
-              }
-              if (issue.state !== 'closed') {
-                await github.rest.issues.update({ owner, repo, issue_number, state: 'closed', state_reason: 'not_planned' });
-              }
-              return;
-            }
-
-            // Only issues created from bug_report.yml carry these section headers.
-            const sectionOf = (label) => {
-              const header = `### ${label}`;
-              const start = body.indexOf(header);
-              if (start === -1) return null;
-              const rest = body.slice(start + header.length);
-              const next = rest.search(/\n### /);
-              return next === -1 ? rest : rest.slice(0, next);
-            };
-            const reportSection = sectionOf('Last Turn Report');
-            if (reportSection === null) {
-              core.info('Not a bug report form issue; skipping.');
-              return;
-            }
-            const descriptionSection = sectionOf('Problem Description') ?? '';
-            const sessionLogSection = sectionOf('Session Log (optional)') ?? '';
-
-            // Drag-and-drop uploads render as github.com/user-attachments/files/<id>/<name>
-            // (older uploads: github.com/<owner>/<repo>/files/<id>/<name>).
-            // Screenshots upload as user-attachments/assets/<uuid> and are not matched.
-            const attachment = /https:\/\/github\.com\/(?:user-attachments|[\w.-]+\/[\w.-]+)\/files\/\d+\/[^\s)\]]+\.(?:json|zip|txt|log)\b/gi;
-            const filesIn = (section) => [...section.matchAll(attachment)].map((m) => m[0]);
-
-            // Save Last Turn Report writes { extension, version, generatedAt, turns };
-            // Save Session Logs adds `settings` and `events`. An unreadable file is not flagged.
-            const isTurnReport = async (url) => {
-              if (!/\.json$/i.test(url)) return false;
-              try {
-                const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-                if (!res.ok) return false;
-                const data = JSON.parse(await res.text());
-                return data?.extension === 'nvidia-nim-provider' && Array.isArray(data.turns) && !Array.isArray(data.events);
-              } catch (err) {
-                core.info(`Could not read ${url}: ${err}`);
-                return false;
-              }
-            };
-
-            const problems = [];
-            if (filesIn(reportSection).length === 0) {
-              problems.push({
-                key: 'missing',
-                text: 'No report file is attached in the **Last Turn Report** field.',
-              });
-            }
-            if (filesIn(descriptionSection).length > 0) {
-              problems.push({
-                key: 'description-file',
-                text: 'A file is attached in **Problem Description**. Describe the problem there in words; the report file goes in **Last Turn Report** only.',
-              });
-            }
-            for (const url of filesIn(sessionLogSection)) {
-              if (await isTurnReport(url)) {
-                problems.push({
-                  key: 'session-log-turn-report',
-                  text: 'The file in **Session Log** is a turn report, not a session log. Remove it, or replace it with the file saved by `NVIDIA NIM: Save Session Logs`.',
-                });
-                break;
-              }
-            }
-
-            const flagged = labels.includes(LABEL);
-
-            if (problems.length === 0) {
-              if (!flagged) {
-                core.info('Report file attached.');
-                return;
-              }
-              await github.rest.issues.removeLabel({ owner, repo, issue_number, name: LABEL }).catch(() => {});
-              if (issue.state === 'closed') {
-                await github.rest.issues.update({ owner, repo, issue_number, state: 'open' });
-              }
-              await github.rest.issues.createComment({
-                owner, repo, issue_number,
-                body: 'Report file found, reopening.',
-              });
-              return;
-            }
-
-            // Comment again only when the list of problems changed since the last check.
-            const marker = `<!-- report-check: ${problems.map((p) => p.key).join(',')} -->`;
-            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
-            const lastCheck = comments.filter((c) => c.user?.type === 'Bot' && c.body?.includes('<!-- report-check:')).at(-1);
-            if (lastCheck?.body?.includes(marker) && issue.state === 'closed') {
-              core.info('Same problems already reported; issue stays closed.');
-              return;
-            }
-
-            await github.rest.issues.createLabel({
-              owner, repo, name: LABEL, color: 'd93f0b',
-              description: 'Bug report is missing the attached turn report file',
-            }).catch(() => {});
-            await github.rest.issues.addLabels({ owner, repo, issue_number, labels: [LABEL] });
-
-            if (!lastCheck?.body?.includes(marker)) {
-              await github.rest.issues.createComment({
-                owner, repo, issue_number,
-                body: [
-                  'This bug report is closed until the report file is attached correctly:',
-                  '',
-                  ...problems.map((p) => `- ${p.text}`),
-                  '',
-                  'Run `NVIDIA NIM: Save Last Turn Report` from the Command Palette right after the failing turn, then edit this issue and drag and drop the saved `nvidia-nim-turn-report-*.json` file into the **Last Turn Report** field. Files attached in comments and pasted JSON text do not count. The issue reopens automatically once the report is in place.',
-                  '',
-                  marker,
-                ].join('\n'),
-              });
-            }
-            await github.rest.issues.update({ owner, repo, issue_number, state: 'closed', state_reason: 'not_planned' });
+            const { run } = require('./.github/scripts/issue-report-check.js');
+            await run({ github, context, core });
