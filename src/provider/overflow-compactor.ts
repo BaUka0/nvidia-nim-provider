@@ -49,6 +49,7 @@ export async function buildOverflowRetryRequest(
       const toolsEnabled = Boolean(input.activeRequestBody.tools?.length);
       candidateMessages = NimRequestBuilder.convertMessagesWithProfile({
         messages: input.messages,
+        modelId: input.activeRequestBody.model,
         adapter,
         contextWindow: input.retryContextWindow,
         supportsVision: Boolean(input.supportsVision),

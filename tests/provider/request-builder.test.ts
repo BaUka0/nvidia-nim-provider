@@ -224,6 +224,7 @@ describe("NimRequestBuilder.convertMessagesWithProfile", () => {
 
     const result = NimRequestBuilder.convertMessagesWithProfile({
       messages: inputMessages,
+      modelId: "deepseek-ai/deepseek-v4-flash-0731",
       contextWindow: 128000,
       adapter: customAdapter,
       supportsVision: false,
@@ -251,6 +252,7 @@ describe("NimRequestBuilder.convertMessagesWithProfile", () => {
 
     const result = NimRequestBuilder.convertMessagesWithProfile({
       messages: inputMessages,
+      modelId: "deepseek-ai/deepseek-v4-flash-0731",
       contextWindow: 128000,
       adapter: customAdapter,
       supportsVision: false,
@@ -274,6 +276,7 @@ describe("NimRequestBuilder.convertMessagesWithProfile", () => {
 
     const result = NimRequestBuilder.convertMessagesWithProfile({
       messages: inputMessages,
+      modelId: "deepseek-ai/deepseek-v4-flash-0731",
       contextWindow: 128000,
       adapter: getModelAdapter("deepseek-ai/deepseek-v4-flash-0731"),
       supportsVision: false,
@@ -283,6 +286,92 @@ describe("NimRequestBuilder.convertMessagesWithProfile", () => {
     const systemMessages = result.filter((m) => m.role === "system");
     expect(systemMessages).toHaveLength(0);
     expect(result[0].role).toBe("user");
+  });
+
+  it("applies the catalog image cap across the whole history", () => {
+    const image = (byte: number) => ({ mimeType: "image/png", data: new Uint8Array([137, byte]) });
+    const inputMessages = makeChatMessages(
+      ...Array.from({ length: 10 }, (_, i) => ({
+        role: 1,
+        content: [new vscode.LanguageModelTextPart(`shot ${i}`), image(i)],
+      })),
+    );
+
+    const result = NimRequestBuilder.convertMessagesWithProfile({
+      messages: inputMessages,
+      modelId: "mistralai/mistral-large-4-1t-a52b",
+      contextWindow: 1048576,
+      adapter: getModelAdapter("mistralai/mistral-large-4-1t-a52b"),
+      supportsVision: true,
+      toolsEnabled: false,
+    });
+
+    const imagesPerMessage = result.map((m) =>
+      Array.isArray(m.content) ? m.content.filter((p) => p.type === "image_url").length : 0,
+    );
+    expect(imagesPerMessage).toEqual([0, 0, 1, 1, 1, 1, 1, 1, 1, 1]);
+    expect(result[0].content).toContainEqual({
+      type: "text",
+      text: "[Earlier image omitted: this model accepts at most 8 images per request.]",
+    });
+  });
+
+  it("caps pasted and tool-result images together and keeps tool messages contiguous", () => {
+    const image = (byte: number) => ({ mimeType: "image/png", data: new Uint8Array([137, byte]) });
+    const inputMessages = makeChatMessages(
+      {
+        role: 1,
+        content: [
+          new vscode.LanguageModelTextPart("Look at these"),
+          ...Array.from({ length: 7 }, (_, i) => image(i)),
+        ],
+      },
+      {
+        role: 2,
+        content: [
+          { callId: "call_1", name: "view_image", input: { filePath: "a.png" } },
+          { callId: "call_2", name: "view_image", input: { filePath: "b.png" } },
+        ],
+      },
+      { role: 1, content: [{ callId: "call_1", content: [image(100)] }] },
+      { role: 1, content: [{ callId: "call_2", content: [image(101)] }] },
+    );
+
+    const result = NimRequestBuilder.convertMessagesWithProfile({
+      messages: inputMessages,
+      modelId: "mistralai/mistral-large-4-1t-a52b",
+      contextWindow: 1048576,
+      adapter: getModelAdapter("mistralai/mistral-large-4-1t-a52b"),
+      supportsVision: true,
+      toolsEnabled: true,
+    });
+
+    expect(result.map((m) => m.role)).toEqual(["user", "assistant", "tool", "tool", "user"]);
+    const imageCount = (content: unknown) =>
+      Array.isArray(content) ? content.filter((p) => p.type === "image_url").length : 0;
+    expect(imageCount(result[0].content)).toBe(6);
+    expect(imageCount(result[4].content)).toBe(2);
+  });
+
+  it("leaves images alone for models without a catalog image cap", () => {
+    const inputMessages = makeChatMessages(
+      ...Array.from({ length: 10 }, (_, i) => ({
+        role: 1,
+        content: [{ mimeType: "image/png", data: new Uint8Array([137, i]) }],
+      })),
+    );
+
+    const result = NimRequestBuilder.convertMessagesWithProfile({
+      messages: inputMessages,
+      modelId: "vendor/uncatalogued-vl",
+      contextWindow: 128000,
+      adapter: getModelAdapter("vendor/uncatalogued-vl"),
+      supportsVision: true,
+      toolsEnabled: false,
+    });
+
+    const images = result.flatMap((m) => (Array.isArray(m.content) ? m.content : []));
+    expect(images.filter((p) => p.type === "image_url")).toHaveLength(10);
   });
 });
 

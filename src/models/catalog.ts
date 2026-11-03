@@ -28,6 +28,13 @@ export interface NvidiaModelCatalogEntry {
    * so it is left out of getCatalogDigest() and needs no cache bump.
    */
   deprecationDate?: string;
+  /**
+   * Most images hosted NIM accepts in one request, counted across the whole
+   * history; older images over the cap are replaced with a text note. Read
+   * straight from MODEL_LIST per request, so it is left out of
+   * getCatalogDigest() and needs no cache bump.
+   */
+  maxImagesPerRequest?: number;
 }
 
 export type CatalogAdapterId =
@@ -74,6 +81,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: true,
     adapter: "nemotron-super-vl",
+    maxImagesPerRequest: 13,
   },
   "meta/muse-glimmer-30b": {
     displayName: "Muse Glimmer",
@@ -82,6 +90,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: true,
     adapter: "muse-glimmer",
+    maxImagesPerRequest: 8,
   },
   "minimaxai/minimax-m3.1-flash": {
     displayName: "MiniMax M3.1 Flash",
@@ -90,6 +99,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: true,
     adapter: "minimax",
+    maxImagesPerRequest: 8,
   },
   "mistralai/mistral-large-4-1t-a52b": {
     displayName: "Mistral Large 4",
@@ -98,6 +108,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: true,
     adapter: "mistral",
+    maxImagesPerRequest: 8,
   },
   "z-ai/glm-5.3-flash": {
     displayName: "GLM 5.3 Flash",
@@ -114,6 +125,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsTools: true,
     supportsVision: true,
     adapter: "stepfun",
+    maxImagesPerRequest: 8,
   },
 };
 

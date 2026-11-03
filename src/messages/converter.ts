@@ -359,6 +359,50 @@ export function convertTools(options: vscode.ProvideLanguageModelChatResponseOpt
   return { tools, tool_choice: "auto" };
 }
 
+/**
+ * Keep the newest `maxImages` images and replace older ones with a text note.
+ * Hosted NIM rejects a request whose images, counted across the whole
+ * history, exceed the model's limit (vLLM `--limit-mm-per-prompt`).
+ */
+export function capMessageImages(
+  messages: NimChatMessage[],
+  maxImages: number | undefined,
+): NimChatMessage[] {
+  if (maxImages === undefined) {
+    return messages;
+  }
+  let remaining = maxImages;
+  return messages
+    .slice()
+    .reverse()
+    .map((message) => {
+      if (!Array.isArray(message.content)) {
+        return message;
+      }
+      let changed = false;
+      const parts = message.content
+        .slice()
+        .reverse()
+        .map((part): NimContentPart => {
+          if (part.type !== "image_url") {
+            return part;
+          }
+          if (remaining > 0) {
+            remaining -= 1;
+            return part;
+          }
+          changed = true;
+          return {
+            type: "text",
+            text: `[Earlier image omitted: this model accepts at most ${maxImages} images per request.]`,
+          };
+        })
+        .reverse();
+      return changed ? { ...message, content: parts } : message;
+    })
+    .reverse();
+}
+
 export function truncateMessagesForContext(
   messages: NimChatMessage[],
   maxTokens: number,

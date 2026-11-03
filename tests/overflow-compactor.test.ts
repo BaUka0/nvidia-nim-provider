@@ -147,7 +147,11 @@ describe("buildOverflowRetryRequest", () => {
     });
 
     expect(convertSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ supportsVision: true, contextWindow: 128000 }),
+      expect.objectContaining({
+        modelId: "moonshotai/kimi-k3",
+        supportsVision: true,
+        contextWindow: 128000,
+      }),
     );
     expect(compactAndFitMock).toHaveBeenCalledWith(
       expect.objectContaining({ messages: [{ role: "user", content: "converted" }] }),

@@ -4,6 +4,7 @@ import { DEFAULT_MAX_OUTPUT_TOKENS } from "../shared/constants";
 import { calculateSafetyMargin } from "../shared/config";
 import { FetchAttemptBudget } from "../shared/fetch-attempt-budget";
 import {
+  capMessageImages,
   convertMessages,
   convertTools,
   estimateMessagesTokens,
@@ -18,6 +19,7 @@ import {
   resolveDefaultReasoningMode,
   resolveReasoningMode,
 } from "../models/adapters";
+import { MODEL_LIST } from "../models/catalog";
 import { outputLog } from "../shared/logging";
 import { compactAndFit } from "../models/summarizer";
 import { createStructuredError } from "../api/errors";
@@ -120,12 +122,14 @@ export class NimRequestBuilder {
   }
 
   /**
-   * Shared VS Code → NIM message conversion: adapter workarounds plus the
-   * profile's extra system messages. Used by request preparation and by
-   * overflow compaction so both paths build identical payloads.
+   * Shared VS Code → NIM message conversion: adapter workarounds, the
+   * catalog's image cap, and the profile's extra system messages. Used by
+   * request preparation and by overflow compaction so both paths build
+   * identical payloads.
    */
   public static convertMessagesWithProfile(input: {
     messages: readonly vscode.LanguageModelChatMessage[];
+    modelId: string;
     adapter: ModelAdapter;
     contextWindow: number;
     supportsVision: boolean;
@@ -138,6 +142,7 @@ export class NimRequestBuilder {
       maxToolResultChars: this.calculateMaxToolResultChars(input.contextWindow),
       supportsVision: input.supportsVision,
     });
+    apiMessages = capMessageImages(apiMessages, MODEL_LIST[input.modelId]?.maxImagesPerRequest);
     apiMessages = input.adapter.applyMessagesWorkaround
       ? input.adapter.applyMessagesWorkaround(apiMessages)
       : apiMessages;
@@ -322,6 +327,7 @@ export class NimRequestBuilder {
 
     let apiMessages = this.convertMessagesWithProfile({
       messages,
+      modelId: model.id,
       adapter,
       contextWindow,
       supportsVision,

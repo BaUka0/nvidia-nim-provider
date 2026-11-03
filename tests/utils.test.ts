@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { NimChatMessage } from "../src/types";
 import {
+  capMessageImages,
   convertMessages,
   convertTools,
   estimateMessagesTokens,
@@ -230,6 +231,36 @@ describe("convertMessages", () => {
         reasoning_content: "Let me consider the problem",
       },
     ]);
+  });
+});
+
+describe("capMessageImages", () => {
+  const image = (n: number) => ({
+    type: "image_url" as const,
+    image_url: { url: `data:image/png;base64,${n}` },
+  });
+  const omitted = {
+    type: "text",
+    text: "[Earlier image omitted: this model accepts at most 2 images per request.]",
+  };
+
+  it("returns the messages untouched when the model has no cap", () => {
+    const messages: NimChatMessage[] = [{ role: "user", content: [image(1), image(2), image(3)] }];
+    expect(capMessageImages(messages, undefined)).toBe(messages);
+  });
+
+  it("keeps the newest images and replaces older ones with a note", () => {
+    const messages: NimChatMessage[] = [
+      { role: "user", content: [{ type: "text", text: "first" }, image(1)] },
+      { role: "assistant", content: "Seen." },
+      { role: "user", content: [image(2), image(3)] },
+      { role: "user", content: [{ type: "text", text: "last" }, image(4)] },
+    ];
+    const result = capMessageImages(messages, 2);
+    expect(result[0].content).toEqual([{ type: "text", text: "first" }, omitted]);
+    expect(result[1]).toBe(messages[1]);
+    expect(result[2].content).toEqual([omitted, image(3)]);
+    expect(result[3]).toBe(messages[3]);
   });
 });
 
