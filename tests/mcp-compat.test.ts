@@ -17,9 +17,9 @@ describe("NimVisionClient", () => {
     };
     const client = new NimVisionClient(secrets as never);
 
-    await expect(client.analyzeImage("data:image/png;base64,abc", "What is this?")).rejects.toThrow(
-      "NVIDIA NIM API key not found",
-    );
+    await expect(
+      client.analyzeImage("data:image/png;base64,iVBORw0KGgo=", "What is this?"),
+    ).rejects.toThrow("NVIDIA NIM API key not found");
     expect(secrets.get).toHaveBeenCalledWith("nvidia-nim.apiKey");
   });
 
@@ -37,6 +37,16 @@ describe("NimVisionClient", () => {
     await expect(client.analyzeImage("data:image/png,raw-bytes", "What?")).rejects.toThrow(
       "requires a base64 image data URL",
     );
+  });
+
+  it("rejects a GIF before touching the API key, since NIM cannot decode it", async () => {
+    const secrets = { get: jest.fn(async () => "test-key") };
+    const client = new NimVisionClient(secrets as never);
+    const gif = `data:image/gif;base64,${Buffer.from("GIF89a\x01\x00\x01\x00").toString("base64")}`;
+    await expect(client.analyzeImage(gif, "What?")).rejects.toThrow(
+      "supports PNG, JPEG and WebP images only",
+    );
+    expect(secrets.get).not.toHaveBeenCalled();
   });
 
   it("rejects oversized image payloads", async () => {
@@ -71,7 +81,7 @@ describe("NimVisionClient", () => {
     });
     const client = new NimVisionClient(secrets as never, modelStorage as never);
 
-    const result = await client.analyzeImage("data:image/png;base64,abc", "What is this?");
+    const result = await client.analyzeImage("data:image/png;base64,iVBORw0KGgo=", "What is this?");
 
     expect(result).toBe("Image analysis");
     expect(fetch).toHaveBeenCalledWith(
@@ -116,9 +126,9 @@ describe("NimVisionClient", () => {
     });
 
     const client = new NimVisionClient(secrets as never, modelStorage as never, resolver);
-    await client.analyzeImage("data:image/png;base64,abc", "First image");
+    await client.analyzeImage("data:image/png;base64,iVBORw0KGgo=", "First image");
     cachedModels = [modelB];
-    await client.analyzeImage("data:image/png;base64,abc", "Second image");
+    await client.analyzeImage("data:image/png;base64,iVBORw0KGgo=", "Second image");
 
     const requestedModels = (fetch as jest.Mock).mock.calls.map(
       ([, init]) => JSON.parse((init as RequestInit).body as string).model,
@@ -136,9 +146,9 @@ describe("NimVisionClient", () => {
     global.fetch = jest.fn();
     const client = new NimVisionClient(secrets as never, modelStorage as never);
 
-    await expect(client.analyzeImage("data:image/png;base64,abc", "What is this?")).rejects.toThrow(
-      "No NVIDIA NIM vision model is available",
-    );
+    await expect(
+      client.analyzeImage("data:image/png;base64,iVBORw0KGgo=", "What is this?"),
+    ).rejects.toThrow("No NVIDIA NIM vision model is available");
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -168,7 +178,7 @@ describe("NimVisionClient", () => {
     const client = new NimVisionClient(secrets as never, modelStorage as never);
 
     await expect(
-      client.analyzeImage("data:image/png;base64,abc", "What is this?"),
+      client.analyzeImage("data:image/png;base64,iVBORw0KGgo=", "What is this?"),
     ).rejects.toMatchObject({ code: "AUTH_FAILED" });
   });
 
@@ -200,7 +210,7 @@ describe("NimVisionClient", () => {
     const client = new NimVisionClient(secrets as never, modelStorage as never);
 
     await expect(
-      client.analyzeImage("data:image/png;base64,abc", "What is this?"),
+      client.analyzeImage("data:image/png;base64,iVBORw0KGgo=", "What is this?"),
     ).rejects.toMatchObject({
       name: "NvidiaApiError",
       code: "NVIDIA_NIM_ERROR",
@@ -245,7 +255,9 @@ describe("NimVisionClient", () => {
     };
     const tool = new NimAnalyzeImageTool(secrets as never, modelStorage as never);
     const invocation = tool.invoke(
-      { input: { image_data: "data:image/png;base64,abc", prompt: "What is this?" } } as never,
+      {
+        input: { image_data: "data:image/png;base64,iVBORw0KGgo=", prompt: "What is this?" },
+      } as never,
       token as never,
     );
 
@@ -290,9 +302,9 @@ describe("NimVisionClient", () => {
     });
 
     const client = new NimVisionClient(secrets as never, modelStorage as never, resolver);
-    await expect(client.analyzeImage("data:image/png;base64,abc", "What is this?")).resolves.toBe(
-      "Image analysis",
-    );
+    await expect(
+      client.analyzeImage("data:image/png;base64,iVBORw0KGgo=", "What is this?"),
+    ).resolves.toBe("Image analysis");
 
     expect(fetch).toHaveBeenCalledWith(
       "https://integrate.api.nvidia.com/v1/chat/completions",
@@ -330,7 +342,7 @@ describe("NimVisionClient", () => {
     });
 
     const client = new NimVisionClient(secrets as never, modelStorage as never, resolver);
-    await client.analyzeImage("data:image/png;base64,abc", "What is this?");
+    await client.analyzeImage("data:image/png;base64,iVBORw0KGgo=", "What is this?");
 
     expect(fetch).toHaveBeenCalledWith(
       "https://integrate.api.nvidia.com/v1/chat/completions",

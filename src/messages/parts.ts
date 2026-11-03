@@ -163,6 +163,26 @@ export function getDataPartTextValue(part: unknown): string | undefined {
   }
 }
 
+/**
+ * MIME type of an image hosted NIM can decode, read from its magic bytes, or
+ * undefined. NIM sniffs the bytes and ignores the declared type: GIF, BMP,
+ * TIFF, SVG, AVIF and HEIC are rejected (415, or 500 on some models) on every
+ * vision model, while PNG bytes labeled `image/gif` pass.
+ */
+export function sniffNimImageMimeType(data: Uint8Array): string | undefined {
+  const ascii = (start: number, end: number) => String.fromCharCode(...data.subarray(start, end));
+  if (data.length >= 4 && data[0] === 0x89 && ascii(1, 4) === "PNG") {
+    return "image/png";
+  }
+  if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (data.length >= 12 && ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") {
+    return "image/webp";
+  }
+  return undefined;
+}
+
 function rejectOversizedChatImage(byteLength: number, mimeType: string): void {
   if (byteLength > MAX_CHAT_IMAGE_BYTES) {
     throw createStructuredError(

@@ -1201,7 +1201,7 @@ describe("NimChatModelProvider", () => {
         }),
         makeMessages({
           role: 1,
-          content: [{ mimeType: "image/png", data: new Uint8Array([1, 2, 3]) }],
+          content: [{ mimeType: "image/png", data: new Uint8Array([137, 80, 78, 71]) }],
         }),
         makeChatOptions(),
         progress,
@@ -1239,7 +1239,7 @@ describe("NimChatModelProvider", () => {
           role: 1,
           content: [
             { value: "What is in this image?" },
-            { mimeType: "image/png", data: new Uint8Array([1, 2, 3]) },
+            { mimeType: "image/png", data: new Uint8Array([137, 80, 78, 71]) },
           ],
         }),
         makeChatOptions(),
@@ -1278,7 +1278,7 @@ describe("NimChatModelProvider", () => {
         role: 1,
         content: [
           { value: "What is in this image?" },
-          { mimeType: "image/png", data: new Uint8Array([1, 2, 3]) },
+          { mimeType: "image/png", data: new Uint8Array([137, 80, 78, 71]) },
         ],
       }),
       makeChatOptions(),
@@ -3144,7 +3144,7 @@ describe("NimChatModelProvider", () => {
         role: 1,
         content: [
           new vscode.LanguageModelTextPart("Look at this image"),
-          { mimeType: "image/png", data: new Uint8Array([1, 2, 3]) },
+          { mimeType: "image/png", data: new Uint8Array([137, 80, 78, 71]) },
         ],
       },
     ] as unknown as vscode.LanguageModelChatMessage[];
@@ -3260,7 +3260,7 @@ describe("NimChatModelProvider", () => {
         role: 1,
         content: [
           { value: "Describe this" },
-          { mimeType: "image/png", data: new Uint8Array([1, 2, 3]) },
+          { mimeType: "image/png", data: new Uint8Array([137, 80, 78, 71]) },
         ],
       }),
       makeChatOptions(),

@@ -14,6 +14,7 @@ import {
   getToolCallInfo,
   getToolResultImages,
   getToolResultTexts,
+  sniffNimImageMimeType,
   truncatePreservingSurrogates,
 } from "./parts";
 import { estimateNimMessagesTokens } from "./token-estimate";
@@ -120,9 +121,21 @@ export function stripFallbackNotices(text: string): string {
 
 const TOOL_RESULT_IMAGES_LABEL = "Images returned by the tool calls above.";
 
+/**
+ * An image NIM cannot decode would fail this request and every later one that
+ * carries it in history, so it becomes a text note. VS Code re-encodes GIFs
+ * it resizes to PNG but keeps the `image/gif` label; the sniffed type is sent.
+ */
 function toImageUrlPart(img: { mimeType: string; data: Uint8Array }): NimContentPart {
+  const mimeType = sniffNimImageMimeType(img.data);
+  if (!mimeType) {
+    return {
+      type: "text",
+      text: `[Image omitted: ${img.mimeType} is not supported by NVIDIA NIM, which accepts PNG, JPEG and WebP.]`,
+    };
+  }
   const base64 = Buffer.from(img.data).toString("base64");
-  return { type: "image_url", image_url: { url: `data:${img.mimeType};base64,${base64}` } };
+  return { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } };
 }
 
 export function convertMessages(

@@ -289,7 +289,10 @@ describe("NimRequestBuilder.convertMessagesWithProfile", () => {
   });
 
   it("applies the catalog image cap across the whole history", () => {
-    const image = (byte: number) => ({ mimeType: "image/png", data: new Uint8Array([137, byte]) });
+    const image = (byte: number) => ({
+      mimeType: "image/png",
+      data: new Uint8Array([137, 80, 78, 71, byte]),
+    });
     const inputMessages = makeChatMessages(
       ...Array.from({ length: 10 }, (_, i) => ({
         role: 1,
@@ -317,7 +320,10 @@ describe("NimRequestBuilder.convertMessagesWithProfile", () => {
   });
 
   it("caps pasted and tool-result images together and keeps tool messages contiguous", () => {
-    const image = (byte: number) => ({ mimeType: "image/png", data: new Uint8Array([137, byte]) });
+    const image = (byte: number) => ({
+      mimeType: "image/png",
+      data: new Uint8Array([137, 80, 78, 71, byte]),
+    });
     const inputMessages = makeChatMessages(
       {
         role: 1,
@@ -357,7 +363,7 @@ describe("NimRequestBuilder.convertMessagesWithProfile", () => {
     const inputMessages = makeChatMessages(
       ...Array.from({ length: 10 }, (_, i) => ({
         role: 1,
-        content: [{ mimeType: "image/png", data: new Uint8Array([137, i]) }],
+        content: [{ mimeType: "image/png", data: new Uint8Array([137, 80, 78, 71, i]) }],
       })),
     );
 

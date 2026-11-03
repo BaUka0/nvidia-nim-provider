@@ -8,6 +8,7 @@ import {
   PROVIDER_DISPLAY_NAME,
 } from "../shared/constants";
 import { MODEL_LIST, isNormalizedNvidiaModel, NormalizedNvidiaModel } from "../models/catalog";
+import { sniffNimImageMimeType } from "../messages/parts";
 import { withReasoningOff } from "../models/adapters";
 import { NvidiaApiKeyResolver } from "../api/key-resolver";
 import { ConfigManager } from "../shared/config";
@@ -95,6 +96,13 @@ export class NimVisionClient {
     if (imageByteLength > MAX_CHAT_IMAGE_BYTES) {
       throw new Error(
         `${PROVIDER_DISPLAY_NAME} image is too large (${Math.ceil(imageByteLength / (1024 * 1024))} MB). Maximum size is ${MAX_CHAT_IMAGE_BYTES / (1024 * 1024)} MB.`,
+      );
+    }
+    const payloadStart = imageData.indexOf(",") + 1;
+    const header = Buffer.from(imageData.slice(payloadStart, payloadStart + 24), "base64");
+    if (!sniffNimImageMimeType(new Uint8Array(header))) {
+      throw new Error(
+        `${PROVIDER_DISPLAY_NAME} image analysis supports PNG, JPEG and WebP images only.`,
       );
     }
     const apiKey = await this.getApiKey();

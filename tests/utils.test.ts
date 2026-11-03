@@ -9,6 +9,7 @@ import {
   estimateTokens,
   stripFallbackNotices,
 } from "../src/messages/converter";
+import { sniffNimImageMimeType } from "../src/messages/parts";
 import { filterThinkTagsFromChunk, flushThinkTagFilter } from "../src/messages/think-filter";
 import { MESSAGE_OVERHEAD_TOKENS, TOOL_OVERHEAD_TOKENS } from "../src/messages/token-estimate";
 import {
@@ -174,7 +175,7 @@ describe("convertMessages", () => {
   });
 
   it("converts image parts to image_url for vision-capable models", () => {
-    const imageData = new Uint8Array([1, 2, 3]);
+    const imageData = new Uint8Array([137, 80, 78, 71]);
     const messages = [
       {
         role: vscode.LanguageModelChatMessageRole.User,
@@ -191,8 +192,44 @@ describe("convertMessages", () => {
     expect(content[0].image_url?.url).toMatch(/^data:image\/png;base64,/);
   });
 
+  it("replaces an image format NIM cannot decode with a note", () => {
+    const gif = new Uint8Array(Buffer.from("GIF89a\x01\x00\x01\x00"));
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [
+          new vscode.LanguageModelTextPart("What is this?"),
+          { mimeType: "image/gif", data: gif },
+        ],
+      },
+    ];
+    const result = convertMessages(makeChatMessages(...messages), { supportsVision: true });
+    expect(result[0].content).toEqual([
+      { type: "text", text: "What is this?" },
+      {
+        type: "text",
+        text: "[Image omitted: image/gif is not supported by NVIDIA NIM, which accepts PNG, JPEG and WebP.]",
+      },
+    ]);
+  });
+
+  it("sends the sniffed type when VS Code labels a re-encoded GIF as image/gif", () => {
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [{ mimeType: "image/gif", data: png }],
+      },
+    ];
+    const result = convertMessages(makeChatMessages(...messages), { supportsVision: true });
+    const content = result[0].content as Array<{ image_url?: { url: string } }>;
+    expect(content[0].image_url?.url).toBe(
+      `data:image/png;base64,${Buffer.from(png).toString("base64")}`,
+    );
+  });
+
   it("does not convert image parts when vision is not supported", () => {
-    const imageData = new Uint8Array([1, 2, 3]);
+    const imageData = new Uint8Array([137, 80, 78, 71]);
     const messages = [
       {
         role: vscode.LanguageModelChatMessageRole.User,
@@ -231,6 +268,24 @@ describe("convertMessages", () => {
         reasoning_content: "Let me consider the problem",
       },
     ]);
+  });
+});
+
+describe("sniffNimImageMimeType", () => {
+  const bytes = (text: string) => new Uint8Array(Buffer.from(text, "latin1"));
+
+  it("recognizes the formats NIM decodes from their magic bytes", () => {
+    expect(sniffNimImageMimeType(bytes("\x89PNG\r\n\x1a\n"))).toBe("image/png");
+    expect(sniffNimImageMimeType(bytes("\xff\xd8\xff\xe0"))).toBe("image/jpeg");
+    expect(sniffNimImageMimeType(bytes("RIFF\x1a\x00\x00\x00WEBPVP8L"))).toBe("image/webp");
+  });
+
+  it("rejects GIF, BMP, SVG and truncated headers", () => {
+    expect(sniffNimImageMimeType(bytes("GIF89a\x01\x00"))).toBeUndefined();
+    expect(sniffNimImageMimeType(bytes("BM\x36\x00"))).toBeUndefined();
+    expect(sniffNimImageMimeType(bytes("<svg xmlns="))).toBeUndefined();
+    expect(sniffNimImageMimeType(bytes("\x89PN"))).toBeUndefined();
+    expect(sniffNimImageMimeType(bytes("RIFF\x1a\x00\x00\x00WAVE"))).toBeUndefined();
   });
 });
 
@@ -517,6 +572,30 @@ describe("convertMessages with tools", () => {
       {
         type: "image_url",
         image_url: { url: `data:image/png;base64,${Buffer.from(png).toString("base64")}` },
+      },
+    ]);
+  });
+
+  it("sends a note instead of a GIF a tool returned", () => {
+    const gif = new Uint8Array(Buffer.from("GIF89a\x01\x00\x01\x00"));
+    const messages = [
+      {
+        role: vscode.LanguageModelChatMessageRole.User,
+        content: [
+          new vscode.LanguageModelToolResultPart("call_1", [
+            new vscode.LanguageModelDataPart(gif, "image/gif"),
+          ]),
+        ],
+      },
+    ];
+    const result = convertMessages(makeChatMessages(...messages), { supportsVision: true });
+    expect(result.map((m) => m.role)).toEqual(["tool", "user"]);
+    expect(result[0].content).toBe("[Image: image/gif, 10 bytes]");
+    expect(result[1].content).toEqual([
+      { type: "text", text: "Images returned by the tool calls above." },
+      {
+        type: "text",
+        text: "[Image omitted: image/gif is not supported by NVIDIA NIM, which accepts PNG, JPEG and WebP.]",
       },
     ]);
   });

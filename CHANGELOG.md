@@ -9,6 +9,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 - Mistral Large 4 no longer fails with "NVIDIA NIM rejected the request" when Copilot Chat asks it to continue a reply it already started. It now picks up where that reply left off.
 - Mistral Large 4 no longer fails with "NVIDIA NIM rejected the request" after viewing several images at once with `view_image`. The images now reach the model together after all tool results.
 - Long chats with many screenshots no longer break on Mistral Large 4, MiniMax M3.1 Flash, Muse Glimmer, Step 5 Preview, and Nemotron 3.5 Super VL. NVIDIA accepts at most 8 images per request on most of them and 13 on Nemotron, counting the whole conversation; older images over that limit are now replaced with a short note, and the newest ones still reach the model.
+- A GIF, BMP, TIFF, or SVG image in a chat no longer breaks every following request with "Unsupported media type". NVIDIA NIM only reads PNG, JPEG, and WebP, so other formats are replaced with a short note telling the model the image was left out. GIFs that VS Code already converted, such as ones opened with `view_image`, still reach the model.
 
 ## [1.10.0] - 2026-10-30
 
