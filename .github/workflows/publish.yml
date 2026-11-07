@@ -44,4 +44,5 @@ jobs:
       - name: Publish
         run: >-
           npx --yes @vscode/vsce@4.1.0 publish --oidc --skip-duplicate
+          --allow-proposed-apis languageModelThinkingPart
           --packagePath "nvidia-nim-agent-${TAG#v}.vsix"
