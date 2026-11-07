@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Changed
+
+- **Settings in the last turn report (`src/shared/turn-report.ts`, `tests/turn-report.test.ts`).** `formatTurnReportsPayload` now writes the same `settings` block as `formatSessionLogsPayload`, through the shared `collectReportSettings`. The report in #59 showed a 70-minute `network_error: terminated` with 0 chunks, and without `streamIdleTimeout` it could not tell a raised timeout from a sleeping machine. The payload still has no `events` array, which is how `.github/scripts/issue-report-check.js` tells a turn report from a session log. Addresses #59.
+
 ## [1.10.1] - 2026-11-04
 
 ### Fixed

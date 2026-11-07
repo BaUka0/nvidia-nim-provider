@@ -114,10 +114,16 @@ describe("turn-report", () => {
     const parsed = JSON.parse(payload ?? "{}") as {
       extension: string;
       version: string;
+      settings: { streamIdleTimeout: number; firstTokenTimeoutSeconds: number | null };
       turns: { modelId: string }[];
+      events?: unknown;
     };
     expect(parsed.extension).toBe("nvidia-nim-provider");
     expect(parsed.version).toBe(EXTENSION_VERSION);
+    expect(parsed.settings.streamIdleTimeout).toBe(120);
+    expect(parsed.settings.firstTokenTimeoutSeconds).toBeNull();
+    // The bug report check tells a turn report from a session log by `events`.
+    expect(parsed.events).toBeUndefined();
     expect(parsed.turns).toHaveLength(MAX_TURN_REPORTS);
     expect(parsed.turns[0]?.modelId).toBe("model-2");
     expect(parsed.turns.at(-1)?.modelId).toBe("model-6");

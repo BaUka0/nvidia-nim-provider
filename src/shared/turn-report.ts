@@ -322,6 +322,32 @@ export function recordTurnReport(input: TurnReportInput): TurnReport {
   return report;
 }
 
+/** Settings that explain a turn's retries, timeouts and failover. */
+function collectReportSettings() {
+  const developer = ConfigManager.getDeveloperConfig();
+  const generation = ConfigManager.getGenerationConfig();
+  const fallback = ConfigManager.getFallbackConfig();
+  const network = ConfigManager.getNetworkConfig();
+  return {
+    debugLogging: developer.debugLogging,
+    logStreamChunks: developer.logStreamChunks,
+    logUserMessages: developer.logUserMessages,
+    maxRepeatedLines: generation.maxRepeatedLines,
+    maxLoopContinues: generation.maxLoopContinues,
+    streamIdleTimeout: network.streamIdleTimeout,
+    maxHttpRetries: network.maxHttpRetries,
+    maxEmptyStreamRetries: network.maxEmptyStreamRetries,
+    maxTotalFetchAttempts: network.maxTotalFetchAttempts,
+    fallbackEnabled: fallback.enabled,
+    fallbackModel: fallback.model,
+    fallbackVisionModel: fallback.visionModel,
+    fallbackOnTimeout: fallback.onTimeout,
+    fallbackOnFirstTokenTimeout: fallback.onFirstTokenTimeout,
+    maxChainRestarts: fallback.maxChainRestarts,
+    firstTokenTimeoutSeconds: fallback.firstTokenTimeoutSeconds,
+  };
+}
+
 export function formatTurnReportsPayload(): string | undefined {
   if (reports.length === 0) {
     return undefined;
@@ -330,6 +356,7 @@ export function formatTurnReportsPayload(): string | undefined {
     extension: "nvidia-nim-provider",
     version: EXTENSION_VERSION,
     generatedAt: new Date().toISOString(),
+    settings: collectReportSettings(),
     turns: reports,
   };
   return redactSecrets(JSON.stringify(payload, null, 2));
@@ -340,33 +367,11 @@ export function formatSessionLogsPayload(): string | undefined {
   if (reports.length === 0 && events.length === 0) {
     return undefined;
   }
-  const developer = ConfigManager.getDeveloperConfig();
-  const generation = ConfigManager.getGenerationConfig();
-  const fallback = ConfigManager.getFallbackConfig();
-  const network = ConfigManager.getNetworkConfig();
   const payload = {
     extension: "nvidia-nim-provider",
     version: EXTENSION_VERSION,
     generatedAt: new Date().toISOString(),
-    settings: {
-      debugLogging: developer.debugLogging,
-      logStreamChunks: developer.logStreamChunks,
-      logUserMessages: developer.logUserMessages,
-      maxRepeatedLines: generation.maxRepeatedLines,
-      maxLoopContinues: generation.maxLoopContinues,
-      streamIdleTimeout: network.streamIdleTimeout,
-      maxHttpRetries: network.maxHttpRetries,
-      maxEmptyStreamRetries: network.maxEmptyStreamRetries,
-      maxTotalFetchAttempts: network.maxTotalFetchAttempts,
-      fallbackEnabled: fallback.enabled,
-      fallbackModel: fallback.model,
-      fallbackVisionModel: fallback.visionModel,
-      fallbackOnTimeout: fallback.onTimeout,
-      fallbackOnFirstTokenTimeout: fallback.onFirstTokenTimeout,
-      maxChainRestarts: fallback.maxChainRestarts,
-      firstTokenTimeoutSeconds: fallback.firstTokenTimeoutSeconds,
-    },
-
+    settings: collectReportSettings(),
     turns: reports,
     events,
   };

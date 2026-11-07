@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Changed
+
+- `NVIDIA NIM: Save Last Turn Report` now includes your timeout, retry and fallback settings, so a bug report no longer needs a follow-up question about them.
+
 ## [1.10.1] - 2026-11-04
 
 ### Fixed
