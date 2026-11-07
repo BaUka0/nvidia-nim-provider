@@ -91,6 +91,7 @@ function issuesContext(
     labels = ["bug"],
     changes = { body: { from: "" } } as Args | undefined,
     title = "[Bug]: Answers stop after view_image",
+    sender = "reporter",
   } = {},
 ) {
   return {
@@ -99,6 +100,7 @@ function issuesContext(
     payload: {
       action,
       changes,
+      sender: { login: sender },
       issue: {
         number: 7,
         title,
@@ -238,6 +240,32 @@ describe("issue report check: issue events", () => {
     });
     await run({ github, context, core, fetchImpl: makeFetch() });
     expect(commentBodies(calls)[0]).toContain("<!-- report-check: description-file -->");
+  });
+
+  it("leaves an issue reopened by a maintainer open without the file", async () => {
+    const { github, calls } = makeGithub([
+      { user: { type: "Bot" }, body: "closed\n<!-- report-check: missing -->" },
+    ]);
+    const context = issuesContext(formBody(), {
+      action: "reopened",
+      labels: ["bug", "needs-report"],
+      sender: "maintainer",
+    });
+    await run({ github, context, core, fetchImpl: makeFetch() });
+    expect(calls).toEqual([]);
+  });
+
+  it("closes an issue the reporter reopens without the file", async () => {
+    const { github, calls, names } = makeGithub([
+      { user: { type: "Bot" }, body: "closed\n<!-- report-check: missing -->" },
+    ]);
+    const context = issuesContext(formBody(), {
+      action: "reopened",
+      labels: ["bug", "needs-report"],
+    });
+    await run({ github, context, core, fetchImpl: makeFetch() });
+    expect(names()).toEqual(["createLabel", "addLabels", "update"]);
+    expect(calls.at(-1)?.[1]).toMatchObject({ state: "closed", state_reason: "not_planned" });
   });
 
   it("skips a title-only edit", async () => {

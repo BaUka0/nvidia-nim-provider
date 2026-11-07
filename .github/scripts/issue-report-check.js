@@ -357,6 +357,15 @@ async function run({
     core.info("Body unchanged; skipping.");
     return;
   }
+  // Only someone with repo access can reopen another user's issue, so this is
+  // a deliberate decision to keep it open without the report file.
+  if (
+    context.payload.action === "reopened" &&
+    context.payload.sender?.login !== issue.user?.login
+  ) {
+    core.info("Reopened by a maintainer; skipping.");
+    return;
+  }
   await checkIssue({ github, core, repo, issue, body, fetchImpl });
 }
 
