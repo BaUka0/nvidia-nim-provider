@@ -1,0 +1,47 @@
+name: Publish to Marketplace
+
+# Publishes the VSIX attached to a full GitHub Release, the same file that was
+# verified at release time, through Marketplace Trusted Publishing. No token is
+# stored: the policy on the publisher's Trusted Publishing tab names this file.
+# Pre-releases do not fire `released`, and X.Y.Z-beta.N versions cannot go to the
+# Marketplace. Run it by hand to retry a failed publish; on a version that is
+# already live, --skip-duplicate makes that a safe check of the policy.
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, e.g. v1.10.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+      - name: Download Release VSIX
+        run: |
+          case "$TAG" in
+            *-*)
+              echo "::error::$TAG is a pre-release; the Marketplace takes X.Y.Z versions only."
+              exit 1
+              ;;
+          esac
+          gh release download "$TAG" --pattern "nvidia-nim-agent-${TAG#v}.vsix"
+      - name: Publish
+        run: >-
+          npx --yes @vscode/vsce@4.1.0 publish --oidc --skip-duplicate
+          --packagePath "nvidia-nim-agent-${TAG#v}.vsix"
