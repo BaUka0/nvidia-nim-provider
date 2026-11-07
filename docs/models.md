@@ -8,17 +8,17 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 
 | Model | Picker Name | Intelligence Index | Context Limit | Max Output | Reasoning Modes | Vision | Notes |
 | :--- | :--- | :---: | :---: | :---: | :--- | :---: | :--- |
-| **DeepSeek V4.1 Flash** | `DeepSeek V4.1 Flash` | **32** | 1,048,576 | 262,144 | `None`, `Low`, `High`, `Max` | Yes | Hard algorithmic work, multimodal coding, complex refactors |
+| **DeepSeek V4.1 Flash** | `DeepSeek V4.1 Flash` | **33** | 1,048,576 | 262,144 | `None`, `Low`, `High`, `Max` | Yes | Hard algorithmic work, multimodal coding, complex refactors |
 | **MiniMax M3.1 Flash** | `MiniMax M3.1 Flash` | **29** | 262,144 | 65,536 | `Low` to `Max` | Yes | Fast multimodal MoE for agentic coding and visual input |
 | **Step 5 Preview** | `Step 5 Preview` | **29** | 1,048,576 | 262,144 | Always on | Yes | StepFun preview with tools and image input |
+| **GLM 5.3 Flash** | `GLM 5.3 Flash` | **28** | 1,048,576 | 131,072 | `Low`, `High`, `Max` | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
 | **Mistral Large 4** | `Mistral Large 4` | **26** | 1,048,576 | 262,144 | `Low`, `Medium`, `High` | Yes | Large multimodal MoE for agentic coding, document and image analysis |
 | **Nemotron 3.5 Super VL** | `Nemotron 3.5 Super VL` | **14** | 1,048,576 | 131,072 | `None`, `Low`, `High` | Yes | Coding, tools, and image input in one model |
 | **Nemotron 3 Ultra** | `Nemotron 3 Ultra` | **12** | 1,000,000 | 32,768 | `None`, `Medium`, `High` | No | Heavy multi-step reasoning, system design, enterprise docs |
 | **Muse Glimmer** | `Muse Glimmer` | **6** | 131,072 | 32,768 | `None` to `Max` | Yes | Front-end UI work, visual UX analysis; default vision fallback |
-| **GLM 5.3 Flash** | `GLM 5.3 Flash` | N/A | 1,048,576 | 131,072 | `Low`, `High`, `Max` | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
-| **Nemotron 3.5 Lightning** | `Nemotron 3.5 Lightning` | N/A | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; default text fallback and summarizer |
+| **Nemotron 3.5 Lightning** | `Nemotron 3.5 Lightning` | **6** | 1,000,000 | 32,768 | `None`, `Medium`, `High`, `XHigh` | No | Fast agentic turns; default text fallback and summarizer |
 
-Intelligence Index values are from the Artificial Analysis Intelligence Index v5.0 (checked 2026-10-30). GLM 5.3 Flash and Nemotron 3.5 Lightning have no v5 score yet.
+Intelligence Index values are from the Artificial Analysis Intelligence Index v5.0.1 (checked 2026-11-07).
 
 ---
 
