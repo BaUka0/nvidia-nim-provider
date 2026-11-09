@@ -100,22 +100,32 @@ Alternatively, run `NVIDIA NIM: Manage NVIDIA NIM API Key` from the Command Pale
 
 Pick any NVIDIA NIM model in Copilot Chat or Copilot Agent Mode.
 
-### 5. Copilot Agent Sessions
+### 5. Copilot Agent Sessions and the Agents Window
 
-NVIDIA NIM models also work in chat sessions run by the **Copilot** harness (VS Code's agent host) in the regular chat view. These sessions differ from Local ones; see [Copilot vs Local Chat Sessions](docs/troubleshooting.md#copilot-vs-local-chat-sessions). The separate **Agents window** does not load the extension yet, so NVIDIA NIM models are not available there.
+NVIDIA NIM models also work in chat sessions run by the **Copilot** harness (VS Code's agent host), both in the regular chat view and in the separate **Agents window** (VS Code 1.145 or later). These sessions differ from Local ones; see [Copilot vs Local Chat Sessions](docs/troubleshooting.md#copilot-vs-local-chat-sessions).
 
-To enable BYOK models for the agent host:
+The agent host offers extension models only when BYOK models are enabled. VS Code 1.145 turns this on by default. On older builds:
 
 1. Open `settings.json` (`Preferences: Open User Settings (JSON)` in Command Palette).
 2. Add:
    ```json
    "chat.agentHost.byokModels.enabled": true
    ```
-3. Recommended settings for heavy agent sessions:
-   * **Recommended Models:** `z-ai/glm-5.3-flash` for multi-step reasoning and deep codebase context.
-   * **TTFT Timeout:** Set `"nvidia-nim.fallback.firstTokenTimeoutSeconds": 120` (or `180`) to allow NVIDIA NIM time for KV-cache prefill on large prompts with multiple MCP tools.
-   * **Idle Watchdog:** `"nvidia-nim.network.streamIdleTimeout": 120` (or `180`) ensures stalled streams are cleanly aborted and failed over.
-   * **Failover Restarts:** `"nvidia-nim.fallback.maxChainRestarts": 2` automatically retries the model chain with backoff if upstream endpoints hit transient 503/529 overload.
+
+If NVIDIA NIM models are missing from the model picker in the Agents window, allow the extension there in `settings.json`:
+
+```json
+"extensions.supportAgentsWindow": {
+  "neuraldock.nvidia-nim-agent": true
+}
+```
+
+Recommended settings for heavy agent sessions:
+
+* **Recommended Models:** `z-ai/glm-5.3-flash` for multi-step reasoning and deep codebase context.
+* **TTFT Timeout:** Set `"nvidia-nim.fallback.firstTokenTimeoutSeconds": 120` (or `180`) to allow NVIDIA NIM time for KV-cache prefill on large prompts with multiple MCP tools.
+* **Idle Watchdog:** `"nvidia-nim.network.streamIdleTimeout": 120` (or `180`) ensures stalled streams are cleanly aborted and failed over.
+* **Failover Restarts:** `"nvidia-nim.fallback.maxChainRestarts": 2` automatically retries the model chain with backoff if upstream endpoints hit transient 503/529 overload.
 
 ---
 

@@ -42,6 +42,11 @@
   "engines": {
     "vscode": "^1.125.0"
   },
+  "capabilities": {
+    "agentsWindow": {
+      "supported": true
+    }
+  },
   "categories": [
     "AI",
     "Chat"

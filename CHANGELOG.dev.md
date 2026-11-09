@@ -4,6 +4,10 @@ Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issu
 
 ## [Unreleased]
 
+### Added
+
+- **Agents window support (`package.json`, `README.md`).** The manifest declares `capabilities.agentsWindow.supported: true`. In VS Code 1.145 `canExecuteOnSessionsWindow` checks, in order, the user's `extensions.supportAgentsWindow` override, `product.json#sessionsWindowAllowedExtensions`, and this capability. Without one of them an extension with `main` code stays disabled in the Agents window. The October attempt on 1.141 also needed the `agentsWindowActivation` proposal and `extensions.experimental.enableAgentsWindowCapability`; neither exists in 1.145. Verified on 2026-11-09 with the Marketplace 1.10.1 build and the user override: the extension activated in the Agents window through `onLanguageModelChatProvider:nvidia-nim`, listed models in the Copilot session picker, and answered through Nemotron 3.5 Super VL, with the turn report showing `harness: copilot`. `chat.agentHost.byokModels.enabled` defaults to true in 1.145. A dev host bypasses Agents window enablement, so the capability alone still needs a check on an installed build. README section 5 now describes the Agents window instead of calling it unsupported.
+
 ### Changed
 
 - **Settings in the last turn report (`src/shared/turn-report.ts`, `tests/turn-report.test.ts`).** `formatTurnReportsPayload` now writes the same `settings` block as `formatSessionLogsPayload`, through the shared `collectReportSettings`. The report in #59 showed a 70-minute `network_error: terminated` with 0 chunks, and without `streamIdleTimeout` it could not tell a raised timeout from a sleeping machine. The payload still has no `events` array, which is how `.github/scripts/issue-report-check.js` tells a turn report from a session log. Addresses #59.

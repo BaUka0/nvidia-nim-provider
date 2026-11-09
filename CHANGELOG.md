@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Added
+
+- NVIDIA NIM models are now available in VS Code's separate Agents window (VS Code 1.145 or later), not just in the regular chat view.
+
 ### Changed
 
 - `NVIDIA NIM: Save Last Turn Report` now includes your timeout, retry and fallback settings, so a bug report no longer needs a follow-up question about them.
