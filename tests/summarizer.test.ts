@@ -72,6 +72,56 @@ describe("truncateMessagesForContext", () => {
     expect(result).toHaveLength(2);
     expect(result[1].content).toBe(longContent);
   });
+
+  it("pairs the trailing tool message with its owning assistant filtered to that tool_call_id when budget is exceeded", () => {
+    const messages: NimChatMessage[] = [
+      { role: "user", content: "Inspect both files" },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "read_file", arguments: '{"filePath":"a.ts"}' },
+          },
+          {
+            id: "call_2",
+            type: "function",
+            function: { name: "read_file", arguments: '{"filePath":"b.ts"}' },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_1", content: "x".repeat(5000) },
+      { role: "tool", tool_call_id: "call_2", content: "y".repeat(5000) },
+    ];
+    const result = truncateMessagesForContext(messages, 10);
+    const nonSystem = result.filter((m) => m.role !== "system");
+    expect(nonSystem).toEqual([
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          {
+            id: "call_2",
+            type: "function",
+            function: { name: "read_file", arguments: '{"filePath":"b.ts"}' },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_2", content: "y".repeat(5000) },
+    ]);
+  });
+
+  it("falls back to the last non-tool message instead of emitting an orphan tool message", () => {
+    const messages: NimChatMessage[] = [
+      { role: "user", content: "Explain the build failure" },
+      { role: "tool", tool_call_id: "orphan_call", content: "z".repeat(5000) },
+    ];
+    const result = truncateMessagesForContext(messages, 10);
+    const nonSystem = result.filter((m) => m.role !== "system");
+    expect(nonSystem).toEqual([{ role: "user", content: "Explain the build failure" }]);
+  });
 });
 
 describe("splitMessagesForSummarization", () => {
@@ -330,7 +380,33 @@ describe("summarizeOldMessages", () => {
 
     const request = completionMock.mock.calls.at(-1)?.[1];
     expect(request.model).toBe("meta/muse-glimmer-30b");
+    expect(request.max_tokens).toBe(4096);
   });
+
+  it.each([
+    ["mistralai/mistral-large-4-1t-a52b", 16384],
+    ["stepfun-ai/step-5-preview", 16384],
+    ["minimaxai/minimax-m3.1-flash", 16384],
+    ["nvidia/nemotron-3.5-lightning-30b-a3b", 4096],
+  ])(
+    "sets max_tokens for %s to %i so always-reasoning models are not starved",
+    async (modelId, expectedMaxTokens) => {
+      const completionMock = chatCompletion as jest.Mock;
+      completionMock.mockResolvedValueOnce("Summary");
+
+      await summarizeOldMessages(
+        [{ role: "user", content: "some text" }],
+        "test-key",
+        "test-agent",
+        undefined,
+        modelId,
+      );
+
+      const request = completionMock.mock.calls.at(-1)?.[1];
+      expect(request.model).toBe(modelId);
+      expect(request.max_tokens).toBe(expectedMaxTokens);
+    },
+  );
 });
 
 describe("compactAndFit", () => {

@@ -450,7 +450,37 @@ export function truncateMessagesForContext(
   kept = nonSystemMessages.filter((message) => selected.has(message));
 
   if (kept.length === 0 && nonSystemMessages.length > 0) {
-    kept.push(nonSystemMessages[nonSystemMessages.length - 1]);
+    const last = nonSystemMessages[nonSystemMessages.length - 1];
+    if (last.role === "tool") {
+      let owner: NimChatMessage | undefined;
+      if (last.tool_call_id) {
+        for (let i = nonSystemMessages.length - 2; i >= 0; i -= 1) {
+          const candidate = nonSystemMessages[i];
+          if (
+            candidate.role === "assistant" &&
+            candidate.tool_calls?.some((call) => call.id === last.tool_call_id)
+          ) {
+            owner = {
+              ...candidate,
+              tool_calls: candidate.tool_calls.filter((call) => call.id === last.tool_call_id),
+            };
+            break;
+          }
+        }
+      }
+      if (owner) {
+        kept.push(owner, last);
+      } else {
+        for (let i = nonSystemMessages.length - 2; i >= 0; i -= 1) {
+          if (nonSystemMessages[i].role !== "tool") {
+            kept.push(nonSystemMessages[i]);
+            break;
+          }
+        }
+      }
+    } else {
+      kept.push(last);
+    }
   }
 
   const result: NimChatMessage[] = [

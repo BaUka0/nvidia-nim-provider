@@ -399,8 +399,6 @@ export class ModelTurnExecutor {
         const state = createAttemptLoopState();
 
         for (let attempt = 0; attempt < attemptSafetyCap; attempt += 1) {
-          totalAttempts += 1;
-          finalUsage = undefined;
           const attemptStartedAtMs = Date.now();
           if (
             requestPreparationDurationMs === undefined &&
@@ -411,6 +409,7 @@ export class ModelTurnExecutor {
 
           const allocated = fetchBudget.consume(streamHttpAttempts);
           if (allocated <= 0) {
+            state.lastRetryReason = undefined;
             break;
           }
 
@@ -432,6 +431,7 @@ export class ModelTurnExecutor {
             }
             if (!nudgedBody) {
               if (state.lastRetryReason === "invalid_tool_call") {
+                state.lastRetryReason = undefined;
                 reportState.failingAttemptHasVisibleContent = false;
                 throw createInvalidToolExhaustionError(
                   model.name ?? model.id,
@@ -439,10 +439,13 @@ export class ModelTurnExecutor {
                   state.lastInvalidToolSkipNames,
                 );
               }
+              state.lastRetryReason = undefined;
               break;
             }
             attemptBody = nudgedBody;
           }
+          totalAttempts += 1;
+          finalUsage = undefined;
           activeRequestBody = attemptBody;
 
           let result: StreamAttemptResult;
@@ -468,6 +471,7 @@ export class ModelTurnExecutor {
               toolsConfig: toolsConfig,
               hasRetriedRepetitionLoop: state.loopContinueCount >= MAX_LOOP_CONTINUES,
               parseEmbeddedToolText,
+              onRetryAttempt: () => fetchBudget.consume(1) > 0,
               onContentReported: () => {
                 thisAttemptReportedContent = true;
               },
@@ -719,6 +723,7 @@ export class ModelTurnExecutor {
     });
 
     if (willTransientRetry) {
+      state.lastRetryReason = undefined;
       state.lastTransientError = streamErr;
       state.transientRetryCount += 1;
       debugLog(
@@ -873,6 +878,7 @@ export class ModelTurnExecutor {
     });
 
     if (isLoopRetryReason(retryReason)) {
+      state.lastRetryReason = undefined;
       state.loopContinueCount += 1;
       retryReasonHistory.push(retryReason);
       // Only visible text is replayed into the retry. When the attempt stopped
@@ -929,6 +935,7 @@ export class ModelTurnExecutor {
     }
 
     if (result.sawToolCall && !result.emittedToolCall && retryMessage) {
+      state.lastRetryReason = undefined;
       reportState.failingAttemptHasVisibleContent = false;
       throw createInvalidToolExhaustionError(
         model.name ?? model.id,
@@ -938,6 +945,7 @@ export class ModelTurnExecutor {
     }
 
     if (result.lastFinishReason === "content_filter") {
+      state.lastRetryReason = undefined;
       if (!result.reportedVisibleContent && !result.sawToolCall && !result.emittedToolCall) {
         throw createStructuredError(
           "invalid_request",
@@ -959,6 +967,7 @@ export class ModelTurnExecutor {
     });
 
     if (retryReason === "empty_stream") {
+      state.lastRetryReason = undefined;
       state.emptyStreamRetryCount += 1;
       retryReasonHistory.push("empty_stream");
       state.retryNudge = undefined;
@@ -970,6 +979,7 @@ export class ModelTurnExecutor {
       return { action: "continue", baselineRequestBody };
     }
 
+    state.lastRetryReason = undefined;
     state.attemptCompleted = true;
     return { action: "complete", baselineRequestBody };
   }

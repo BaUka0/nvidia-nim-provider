@@ -43,3 +43,5 @@ jobs:
         run: npm run package:vsix
       - name: Strict Type Check
         run: npm exec -- tsc --noEmit
+      - name: Typecheck Tests and Mocks
+        run: npm run typecheck

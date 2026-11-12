@@ -1,4 +1,5 @@
 import { parseJsonOrRepair, tryParseJsonObjectOrRepair } from "../shared/json-repair";
+import { isAuxiliaryRequiredField } from "../shared/tool-fields";
 import { isTokenInStringOrRegexLiteral, readBalancedJsonObject } from "./xml-tool-scanner";
 import {
   ToolSchema,
@@ -146,6 +147,13 @@ export function findJsonConstructStart(
     }
 
     if (nextKind === "fenced") {
+      const fullText = contextPrefix + text;
+      const lineStart = fullText.lastIndexOf("\n", totalPos - 1) + 1;
+      const linePrefix = fullText.slice(lineStart, totalPos);
+      if (!/^[ \t]*$/.test(linePrefix)) {
+        pos = nextIndex + 3;
+        continue;
+      }
       const slice = text.slice(nextIndex);
       const match = slice.match(/^```(?:json)?\s*(\{|\[)?/i);
       if (match) {
@@ -198,6 +206,27 @@ function hasAliasInSchema(
   return false;
 }
 
+function hasNonEmptyArgValue(value: unknown): boolean {
+  return (
+    value !== undefined &&
+    value !== null &&
+    !(typeof value === "string" && value.trim().length === 0)
+  );
+}
+
+function matchesKeyOrAlias(candidateKey: string, targetKey: string): boolean {
+  const lowerCandidate = candidateKey.toLowerCase();
+  const lowerTarget = targetKey.toLowerCase();
+  if (lowerCandidate === lowerTarget) {
+    return true;
+  }
+  return PROPERTY_ALIAS_GROUPS.some(
+    (group) =>
+      group.some((alias) => alias.toLowerCase() === lowerTarget) &&
+      group.some((alias) => alias.toLowerCase() === lowerCandidate),
+  );
+}
+
 export function findBestMatchingTool(
   parsedArgs: Record<string, unknown>,
   toolSchemas: ReadonlyMap<string, ToolSchema>,
@@ -220,13 +249,37 @@ export function findBestMatchingTool(
     | undefined;
 
   for (const [toolName, schema] of toolSchemas.entries()) {
+    const schemaRequired = schema.required ?? [];
+    if (schemaRequired.length === 0) {
+      continue;
+    }
+
+    const nonAuxRequired = schemaRequired.filter((req) => !isAuxiliaryRequiredField(req));
+    const hasRequiredFromCaller =
+      nonAuxRequired.length > 0
+        ? Object.entries(parsedArgs).some(
+            ([key, value]) =>
+              !FORBIDDEN_TOOL_IDENTIFIERS.has(key) &&
+              hasNonEmptyArgValue(value) &&
+              nonAuxRequired.some((req) => matchesKeyOrAlias(key, req)),
+          )
+        : Object.entries(parsedArgs).some(
+            ([key, value]) =>
+              !FORBIDDEN_TOOL_IDENTIFIERS.has(key) &&
+              hasNonEmptyArgValue(value) &&
+              schemaRequired.some((req) => key.toLowerCase() === req.toLowerCase()),
+          );
+    if (!hasRequiredFromCaller) {
+      continue;
+    }
+
     const repaired = repairToolArguments(toolName, parsedArgs, undefined, schema);
     if (!isToolCallInput(repaired) || !hasRequiredToolArguments(repaired, schema)) {
       continue;
     }
 
     const declaredProps = new Set(Object.keys(schema.properties ?? {}).map((p) => p.toLowerCase()));
-    const requiredProps = new Set((schema.required ?? []).map((r) => r.toLowerCase()));
+    const requiredProps = new Set(schemaRequired.map((r) => r.toLowerCase()));
 
     let directMatches = 0;
     let aliasMatches = 0;
@@ -243,8 +296,12 @@ export function findBestMatchingTool(
       }
     }
 
+    if (unrecognizedCount > 0) {
+      continue;
+    }
+
     let satisfiedRequired = 0;
-    for (const req of schema.required ?? []) {
+    for (const req of schemaRequired) {
       if (repaired[req] !== undefined && repaired[req] !== null && repaired[req] !== "") {
         satisfiedRequired += 1;
       }
@@ -297,6 +354,7 @@ function extractSingleToolCall(
   record: Record<string, unknown>,
   toolSchemas: ReadonlyMap<string, ToolSchema> | undefined,
   isValidName: (name: string) => boolean,
+  isFenced = false,
 ): JsonScannedToolCall | undefined {
   if (!toolSchemas || toolSchemas.size === 0) {
     return undefined;
@@ -342,6 +400,22 @@ function extractSingleToolCall(
         }
         return { name, args };
       }
+    }
+  }
+
+  if (isFenced) {
+    // In Markdown fenced ```json blocks without an explicit tool wrapper,
+    // require at least two non-auxiliary payload keys so single-field prose
+    // examples like ```json\n{"filePath": "foo.ts"}\n``` stay ordinary text.
+    const nonAuxPayloadKeys = Object.keys(record).filter(
+      (key) =>
+        !AUXILIARY_KEYS.has(key.toLowerCase()) &&
+        !isAuxiliaryRequiredField(key) &&
+        !FORBIDDEN_TOOL_IDENTIFIERS.has(key) &&
+        hasNonEmptyArgValue(record[key]),
+    );
+    if (nonAuxPayloadKeys.length < 2) {
+      return undefined;
     }
   }
 
@@ -431,7 +505,7 @@ export function scanJsonToolConstruct(
     const toolCalls: JsonScannedToolCall[] = [];
     for (const item of parsed) {
       if (typeof item === "object" && item !== null) {
-        const extracted = extractSingleToolCall(item, toolSchemas, isValidName);
+        const extracted = extractSingleToolCall(item, toolSchemas, isValidName, isFenced);
         if (extracted) {
           toolCalls.push(extracted);
         }
@@ -469,7 +543,7 @@ export function scanJsonToolConstruct(
     }
   }
 
-  const single = extractSingleToolCall(record, toolSchemas, isValidName);
+  const single = extractSingleToolCall(record, toolSchemas, isValidName, isFenced);
   if (single) {
     return { status: "complete", consumed, toolCall: single };
   }

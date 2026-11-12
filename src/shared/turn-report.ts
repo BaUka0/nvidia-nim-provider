@@ -17,6 +17,7 @@ const TEMPLATE_KWARG_KEYS = [
   "low_effort",
   "medium_effort",
   "reasoning_budget",
+  "reasoning_effort",
   "thinking",
   "force_nonempty_content",
   "clear_thinking",
@@ -173,6 +174,9 @@ export function inferReasoningModeFromRequest(
   }
   if (kwargs.enable_thinking === false || kwargs.thinking === false) {
     return "none";
+  }
+  if (typeof kwargs.reasoning_effort === "string" && kwargs.reasoning_effort.length > 0) {
+    return kwargs.reasoning_effort;
   }
   if (kwargs.low_effort === true) {
     return "low";

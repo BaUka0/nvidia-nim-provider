@@ -606,6 +606,17 @@ describe("RepetitionGuard.detectHistoryLoop", () => {
     expect(content).not.toContain("Let me fix");
     expect(content).not.toContain("Let me run");
   });
+
+  it("skips thinking parts ending in colons during detectHistoryLoop", () => {
+    const messages = Array.from({ length: 4 }, () => ({
+      role: 2,
+      content: [
+        { type: "thinking", value: "Let me plan the next edit:" },
+        { value: "Done updating the module." },
+      ],
+    }));
+    expect(detectHistoryLoop(messages)).toBeUndefined();
+  });
 });
 
 describe("RepetitionGuard.detectToolCallHistoryLoop", () => {

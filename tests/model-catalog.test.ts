@@ -92,6 +92,18 @@ describe("normalizeNvidiaModels", () => {
     expect(normalizeNvidiaModels(raw)).toEqual([]);
   });
 
+  it("ignores Object.prototype keys via Object.hasOwn", () => {
+    const raw: NvidiaModelSummary[] = [
+      { id: "toString" },
+      { id: "constructor" },
+      { id: "__proto__" },
+      { id: "hasOwnProperty" },
+      { id: "valueOf" },
+    ];
+
+    expect(normalizeNvidiaModels(raw)).toEqual([]);
+  });
+
   it("deduplicates exact duplicate model ids from the NVIDIA catalog", () => {
     const raw: NvidiaModelSummary[] = [{ id: "z-ai/glm-5.3-flash" }, { id: "z-ai/glm-5.3-flash" }];
 

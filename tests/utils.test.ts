@@ -9,7 +9,9 @@ import {
   estimateTokens,
   stripFallbackNotices,
 } from "../src/messages/converter";
-import { sniffNimImageMimeType } from "../src/messages/parts";
+import { getToolResultImages, sniffNimImageMimeType } from "../src/messages/parts";
+import { classifyApiError } from "../src/api/errors";
+import { getSessionEvents, resetSessionLogsForTests } from "../src/shared/logging";
 import { filterThinkTagsFromChunk, flushThinkTagFilter } from "../src/messages/think-filter";
 import { MESSAGE_OVERHEAD_TOKENS, TOOL_OVERHEAD_TOKENS } from "../src/messages/token-estimate";
 import {
@@ -799,6 +801,75 @@ describe("convertMessages with tools", () => {
       maxToolResultChars: 100,
     });
     expect(result[0].content).toBe(shortContent);
+  });
+
+  it("logs skipped oversized tool-result images via debugLog without failing the turn", () => {
+    resetSessionLogsForTests();
+    const oversized = new Uint8Array(20 * 1024 * 1024 + 1);
+    const toolResultPart = new vscode.LanguageModelToolResultPart("call_img", [
+      new vscode.LanguageModelDataPart(oversized, "image/png"),
+    ]);
+
+    expect(getToolResultImages(toolResultPart)).toEqual([]);
+    const events = getSessionEvents();
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "vision",
+          value: expect.objectContaining({
+            skippedToolResultImage: true,
+            mimeType: "image/png",
+            error: expect.stringMatching(/exceeds the .* chat image limit/),
+          }),
+        }),
+      ]),
+    );
+  });
+});
+
+describe("classifyApiError HTTP 413/415/422 and context overflow", () => {
+  it.each([400, 413, 422])(
+    "classifies HTTP %i with context-overflow detail as context_overflow",
+    (status) => {
+      const err = classifyApiError(new Error(`HTTP ${status}`), {
+        status,
+        detail: "Maximum context length is 262144 tokens, your messages resulted in 270000 tokens",
+      }) as Error & {
+        kind?: string;
+        code?: string;
+        contextOverflow?: { reportedMaximum?: number; actualUsage?: number };
+      };
+
+      expect(err.kind).toBe("context_overflow");
+      expect(err.code).toBe("CONTEXT_OVERFLOW");
+      expect(err.contextOverflow).toEqual({
+        reportedMaximum: 262144,
+        actualUsage: 270000,
+      });
+    },
+  );
+
+  it("distinguishes HTTP 413, 415, and 422 invalid_request causes when not a context overflow", () => {
+    const tooLarge = classifyApiError(new Error("HTTP 413"), {
+      status: 413,
+      detail: "Payload exceeds gateway limit",
+    }) as Error & { kind?: string };
+    expect(tooLarge.kind).toBe("invalid_request");
+    expect(tooLarge.message).toMatch(/payload too large/i);
+
+    const unsupportedMedia = classifyApiError(new Error("HTTP 415"), {
+      status: 415,
+      detail: "Unsupported Media Type",
+    }) as Error & { kind?: string };
+    expect(unsupportedMedia.kind).toBe("invalid_request");
+    expect(unsupportedMedia.message).toMatch(/unsupported media format/i);
+
+    const unprocessable = classifyApiError(new Error("HTTP 422"), {
+      status: 422,
+      detail: "Image rejected by content validation",
+    }) as Error & { kind?: string };
+    expect(unprocessable.kind).toBe("invalid_request");
+    expect(unprocessable.message).toMatch(/unprocessable request content or media rejected/i);
   });
 });
 

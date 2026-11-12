@@ -23,6 +23,6 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ["out/", "node_modules/", "__mocks__/"],
+    ignores: ["out/", "node_modules/"],
   },
 );

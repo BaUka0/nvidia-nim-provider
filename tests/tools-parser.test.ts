@@ -1,4 +1,7 @@
 import { ConfigManager } from "../src/shared/config";
+import { isAuxiliaryRequiredField } from "../src/shared/tool-fields";
+import { parseEmbeddedToolParameterValue } from "../src/tools/embedded-parser";
+import { isReadTool } from "../src/tools/tool-kinds";
 import {
   buildInvalidToolCallRetryMessage,
   buildToolCallCanonicalKey,
@@ -742,6 +745,79 @@ describe("tool argument parsing and validation", () => {
       expect(skipped).toHaveLength(1);
       expect(aggregator.getToolCallLoop()).toBeDefined();
     });
+
+    it("forwards incomplete calls whose required field was supplied via alias, while rejecting auxiliary-only payloads", () => {
+      const aliasForwardOptions = makeChatOptions({
+        tools: [
+          {
+            name: "replace_string_in_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                oldString: { type: "string" },
+                newString: { type: "string" },
+              },
+              required: ["filePath", "oldString", "newString"],
+            },
+          },
+          {
+            name: "read_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "integer" },
+                endLine: { type: "integer" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      });
+
+      const emitted: Array<{ name: string; args: Record<string, unknown> }> = [];
+      const skipped: Array<{ name: string; required: string[] }> = [];
+      const aggregator = new ToolCallStreamAggregator({
+        options: aliasForwardOptions,
+        messages: [],
+        toolsConfig: ConfigManager.getToolsConfig(),
+        onEmitToolCall: (_id, name, args) => emitted.push({ name, args }),
+        onSkipToolCall: (name, required) => skipped.push({ name, required }),
+      });
+
+      // Aliased required `file_path` -> `filePath` is recognized in repairedArgs
+      aggregator.handleToolCalls([
+        {
+          index: 0,
+          id: "call_alias",
+          type: "function",
+          function: {
+            name: "replace_string_in_file",
+            arguments: '{"file_path":"/tmp/a.ts"}',
+          },
+        },
+        // Auxiliary-only payload (`startLine`) on read_file must still be skipped
+        {
+          index: 1,
+          id: "call_aux_only",
+          type: "function",
+          function: {
+            name: "read_file",
+            arguments: '{"startLine":10}',
+          },
+        },
+      ]);
+      aggregator.flushRemaining();
+
+      expect(emitted).toEqual([
+        {
+          name: "replace_string_in_file",
+          args: { file_path: "/tmp/a.ts", filePath: "/tmp/a.ts" },
+        },
+      ]);
+      expect(skipped).toEqual([{ name: "read_file", required: ["filePath"] }]);
+    });
   });
 
   it("re-emits run_in_terminal even when the same command already completed", () => {
@@ -938,6 +1014,27 @@ describe("tool argument parsing and validation", () => {
             required: ["query"],
           },
         },
+        {
+          name: "edit_file",
+          inputSchema: {
+            type: "object",
+            properties: {
+              filePath: { type: "string" },
+              content: { type: "string" },
+            },
+            required: ["filePath", "content"],
+          },
+        },
+        {
+          name: "run_in_terminal",
+          inputSchema: {
+            type: "object",
+            properties: {
+              command: { type: "string" },
+            },
+            required: ["command"],
+          },
+        },
       ],
     });
     const readA = { filePath: "/tmp/a.ts", startLine: 1, endLine: 40 };
@@ -1029,22 +1126,62 @@ describe("tool argument parsing and validation", () => {
       expect(loop?.count).toBe(5);
     });
 
-    it("resets the count when a different tool runs", () => {
+    it("accumulates counts across alternating non-mutating tools (read_file <-> grep_search)", () => {
+      const grepTodo = { query: "TODO" };
       const history = [
+        userText("Fix the bug"),
+        ...rounds(
+          ["read_file", readA],
+          ["grep_search", grepTodo],
+          ["read_file", readA],
+          ["grep_search", grepTodo],
+          ["read_file", readA],
+          ["grep_search", grepTodo],
+          ["read_file", readA],
+          ["grep_search", grepTodo],
+        ),
+      ];
+
+      const { emitted, loop } = streamCall(history, "read_file", readA);
+
+      expect(emitted).toEqual([]);
+      expect(loop).toEqual({
+        key: expect.stringContaining('"filePath":"/tmp/a.ts"'),
+        name: "read_file",
+        count: 5,
+      });
+    });
+
+    it("resets prior read counts when a mutating edit or terminal tool runs", () => {
+      const afterEdit = [
         userText("Fix the bug"),
         ...rounds(
           ["read_file", readA],
           ["read_file", readA],
           ["read_file", readA],
           ["read_file", readA],
-          ["grep_search", { query: "TODO" }],
+          ["edit_file", { filePath: "/tmp/a.ts", content: "updated" }],
         ),
       ];
 
-      const { emitted, loop } = streamCall(history, "read_file", readA);
+      const editRes = streamCall(afterEdit, "read_file", readA);
+      expect(editRes.emitted).toHaveLength(1);
+      expect(editRes.loop).toBeUndefined();
 
-      expect(emitted).toHaveLength(1);
-      expect(loop).toBeUndefined();
+      const afterTerminal = [
+        userText("Fix the bug"),
+        ...rounds(
+          ["read_file", readA],
+          ["read_file", readA],
+          ["read_file", readA],
+          ["read_file", readA],
+          ["run_in_terminal", { command: "npm test" }],
+        ),
+      ];
+
+      const termRes = streamCall(afterTerminal, "read_file", readA);
+      expect(termRes.emitted).toHaveLength(1);
+      expect(termRes.loop).toBeUndefined();
     });
 
     it("resets the count when the user sends a new message", () => {
@@ -1083,7 +1220,7 @@ describe("tool argument parsing and validation", () => {
     });
   });
 
-  it("defaults missing grep isRegexp to false so the call is not rejected", () => {
+  it("defaults missing grep isRegexp case-insensitively and preserves case-mismatched boolean inputs", () => {
     const grepSchema = getToolSchemaMap(
       makeChatOptions({
         tools: [
@@ -1098,19 +1235,136 @@ describe("tool argument parsing and validation", () => {
               required: ["query", "isRegexp"],
             },
           },
+          {
+            name: "mcp_grep",
+            inputSchema: {
+              type: "object",
+              properties: {
+                query: { type: "string" },
+                IsRegexp: { type: "boolean" },
+              },
+              required: ["query", "IsRegexp"],
+            },
+          },
         ],
       }),
-    ).get("grep_search");
+    );
 
     const repaired = repairToolArguments(
       "grep_search",
       { query: "static fields" },
       undefined,
-      grepSchema,
+      grepSchema.get("grep_search"),
+    );
+    expect(repaired).toEqual({ query: "static fields", isRegexp: false });
+    expect(hasRequiredToolArguments(repaired, grepSchema.get("grep_search"))).toBe(true);
+
+    const repairedPascal = repairToolArguments(
+      "mcp_grep",
+      { query: "static fields" },
+      undefined,
+      grepSchema.get("mcp_grep"),
+    );
+    expect(repairedPascal).toEqual({ query: "static fields", IsRegexp: false });
+    expect(hasRequiredToolArguments(repairedPascal, grepSchema.get("mcp_grep"))).toBe(true);
+
+    const repairedSibling = repairToolArguments(
+      "mcp_grep",
+      { query: "foo.*bar", isregexp: true },
+      undefined,
+      grepSchema.get("mcp_grep"),
+    );
+    expect(repairedSibling).toEqual({ query: "foo.*bar", isregexp: true, IsRegexp: true });
+    expect(hasRequiredToolArguments(repairedSibling, grepSchema.get("mcp_grep"))).toBe(true);
+  });
+
+  it("synthesizes missing/blank required auxiliary strings only when non-auxiliary payload args are satisfied", () => {
+    expect(isAuxiliaryRequiredField("isRegexp")).toBe(true);
+    expect(isAuxiliaryRequiredField("ISREGEXP")).toBe(true);
+    expect(isAuxiliaryRequiredField("StartLine")).toBe(true);
+    expect(isAuxiliaryRequiredField("summary")).toBe(true);
+    expect(isAuxiliaryRequiredField("filePath")).toBe(false);
+    expect(isReadTool("read_resource")).toBe(true);
+
+    const schemas = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "update_plan",
+            inputSchema: {
+              type: "object",
+              properties: {
+                items: { type: "array" },
+                summary: { type: "string" },
+                description: { type: "string" },
+                explanation: { type: "string" },
+                goal: { type: "string" },
+              },
+              required: ["items", "summary", "description", "explanation", "goal"],
+            },
+          },
+          {
+            name: "search_docs",
+            inputSchema: {
+              type: "object",
+              properties: {
+                query: { type: "string" },
+                summary: { type: "string" },
+              },
+              required: ["query", "summary"],
+            },
+          },
+          {
+            name: "aux_only_tool",
+            inputSchema: {
+              type: "object",
+              properties: {
+                mode: { type: "string" },
+                summary: { type: "string" },
+              },
+              required: ["summary"],
+            },
+          },
+        ],
+      }),
     );
 
-    expect(repaired).toEqual({ query: "static fields", isRegexp: false });
-    expect(hasRequiredToolArguments(repaired, grepSchema)).toBe(true);
+    const planSchema = schemas.get("update_plan");
+    const filledFromToolName = repairToolArguments(
+      "update_plan",
+      { items: ["step 1"], summary: "   " },
+      undefined,
+      planSchema,
+    );
+    expect(filledFromToolName).toEqual({
+      items: ["step 1"],
+      summary: "Run update_plan",
+      description: "Run update_plan",
+      explanation: "Run update_plan",
+      goal: "Run update_plan",
+    });
+    expect(hasRequiredToolArguments(filledFromToolName, planSchema)).toBe(true);
+
+    const filledAnonymous = repairToolArguments("", { items: ["step 1"] }, undefined, planSchema);
+    expect(filledAnonymous.summary).toBe("Tool action");
+
+    const searchSchema = schemas.get("search_docs");
+    const reusedQuery = repairToolArguments(
+      "search_docs",
+      { query: "oauth2 flow" },
+      undefined,
+      searchSchema,
+    );
+    expect(reusedQuery).toEqual({ query: "oauth2 flow", summary: "oauth2 flow" });
+    expect(hasRequiredToolArguments(reusedQuery, searchSchema)).toBe(true);
+
+    // Never synthesize on `{}` or auxiliary-only inputs or missing non-auxiliary required args
+    const auxSchema = schemas.get("aux_only_tool");
+    expect(repairToolArguments("aux_only_tool", {}, undefined, auxSchema)).toEqual({});
+    expect(repairToolArguments("aux_only_tool", { mode: "sync" }, undefined, auxSchema)).toEqual({
+      mode: "sync",
+    });
+    expect(repairToolArguments("search_docs", {}, undefined, searchSchema)).toEqual({});
   });
 
   it("re-emits grep_search even when the same query already completed", () => {
@@ -2646,5 +2900,44 @@ describe("text tool calls across chunks and at stream end", () => {
       startLine: 10,
       endLine: 20,
     });
+  });
+
+  it("preserves leading-backslash Windows paths in XML parameters without mangling escapes via JSON repair", () => {
+    expect(parseEmbeddedToolParameterValue("\\foo\\bar\\test.ts")).toBe("\\foo\\bar\\test.ts");
+    expect(parseEmbeddedToolParameterValue("\\\\server\\share\\notes.md")).toBe(
+      "\\\\server\\share\\notes.md",
+    );
+
+    const xml =
+      "<tool_call>\n<function=read_file>\n<parameter=filePath>\\foo\\bar\\test.ts</parameter>\n</function>\n</tool_call>";
+    const parsed = parseTextEmbeddedToolCalls(xml, undefined, { atStreamEnd: true });
+    expect(toolCalls(parsed)).toEqual([
+      {
+        type: "toolCall",
+        toolCall: { name: "read_file", args: { filePath: "\\foo\\bar\\test.ts" } },
+      },
+    ]);
+  });
+
+  it("does not treat mid-line or inline triple backticks as an unclosed code fence hiding subsequent tool calls", () => {
+    const midLineProse = `Do not wrap output in \`\`\`json fences:\n${readFileCall}`;
+    expect(toolCalls(parseTextEmbeddedToolCalls(midLineProse, undefined))).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+
+    const quotedFenceInCode = `const CODE_FENCE = "\`\`\`";\n${readFileCall}`;
+    expect(toolCalls(parseTextEmbeddedToolCalls(quotedFenceInCode, undefined))).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+
+    const context = new TextParseContext();
+    context.append("Avoid ```json wrappers in output.\n");
+    expect(context.prefix()).toBe("");
+    const afterChunk = parseTextEmbeddedToolCalls(readFileCall, undefined, {
+      contextPrefix: context.prefix(),
+    });
+    expect(toolCalls(afterChunk)).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
   });
 });

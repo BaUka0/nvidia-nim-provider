@@ -165,4 +165,78 @@ describe("streamed JSON tool fallback", () => {
       { type: "text", text: "Done." },
     ]);
   });
+
+  it("preserves single-key or extra-key prose Markdown fenced JSON blocks as text instead of executing tools", () => {
+    const singleKeyProse = 'Example config:\n```json\n{"filePath": "foo.ts"}\n```\nEnd.';
+    const singleRes = parseTextEmbeddedToolCalls(singleKeyProse, toolSchemas, {
+      atStreamEnd: true,
+    });
+    expect(singleRes.segments).toEqual([{ type: "text", text: singleKeyProse }]);
+
+    const extraKeyProse =
+      'Example payload:\n```json\n{"filePath": "foo.ts", "code": "x", "extraUnrecognized": 123}\n```\nEnd.';
+    const extraRes = parseTextEmbeddedToolCalls(extraKeyProse, toolSchemas, {
+      atStreamEnd: true,
+    });
+    expect(extraRes.segments).toEqual([{ type: "text", text: extraKeyProse }]);
+  });
+
+  it("still executes explicit named fenced JSON tool calls with a single argument", () => {
+    const namedFenced =
+      'Reading file:\n```json\n{"name": "read_file", "arguments": {"filePath": "foo.ts"}}\n```\nDone.';
+    const res = parseTextEmbeddedToolCalls(namedFenced, toolSchemas, { atStreamEnd: true });
+    expect(res.segments).toEqual([
+      { type: "text", text: "Reading file:\n" },
+      {
+        type: "toolCall",
+        toolCall: {
+          name: "read_file",
+          args: { filePath: "foo.ts" },
+        },
+      },
+      { type: "text", text: "Done." },
+    ]);
+  });
+
+  it("never guesses zero-required-arg tools or auxiliary-only inputs from unnamed JSON", () => {
+    const schemasWithZeroReq = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "get_workspace_status",
+            inputSchema: {
+              type: "object",
+              properties: { format: { type: "string" } },
+              required: [],
+            },
+          },
+          {
+            name: "search_code",
+            inputSchema: {
+              type: "object",
+              properties: {
+                query: { type: "string" },
+                isRegexp: { type: "boolean" },
+              },
+              required: ["query", "isRegexp"],
+            },
+          },
+        ],
+      }),
+    );
+
+    const zeroReqJson = '{"format": "json"}';
+    expect(parseTextEmbeddedToolCalls(zeroReqJson, schemasWithZeroReq)).toEqual({
+      segments: [{ type: "text", text: zeroReqJson }],
+      incompleteText: "",
+      extractedParams: {},
+    });
+
+    const auxOnlyJson = '{"isRegexp": true}';
+    expect(parseTextEmbeddedToolCalls(auxOnlyJson, schemasWithZeroReq)).toEqual({
+      segments: [{ type: "text", text: auxOnlyJson }],
+      incompleteText: "",
+      extractedParams: {},
+    });
+  });
 });

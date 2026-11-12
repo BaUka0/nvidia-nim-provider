@@ -6,6 +6,7 @@ import {
   STATUS_BAR_DEFAULT_TEXT,
   STATUS_BAR_ERROR_TEXT,
 } from "./constants";
+import { redactSecrets } from "./logging";
 
 function formatTokenCount(tokens: number): string {
   if (tokens >= 1000000) {
@@ -84,7 +85,7 @@ export class StatusBarManager {
   showError(message: string): void {
     this.item.text = STATUS_BAR_ERROR_TEXT;
     this.item.command = REFRESH_MODELS_COMMAND_ID;
-    this.item.tooltip = `${PROVIDER_DISPLAY_NAME} Error: ${message}`;
+    this.item.tooltip = `${PROVIDER_DISPLAY_NAME} Error: ${redactSecrets(message)}`;
     this.item.color = undefined;
     this.item.backgroundColor = undefined;
     this.refreshVisibility();

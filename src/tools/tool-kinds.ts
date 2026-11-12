@@ -25,6 +25,29 @@ const READ_TOOL_EXACT = new Set([
 ]);
 const READ_TOOL_TOKENS = new Set(["read", "view", "fetch", "show", "cat"]);
 const FILE_HINT_TOKENS = new Set(["file", "files", "contents", "path"]);
+const NON_FILE_READ_TOKENS = new Set([
+  "webpage",
+  "web",
+  "url",
+  "urls",
+  "http",
+  "https",
+  "page",
+  "image",
+  "images",
+  "img",
+  "screenshot",
+  "screenshots",
+  "browser",
+  "dom",
+  "issue",
+  "issues",
+  "pr",
+  "prs",
+  "pull",
+  "commit",
+  "commits",
+]);
 
 const EDIT_TOOL_EXACT = new Set([
   "edit_file",
@@ -63,6 +86,9 @@ export function isReadTool(toolName: string): boolean {
   }
   const parts = tokenizeToolName(normalized);
   if (!hasToken(parts, READ_TOOL_TOKENS)) {
+    return false;
+  }
+  if (hasToken(parts, NON_FILE_READ_TOKENS) && !hasToken(parts, FILE_HINT_TOKENS)) {
     return false;
   }
   return parts[0] !== undefined && READ_TOOL_TOKENS.has(parts[0])

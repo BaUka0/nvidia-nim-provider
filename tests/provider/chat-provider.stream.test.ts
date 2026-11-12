@@ -23,6 +23,7 @@ import { getTurnReports, resetTurnReportsForTests } from "../../src/shared/turn-
 import { setDeveloperLogOptions } from "../../src/shared/logging";
 import * as cancellation from "../../src/shared/cancellation";
 import { MESSAGE_OVERHEAD_TOKENS } from "../../src/messages/token-estimate";
+import * as toolParser from "../../src/tools/parser";
 
 jest.mock("../../src/api/client", () => ({
   fetchModelsOrThrow: jest.fn(),
@@ -4872,6 +4873,294 @@ describe("NimChatModelProvider", () => {
     ]);
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Recovered after rate limit chain restart" }),
+    );
+  });
+
+  it("flushes router and heldAnswer buffers before running repetition guards and suppresses tripping repeat chunks", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "generation.maxRepeatedLines") return 3;
+        return defaultValue;
+      }),
+    }));
+
+    const loopingHeldStream = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Planning tool check." } }] };
+      yield {
+        choices: [
+          {
+            delta: {
+              content:
+                "Repeating degenerate line\nRepeating degenerate line\nRepeating degenerate line\n",
+            },
+            finish_reason: "stop",
+          },
+        ],
+      };
+    };
+    const recoveryStream = async function* () {
+      yield {
+        choices: [{ delta: { content: "Clean final answer." }, finish_reason: "stop" }],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock)
+      .mockReturnValueOnce(loopingHeldStream())
+      .mockReturnValueOnce(recoveryStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: false },
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions({ tools: [readFileTool] }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    expect(progress.report).not.toHaveBeenCalledWith(
+      expect.objectContaining({ value: expect.stringContaining("Repeating degenerate line") }),
+    );
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Clean final answer." }),
+    );
+  });
+
+  it("records malformed embedded tool calls inside reasoning_content for retry instead of ending silently empty", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (streamChatCompletion as jest.Mock).mockReset();
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "generation.maxLoopContinues") return 0;
+        return defaultValue;
+      }),
+    }));
+    const strictReadTool = {
+      name: "read_file",
+      description: "Read a file",
+      inputSchema: {
+        type: "object",
+        properties: { filePath: { type: "string" } },
+        required: ["filePath"],
+      },
+    };
+
+    const malformedThinkingToolStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              reasoning_content:
+                "<|tool_call_begin|>read_file<|tool_call_argument_begin|>{broken-json<|tool_call_end|>\n",
+            },
+          },
+        ],
+      };
+      yield { choices: [{ delta: {}, finish_reason: "stop" }] };
+    };
+    const validRecoveryStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_ok",
+                  type: "function",
+                  function: { name: "read_file", arguments: '{"filePath":"src/index.ts"}' },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock)
+      .mockReturnValueOnce(malformedThinkingToolStream())
+      .mockReturnValueOnce(validRecoveryStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "z-ai/glm-5.3-flash",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: true },
+      }),
+      makeUserMessages("Read src/index.ts"),
+      makeChatOptions({ tools: [strictReadTool] }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    const retryBody = (streamChatCompletion as jest.Mock).mock.calls[1][1];
+    expect(JSON.stringify(retryBody.messages)).toContain("read_file");
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "read_file", input: { filePath: "src/index.ts" } }),
+    );
+  });
+
+  it("records invalid tool calls flushed from pendingThinkingEmbeddedContent at stream end", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (streamChatCompletion as jest.Mock).mockReset();
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "generation.maxLoopContinues") return 0;
+        return defaultValue;
+      }),
+    }));
+    const strictReadTool = {
+      name: "read_file",
+      description: "Read a file",
+      inputSchema: {
+        type: "object",
+        properties: { filePath: { type: "string" } },
+        required: ["filePath"],
+      },
+    };
+
+    const realParse = toolParser.parseTextEmbeddedToolCalls;
+    const parseSpy = jest
+      .spyOn(toolParser, "parseTextEmbeddedToolCalls")
+      .mockImplementation((text, schemas, parseOptions) => {
+        if (text.includes("PENDING_MALFORMED_THINKING_TOOL")) {
+          if (parseOptions?.atStreamEnd) {
+            return {
+              segments: [{ type: "invalidToolCall", name: "read_file" }],
+              incompleteText: "",
+            };
+          }
+          return {
+            segments: [],
+            incompleteText: text,
+          };
+        }
+        return realParse(text, schemas, parseOptions);
+      });
+
+    try {
+      const pendingFlushThinkingStream = async function* () {
+        yield {
+          choices: [
+            {
+              delta: {
+                reasoning_content: "PENDING_MALFORMED_THINKING_TOOL\n",
+              },
+              finish_reason: "stop",
+            },
+          ],
+        };
+      };
+      const validRecoveryStream = async function* () {
+        yield {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_ok2",
+                    type: "function",
+                    function: { name: "read_file", arguments: '{"filePath":"src/app.ts"}' },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+        };
+      };
+
+      (streamChatCompletion as jest.Mock)
+        .mockReturnValueOnce(pendingFlushThinkingStream())
+        .mockReturnValueOnce(validRecoveryStream());
+
+      const progress = { report: jest.fn() };
+      await provider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "z-ai/glm-5.3-flash",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+          capabilities: { toolCalling: 128, imageInput: true },
+        }),
+        makeUserMessages("Read src/app.ts"),
+        makeChatOptions({ tools: [strictReadTool] }),
+        progress,
+        makeToken(),
+      );
+
+      expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+      expect(progress.report).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "read_file", input: { filePath: "src/app.ts" } }),
+      );
+    } finally {
+      parseSpy.mockRestore();
+    }
+  });
+
+  it("clears heldAnswer without emitting it when repetitionGuard already tripped earlier in the stream", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (streamChatCompletion as jest.Mock).mockReset();
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "generation.maxRepeatedLines") return 3;
+        return defaultValue;
+      }),
+    }));
+
+    const preTrippedThenHeldStream = async function* () {
+      yield {
+        choices: [
+          {
+            delta: {
+              content:
+                "Repeated opening line\nRepeated opening line\nRepeated opening line\n<think>brief thought\n</think>Trailing held text that must be dropped",
+            },
+            finish_reason: "stop",
+          },
+        ],
+      };
+    };
+    const recoveryStream = async function* () {
+      yield { choices: [{ delta: { content: "Direct recovered reply." }, finish_reason: "stop" }] };
+    };
+
+    (streamChatCompletion as jest.Mock)
+      .mockReturnValueOnce(preTrippedThenHeldStream())
+      .mockReturnValueOnce(recoveryStream());
+
+    const progress = { report: jest.fn() };
+    await provider.provideLanguageModelChatResponse(
+      makeModel({
+        id: "meta/llama-3.3-70b-instruct",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: false },
+      }),
+      makeUserMessages("Hi"),
+      makeChatOptions({ tools: [readFileTool] }),
+      progress,
+      makeToken(),
+    );
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+    expect(progress.report).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: expect.stringContaining("Trailing held text that must be dropped"),
+      }),
+    );
+    expect(progress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "Direct recovered reply." }),
     );
   });
 });

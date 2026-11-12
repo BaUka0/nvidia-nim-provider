@@ -1,6 +1,7 @@
 import { LanguageModelChatMessageRole } from "vscode";
 import { buildToolCallCanonicalKey } from "./canonical-key";
 import { tryParseJsonValue } from "./json-args";
+import { isEditTool, isTerminalTool } from "./tool-kinds";
 
 interface HistoryMessage {
   readonly role: unknown;
@@ -13,28 +14,38 @@ export interface TrackedToolCall {
   readonly count: number;
 }
 
+function isMutatingTool(name: string): boolean {
+  return isEditTool(name) || isTerminalTool(name);
+}
+
 /**
- * Counts identical tool calls (same name and canonical arguments). Counts run
- * until a different tool is called, so a model cycling through the same few
- * calls of one tool (read A, read B, read A, ...) still accumulates.
+ * Counts identical tool calls (same name and canonical arguments) across the
+ * current task. Non-mutating calls accumulate per `(name, key)` even when the
+ * model alternates between two inspection tools (`read_file` <-> `grep_search`),
+ * while mutating tools (edits and terminal commands) clear prior counts for
+ * other calls so legitimate `read -> edit/terminal -> read` workflows proceed.
  */
 export class IdenticalToolCallTracker {
-  private toolName: string | undefined;
   private readonly counts = new Map<string, number>();
 
-  /** Calls already recorded for `key` since the last switch to another tool. */
-  public countOf(name: string, key: string): number {
-    return name === this.toolName ? (this.counts.get(key) ?? 0) : 0;
+  private toCompositeKey(name: string, key: string): string {
+    return `${name}\u0000${key}`;
   }
 
-  /** Records an executed call and returns its count since the last tool switch. */
+  /** Calls already recorded for `(name, key)` since the last mutating reset. */
+  public countOf(name: string, key: string): number {
+    return this.counts.get(this.toCompositeKey(name, key)) ?? 0;
+  }
+
+  /** Records an executed call and returns its updated count. */
   public record(name: string, key: string): number {
-    if (name !== this.toolName) {
-      this.toolName = name;
+    const compositeKey = this.toCompositeKey(name, key);
+    const prev = this.counts.get(compositeKey) ?? 0;
+    if (isMutatingTool(name)) {
       this.counts.clear();
     }
-    const count = (this.counts.get(key) ?? 0) + 1;
-    this.counts.set(key, count);
+    const count = prev + 1;
+    this.counts.set(compositeKey, count);
     return count;
   }
 }

@@ -2,7 +2,7 @@ import { StreamAttemptResult } from "./stream-pump";
 import { buildInvalidToolCallRetryMessage } from "../tools/parser";
 import { extractPrefixGram } from "../shared/cycle-detection";
 
-const HANGING_PUNCTUATION_SUFFIXES = [":", "...", "…", "—", "--"] as const;
+const HANGING_PUNCTUATION_SUFFIXES = [":", "：", "...", "…", "—"] as const;
 
 export function hasHangingPunctuation(text: string): boolean {
   const trimmed = text.trimEnd();
@@ -166,7 +166,8 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     result.sawToolCall &&
     !result.emittedToolCall &&
     facts.invalidToolRetryCount < facts.maxInvalidToolRetries &&
-    Boolean(retryMessage);
+    Boolean(retryMessage) &&
+    !facts.fetchBudgetExhausted;
   const willRetryStreamTimeout =
     Boolean(result.timedOut) &&
     !result.emittedToolCall &&
@@ -180,14 +181,15 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     loopAutoContinueEligible &&
     (hasVisibleText || result.sawReasoning);
   const willRetryOnLoop =
-    willRetryRepetitionLoop ||
-    willRetryToolCallLoop ||
-    willRetryHangingColon ||
-    willRetryTruncation ||
-    willRetryContentFilter ||
-    willRetryStreamTimeout ||
-    willRetryStreamDropped ||
-    willRetryReasoningOnly;
+    !facts.fetchBudgetExhausted &&
+    (willRetryRepetitionLoop ||
+      willRetryToolCallLoop ||
+      willRetryHangingColon ||
+      willRetryTruncation ||
+      willRetryContentFilter ||
+      willRetryStreamTimeout ||
+      willRetryStreamDropped ||
+      willRetryReasoningOnly);
   const willRetryEmptyStream =
     !result.sawReasoning &&
     !result.sawToolCall &&

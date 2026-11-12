@@ -19,6 +19,7 @@ import {
 } from "../tools/parser";
 import { debugLog } from "../shared/logging";
 import { MAX_TOOL_ARGUMENT_CHARS } from "../shared/constants";
+import { isAuxiliaryRequiredField } from "../shared/tool-fields";
 import {
   NATIVE_TOOL_CALL_ID_PREFIX,
   TEXT_EMBEDDED_TOOL_CALL_ID_PREFIX,
@@ -325,7 +326,7 @@ export class ToolCallStreamAggregator {
       }
       if (!requireStrictJson && (buf.name || buf.id || buf.args)) {
         const missing = missingRequiredToolArguments(args, schema);
-        if (this.canForwardInvalidToolCall(buf.name, parsed)) {
+        if (this.canForwardInvalidToolCall(buf.name, parsed, args)) {
           const id =
             buf.id && buf.id.length > 0 ? buf.id : `${NATIVE_TOOL_CALL_ID_PREFIX}${randomUUID()}`;
           if (this.emitValidatedToolCall(buf.name!, args, schema, id)) {
@@ -368,25 +369,34 @@ export class ToolCallStreamAggregator {
   }
 
   /**
-   * A known tool whose raw payload carries at least one required argument is
-   * forwarded even when validation fails: the tool implementation then returns
-   * a precise error the model can correct inside the same agent loop, which is
-   * more actionable than a provider-level retry. Empty payloads, unknown tool
-   * names, and unparseable arguments still go through the skip/retry path.
+   * A known tool whose payload supplies at least one non-auxiliary required
+   * argument (directly or after alias/nested-arguments repair) is forwarded
+   * even when validation fails: the tool implementation then returns a precise
+   * error the model can correct inside the same agent loop, which is more
+   * actionable than a provider-level retry. Empty payloads, unknown tool names,
+   * and unparseable arguments still go through the skip/retry path.
    */
-  private canForwardInvalidToolCall(name: string | undefined, parsed: unknown): boolean {
-    if (!name || !this.toolSchemas.has(name) || !isToolCallInput(parsed)) {
+  private canForwardInvalidToolCall(
+    name: string | undefined,
+    rawParsed: unknown,
+    repairedArgs: Record<string, unknown>,
+  ): boolean {
+    if (!name || !isToolCallInput(rawParsed) || Object.keys(rawParsed).length === 0) {
       return false;
     }
-    const record = parsed as Record<string, unknown>;
-    return (this.toolSchemas.get(name)?.required ?? []).some((key) => {
-      const value = record[key];
-      return (
-        value !== undefined &&
-        value !== null &&
-        !(typeof value === "string" && value.trim().length === 0)
-      );
-    });
+    const schema = this.toolSchemas.get(name);
+    if (!schema?.required?.length) {
+      return false;
+    }
+    const hasNonEmptyRequiredArg = (value: unknown): boolean =>
+      value !== undefined &&
+      value !== null &&
+      !(typeof value === "string" && value.trim().length === 0);
+    const nonAuxRequired = schema.required.filter((key) => !isAuxiliaryRequiredField(key));
+    if (nonAuxRequired.length > 0) {
+      return nonAuxRequired.some((key) => hasNonEmptyRequiredArg(repairedArgs[key]));
+    }
+    return schema.required.some((key) => hasNonEmptyRequiredArg(rawParsed[key]));
   }
 
   private hasToolNameCandidate(name: string): boolean {

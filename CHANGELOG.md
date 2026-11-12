@@ -2,6 +2,25 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Changed
+
+- Maximum output tokens per response can now be set up to 262,144 in the VS Code Settings UI and `settings.json`, matching the 262K-output models in the model list.
+- Conversation summarization and image analysis now reserve a larger response budget on models that always think before answering, preventing long reasoning steps from cutting off summaries or image descriptions.
+- `NVIDIA NIM: Save Last Turn Report` now records the exact reasoning effort level sent to MiniMax M3.1 Flash and DeepSeek V4.1 Flash instead of leaving it blank or only reporting that thinking was on.
+
+### Fixed
+
+- Background network retries now count toward your per-turn request limit so unstable connections stop at the configured retry cap instead of stalling, and token usage in the status bar is preserved when an automatic retry stops at that limit.
+- Failover restarts now skip models that NVIDIA already reported as retired during your session (restarting from the first active backup after backoff, or stopping immediately if every backup is also retired), and learned context window limits stay separate when you switch API keys.
+- Replies that start with blank lines before the Thinking block no longer trap the final answer inside Thinking, repeated lines are stopped cleanly both mid-stream (without printing the final repeating chunk) and at the end of a stream without treating Markdown horizontal rules as unfinished sentences, and malformed tool calls inside Thinking are now retried instead of ending the turn with an empty reply.
+- Tool calls that supply the target arguments (such as a file path, search query, or terminal command) while omitting a summary or description note are now recovered automatically instead of failing validation, and Windows paths starting with a backslash are preserved intact when parsing tool arguments.
+- Alternating read and search loops (such as calling two inspection tools back and forth with identical arguments) are now detected and stopped while normal read-edit-read workflows continue uninterrupted, and loop recovery across separate chats no longer collides.
+- Example JSON inside Markdown code blocks is no longer mistaken for a tool call in ordinary prose replies, and web fetch, image viewer, and issue lookup tools are no longer misclassified as workspace file readers.
+- Requests rejected for oversized payloads (HTTP 413), unsupported media formats (HTTP 415), or content safety screening and validation (HTTP 422) now show clear, specific error messages instead of a generic invalid-request failure, conversation compaction now recovers when NVIDIA reports context limits via HTTP 413 or 422, and trimming very long tool-heavy conversations keeps the matching assistant tool call alongside the final tool result.
+- API keys and bearer tokens are now redacted from status bar error tooltips if an error message includes credentials.
+
 ## [1.11.0] - 2026-11-09
 
 ### Added
