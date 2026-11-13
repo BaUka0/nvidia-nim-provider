@@ -2784,6 +2784,35 @@ describe("text tool calls across chunks and at stream end", () => {
   const visibleText = (result: ReturnType<typeof parseTextEmbeddedToolCalls>) =>
     result.segments.map((segment) => (segment.type === "text" ? segment.text : "")).join("");
 
+  const runChunks = (
+    chunks: string[],
+    toolSchemas?: ReturnType<typeof getToolSchemaMap>,
+  ): { emittedToolCalls: ReturnType<typeof toolCalls>; emittedText: string } => {
+    const context = new TextParseContext();
+    let pending = "";
+    const emittedToolCalls: ReturnType<typeof toolCalls> = [];
+    let emittedText = "";
+
+    for (let idx = 0; idx < chunks.length; idx += 1) {
+      const isLast = idx === chunks.length - 1;
+      const parsed = parseTextEmbeddedToolCalls(pending + chunks[idx], toolSchemas, {
+        contextPrefix: context.prefix(),
+        atStreamEnd: isLast,
+      });
+      pending = parsed.incompleteText;
+      for (const segment of parsed.segments) {
+        if (segment.type === "text") {
+          context.append(segment.text);
+          emittedText += segment.text;
+        } else if (segment.type === "toolCall") {
+          emittedToolCalls.push(segment);
+        }
+      }
+    }
+    expect(pending).toBe("");
+    return { emittedToolCalls, emittedText };
+  };
+
   it("emits a held closing code fence as text when the stream ends", () => {
     const midStream = parseTextEmbeddedToolCalls("code\n```", undefined);
     expect(midStream.incompleteText).toBe("```");
@@ -2983,26 +3012,30 @@ describe("text tool calls across chunks and at stream end", () => {
   });
 
   it("ignores tool examples inside list, task-list, blockquote, nested, and tilde fences and parses subsequent real calls", () => {
-    const fencedVariants: Array<{ open: string; close: string }> = [
+    const fencedVariants: Array<{ open: string; close: string; bodyPrefix?: string }> = [
       { open: "- ```xml", close: "```" },
+      { open: "- ```xml", close: "  ```", bodyPrefix: "  " },
       { open: "* ```xml", close: "  ```" },
-      { open: "+ ```xml", close: "+ ```" },
+      { open: "+ ```xml", close: "  ```" },
       { open: "1. ```xml", close: "   ```" },
       { open: "1) ```xml", close: "```" },
-      { open: "> ```xml", close: "> ```" },
-      { open: "> - ```xml", close: ">   ```" },
-      { open: "- > ```xml", close: "- > ```" },
-      { open: "> 1. ```xml", close: "> ```" },
+      { open: "> ```xml", close: "> ```", bodyPrefix: "> " },
+      { open: "> - ```xml", close: ">   ```", bodyPrefix: ">   " },
+      { open: "- > ```xml", close: "  > ```", bodyPrefix: "  > " },
+      { open: "> 1. ```xml", close: "> ```", bodyPrefix: "> " },
       { open: "- [ ] ```xml", close: "```" },
       { open: "- [x] ```xml", close: "  ```" },
       { open: "~~~xml", close: "~~~" },
       { open: "- ~~~xml", close: "~~~" },
-      { open: "> ~~~xml", close: "> ~~~" },
+      { open: "> ~~~xml", close: "> ~~~", bodyPrefix: "> " },
       { open: "- ~~~~xml", close: "~~~~" },
     ];
 
-    for (const { open, close } of fencedVariants) {
-      const fencedOnly = `${open}\n${readFileCall}\n${close}`;
+    for (const { open, close, bodyPrefix } of fencedVariants) {
+      const body = bodyPrefix
+        ? `${bodyPrefix}${readFileCall.replace(/\n/g, `\n${bodyPrefix}`)}`
+        : readFileCall;
+      const fencedOnly = `${open}\n${body}\n${close}`;
       expect(toolCalls(parseTextEmbeddedToolCalls(fencedOnly, undefined))).toEqual([]);
 
       const fencedThenReal = `${fencedOnly}\n\n${readFileCall}`;
@@ -3015,6 +3048,124 @@ describe("text tool calls across chunks and at stream end", () => {
     expect(toolCalls(parseTextEmbeddedToolCalls(mismatchedFenceClose, undefined))).toEqual([
       { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
     ]);
+  });
+
+  it("does not let container-prefixed fence lines inside code blocks close the outer fence prematurely", () => {
+    const schemas = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "run_in_terminal",
+            inputSchema: {
+              type: "object",
+              properties: { command: { type: "string" } },
+              required: ["command"],
+            },
+          },
+        ],
+      }),
+    );
+
+    const p1RegressionText = [
+      "```text",
+      'const FENCE = "```";',
+      "- ```",
+      "<tool_call><function=run_in_terminal><parameter=command>echo example</parameter></function></tool_call>",
+      "```",
+    ].join("\n");
+    expect(
+      toolCalls(parseTextEmbeddedToolCalls(p1RegressionText, schemas, { atStreamEnd: true })),
+    ).toEqual([]);
+    const p1Streamed = runChunks(
+      [
+        '```text\nconst FENCE = "```";\n',
+        "- ```\n",
+        "<tool_call><function=run_in_terminal>",
+        "<parameter=command>echo example</parameter></function></tool_call>\n",
+        "```",
+      ],
+      schemas,
+    );
+    expect(p1Streamed.emittedToolCalls).toEqual([]);
+
+    const topLevelFakeClosers = ["- ```", "* ```", "+ ```", "1. ```", "- [x] ```", "> ```"];
+    for (const fakeClose of topLevelFakeClosers) {
+      const sample = [
+        "```text",
+        fakeClose,
+        '{"name":"run_in_terminal","arguments":{"command":"ls"}}',
+        readFileCall,
+        "```",
+        readFileCall,
+      ].join("\n");
+      expect(toolCalls(parseTextEmbeddedToolCalls(sample, schemas, { atStreamEnd: true }))).toEqual(
+        [{ type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } }],
+      );
+    }
+
+    const tildeFakeClosers = ["- ~~~", "> ~~~"];
+    for (const fakeClose of tildeFakeClosers) {
+      const sample = [
+        "~~~text",
+        fakeClose,
+        '{"name":"run_in_terminal","arguments":{"command":"ls"}}',
+        readFileCall,
+        "~~~",
+        readFileCall,
+      ].join("\n");
+      expect(toolCalls(parseTextEmbeddedToolCalls(sample, schemas, { atStreamEnd: true }))).toEqual(
+        [{ type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } }],
+      );
+    }
+
+    const listOpened = [
+      "- ```text",
+      "  - ```",
+      "  > ```",
+      `  ${readFileCall.replace(/\n/g, "\n  ")}`,
+      "  ```",
+    ].join("\n");
+    expect(toolCalls(parseTextEmbeddedToolCalls(listOpened, undefined))).toEqual([]);
+
+    const quoteFakeClosers = ["> > ```", ">> ```", "> - ```"];
+    for (const fakeClose of quoteFakeClosers) {
+      const quoteOpened = [
+        "> ```text",
+        fakeClose,
+        `> ${readFileCall.replace(/\n/g, "\n> ")}`,
+        "> ```",
+      ].join("\n");
+      expect(toolCalls(parseTextEmbeddedToolCalls(quoteOpened, undefined))).toEqual([]);
+
+      const quoteStreamed = runChunks([
+        "> ```text\n",
+        `${fakeClose}\n`,
+        `> ${readFileCall.replace(/\n/g, "\n> ")}\n`,
+        "> ```",
+      ]);
+      expect(quoteStreamed.emittedToolCalls).toEqual([]);
+    }
+
+    const unclosedQuoteThenCall = ["> ```xml", "> example", readFileCall].join("\n");
+    expect(toolCalls(parseTextEmbeddedToolCalls(unclosedQuoteThenCall, undefined))).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+
+    const quoteExitedIntoTopLevelFence = ["> ```xml", "> example", "```", readFileCall, "```"].join(
+      "\n",
+    );
+    expect(toolCalls(parseTextEmbeddedToolCalls(quoteExitedIntoTopLevelFence, undefined))).toEqual(
+      [],
+    );
+
+    const depth2ExitedIntoDepth1 = [
+      ">> ```xml",
+      ">> example",
+      "> ```",
+      `> ${readFileCall.replace(/\n/g, "\n> ")}`,
+      "> ```",
+    ].join("\n");
+    expect(toolCalls(parseTextEmbeddedToolCalls(depth2ExitedIntoDepth1, undefined))).toEqual([]);
   });
 
   it("does not execute JSON tool examples inside list or blockquote fences while keeping top-level fenced JSON working", () => {
@@ -3071,41 +3222,12 @@ describe("text tool calls across chunks and at stream end", () => {
   });
 
   it("handles chunk-by-chunk streaming across list/blockquote fence boundaries with TextParseContext", () => {
-    const runChunks = (
-      chunks: string[],
-      toolSchemas?: ReturnType<typeof getToolSchemaMap>,
-    ): { emittedToolCalls: ReturnType<typeof toolCalls>; emittedText: string } => {
-      const context = new TextParseContext();
-      let pending = "";
-      const emittedToolCalls: ReturnType<typeof toolCalls> = [];
-      let emittedText = "";
-
-      for (let idx = 0; idx < chunks.length; idx += 1) {
-        const isLast = idx === chunks.length - 1;
-        const parsed = parseTextEmbeddedToolCalls(pending + chunks[idx], toolSchemas, {
-          contextPrefix: context.prefix(),
-          atStreamEnd: isLast,
-        });
-        pending = parsed.incompleteText;
-        for (const segment of parsed.segments) {
-          if (segment.type === "text") {
-            context.append(segment.text);
-            emittedText += segment.text;
-          } else if (segment.type === "toolCall") {
-            emittedToolCalls.push(segment);
-          }
-        }
-      }
-      expect(pending).toBe("");
-      return { emittedToolCalls, emittedText };
-    };
-
     const splitBacktick = runChunks([
       "- ``",
       "`xml\n",
       "<tool_call>\n<function=read_file>\n",
       "<parameter=path>example.txt</parameter>\n</function>\n</tool_call>\n",
-      "- ```\n",
+      "  ```\n",
       readFileCall,
     ]);
     expect(splitBacktick.emittedToolCalls).toEqual([
@@ -3118,7 +3240,12 @@ describe("text tool calls across chunks and at stream end", () => {
       { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
     ]);
 
-    const splitQuote = runChunks(["> ```xml\n", `${readFileCall}\n`, "> ``` \n", readFileCall]);
+    const splitQuote = runChunks([
+      "> ```xml\n",
+      `> ${readFileCall.replace(/\n/g, "\n> ")}\n`,
+      "> ``` \n",
+      readFileCall,
+    ]);
     expect(splitQuote.emittedToolCalls).toEqual([
       { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
     ]);
@@ -3167,7 +3294,32 @@ describe("text tool calls across chunks and at stream end", () => {
   it("handles long line truncation in TextParseContext without falsely opening or dropping container fences", () => {
     const longContainerCtx = new TextParseContext();
     longContainerCtx.append(`${"> ".repeat(1100)}\`\`\`xml\n`);
-    expect(longContainerCtx.prefix()).toBe("```\n");
+    expect(longContainerCtx.prefix()).toBe(`${">".repeat(1100)}\`\`\`\n`);
+
+    const longListInFenceCtx = new TextParseContext();
+    longListInFenceCtx.append("```text\n");
+    longListInFenceCtx.append(`- ${" ".repeat(2100)}`);
+    longListInFenceCtx.append("```\n");
+    expect(longListInFenceCtx.prefix()).toBe("```\n");
+    expect(
+      toolCalls(
+        parseTextEmbeddedToolCalls(readFileCall, undefined, {
+          contextPrefix: longListInFenceCtx.prefix(),
+        }),
+      ),
+    ).toEqual([]);
+
+    const splitLongQuoteCtx = new TextParseContext();
+    splitLongQuoteCtx.append(`> ${" ".repeat(2100)}`);
+    splitLongQuoteCtx.append("```xml\n");
+    expect(splitLongQuoteCtx.prefix()).toBe(">```\n");
+    expect(
+      toolCalls(
+        parseTextEmbeddedToolCalls(`> ${readFileCall.replace(/\n/g, "\n> ")}`, undefined, {
+          contextPrefix: splitLongQuoteCtx.prefix(),
+        }),
+      ),
+    ).toEqual([]);
 
     const longProseCtx = new TextParseContext();
     longProseCtx.append(`${"a".repeat(2100)}> \`\`\`xml\n`);

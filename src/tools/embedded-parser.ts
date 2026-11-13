@@ -534,6 +534,7 @@ export function getIncompleteTextToolCallName(
 type OpenCodeFence = {
   char: "`" | "~";
   length: number;
+  blockquoteDepth: number;
 };
 
 const BACKTICK_FENCE_OPEN_RE = /^(`{3,})([^`]*)$/;
@@ -564,12 +565,14 @@ function consumeOptionalTaskCheckbox(line: string, start: number): number {
   return start;
 }
 
-/**
- * Strips any valid sequence of CommonMark/GFM container prefixes (indentation,
- * blockquotes, unordered/ordered list markers, and task checkboxes) in O(n).
- */
-export function stripMarkdownContainerPrefix(line: string): string {
+function parseMarkdownContainerPrefix(line: string): {
+  rest: string;
+  blockquoteDepth: number;
+  hasListMarker: boolean;
+} {
   let i = 0;
+  let blockquoteDepth = 0;
+  let hasListMarker = false;
   while (i < line.length) {
     i = skipSpacesAndTabs(line, i);
     if (i >= line.length) {
@@ -577,11 +580,13 @@ export function stripMarkdownContainerPrefix(line: string): string {
     }
     const ch = line[i];
     if (ch === ">") {
+      blockquoteDepth += 1;
       i += 1;
       continue;
     }
     if (ch === "-" || ch === "*" || ch === "+") {
       if (i + 1 < line.length && (line[i + 1] === " " || line[i + 1] === "\t")) {
+        hasListMarker = true;
         i = consumeOptionalTaskCheckbox(line, skipSpacesAndTabs(line, i + 1));
         continue;
       }
@@ -605,6 +610,7 @@ export function stripMarkdownContainerPrefix(line: string): string {
         (line[digitEnd] === "." || line[digitEnd] === ")") &&
         (line[digitEnd + 1] === " " || line[digitEnd + 1] === "\t")
       ) {
+        hasListMarker = true;
         i = consumeOptionalTaskCheckbox(line, skipSpacesAndTabs(line, digitEnd + 1));
         continue;
       }
@@ -612,11 +618,49 @@ export function stripMarkdownContainerPrefix(line: string): string {
     }
     break;
   }
-  return line.slice(i);
+  return { rest: line.slice(i), blockquoteDepth, hasListMarker };
+}
+
+/**
+ * Strips any valid sequence of CommonMark/GFM container prefixes (indentation,
+ * blockquotes, unordered/ordered list markers, and task checkboxes) in O(n).
+ */
+export function stripMarkdownContainerPrefix(line: string): string {
+  return parseMarkdownContainerPrefix(line).rest;
 }
 
 export function isMarkdownContainerPrefixOnly(prefix: string): boolean {
   return stripMarkdownContainerPrefix(prefix).length === 0;
+}
+
+/**
+ * Consumes `requiredDepth` leading blockquote `>` markers (and surrounding spaces/tabs),
+ * returning the remaining line slice or `null` if the line leaves the blockquote.
+ * List markers do not repeat on closing fence lines in CommonMark, so only `>` is consumed.
+ */
+function consumeBlockquoteContinuation(line: string, requiredDepth: number): string | null {
+  let i = 0;
+  for (let depth = 0; depth < requiredDepth; depth += 1) {
+    i = skipSpacesAndTabs(line, i);
+    if (i >= line.length || line[i] !== ">") {
+      return null;
+    }
+    i += 1;
+  }
+  return line.slice(skipSpacesAndTabs(line, i));
+}
+
+function matchOpeningFence(line: string): OpenCodeFence | null {
+  const { rest, blockquoteDepth } = parseMarkdownContainerPrefix(line);
+  const backtickMatch = rest.match(BACKTICK_FENCE_OPEN_RE);
+  if (backtickMatch) {
+    return { char: "`", length: backtickMatch[1].length, blockquoteDepth };
+  }
+  const tildeMatch = rest.match(TILDE_FENCE_OPEN_RE);
+  if (tildeMatch) {
+    return { char: "~", length: tildeMatch[1].length, blockquoteDepth };
+  }
+  return null;
 }
 
 function updateFenceLineState(
@@ -624,20 +668,15 @@ function updateFenceLineState(
   rawLine: string,
 ): OpenCodeFence | null {
   const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
-  const stripped = stripMarkdownContainerPrefix(line);
   if (openFence === null) {
-    const backtickMatch = stripped.match(BACKTICK_FENCE_OPEN_RE);
-    if (backtickMatch) {
-      return { char: "`", length: backtickMatch[1].length };
-    }
-    const tildeMatch = stripped.match(TILDE_FENCE_OPEN_RE);
-    if (tildeMatch) {
-      return { char: "~", length: tildeMatch[1].length };
-    }
-    return null;
+    return matchOpeningFence(line);
+  }
+  const continuation = consumeBlockquoteContinuation(line, openFence.blockquoteDepth);
+  if (continuation === null) {
+    return matchOpeningFence(line);
   }
   const closePattern = openFence.char === "`" ? BACKTICK_FENCE_CLOSE_RE : TILDE_FENCE_CLOSE_RE;
-  const closeMatch = stripped.match(closePattern);
+  const closeMatch = continuation.match(closePattern);
   if (closeMatch && closeMatch[1].length >= openFence.length) {
     return null;
   }
@@ -736,15 +775,21 @@ function isPositionInsideCodeFence(fullText: string, position: number): boolean 
   for (let idx = 0; idx < lines.length - 1; idx += 1) {
     openFence = updateFenceLineState(openFence, lines[idx]);
   }
-  if (openFence !== null) {
-    return true;
-  }
   const lastLinePrefix = lines[lines.length - 1];
   const lineEndIdx = fullText.indexOf("\n", position);
   const currentFullLine =
     lastLinePrefix +
     (lineEndIdx === -1 ? fullText.slice(position) : fullText.slice(position, lineEndIdx));
-  return isOffsetInsideInlineBacktickSpan(currentFullLine, lastLinePrefix.length);
+  const cleanCurrentLine = currentFullLine.endsWith("\r")
+    ? currentFullLine.slice(0, -1)
+    : currentFullLine;
+  if (
+    openFence !== null &&
+    consumeBlockquoteContinuation(cleanCurrentLine, openFence.blockquoteDepth) !== null
+  ) {
+    return true;
+  }
+  return isOffsetInsideInlineBacktickSpan(cleanCurrentLine, lastLinePrefix.length);
 }
 
 /**
@@ -769,24 +814,26 @@ export class TextParseContext {
       this.lineTail = combined;
     }
     if (this.lineTail.length > MAX_CONTEXT_LINE_CHARS) {
-      const rest = stripMarkdownContainerPrefix(this.lineTail);
+      const { rest, blockquoteDepth, hasListMarker } = parseMarkdownContainerPrefix(this.lineTail);
+      const canonicalPrefix = `${">".repeat(Math.min(blockquoteDepth, KEPT_CONTEXT_LINE_CHARS))}${hasListMarker ? "- " : ""}`;
       if (rest.length <= KEPT_CONTEXT_LINE_CHARS) {
-        this.lineTail = rest;
+        this.lineTail = `${canonicalPrefix}${rest}`;
       } else {
         // Keep backtick/tilde runs whole and mark non-container prose so truncation cannot open a fence.
         let cut = rest.length - KEPT_CONTEXT_LINE_CHARS;
         while (cut > 0 && (rest[cut - 1] === "`" || rest[cut - 1] === "~")) {
           cut -= 1;
         }
-        this.lineTail = `x ${rest.slice(cut)}`;
+        this.lineTail = `${canonicalPrefix}x ${rest.slice(cut)}`;
       }
     }
   }
 
   prefix(): string {
     return (
-      (this.openFence ? `${this.openFence.char.repeat(this.openFence.length)}\n` : "") +
-      this.lineTail
+      (this.openFence
+        ? `${">".repeat(this.openFence.blockquoteDepth)}${this.openFence.char.repeat(this.openFence.length)}\n`
+        : "") + this.lineTail
     );
   }
 
