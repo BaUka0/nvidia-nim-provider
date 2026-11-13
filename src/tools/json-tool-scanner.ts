@@ -1,4 +1,5 @@
 import { parseJsonOrRepair, tryParseJsonObjectOrRepair } from "../shared/json-repair";
+import { AUXILIARY_BOOLEAN_FIELDS, isAuxiliaryRequiredField } from "../shared/tool-fields";
 import { isTokenInStringOrRegexLiteral, readBalancedJsonObject } from "./xml-tool-scanner";
 import {
   ToolSchema,
@@ -33,6 +34,64 @@ const AUXILIARY_KEYS = new Set([
   "comments",
   "description",
   "goal",
+]);
+
+const NON_OPERATIONAL_METADATA_KEYS = new Set<string>([
+  ...AUXILIARY_KEYS,
+  "summary",
+  "mode",
+  ...AUXILIARY_BOOLEAN_FIELDS,
+]);
+
+function isNonOperationalMetadataKey(key: string): boolean {
+  const lower = key.toLowerCase();
+  return (
+    NON_OPERATIONAL_METADATA_KEYS.has(lower) ||
+    NON_OPERATIONAL_METADATA_KEYS.has(lower.replace(/_/g, ""))
+  );
+}
+
+/**
+ * Concrete workspace target keys from file, directory, search, and command
+ * alias groups (excluding content/code/text/data/body and line-number groups),
+ * plus plural array variants used by zero-required-arg workspace tools.
+ */
+const ZERO_REQUIRED_TARGET_KEYS = new Set<string>([
+  "filepath",
+  "targetfile",
+  "target_file",
+  "file",
+  "filename",
+  "file_path",
+  "uri",
+  "destination",
+  "dest",
+  "absolutepath",
+  "path",
+  "directory",
+  "dir",
+  "folder",
+  "cwd",
+  "targetdirectory",
+  "searchdirectory",
+  "directorypath",
+  "query",
+  "pattern",
+  "search_pattern",
+  "searchpattern",
+  "regex",
+  "searchterm",
+  "search_term",
+  "command",
+  "cmd",
+  "script",
+  "commandline",
+  "command_line",
+  "filepaths",
+  "file_paths",
+  "files",
+  "paths",
+  "uris",
 ]);
 
 export function buildKnownPropertySet(toolSchemas?: ReadonlyMap<string, ToolSchema>): Set<string> {
@@ -146,6 +205,13 @@ export function findJsonConstructStart(
     }
 
     if (nextKind === "fenced") {
+      const fullText = contextPrefix + text;
+      const lineStart = fullText.lastIndexOf("\n", totalPos - 1) + 1;
+      const linePrefix = fullText.slice(lineStart, totalPos);
+      if (!/^[ \t]*$/.test(linePrefix)) {
+        pos = nextIndex + 3;
+        continue;
+      }
       const slice = text.slice(nextIndex);
       const match = slice.match(/^```(?:json)?\s*(\{|\[)?/i);
       if (match) {
@@ -198,6 +264,30 @@ function hasAliasInSchema(
   return false;
 }
 
+function hasNonEmptyArgValue(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  return (
+    value !== undefined &&
+    value !== null &&
+    !(typeof value === "string" && value.trim().length === 0)
+  );
+}
+
+function matchesKeyOrAlias(candidateKey: string, targetKey: string): boolean {
+  const lowerCandidate = candidateKey.toLowerCase();
+  const lowerTarget = targetKey.toLowerCase();
+  if (lowerCandidate === lowerTarget) {
+    return true;
+  }
+  return PROPERTY_ALIAS_GROUPS.some(
+    (group) =>
+      group.some((alias) => alias.toLowerCase() === lowerTarget) &&
+      group.some((alias) => alias.toLowerCase() === lowerCandidate),
+  );
+}
+
 export function findBestMatchingTool(
   parsedArgs: Record<string, unknown>,
   toolSchemas: ReadonlyMap<string, ToolSchema>,
@@ -220,13 +310,52 @@ export function findBestMatchingTool(
     | undefined;
 
   for (const [toolName, schema] of toolSchemas.entries()) {
+    const schemaRequired = schema.required ?? [];
+    const declaredProps = new Set(Object.keys(schema.properties ?? {}).map((p) => p.toLowerCase()));
+
+    if (schemaRequired.length === 0) {
+      const hasZeroRequiredTarget =
+        declaredProps.size > 0 &&
+        Object.entries(parsedArgs).some(([key, value]) => {
+          const lowerKey = key.toLowerCase();
+          return (
+            !FORBIDDEN_TOOL_IDENTIFIERS.has(key) &&
+            !isNonOperationalMetadataKey(key) &&
+            hasNonEmptyArgValue(value) &&
+            declaredProps.has(lowerKey) &&
+            ZERO_REQUIRED_TARGET_KEYS.has(lowerKey)
+          );
+        });
+      if (!hasZeroRequiredTarget) {
+        continue;
+      }
+    } else {
+      const nonAuxRequired = schemaRequired.filter((req) => !isAuxiliaryRequiredField(req));
+      const hasRequiredFromCaller =
+        nonAuxRequired.length > 0
+          ? Object.entries(parsedArgs).some(
+              ([key, value]) =>
+                !FORBIDDEN_TOOL_IDENTIFIERS.has(key) &&
+                hasNonEmptyArgValue(value) &&
+                nonAuxRequired.some((req) => matchesKeyOrAlias(key, req)),
+            )
+          : Object.entries(parsedArgs).some(
+              ([key, value]) =>
+                !FORBIDDEN_TOOL_IDENTIFIERS.has(key) &&
+                hasNonEmptyArgValue(value) &&
+                schemaRequired.some((req) => key.toLowerCase() === req.toLowerCase()),
+            );
+      if (!hasRequiredFromCaller) {
+        continue;
+      }
+    }
+
     const repaired = repairToolArguments(toolName, parsedArgs, undefined, schema);
     if (!isToolCallInput(repaired) || !hasRequiredToolArguments(repaired, schema)) {
       continue;
     }
 
-    const declaredProps = new Set(Object.keys(schema.properties ?? {}).map((p) => p.toLowerCase()));
-    const requiredProps = new Set((schema.required ?? []).map((r) => r.toLowerCase()));
+    const requiredProps = new Set(schemaRequired.map((r) => r.toLowerCase()));
 
     let directMatches = 0;
     let aliasMatches = 0;
@@ -243,8 +372,12 @@ export function findBestMatchingTool(
       }
     }
 
+    if (unrecognizedCount > 0) {
+      continue;
+    }
+
     let satisfiedRequired = 0;
-    for (const req of schema.required ?? []) {
+    for (const req of schemaRequired) {
       if (repaired[req] !== undefined && repaired[req] !== null && repaired[req] !== "") {
         satisfiedRequired += 1;
       }
@@ -293,13 +426,19 @@ function withoutForbiddenKeys(source: Record<string, unknown>): Record<string, u
   return args;
 }
 
+type SingleToolCallExtraction =
+  | { kind: "matched"; toolCall: JsonScannedToolCall; deferred?: boolean }
+  | { kind: "none" };
+
 function extractSingleToolCall(
   record: Record<string, unknown>,
   toolSchemas: ReadonlyMap<string, ToolSchema> | undefined,
   isValidName: (name: string) => boolean,
-): JsonScannedToolCall | undefined {
+  isFenced = false,
+  hasSurroundingText = false,
+): SingleToolCallExtraction {
   if (!toolSchemas || toolSchemas.size === 0) {
-    return undefined;
+    return { kind: "none" };
   }
 
   for (const key of EXPLICIT_TOOL_NAME_KEYS) {
@@ -340,17 +479,37 @@ function extractSingleToolCall(
             args[k] = v;
           }
         }
-        return { name, args };
+        return { kind: "matched", toolCall: { name, args } };
       }
     }
   }
 
-  const matched = findBestMatchingTool(record, toolSchemas);
-  if (matched) {
-    return matched;
+  let operationalPayloadKeys: string[] | undefined;
+  if (isFenced) {
+    operationalPayloadKeys = Object.keys(record).filter(
+      (key) =>
+        !isNonOperationalMetadataKey(key) &&
+        !FORBIDDEN_TOOL_IDENTIFIERS.has(key) &&
+        hasNonEmptyArgValue(record[key]),
+    );
+    if (operationalPayloadKeys.length === 0) {
+      return { kind: "none" };
+    }
   }
 
-  return undefined;
+  const matched = findBestMatchingTool(record, toolSchemas);
+  if (!matched) {
+    return { kind: "none" };
+  }
+
+  if (isFenced && operationalPayloadKeys && operationalPayloadKeys.length === 1) {
+    if (hasSurroundingText) {
+      return { kind: "none" };
+    }
+    return { kind: "matched", toolCall: matched, deferred: true };
+  }
+
+  return { kind: "matched", toolCall: matched };
 }
 
 export function scanJsonToolConstruct(
@@ -358,6 +517,7 @@ export function scanJsonToolConstruct(
   toolSchemas: ReadonlyMap<string, ToolSchema> | undefined,
   isValidName: (name: string) => boolean,
   atStreamEnd = false,
+  options?: { hasLeadingText?: boolean },
 ): JsonScanResult {
   let jsonStartIndex = 0;
   let isFenced = false;
@@ -427,13 +587,25 @@ export function scanJsonToolConstruct(
     return { status: "not-a-tool", skip: consumed };
   }
 
+  const hasTrailingText = text.slice(consumed).trim().length > 0;
+  const hasSurroundingText = Boolean(options?.hasLeadingText) || hasTrailingText;
+
   if (Array.isArray(parsed)) {
     const toolCalls: JsonScannedToolCall[] = [];
     for (const item of parsed) {
-      if (typeof item === "object" && item !== null) {
-        const extracted = extractSingleToolCall(item, toolSchemas, isValidName);
-        if (extracted) {
-          toolCalls.push(extracted);
+      if (typeof item === "object" && item !== null && !Array.isArray(item)) {
+        const extracted = extractSingleToolCall(
+          item as Record<string, unknown>,
+          toolSchemas,
+          isValidName,
+          isFenced,
+          hasSurroundingText,
+        );
+        if (extracted.kind === "matched") {
+          if (extracted.deferred && !atStreamEnd) {
+            return { status: "incomplete" };
+          }
+          toolCalls.push(extracted.toolCall);
         }
       }
     }
@@ -469,9 +641,18 @@ export function scanJsonToolConstruct(
     }
   }
 
-  const single = extractSingleToolCall(record, toolSchemas, isValidName);
-  if (single) {
-    return { status: "complete", consumed, toolCall: single };
+  const single = extractSingleToolCall(
+    record,
+    toolSchemas,
+    isValidName,
+    isFenced,
+    hasSurroundingText,
+  );
+  if (single.kind === "matched") {
+    if (single.deferred && !atStreamEnd) {
+      return { status: "incomplete" };
+    }
+    return { status: "complete", consumed, toolCall: single.toolCall };
   }
 
   return { status: "not-a-tool", skip: consumed };

@@ -1303,4 +1303,101 @@ describe("streamChatCompletion", () => {
       jest.useRealTimers();
     }
   });
+
+  it("stops retrying HTTP errors immediately when onRetryAttempt returns false", async () => {
+    const fetchMock = jest.fn().mockResolvedValue(
+      makeFetchResponse({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        text: async () => '{"message":"quota exceeded"}',
+      }),
+    );
+    global.fetch = fetchMock;
+    const onRetryAttempt = jest.fn(() => false);
+
+    await expect(
+      fetchWithRetry(
+        "https://example.test",
+        { method: "POST" },
+        3,
+        { operation: "stream", model: "kimi-k2.6" },
+        { onRetryAttempt },
+      ),
+    ).rejects.toMatchObject({
+      name: "NvidiaApiError",
+      kind: "rate_limited",
+      status: 429,
+    });
+
+    expect(onRetryAttempt).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops retrying network errors immediately when onRetryAttempt returns false", async () => {
+    const fetchMock = jest.fn().mockRejectedValue(new TypeError("fetch failed"));
+    global.fetch = fetchMock;
+    const onRetryAttempt = jest.fn(() => false);
+
+    await expect(
+      fetchWithRetry(
+        "https://example.test",
+        { method: "POST" },
+        3,
+        { operation: "stream", model: "kimi-k2.6" },
+        { onRetryAttempt },
+      ),
+    ).rejects.toMatchObject({
+      name: "NvidiaApiError",
+      kind: "network_error",
+    });
+
+    expect(onRetryAttempt).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards onRetryAttempt from streamChatCompletion to fetchWithRetry", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          ok: false,
+          status: 502,
+          statusText: "Bad Gateway",
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeFetchResponse({
+          ok: false,
+          status: 502,
+          statusText: "Bad Gateway",
+        }),
+      );
+    global.fetch = fetchMock;
+
+    let remainingRetries = 1;
+    const onRetryAttempt = jest.fn(() => {
+      if (remainingRetries <= 0) {
+        return false;
+      }
+      remainingRetries -= 1;
+      return true;
+    });
+
+    const gen = streamChatCompletion(
+      "key",
+      { model: "kimi-k2.6", messages: [], stream: true },
+      undefined,
+      undefined,
+      { maxFetchAttempts: 3, onRetryAttempt },
+    );
+
+    await expect(gen.next()).rejects.toMatchObject({
+      name: "NvidiaApiError",
+      kind: "server_error",
+      status: 502,
+    });
+    expect(onRetryAttempt).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

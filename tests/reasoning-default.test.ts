@@ -226,4 +226,40 @@ describe("ReasoningStreamRouter pending text", () => {
     expect(router.hasPendingText()).toBe(false);
     expect(text.join("")).toBe("Working on it");
   });
+
+  it("does not trap visible answer text in thinking when leading whitespace content arrives before reasoning_content", () => {
+    const thinking: string[] = [];
+    const text: string[] = [];
+    const router = new ReasoningStreamRouter({
+      reasoningIsolationExpected: true,
+      onThinking: (value) => thinking.push(value),
+      onText: (value) => text.push(value),
+    });
+
+    router.handleContent("\n");
+    router.handleReasoningContent("Step-by-step reasoning");
+    router.handleContent("Visible final answer");
+    router.flush();
+
+    expect(thinking.join("")).toBe("\nStep-by-step reasoning");
+    expect(text.join("")).toBe("Visible final answer");
+  });
+
+  it("keeps non-whitespace untagged pre-reasoning content in thinking until </think> closes it", () => {
+    const thinking: string[] = [];
+    const text: string[] = [];
+    const router = new ReasoningStreamRouter({
+      reasoningIsolationExpected: true,
+      onThinking: (value) => thinking.push(value),
+      onText: (value) => text.push(value),
+    });
+
+    router.handleContent("Untagged reasoning prefix ");
+    router.handleReasoningContent("middle reasoning ");
+    router.handleContent("tail reasoning</think>Final visible answer");
+    router.flush();
+
+    expect(thinking.join("")).toBe("Untagged reasoning prefix middle reasoning tail reasoning");
+    expect(text.join("")).toBe("Final visible answer");
+  });
 });

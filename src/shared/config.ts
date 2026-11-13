@@ -306,7 +306,7 @@ export class ConfigManager {
     const rawMaxTokens = config.get<number | null>("generation.maxOutputTokens", null);
     const maxOutputTokens =
       typeof rawMaxTokens === "number" && Number.isFinite(rawMaxTokens) && rawMaxTokens >= 128
-        ? Math.min(131072, Math.round(rawMaxTokens))
+        ? Math.min(262144, Math.round(rawMaxTokens))
         : null;
 
     const rawMaxRepeatedLines = config.get<number>(

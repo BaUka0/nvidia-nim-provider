@@ -436,17 +436,52 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     const restartFailoverChain = async (
       maxRestarts: number,
       err: unknown,
+      fallbackConfig: FallbackConfig,
+      safetyMarginPercent: number,
       signal?: AbortSignal,
-    ): Promise<void> => {
+    ): Promise<{ restarted: boolean; currentModel: LanguageModelChatInformation }> => {
+      let nextModel = originalModel;
+      let nextTriedModelIds: string[] = [];
+
+      if (this.retiredModelIds.has(originalModel.id)) {
+        const resolvedApiKey = (await this.apiKeyResolver.resolveForModel(currentModel))?.value;
+        const cachedModels = this.discoveryService.getNormalizedModels();
+        const candidatePool =
+          cachedModels.length > 0
+            ? cachedModels
+            : await this.discoveryService.getAvailableModels(resolvedApiKey, {
+                refreshStaleCache: false,
+              });
+        const restartCandidate = getFallbackModel(
+          originalModel.id,
+          this.withoutRetiredModels(candidatePool),
+          {
+            configuredFallbackModelId: fallbackConfig.model,
+            configuredVisionFallbackModelId: fallbackConfig.visionModel,
+            requiresVision: NimRequestBuilder.hasImageInput(messages),
+            priorityList: fallbackConfig.priorityList,
+            triedModelIds: [],
+          },
+        );
+        if (!restartCandidate) {
+          return { restarted: false, currentModel };
+        }
+        nextModel = buildFallbackModelInfo(originalModel, restartCandidate, safetyMarginPercent);
+        if (resolvedApiKey) {
+          this.apiKeyResolver.registerModelKey(nextModel, resolvedApiKey);
+        }
+        nextTriedModelIds = [originalModel.id];
+      }
+
       chainState.chainRestarts += 1;
-      chainState.depth = 0;
-      chainState.triedModelIds = [];
-      currentModel = originalModel;
+      chainState.depth = nextTriedModelIds.length;
+      chainState.triedModelIds = nextTriedModelIds;
+      currentModel = nextModel;
       fetchBudget.ensureMinimum(MAX_FETCH_ATTEMPTS_PER_STREAM);
       const label = err instanceof NvidiaApiError ? fallbackCapacityLabel(err) : "Request failed";
       outputLog(
         "fallback",
-        `Failover chain exhausted (${label}), retrying from ${originalModel.id} (restart ${chainState.chainRestarts}/${maxRestarts}).`,
+        `Failover chain exhausted (${label}), retrying from ${nextModel.id} (restart ${chainState.chainRestarts}/${maxRestarts}).`,
       );
       const retryStatus = err instanceof NvidiaApiError ? err.status : undefined;
       const backoffMs = exponentialRetryDelayMs(1000, chainState.chainRestarts, 10000, retryStatus);
@@ -458,6 +493,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
         }
         throw backoffErr;
       }
+      return { restarted: true, currentModel };
     };
 
     try {
@@ -533,12 +569,16 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
             )
           ) {
             if (failoverRestart) {
-              await restartFailoverChain(
+              const restart = await restartFailoverChain(
                 fallbackConfig.maxChainRestarts,
                 err,
+                fallbackConfig,
+                nimConfig.context.safetyMarginPercent,
                 abortController.signal,
               );
-              continue;
+              if (restart.restarted) {
+                continue;
+              }
             }
             throw toHostChatError(err);
           }
@@ -559,12 +599,16 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
 
           if (!fallbackModel) {
             if (failoverRestart && priorDepth > 0) {
-              await restartFailoverChain(
+              const restart = await restartFailoverChain(
                 fallbackConfig.maxChainRestarts,
                 err,
+                fallbackConfig,
+                nimConfig.context.safetyMarginPercent,
                 abortController.signal,
               );
-              continue;
+              if (restart.restarted) {
+                continue;
+              }
             }
             if (priorDepth > 0) {
               throw toHostChatError(

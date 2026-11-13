@@ -89,6 +89,20 @@ describe("StatusBarManager", () => {
     expect(item.show).toHaveBeenCalled();
   });
 
+  it("redacts API keys and bearer tokens in showError tooltip", async () => {
+    const { StatusBarManager } = await import("../src/shared/status-bar");
+    const manager = new StatusBarManager();
+    const item = mockCreateStatusBarItem.mock.results[0].value;
+    manager.showError(
+      "Auth failed for nvapi-secretKey1234567890 with header Bearer eyJhbGciOiJIUzI1NiJ9.token",
+    );
+    expect(item.tooltip).toBe(
+      "NVIDIA NIM Error: Auth failed for nvapi-[REDACTED] with header Bearer [REDACTED]",
+    );
+    expect(item.tooltip).not.toContain("secretKey1234567890");
+    expect(item.tooltip).not.toContain("eyJhbGciOiJIUzI1NiJ9");
+  });
+
   it("dispose removes the status bar item", async () => {
     const { StatusBarManager } = await import("../src/shared/status-bar");
     const manager = new StatusBarManager();

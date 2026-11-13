@@ -13,6 +13,14 @@ export const AUXILIARY_REQUIRED_FIELDS = new Set([
   "endLine",
 ]);
 
+const AUXILIARY_REQUIRED_FIELDS_LOWER: ReadonlySet<string> = new Set(
+  Array.from(AUXILIARY_REQUIRED_FIELDS, (field) => field.toLowerCase()),
+);
+
+export function isAuxiliaryRequiredField(name: string): boolean {
+  return AUXILIARY_REQUIRED_FIELDS_LOWER.has(name.toLowerCase());
+}
+
 /** Boolean metadata keys that may be defaulted when required but omitted. */
 export const AUXILIARY_BOOLEAN_FIELDS = new Set([
   "isregexp",

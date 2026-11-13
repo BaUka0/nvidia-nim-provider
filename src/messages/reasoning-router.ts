@@ -87,7 +87,7 @@ export class ReasoningStreamRouter {
       this.flushReasoning(true);
       this.reasoningContentFlushed = true;
     }
-    if (!this.seenReasoningContent) {
+    if (!this.seenReasoningContent && text.trim().length > 0) {
       this.contentStartedBeforeReasoning = true;
     }
 

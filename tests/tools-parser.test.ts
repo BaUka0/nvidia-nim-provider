@@ -1,4 +1,11 @@
 import { ConfigManager } from "../src/shared/config";
+import { isAuxiliaryRequiredField } from "../src/shared/tool-fields";
+import {
+  isMarkdownContainerPrefixOnly,
+  parseEmbeddedToolParameterValue,
+  stripMarkdownContainerPrefix,
+} from "../src/tools/embedded-parser";
+import { isReadTool } from "../src/tools/tool-kinds";
 import {
   buildInvalidToolCallRetryMessage,
   buildToolCallCanonicalKey,
@@ -742,6 +749,79 @@ describe("tool argument parsing and validation", () => {
       expect(skipped).toHaveLength(1);
       expect(aggregator.getToolCallLoop()).toBeDefined();
     });
+
+    it("forwards incomplete calls whose required field was supplied via alias, while rejecting auxiliary-only payloads", () => {
+      const aliasForwardOptions = makeChatOptions({
+        tools: [
+          {
+            name: "replace_string_in_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                oldString: { type: "string" },
+                newString: { type: "string" },
+              },
+              required: ["filePath", "oldString", "newString"],
+            },
+          },
+          {
+            name: "read_file",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string" },
+                startLine: { type: "integer" },
+                endLine: { type: "integer" },
+              },
+              required: ["filePath", "startLine", "endLine"],
+            },
+          },
+        ],
+      });
+
+      const emitted: Array<{ name: string; args: Record<string, unknown> }> = [];
+      const skipped: Array<{ name: string; required: string[] }> = [];
+      const aggregator = new ToolCallStreamAggregator({
+        options: aliasForwardOptions,
+        messages: [],
+        toolsConfig: ConfigManager.getToolsConfig(),
+        onEmitToolCall: (_id, name, args) => emitted.push({ name, args }),
+        onSkipToolCall: (name, required) => skipped.push({ name, required }),
+      });
+
+      // Aliased required `file_path` -> `filePath` is recognized in repairedArgs
+      aggregator.handleToolCalls([
+        {
+          index: 0,
+          id: "call_alias",
+          type: "function",
+          function: {
+            name: "replace_string_in_file",
+            arguments: '{"file_path":"/tmp/a.ts"}',
+          },
+        },
+        // Auxiliary-only payload (`startLine`) on read_file must still be skipped
+        {
+          index: 1,
+          id: "call_aux_only",
+          type: "function",
+          function: {
+            name: "read_file",
+            arguments: '{"startLine":10}',
+          },
+        },
+      ]);
+      aggregator.flushRemaining();
+
+      expect(emitted).toEqual([
+        {
+          name: "replace_string_in_file",
+          args: { file_path: "/tmp/a.ts", filePath: "/tmp/a.ts" },
+        },
+      ]);
+      expect(skipped).toEqual([{ name: "read_file", required: ["filePath"] }]);
+    });
   });
 
   it("re-emits run_in_terminal even when the same command already completed", () => {
@@ -938,6 +1018,37 @@ describe("tool argument parsing and validation", () => {
             required: ["query"],
           },
         },
+        {
+          name: "edit_file",
+          inputSchema: {
+            type: "object",
+            properties: {
+              filePath: { type: "string" },
+              content: { type: "string" },
+            },
+            required: ["filePath", "content"],
+          },
+        },
+        {
+          name: "run_in_terminal",
+          inputSchema: {
+            type: "object",
+            properties: {
+              command: { type: "string" },
+            },
+            required: ["command"],
+          },
+        },
+        {
+          name: "mcp_database_apply",
+          inputSchema: {
+            type: "object",
+            properties: {
+              migration: { type: "string" },
+            },
+            required: ["migration"],
+          },
+        },
       ],
     });
     const readA = { filePath: "/tmp/a.ts", startLine: 1, endLine: 40 };
@@ -1029,22 +1140,141 @@ describe("tool argument parsing and validation", () => {
       expect(loop?.count).toBe(5);
     });
 
-    it("resets the count when a different tool runs", () => {
+    it("accumulates counts across alternating non-mutating tools (read_file <-> grep_search)", () => {
+      const grepTodo = { query: "TODO" };
       const history = [
+        userText("Fix the bug"),
+        ...rounds(
+          ["read_file", readA],
+          ["grep_search", grepTodo],
+          ["read_file", readA],
+          ["grep_search", grepTodo],
+          ["read_file", readA],
+          ["grep_search", grepTodo],
+          ["read_file", readA],
+          ["grep_search", grepTodo],
+        ),
+      ];
+
+      const { emitted, loop } = streamCall(history, "read_file", readA);
+
+      expect(emitted).toEqual([]);
+      expect(loop).toEqual({
+        key: expect.stringContaining('"filePath":"/tmp/a.ts"'),
+        name: "read_file",
+        count: 5,
+      });
+    });
+
+    it("resets prior read counts when a mutating edit or terminal tool runs", () => {
+      const afterEdit = [
         userText("Fix the bug"),
         ...rounds(
           ["read_file", readA],
           ["read_file", readA],
           ["read_file", readA],
           ["read_file", readA],
-          ["grep_search", { query: "TODO" }],
+          ["edit_file", { filePath: "/tmp/a.ts", content: "updated" }],
         ),
       ];
 
-      const { emitted, loop } = streamCall(history, "read_file", readA);
+      const editRes = streamCall(afterEdit, "read_file", readA);
+      expect(editRes.emitted).toHaveLength(1);
+      expect(editRes.loop).toBeUndefined();
 
-      expect(emitted).toHaveLength(1);
-      expect(loop).toBeUndefined();
+      const afterTerminal = [
+        userText("Fix the bug"),
+        ...rounds(
+          ["read_file", readA],
+          ["read_file", readA],
+          ["read_file", readA],
+          ["read_file", readA],
+          ["run_in_terminal", { command: "npm test" }],
+        ),
+      ];
+
+      const termRes = streamCall(afterTerminal, "read_file", readA);
+      expect(termRes.emitted).toHaveLength(1);
+      expect(termRes.loop).toBeUndefined();
+    });
+
+    it("resets read counts when interleaved with VS Code/Copilot mutating or unknown MCP tools", () => {
+      const mutators: Array<[string, Record<string, unknown>]> = [
+        ["vscode_renameSymbol", { symbol: "foo", newName: "bar" }],
+        ["edit", { filePath: "/tmp/a.ts", oldText: "a", newText: "b" }],
+        ["run_notebook_cell", { cellId: "cell-1" }],
+        ["mcp_database_apply", { migration: "001_init.sql" }],
+      ];
+
+      for (const [mutatorName, mutatorArgs] of mutators) {
+        const history = [
+          userText("Fix the bug"),
+          ...rounds(
+            ["read_file", readA],
+            [mutatorName, mutatorArgs],
+            ["read_file", readA],
+            [mutatorName, mutatorArgs],
+            ["read_file", readA],
+            [mutatorName, mutatorArgs],
+            ["read_file", readA],
+            [mutatorName, mutatorArgs],
+          ),
+        ];
+
+        const { emitted, loop } = streamCall(history, "read_file", readA);
+        expect(emitted).toHaveLength(1);
+        expect(loop).toBeUndefined();
+      }
+    });
+
+    it("accumulates read counts across inspection tools (get_errors, vscode_listCodeUsages) and still trips consecutive unknown tools", () => {
+      const inspectionTools: Array<[string, Record<string, unknown>]> = [
+        ["get_errors", { filePaths: ["/tmp/a.ts"] }],
+        ["vscode_listCodeUsages", { symbol: "foo" }],
+      ];
+
+      for (const [inspectName, inspectArgs] of inspectionTools) {
+        const history = [
+          userText("Fix the bug"),
+          ...rounds(
+            ["read_file", readA],
+            [inspectName, inspectArgs],
+            ["read_file", readA],
+            [inspectName, inspectArgs],
+            ["read_file", readA],
+            [inspectName, inspectArgs],
+            ["read_file", readA],
+            [inspectName, inspectArgs],
+          ),
+        ];
+
+        const { emitted, loop } = streamCall(history, "read_file", readA);
+        expect(emitted).toEqual([]);
+        expect(loop).toEqual({
+          key: expect.stringContaining('"filePath":"/tmp/a.ts"'),
+          name: "read_file",
+          count: 5,
+        });
+      }
+
+      const mcpArgs = { migration: "001_init.sql" };
+      const consecutiveUnknown = [
+        userText("Apply migration"),
+        ...rounds(
+          ["mcp_database_apply", mcpArgs],
+          ["mcp_database_apply", mcpArgs],
+          ["mcp_database_apply", mcpArgs],
+          ["mcp_database_apply", mcpArgs],
+        ),
+      ];
+
+      const unknownRes = streamCall(consecutiveUnknown, "mcp_database_apply", mcpArgs);
+      expect(unknownRes.emitted).toEqual([]);
+      expect(unknownRes.loop).toEqual({
+        key: expect.stringContaining('"migration":"001_init.sql"'),
+        name: "mcp_database_apply",
+        count: 5,
+      });
     });
 
     it("resets the count when the user sends a new message", () => {
@@ -1083,7 +1313,7 @@ describe("tool argument parsing and validation", () => {
     });
   });
 
-  it("defaults missing grep isRegexp to false so the call is not rejected", () => {
+  it("defaults missing grep isRegexp case-insensitively and preserves case-mismatched boolean inputs", () => {
     const grepSchema = getToolSchemaMap(
       makeChatOptions({
         tools: [
@@ -1098,19 +1328,136 @@ describe("tool argument parsing and validation", () => {
               required: ["query", "isRegexp"],
             },
           },
+          {
+            name: "mcp_grep",
+            inputSchema: {
+              type: "object",
+              properties: {
+                query: { type: "string" },
+                IsRegexp: { type: "boolean" },
+              },
+              required: ["query", "IsRegexp"],
+            },
+          },
         ],
       }),
-    ).get("grep_search");
+    );
 
     const repaired = repairToolArguments(
       "grep_search",
       { query: "static fields" },
       undefined,
-      grepSchema,
+      grepSchema.get("grep_search"),
+    );
+    expect(repaired).toEqual({ query: "static fields", isRegexp: false });
+    expect(hasRequiredToolArguments(repaired, grepSchema.get("grep_search"))).toBe(true);
+
+    const repairedPascal = repairToolArguments(
+      "mcp_grep",
+      { query: "static fields" },
+      undefined,
+      grepSchema.get("mcp_grep"),
+    );
+    expect(repairedPascal).toEqual({ query: "static fields", IsRegexp: false });
+    expect(hasRequiredToolArguments(repairedPascal, grepSchema.get("mcp_grep"))).toBe(true);
+
+    const repairedSibling = repairToolArguments(
+      "mcp_grep",
+      { query: "foo.*bar", isregexp: true },
+      undefined,
+      grepSchema.get("mcp_grep"),
+    );
+    expect(repairedSibling).toEqual({ query: "foo.*bar", isregexp: true, IsRegexp: true });
+    expect(hasRequiredToolArguments(repairedSibling, grepSchema.get("mcp_grep"))).toBe(true);
+  });
+
+  it("synthesizes missing/blank required auxiliary strings only when non-auxiliary payload args are satisfied", () => {
+    expect(isAuxiliaryRequiredField("isRegexp")).toBe(true);
+    expect(isAuxiliaryRequiredField("ISREGEXP")).toBe(true);
+    expect(isAuxiliaryRequiredField("StartLine")).toBe(true);
+    expect(isAuxiliaryRequiredField("summary")).toBe(true);
+    expect(isAuxiliaryRequiredField("filePath")).toBe(false);
+    expect(isReadTool("read_resource")).toBe(true);
+
+    const schemas = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "update_plan",
+            inputSchema: {
+              type: "object",
+              properties: {
+                items: { type: "array" },
+                summary: { type: "string" },
+                description: { type: "string" },
+                explanation: { type: "string" },
+                goal: { type: "string" },
+              },
+              required: ["items", "summary", "description", "explanation", "goal"],
+            },
+          },
+          {
+            name: "search_docs",
+            inputSchema: {
+              type: "object",
+              properties: {
+                query: { type: "string" },
+                summary: { type: "string" },
+              },
+              required: ["query", "summary"],
+            },
+          },
+          {
+            name: "aux_only_tool",
+            inputSchema: {
+              type: "object",
+              properties: {
+                mode: { type: "string" },
+                summary: { type: "string" },
+              },
+              required: ["summary"],
+            },
+          },
+        ],
+      }),
     );
 
-    expect(repaired).toEqual({ query: "static fields", isRegexp: false });
-    expect(hasRequiredToolArguments(repaired, grepSchema)).toBe(true);
+    const planSchema = schemas.get("update_plan");
+    const filledFromToolName = repairToolArguments(
+      "update_plan",
+      { items: ["step 1"], summary: "   " },
+      undefined,
+      planSchema,
+    );
+    expect(filledFromToolName).toEqual({
+      items: ["step 1"],
+      summary: "Run update_plan",
+      description: "Run update_plan",
+      explanation: "Run update_plan",
+      goal: "Run update_plan",
+    });
+    expect(hasRequiredToolArguments(filledFromToolName, planSchema)).toBe(true);
+
+    const filledAnonymous = repairToolArguments("", { items: ["step 1"] }, undefined, planSchema);
+    expect(filledAnonymous.summary).toBe("Tool action");
+
+    const searchSchema = schemas.get("search_docs");
+    const reusedQuery = repairToolArguments(
+      "search_docs",
+      { query: "oauth2 flow" },
+      undefined,
+      searchSchema,
+    );
+    expect(reusedQuery).toEqual({ query: "oauth2 flow", summary: "oauth2 flow" });
+    expect(hasRequiredToolArguments(reusedQuery, searchSchema)).toBe(true);
+
+    // Never synthesize on `{}` or auxiliary-only inputs or missing non-auxiliary required args
+    const auxSchema = schemas.get("aux_only_tool");
+    expect(repairToolArguments("aux_only_tool", {}, undefined, auxSchema)).toEqual({});
+    expect(repairToolArguments("aux_only_tool", { mode: "sync" }, undefined, auxSchema)).toEqual({
+      mode: "sync",
+    });
+    expect(repairToolArguments("search_docs", {}, undefined, searchSchema)).toEqual({});
   });
 
   it("re-emits grep_search even when the same query already completed", () => {
@@ -2526,6 +2873,35 @@ describe("text tool calls across chunks and at stream end", () => {
   const visibleText = (result: ReturnType<typeof parseTextEmbeddedToolCalls>) =>
     result.segments.map((segment) => (segment.type === "text" ? segment.text : "")).join("");
 
+  const runChunks = (
+    chunks: string[],
+    toolSchemas?: ReturnType<typeof getToolSchemaMap>,
+  ): { emittedToolCalls: ReturnType<typeof toolCalls>; emittedText: string } => {
+    const context = new TextParseContext();
+    let pending = "";
+    const emittedToolCalls: ReturnType<typeof toolCalls> = [];
+    let emittedText = "";
+
+    for (let idx = 0; idx < chunks.length; idx += 1) {
+      const isLast = idx === chunks.length - 1;
+      const parsed = parseTextEmbeddedToolCalls(pending + chunks[idx], toolSchemas, {
+        contextPrefix: context.prefix(),
+        atStreamEnd: isLast,
+      });
+      pending = parsed.incompleteText;
+      for (const segment of parsed.segments) {
+        if (segment.type === "text") {
+          context.append(segment.text);
+          emittedText += segment.text;
+        } else if (segment.type === "toolCall") {
+          emittedToolCalls.push(segment);
+        }
+      }
+    }
+    expect(pending).toBe("");
+    return { emittedToolCalls, emittedText };
+  };
+
   it("emits a held closing code fence as text when the stream ends", () => {
     const midStream = parseTextEmbeddedToolCalls("code\n```", undefined);
     expect(midStream.incompleteText).toBe("```");
@@ -2646,5 +3022,406 @@ describe("text tool calls across chunks and at stream end", () => {
       startLine: 10,
       endLine: 20,
     });
+  });
+
+  it("preserves leading-backslash Windows paths in XML parameters without mangling escapes via JSON repair", () => {
+    expect(parseEmbeddedToolParameterValue("\\foo\\bar\\test.ts")).toBe("\\foo\\bar\\test.ts");
+    expect(parseEmbeddedToolParameterValue("\\\\server\\share\\notes.md")).toBe(
+      "\\\\server\\share\\notes.md",
+    );
+
+    const xml =
+      "<tool_call>\n<function=read_file>\n<parameter=filePath>\\foo\\bar\\test.ts</parameter>\n</function>\n</tool_call>";
+    const parsed = parseTextEmbeddedToolCalls(xml, undefined, { atStreamEnd: true });
+    expect(toolCalls(parsed)).toEqual([
+      {
+        type: "toolCall",
+        toolCall: { name: "read_file", args: { filePath: "\\foo\\bar\\test.ts" } },
+      },
+    ]);
+  });
+
+  it("does not treat mid-line or inline triple backticks as an unclosed code fence hiding subsequent tool calls", () => {
+    const midLineProse = `Do not wrap output in \`\`\`json fences:\n${readFileCall}`;
+    expect(toolCalls(parseTextEmbeddedToolCalls(midLineProse, undefined))).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+
+    const quotedFenceInCode = `const CODE_FENCE = "\`\`\`";\n${readFileCall}`;
+    expect(toolCalls(parseTextEmbeddedToolCalls(quotedFenceInCode, undefined))).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+
+    const context = new TextParseContext();
+    context.append("Avoid ```json wrappers in output.\n");
+    expect(context.prefix()).toBe("");
+    const afterChunk = parseTextEmbeddedToolCalls(readFileCall, undefined, {
+      contextPrefix: context.prefix(),
+    });
+    expect(toolCalls(afterChunk)).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+
+    const boldAndDecimal = `*bold* \`\`\`xml\n1.5 \`\`\`xml\n${readFileCall}`;
+    expect(toolCalls(parseTextEmbeddedToolCalls(boldAndDecimal, undefined))).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+  });
+
+  it("strips Markdown list, task-list, and blockquote container prefixes deterministically", () => {
+    expect(stripMarkdownContainerPrefix("- ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix("* ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix("+ ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix("1. ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix("1) ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix("123456789. ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix(">```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix("> ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix(">> ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix("> - ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix("- > ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix("> 1. [x] ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix("- [ ] ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix("- [X] ```xml")).toBe("```xml");
+    expect(stripMarkdownContainerPrefix("  \t> - 2) [x] \t~~~xml")).toBe("~~~xml");
+
+    expect(stripMarkdownContainerPrefix("1234567890. ```xml")).toBe("1234567890. ```xml");
+    expect(stripMarkdownContainerPrefix("1.5 ```xml")).toBe("1.5 ```xml");
+    expect(stripMarkdownContainerPrefix("*bold* ```xml")).toBe("*bold* ```xml");
+    expect(stripMarkdownContainerPrefix("-```xml")).toBe("-```xml");
+    expect(stripMarkdownContainerPrefix("- [y] ```xml")).toBe("[y] ```xml");
+    expect(stripMarkdownContainerPrefix("- [x]```xml")).toBe("[x]```xml");
+
+    expect(isMarkdownContainerPrefixOnly("  > - 1. [x] ")).toBe(true);
+    expect(isMarkdownContainerPrefixOnly(">")).toBe(true);
+    expect(isMarkdownContainerPrefixOnly("Avoid ")).toBe(false);
+    expect(isMarkdownContainerPrefixOnly("1.5 ")).toBe(false);
+    expect(isMarkdownContainerPrefixOnly("*bold* ")).toBe(false);
+    expect(isMarkdownContainerPrefixOnly("- [x]")).toBe(false);
+  });
+
+  it("ignores tool examples inside list, task-list, blockquote, nested, and tilde fences and parses subsequent real calls", () => {
+    const fencedVariants: Array<{ open: string; close: string; bodyPrefix?: string }> = [
+      { open: "- ```xml", close: "```" },
+      { open: "- ```xml", close: "  ```", bodyPrefix: "  " },
+      { open: "* ```xml", close: "  ```" },
+      { open: "+ ```xml", close: "  ```" },
+      { open: "1. ```xml", close: "   ```" },
+      { open: "1) ```xml", close: "```" },
+      { open: "> ```xml", close: "> ```", bodyPrefix: "> " },
+      { open: "> - ```xml", close: ">   ```", bodyPrefix: ">   " },
+      { open: "- > ```xml", close: "  > ```", bodyPrefix: "  > " },
+      { open: "> 1. ```xml", close: "> ```", bodyPrefix: "> " },
+      { open: "- [ ] ```xml", close: "```" },
+      { open: "- [x] ```xml", close: "  ```" },
+      { open: "~~~xml", close: "~~~" },
+      { open: "- ~~~xml", close: "~~~" },
+      { open: "> ~~~xml", close: "> ~~~", bodyPrefix: "> " },
+      { open: "- ~~~~xml", close: "~~~~" },
+    ];
+
+    for (const { open, close, bodyPrefix } of fencedVariants) {
+      const body = bodyPrefix
+        ? `${bodyPrefix}${readFileCall.replace(/\n/g, `\n${bodyPrefix}`)}`
+        : readFileCall;
+      const fencedOnly = `${open}\n${body}\n${close}`;
+      expect(toolCalls(parseTextEmbeddedToolCalls(fencedOnly, undefined))).toEqual([]);
+
+      const fencedThenReal = `${fencedOnly}\n\n${readFileCall}`;
+      expect(toolCalls(parseTextEmbeddedToolCalls(fencedThenReal, undefined))).toEqual([
+        { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+      ]);
+    }
+
+    const mismatchedFenceClose = `~~~~xml\n\`\`\`\n~~~\n${readFileCall}\n~~~~\n${readFileCall}`;
+    expect(toolCalls(parseTextEmbeddedToolCalls(mismatchedFenceClose, undefined))).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+  });
+
+  it("does not let container-prefixed fence lines inside code blocks close the outer fence prematurely", () => {
+    const schemas = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "run_in_terminal",
+            inputSchema: {
+              type: "object",
+              properties: { command: { type: "string" } },
+              required: ["command"],
+            },
+          },
+        ],
+      }),
+    );
+
+    const p1RegressionText = [
+      "```text",
+      'const FENCE = "```";',
+      "- ```",
+      "<tool_call><function=run_in_terminal><parameter=command>echo example</parameter></function></tool_call>",
+      "```",
+    ].join("\n");
+    expect(
+      toolCalls(parseTextEmbeddedToolCalls(p1RegressionText, schemas, { atStreamEnd: true })),
+    ).toEqual([]);
+    const p1Streamed = runChunks(
+      [
+        '```text\nconst FENCE = "```";\n',
+        "- ```\n",
+        "<tool_call><function=run_in_terminal>",
+        "<parameter=command>echo example</parameter></function></tool_call>\n",
+        "```",
+      ],
+      schemas,
+    );
+    expect(p1Streamed.emittedToolCalls).toEqual([]);
+
+    const topLevelFakeClosers = ["- ```", "* ```", "+ ```", "1. ```", "- [x] ```", "> ```"];
+    for (const fakeClose of topLevelFakeClosers) {
+      const sample = [
+        "```text",
+        fakeClose,
+        '{"name":"run_in_terminal","arguments":{"command":"ls"}}',
+        readFileCall,
+        "```",
+        readFileCall,
+      ].join("\n");
+      expect(toolCalls(parseTextEmbeddedToolCalls(sample, schemas, { atStreamEnd: true }))).toEqual(
+        [{ type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } }],
+      );
+    }
+
+    const tildeFakeClosers = ["- ~~~", "> ~~~"];
+    for (const fakeClose of tildeFakeClosers) {
+      const sample = [
+        "~~~text",
+        fakeClose,
+        '{"name":"run_in_terminal","arguments":{"command":"ls"}}',
+        readFileCall,
+        "~~~",
+        readFileCall,
+      ].join("\n");
+      expect(toolCalls(parseTextEmbeddedToolCalls(sample, schemas, { atStreamEnd: true }))).toEqual(
+        [{ type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } }],
+      );
+    }
+
+    const listOpened = [
+      "- ```text",
+      "  - ```",
+      "  > ```",
+      `  ${readFileCall.replace(/\n/g, "\n  ")}`,
+      "  ```",
+    ].join("\n");
+    expect(toolCalls(parseTextEmbeddedToolCalls(listOpened, undefined))).toEqual([]);
+
+    const quoteFakeClosers = ["> > ```", ">> ```", "> - ```"];
+    for (const fakeClose of quoteFakeClosers) {
+      const quoteOpened = [
+        "> ```text",
+        fakeClose,
+        `> ${readFileCall.replace(/\n/g, "\n> ")}`,
+        "> ```",
+      ].join("\n");
+      expect(toolCalls(parseTextEmbeddedToolCalls(quoteOpened, undefined))).toEqual([]);
+
+      const quoteStreamed = runChunks([
+        "> ```text\n",
+        `${fakeClose}\n`,
+        `> ${readFileCall.replace(/\n/g, "\n> ")}\n`,
+        "> ```",
+      ]);
+      expect(quoteStreamed.emittedToolCalls).toEqual([]);
+    }
+
+    const unclosedQuoteThenCall = ["> ```xml", "> example", readFileCall].join("\n");
+    expect(toolCalls(parseTextEmbeddedToolCalls(unclosedQuoteThenCall, undefined))).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+
+    const quoteExitedIntoTopLevelFence = ["> ```xml", "> example", "```", readFileCall, "```"].join(
+      "\n",
+    );
+    expect(toolCalls(parseTextEmbeddedToolCalls(quoteExitedIntoTopLevelFence, undefined))).toEqual(
+      [],
+    );
+
+    const depth2ExitedIntoDepth1 = [
+      ">> ```xml",
+      ">> example",
+      "> ```",
+      `> ${readFileCall.replace(/\n/g, "\n> ")}`,
+      "> ```",
+    ].join("\n");
+    expect(toolCalls(parseTextEmbeddedToolCalls(depth2ExitedIntoDepth1, undefined))).toEqual([]);
+  });
+
+  it("does not execute JSON tool examples inside list or blockquote fences while keeping top-level fenced JSON working", () => {
+    const schemas = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "run_in_terminal",
+            inputSchema: {
+              type: "object",
+              properties: { command: { type: "string" } },
+              required: ["command"],
+            },
+          },
+          {
+            name: "read_file",
+            inputSchema: {
+              type: "object",
+              properties: { filePath: { type: "string" } },
+              required: ["filePath"],
+            },
+          },
+        ],
+      }),
+    );
+
+    const listExplicitJson =
+      '- ```json\n{"name":"run_in_terminal","arguments":{"command":"ls"}}\n```';
+    expect(
+      toolCalls(parseTextEmbeddedToolCalls(listExplicitJson, schemas, { atStreamEnd: true })),
+    ).toEqual([]);
+
+    const listSinglePropJson = '- ```json\n{"filePath":"foo.ts"}\n```';
+    expect(
+      toolCalls(parseTextEmbeddedToolCalls(listSinglePropJson, schemas, { atStreamEnd: true })),
+    ).toEqual([]);
+
+    const quoteExplicitJson =
+      '> ```json\n> {"name":"run_in_terminal","arguments":{"command":"ls"}}\n> ```';
+    expect(
+      toolCalls(parseTextEmbeddedToolCalls(quoteExplicitJson, schemas, { atStreamEnd: true })),
+    ).toEqual([]);
+
+    const topLevelFencedJson =
+      '```json\n{"name":"run_in_terminal","arguments":{"command":"ls"}}\n```';
+    expect(
+      toolCalls(parseTextEmbeddedToolCalls(topLevelFencedJson, schemas, { atStreamEnd: true })),
+    ).toEqual([
+      {
+        type: "toolCall",
+        toolCall: { name: "run_in_terminal", args: { command: "ls" } },
+      },
+    ]);
+  });
+
+  it("handles chunk-by-chunk streaming across list/blockquote fence boundaries with TextParseContext", () => {
+    const splitBacktick = runChunks([
+      "- ``",
+      "`xml\n",
+      "<tool_call>\n<function=read_file>\n",
+      "<parameter=path>example.txt</parameter>\n</function>\n</tool_call>\n",
+      "  ```\n",
+      readFileCall,
+    ]);
+    expect(splitBacktick.emittedToolCalls).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+    expect(splitBacktick.emittedText).toContain("<function=read_file>");
+
+    const splitTilde = runChunks(["- ~~", "~xml\n", `${readFileCall}\n`, "~~~\n", readFileCall]);
+    expect(splitTilde.emittedToolCalls).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+
+    const splitQuote = runChunks([
+      "> ```xml\n",
+      `> ${readFileCall.replace(/\n/g, "\n> ")}\n`,
+      "> ``` \n",
+      readFileCall,
+    ]);
+    expect(splitQuote.emittedToolCalls).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+
+    const sameLineStreamingFence = runChunks([
+      "- ```xml <tool_call><function=read_file>",
+      "<parameter=path>inline.txt</parameter></function></tool_call>\n",
+      "```\n",
+      readFileCall,
+    ]);
+    expect(sameLineStreamingFence.emittedToolCalls).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+
+    const sameLineStreamingTilde = runChunks([
+      "> ~~~xml <tool_call><function=read_file>",
+      "<parameter=path>inline.txt</parameter></function></tool_call>\n",
+      "> ~~~\n",
+      readFileCall,
+    ]);
+    expect(sameLineStreamingTilde.emittedToolCalls).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+
+    const schemas = getToolSchemaMap(
+      makeChatOptions({
+        tools: [
+          {
+            name: "run_in_terminal",
+            inputSchema: {
+              type: "object",
+              properties: { command: { type: "string" } },
+              required: ["command"],
+            },
+          },
+        ],
+      }),
+    );
+    const splitListJson = runChunks(
+      ["- ``", '`json\n{"name":"run_in_terminal","arguments":{"command":"ls"}}\n```'],
+      schemas,
+    );
+    expect(splitListJson.emittedToolCalls).toEqual([]);
+  });
+
+  it("handles long line truncation in TextParseContext without falsely opening or dropping container fences", () => {
+    const longContainerCtx = new TextParseContext();
+    longContainerCtx.append(`${"> ".repeat(1100)}\`\`\`xml\n`);
+    expect(longContainerCtx.prefix()).toBe(`${">".repeat(1100)}\`\`\`\n`);
+
+    const longListInFenceCtx = new TextParseContext();
+    longListInFenceCtx.append("```text\n");
+    longListInFenceCtx.append(`- ${" ".repeat(2100)}`);
+    longListInFenceCtx.append("```\n");
+    expect(longListInFenceCtx.prefix()).toBe("```\n");
+    expect(
+      toolCalls(
+        parseTextEmbeddedToolCalls(readFileCall, undefined, {
+          contextPrefix: longListInFenceCtx.prefix(),
+        }),
+      ),
+    ).toEqual([]);
+
+    const splitLongQuoteCtx = new TextParseContext();
+    splitLongQuoteCtx.append(`> ${" ".repeat(2100)}`);
+    splitLongQuoteCtx.append("```xml\n");
+    expect(splitLongQuoteCtx.prefix()).toBe(">```\n");
+    expect(
+      toolCalls(
+        parseTextEmbeddedToolCalls(`> ${readFileCall.replace(/\n/g, "\n> ")}`, undefined, {
+          contextPrefix: splitLongQuoteCtx.prefix(),
+        }),
+      ),
+    ).toEqual([]);
+
+    const longProseCtx = new TextParseContext();
+    longProseCtx.append(`${"a".repeat(2100)}> \`\`\`xml\n`);
+    expect(longProseCtx.prefix()).toBe("");
+    const afterProse = parseTextEmbeddedToolCalls(readFileCall, undefined, {
+      contextPrefix: longProseCtx.prefix(),
+    });
+    expect(toolCalls(afterProse)).toEqual([
+      { type: "toolCall", toolCall: { name: "read_file", args: { path: "a.txt" } } },
+    ]);
+
+    const splitTildeRunCtx = new TextParseContext();
+    splitTildeRunCtx.append(`${"a".repeat(2000)}~~~${"b".repeat(510)}`);
+    expect(splitTildeRunCtx.prefix().startsWith("x ~~~")).toBe(true);
   });
 });

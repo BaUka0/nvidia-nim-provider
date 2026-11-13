@@ -158,6 +158,20 @@ describe("evaluateAttemptRetry", () => {
     expect(evaluation.retryReason).toBe("repetition_loop");
   });
 
+  it("auto-continues a non-reasoning pure repeat when repetitionTripped emptied visible text", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        repetitionTripped: true,
+        sawReasoning: false,
+        reportedContent: false,
+        reportedVisibleContent: false,
+        lastVisibleText: "",
+      }),
+    });
+    expect(evaluation.retryReason).toBe("repetition_loop");
+  });
+
   it("does not auto-continue a repetition loop after a tool call was already emitted", () => {
     const evaluation = evaluateAttemptRetry({
       ...baseFacts,
@@ -324,6 +338,58 @@ describe("evaluateAttemptRetry", () => {
       }),
     });
     expect(evalDash.retryReason).toBe("hanging_colon");
+
+    const evalFullwidthColon = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        reportedVisibleContent: true,
+        lastVisibleText: "接下来我将检查文件：",
+        lastFinishReason: "stop",
+      }),
+    });
+    expect(evalFullwidthColon.isHangingColon).toBe(true);
+    expect(evalFullwidthColon.retryReason).toBe("hanging_colon");
+  });
+
+  it("does not misclassify Markdown horizontal rules (---) as hanging punctuation", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        reportedVisibleContent: true,
+        lastVisibleText: "Summary complete.\n\n---",
+        lastFinishReason: "stop",
+      }),
+    });
+    expect(evaluation.isHangingColon).toBe(false);
+    expect(evaluation.retryReason).toBeUndefined();
+  });
+
+  it("gates loop and invalid-tool retries on fetchBudgetExhausted", () => {
+    const exhaustedLoop = evaluateAttemptRetry({
+      ...baseFacts,
+      fetchBudgetExhausted: true,
+      result: result({
+        reportedVisibleContent: true,
+        repetitionTripped: true,
+        lastVisibleText: "Repeated line",
+        lastFinishReason: "stop",
+      }),
+    });
+    expect(exhaustedLoop.isRepetitionLoop).toBe(true);
+    expect(exhaustedLoop.retryReason).toBeUndefined();
+
+    const exhaustedInvalidTool = evaluateAttemptRetry({
+      ...baseFacts,
+      fetchBudgetExhausted: true,
+      result: result({
+        sawToolCall: true,
+        emittedToolCall: false,
+        skippedToolCalls: [{ name: "read_file", required: ["filePath"] }],
+        lastFinishReason: "tool_calls",
+      }),
+    });
+    expect(exhaustedInvalidTool.retryMessage).toBeDefined();
+    expect(exhaustedInvalidTool.retryReason).toBeUndefined();
   });
 
   it("identifies a preamble loop across attempts via previousPreamblePrefixes even if ending with a period", () => {

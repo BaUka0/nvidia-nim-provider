@@ -95,6 +95,41 @@ describe("turn-report", () => {
         chat_template_kwargs: { enable_thinking: true, reasoning_budget: 16384 },
       }),
     ).toBe("budget:16384");
+    expect(
+      inferReasoningModeFromRequest({
+        model: "minimaxai/minimax-m3.1-flash",
+        messages: [],
+        chat_template_kwargs: { reasoning_effort: "xhigh" },
+      }),
+    ).toBe("xhigh");
+    expect(
+      inferReasoningModeFromRequest({
+        model: "deepseek-ai/deepseek-v4.1-flash",
+        messages: [],
+        chat_template_kwargs: { thinking: true, reasoning_effort: "max" },
+      }),
+    ).toBe("max");
+    expect(
+      inferReasoningModeFromRequest({
+        model: "deepseek-ai/deepseek-v4.1-flash",
+        messages: [],
+        chat_template_kwargs: { thinking: false },
+      }),
+    ).toBe("none");
+  });
+
+  it("preserves chat_template_kwargs.reasoning_effort in recorded turn reports", () => {
+    const report = recordTurnReport({
+      outcome: "ok",
+      modelId: "deepseek-ai/deepseek-v4.1-flash",
+      requestBody: {
+        model: "deepseek-ai/deepseek-v4.1-flash",
+        messages: [],
+        chat_template_kwargs: { thinking: true, reasoning_effort: "high" },
+      },
+    });
+    expect(report.reasoningMode).toBe("high");
+    expect(report.chatTemplateKwargs).toEqual({ thinking: true, reasoning_effort: "high" });
   });
 
   it("records a ring of the last five reports and omits payload when empty", () => {

@@ -1,11 +1,16 @@
 import { ConfigManager, ToolsConfig } from "../shared/config";
 import { MAX_REPAIRED_LINE_SPAN } from "../shared/constants";
-import { AUXILIARY_BOOLEAN_FIELDS } from "../shared/tool-fields";
+import { AUXILIARY_BOOLEAN_FIELDS, isAuxiliaryRequiredField } from "../shared/tool-fields";
 import { FORBIDDEN_TOOL_IDENTIFIERS } from "./embedded-parser";
 import { parseToolArguments } from "./json-args";
 import { ChatRequestContext } from "./request-context";
 import { isEditTool, isReadTool, isTerminalTool } from "./tool-kinds";
-import { missingRequiredToolArguments, normalizeArguments, ToolSchema } from "./tool-schema";
+import {
+  missingRequiredToolArguments,
+  normalizeArguments,
+  ToolPropertySchema,
+  ToolSchema,
+} from "./tool-schema";
 
 const LINE_START_ALIASES = [
   "startLine",
@@ -120,6 +125,42 @@ function fillReadToolLineRanges(
   }
 }
 
+function findPropertyCaseInsensitive(
+  schema: ToolSchema | undefined,
+  key: string,
+): ToolPropertySchema | undefined {
+  const properties = schema?.properties;
+  if (!properties) {
+    return undefined;
+  }
+  if (key in properties) {
+    return properties[key];
+  }
+  const lower = key.toLowerCase();
+  for (const [propName, propSchema] of Object.entries(properties)) {
+    if (propName.toLowerCase() === lower) {
+      return propSchema;
+    }
+  }
+  return undefined;
+}
+
+function coerceBooleanLike(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed === "true" || trimmed === "yes" || trimmed === "1") {
+      return true;
+    }
+    if (trimmed === "false" || trimmed === "no" || trimmed === "0") {
+      return false;
+    }
+  }
+  return undefined;
+}
+
 export function fillMissingAuxiliaryBooleans(
   repaired: Record<string, unknown>,
   schema: ToolSchema | undefined,
@@ -134,15 +175,36 @@ export function fillMissingAuxiliaryBooleans(
       continue;
     }
 
-    const property = schema.properties?.[key];
-    if (property?.type !== "boolean") {
-      continue;
-    }
-    if (!AUXILIARY_BOOLEAN_FIELDS.has(key.toLowerCase())) {
+    const lowerKey = key.toLowerCase();
+    const compactKey = lowerKey.replace(/_/g, "");
+    if (!AUXILIARY_BOOLEAN_FIELDS.has(lowerKey) && !AUXILIARY_BOOLEAN_FIELDS.has(compactKey)) {
       continue;
     }
 
-    const enumValues = property.enum?.filter((item): item is boolean => typeof item === "boolean");
+    const property = findPropertyCaseInsensitive(schema, key);
+    if (property?.type !== undefined && property.type !== "boolean") {
+      continue;
+    }
+
+    let matchedSibling: boolean | undefined;
+    for (const [existingKey, existingValue] of Object.entries(repaired)) {
+      if (
+        existingKey.toLowerCase() === lowerKey ||
+        existingKey.toLowerCase().replace(/_/g, "") === compactKey
+      ) {
+        matchedSibling = coerceBooleanLike(existingValue);
+        if (matchedSibling !== undefined) {
+          break;
+        }
+      }
+    }
+
+    if (matchedSibling !== undefined) {
+      repaired[key] = matchedSibling;
+      continue;
+    }
+
+    const enumValues = property?.enum?.filter((item): item is boolean => typeof item === "boolean");
     repaired[key] = enumValues && enumValues.length > 0 ? enumValues[0] : false;
   }
 }
@@ -309,6 +371,85 @@ function unwrapNestedArguments(
   }
 }
 
+const SYNTHESIZABLE_AUXILIARY_STRING_FIELDS = new Set([
+  "summary",
+  "description",
+  "explanation",
+  "goal",
+]);
+
+const AUXILIARY_STRING_FALLBACK_SOURCES = [
+  "explanation",
+  "summary",
+  "description",
+  "goal",
+  "command",
+  "filePath",
+  "query",
+] as const;
+
+function hasNonEmptyValue(value: unknown): boolean {
+  return (
+    value !== undefined &&
+    value !== null &&
+    !(typeof value === "string" && value.trim().length === 0)
+  );
+}
+
+function resolveAuxiliaryStringFallback(
+  toolName: string,
+  repaired: Record<string, unknown>,
+): string {
+  for (const candidateKey of AUXILIARY_STRING_FALLBACK_SOURCES) {
+    const direct = repaired[candidateKey];
+    if (typeof direct === "string" && direct.trim().length > 0) {
+      return direct.trim();
+    }
+    const lowerCandidate = candidateKey.toLowerCase();
+    for (const [existingKey, existingValue] of Object.entries(repaired)) {
+      if (
+        existingKey.toLowerCase() === lowerCandidate &&
+        typeof existingValue === "string" &&
+        existingValue.trim().length > 0
+      ) {
+        return existingValue.trim();
+      }
+    }
+  }
+  return toolName.trim().length > 0 ? `Run ${toolName.trim()}` : "Tool action";
+}
+
+function fillMissingAuxiliaryStrings(
+  toolName: string,
+  repaired: Record<string, unknown>,
+  schema: ToolSchema | undefined,
+  hasCallerNonAuxiliaryArg: boolean,
+): void {
+  if (!hasCallerNonAuxiliaryArg || !schema?.required?.length) {
+    return;
+  }
+  const missing = missingRequiredToolArguments(repaired, schema);
+  if (missing.some((key) => !isAuxiliaryRequiredField(key))) {
+    return;
+  }
+
+  for (const reqKey of schema.required) {
+    if (!SYNTHESIZABLE_AUXILIARY_STRING_FIELDS.has(reqKey.toLowerCase())) {
+      continue;
+    }
+    const property = findPropertyCaseInsensitive(schema, reqKey);
+    if (property?.type !== undefined && property.type !== "string") {
+      continue;
+    }
+    const current = repaired[reqKey];
+    if (typeof current === "string" && current.trim().length > 0) {
+      continue;
+    }
+    const enumDefault = schema.enumValues?.[reqKey]?.[0];
+    repaired[reqKey] = enumDefault ?? resolveAuxiliaryStringFallback(toolName, repaired);
+  }
+}
+
 export function repairToolArguments(
   toolName: string,
   args: unknown,
@@ -362,6 +503,13 @@ export function repairToolArguments(
   const repaired: Record<string, unknown> = normalizeArguments(parsedArgs, schema ?? {});
 
   unwrapNestedArguments(repaired, schema);
+
+  const hasCallerNonAuxiliaryArg = Object.entries(repaired).some(
+    ([key, value]) =>
+      !FORBIDDEN_TOOL_IDENTIFIERS.has(key) &&
+      !isAuxiliaryRequiredField(key) &&
+      hasNonEmptyValue(value),
+  );
 
   if (isTerminalTool(toolName)) {
     if (needsStringField(repaired.goal, "goal")) {
@@ -441,6 +589,8 @@ export function repairToolArguments(
     clampLineSpan("StartLine", "EndLine");
     fillEditToolExplanation(repaired, schema);
   }
+
+  fillMissingAuxiliaryStrings(toolName, repaired, schema, hasCallerNonAuxiliaryArg);
 
   // Directory tools keep model-supplied path/cwd. Regex-extracted Cwd is not
   // copied in — that string is attacker-controlled prompt text.
