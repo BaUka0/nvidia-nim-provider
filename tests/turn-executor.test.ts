@@ -239,6 +239,56 @@ describe("ModelTurnExecutor.executeTurn", () => {
     });
   });
 
+  it("uses answer repetition_loop nudge when visible answer repeat was suppressed after clean reasoning", async () => {
+    buildNudgeMock.mockReturnValue({ role: "user", content: "answer continue" });
+    runStreamAttemptMock
+      .mockResolvedValueOnce(
+        makeResult({
+          sawReasoning: true,
+          reportedContent: true,
+          reportedVisibleContent: false,
+          repetitionTripped: true,
+          reasoningRepetitionTripped: false,
+          trippedDetector: "lineCounter",
+          lastVisibleText: "",
+          lastReasoningText: "Clean reasoning tail.",
+        }),
+      )
+      .mockResolvedValueOnce(makeResult({ reportedVisibleContent: true, lastVisibleText: "Done" }));
+
+    await expect(executor().executeTurn(makeInput(makeConfig()))).resolves.toBeUndefined();
+
+    expect(buildNudgeMock).toHaveBeenCalledWith("repetition_loop", {
+      reasoningTail: "Clean reasoning tail.",
+      reasoningLoop: false,
+    });
+  });
+
+  it("uses reasoningLoop nudge when reasoning itself tripped repetition", async () => {
+    buildNudgeMock.mockReturnValue({ role: "user", content: "reasoning continue" });
+    runStreamAttemptMock
+      .mockResolvedValueOnce(
+        makeResult({
+          sawReasoning: true,
+          reportedContent: true,
+          reportedVisibleContent: false,
+          repetitionTripped: true,
+          reasoningRepetitionTripped: true,
+          trippedDetector: "lineCounter",
+          lastVisibleText: "",
+          lastReasoningText: "Repeating reasoning tail.",
+        }),
+      )
+      .mockResolvedValueOnce(makeResult({ reportedVisibleContent: true, lastVisibleText: "Done" }));
+
+    await expect(executor().executeTurn(makeInput(makeConfig()))).resolves.toBeUndefined();
+
+    expect(buildNudgeMock).toHaveBeenCalledWith("repetition_loop", {
+      reasoningTail: "Repeating reasoning tail.",
+      reasoningLoop: true,
+    });
+  });
+
   it("fails with a structured error when the model only emits unusable tool calls", async () => {
     runStreamAttemptMock.mockResolvedValue(
       makeResult({

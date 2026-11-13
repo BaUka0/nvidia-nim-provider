@@ -891,7 +891,10 @@ export class ModelTurnExecutor {
         result.lastVisibleText.trim().length === 0;
       state.retryNudge = buildLoopBreakerNudge(retryReason, {
         reasoningTail: thinkOnly ? result.lastReasoningText : undefined,
-        reasoningLoop: thinkOnly && retryReason === "repetition_loop",
+        reasoningLoop:
+          thinkOnly &&
+          retryReason === "repetition_loop" &&
+          (result.reasoningRepetitionTripped ?? true),
       });
       state.retryNudgeFallback = thinkOnly ? buildLoopBreakerNudge(retryReason) : undefined;
       logLoopAutoContinue({

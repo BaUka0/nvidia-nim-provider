@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { fetchModelsOrThrow, streamChatCompletion } from "../../src/api/client";
 import { NimChatModelProvider } from "../../src/provider/chat-provider";
+import { runStreamAttempt } from "../../src/provider/stream-pump";
+import { DEFAULT_TOOLS_CONFIG } from "../../src/shared/config";
 import { ApiErrorKind, NvidiaApiError } from "../../src/api/errors";
 import { getApiKeyFingerprint, NvidiaApiKeyResolver } from "../../src/api/key-resolver";
 import {
@@ -5162,5 +5164,250 @@ describe("NimChatModelProvider", () => {
     expect(progress.report).toHaveBeenCalledWith(
       expect.objectContaining({ value: "Direct recovered reply." }),
     );
+  });
+
+  it("preserves clean heldAnswer prefix before repetition trip and succeeds when maxLoopContinues is 0", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (streamChatCompletion as jest.Mock).mockReset();
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "generation.maxRepeatedLines") return 3;
+        if (key === "generation.maxLoopContinues") return 0;
+        return defaultValue;
+      }),
+    }));
+
+    const heldWithPrefixAndRepeats = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Checking the computation." } }] };
+      yield {
+        choices: [
+          {
+            delta: {
+              content: "The result is 42.\nSame line here\nSame line here\nSame line here\n",
+            },
+            finish_reason: "stop",
+          },
+        ],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock).mockReturnValueOnce(heldWithPrefixAndRepeats());
+
+    const progress = { report: jest.fn() };
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "deepseek-ai/deepseek-v4-flash-0731",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+          capabilities: { toolCalling: 128, imageInput: false },
+        }),
+        makeUserMessages("Compute"),
+        makeChatOptions({ tools: [readFileTool] }),
+        progress,
+        makeToken(),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(streamChatCompletion).toHaveBeenCalledTimes(1);
+    const reportedText = progress.report.mock.calls
+      .map((call) => call[0])
+      .filter(
+        (part): part is vscode.LanguageModelTextPart =>
+          typeof part?.value === "string" && !(part instanceof ThinkingPart),
+      )
+      .map((part) => part.value)
+      .join("");
+    expect(reportedText).toBe("The result is 42.\n");
+    expect(reportedText).not.toContain("Same line here");
+    expect(getTurnReports()[0]).toMatchObject({
+      outcome: "ok",
+      repetitionTripped: true,
+      visibleChars: "The result is 42.\n".length,
+      lastVisibleTextHead: "The result is 42.\n",
+      lastVisibleTextTail: "",
+    });
+  });
+
+  it("sets reportedVisibleContent and lastVisibleText to only the preserved prefix in runStreamAttempt", async () => {
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock).mockReturnValueOnce(
+      (async function* () {
+        yield { choices: [{ delta: { reasoning_content: "Checking the computation." } }] };
+        yield {
+          choices: [
+            {
+              delta: {
+                content: "The result is 42.\nSame line here\nSame line here\nSame line here\n",
+              },
+              finish_reason: "stop",
+            },
+          ],
+        };
+      })(),
+    );
+
+    const progress = { report: jest.fn() };
+    const attemptResult = await runStreamAttempt({
+      apiKey: "test-key",
+      requestBody: {
+        model: "deepseek-ai/deepseek-v4-flash-0731",
+        messages: [{ role: "user", content: "Compute" }],
+        stream: true,
+      },
+      signal: new AbortController().signal,
+      userAgent: "test-ua",
+      token: makeToken(),
+      progress,
+      model: makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: false },
+      }),
+      options: makeChatOptions({ tools: [readFileTool] }),
+      messages: makeUserMessages("Compute"),
+      reasoningIsolationExpected: true,
+      maxFetchAttempts: 1,
+      toolsConfig: DEFAULT_TOOLS_CONFIG,
+      hasRetriedRepetitionLoop: false,
+      maxRepeatedLines: 3,
+      maxLoopContinues: 0,
+    });
+
+    const reportedText = progress.report.mock.calls
+      .map((call) => call[0])
+      .filter(
+        (part): part is vscode.LanguageModelTextPart =>
+          typeof part?.value === "string" && !(part instanceof ThinkingPart),
+      )
+      .map((part) => part.value)
+      .join("");
+    expect(reportedText).toBe("The result is 42.\n");
+    expect(attemptResult.reportedVisibleContent).toBe(true);
+    expect(attemptResult.lastVisibleText).toBe("The result is 42.\n");
+    expect(attemptResult.repetitionTripped).toBe(true);
+    expect(attemptResult.reasoningRepetitionTripped).toBe(false);
+  });
+
+  it("preserves clean heldAnswer prefix when final repeated line has no trailing newline", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (streamChatCompletion as jest.Mock).mockReset();
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "generation.maxRepeatedLines") return 3;
+        if (key === "generation.maxLoopContinues") return 0;
+        return defaultValue;
+      }),
+    }));
+
+    const unterminatedHeldRepeat = async function* () {
+      yield { choices: [{ delta: { reasoning_content: "Checking the computation." } }] };
+      yield {
+        choices: [
+          {
+            delta: {
+              content: "The result is 42.\nSame line here\nSame line here\nSame line here",
+            },
+            finish_reason: "stop",
+          },
+        ],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock).mockReturnValueOnce(unterminatedHeldRepeat());
+
+    const progress = { report: jest.fn() };
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "deepseek-ai/deepseek-v4-flash-0731",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+          capabilities: { toolCalling: 128, imageInput: false },
+        }),
+        makeUserMessages("Compute"),
+        makeChatOptions({ tools: [readFileTool] }),
+        progress,
+        makeToken(),
+      ),
+    ).resolves.toBeUndefined();
+
+    const reportedText = progress.report.mock.calls
+      .map((call) => call[0])
+      .filter(
+        (part): part is vscode.LanguageModelTextPart =>
+          typeof part?.value === "string" && !(part instanceof ThinkingPart),
+      )
+      .map((part) => part.value)
+      .join("");
+    expect(reportedText).toBe("The result is 42.\n");
+    expect(getTurnReports()[0]).toMatchObject({
+      outcome: "ok",
+      repetitionTripped: true,
+      visibleChars: "The result is 42.\n".length,
+      lastVisibleTextHead: "The result is 42.\n",
+      lastVisibleTextTail: "",
+    });
+  });
+
+  it("preserves chunk-split partial line prefix during live streaming without tools", async () => {
+    (secrets.get as jest.Mock).mockResolvedValue("test-key");
+    (streamChatCompletion as jest.Mock).mockReset();
+    (vscode.workspace.getConfiguration as jest.Mock).mockImplementation(() => ({
+      get: jest.fn((key: string, defaultValue: unknown) => {
+        if (key === "generation.maxRepeatedLines") return 3;
+        if (key === "generation.maxLoopContinues") return 0;
+        return defaultValue;
+      }),
+    }));
+
+    const splitStream = async function* () {
+      yield { choices: [{ delta: { content: "The result " } }] };
+      yield {
+        choices: [
+          {
+            delta: {
+              content: "is 42.\nSame line here\nSame line here\nSame line here\n",
+            },
+            finish_reason: "stop",
+          },
+        ],
+      };
+    };
+
+    (streamChatCompletion as jest.Mock).mockReturnValueOnce(splitStream());
+
+    const progress = { report: jest.fn() };
+    await expect(
+      provider.provideLanguageModelChatResponse(
+        makeModel({
+          id: "meta/llama-3.3-70b-instruct",
+          maxInputTokens: 100000,
+          maxOutputTokens: 65536,
+        }),
+        makeUserMessages("Compute"),
+        makeChatOptions({ tools: [] }),
+        progress,
+        makeToken(),
+      ),
+    ).resolves.toBeUndefined();
+
+    const reportedText = progress.report.mock.calls
+      .map((call) => call[0])
+      .filter(
+        (part): part is vscode.LanguageModelTextPart =>
+          typeof part?.value === "string" && !(part instanceof ThinkingPart),
+      )
+      .map((part) => part.value)
+      .join("");
+    expect(reportedText).toBe("The result is 42.\n");
+    expect(getTurnReports()[0]).toMatchObject({
+      outcome: "ok",
+      repetitionTripped: true,
+      visibleChars: "The result is 42.\n".length,
+      lastVisibleTextHead: "The result is 42.\n",
+      lastVisibleTextTail: "",
+    });
   });
 });

@@ -158,6 +158,20 @@ describe("evaluateAttemptRetry", () => {
     expect(evaluation.retryReason).toBe("repetition_loop");
   });
 
+  it("auto-continues a non-reasoning pure repeat when repetitionTripped emptied visible text", () => {
+    const evaluation = evaluateAttemptRetry({
+      ...baseFacts,
+      result: result({
+        repetitionTripped: true,
+        sawReasoning: false,
+        reportedContent: false,
+        reportedVisibleContent: false,
+        lastVisibleText: "",
+      }),
+    });
+    expect(evaluation.retryReason).toBe("repetition_loop");
+  });
+
   it("does not auto-continue a repetition loop after a tool call was already emitted", () => {
     const evaluation = evaluateAttemptRetry({
       ...baseFacts,

@@ -104,7 +104,7 @@ export function evaluateAttemptRetry(facts: AttemptRetryFacts): AttemptRetryEval
     isRepetitionLoop &&
     !result.emittedToolCall &&
     loopAutoContinueEligible &&
-    (hasVisibleText || result.sawReasoning);
+    (hasVisibleText || result.sawReasoning || Boolean(result.repetitionTripped));
   const willRetryToolCallLoop =
     !willRetryRepetitionLoop &&
     Boolean(result.toolCallLoopTripped) &&

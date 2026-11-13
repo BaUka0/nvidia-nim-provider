@@ -213,6 +213,7 @@ export function parseTextEmbeddedToolCalls(
     "[Request interrupted by user]",
     "```",
     "```json",
+    "~~~",
   ] as const;
 
   const knownProperties = buildKnownPropertySet(toolSchemas);
@@ -530,25 +531,132 @@ export function getIncompleteTextToolCallName(
   return undefined;
 }
 
-const CODE_FENCE_OPEN_RE = /^[ \t]*(`{3,})([^`]*)$/;
-const CODE_FENCE_CLOSE_RE = /^[ \t]*(`{3,})[ \t]*$/;
+type OpenCodeFence = {
+  char: "`" | "~";
+  length: number;
+};
+
+const BACKTICK_FENCE_OPEN_RE = /^(`{3,})([^`]*)$/;
+const TILDE_FENCE_OPEN_RE = /^(~{3,})(.*)$/;
+const BACKTICK_FENCE_CLOSE_RE = /^(`{3,})[ \t]*$/;
+const TILDE_FENCE_CLOSE_RE = /^(~{3,})[ \t]*$/;
 const MAX_CONTEXT_LINE_CHARS = 2048;
 const KEPT_CONTEXT_LINE_CHARS = 512;
 
-function updateFenceLineState(openFenceTicks: number, rawLine: string): number {
+function skipSpacesAndTabs(line: string, start: number): number {
+  let i = start;
+  while (i < line.length && (line[i] === " " || line[i] === "\t")) {
+    i += 1;
+  }
+  return i;
+}
+
+function consumeOptionalTaskCheckbox(line: string, start: number): number {
+  if (
+    start + 3 < line.length &&
+    line[start] === "[" &&
+    (line[start + 1] === " " || line[start + 1] === "x" || line[start + 1] === "X") &&
+    line[start + 2] === "]" &&
+    (line[start + 3] === " " || line[start + 3] === "\t")
+  ) {
+    return skipSpacesAndTabs(line, start + 3);
+  }
+  return start;
+}
+
+/**
+ * Strips any valid sequence of CommonMark/GFM container prefixes (indentation,
+ * blockquotes, unordered/ordered list markers, and task checkboxes) in O(n).
+ */
+export function stripMarkdownContainerPrefix(line: string): string {
+  let i = 0;
+  while (i < line.length) {
+    i = skipSpacesAndTabs(line, i);
+    if (i >= line.length) {
+      break;
+    }
+    const ch = line[i];
+    if (ch === ">") {
+      i += 1;
+      continue;
+    }
+    if (ch === "-" || ch === "*" || ch === "+") {
+      if (i + 1 < line.length && (line[i + 1] === " " || line[i + 1] === "\t")) {
+        i = consumeOptionalTaskCheckbox(line, skipSpacesAndTabs(line, i + 1));
+        continue;
+      }
+      break;
+    }
+    if (ch >= "0" && ch <= "9") {
+      let digitEnd = i;
+      while (
+        digitEnd < line.length &&
+        digitEnd - i < 10 &&
+        line[digitEnd] >= "0" &&
+        line[digitEnd] <= "9"
+      ) {
+        digitEnd += 1;
+      }
+      const digitCount = digitEnd - i;
+      if (
+        digitCount >= 1 &&
+        digitCount <= 9 &&
+        digitEnd + 1 < line.length &&
+        (line[digitEnd] === "." || line[digitEnd] === ")") &&
+        (line[digitEnd + 1] === " " || line[digitEnd + 1] === "\t")
+      ) {
+        i = consumeOptionalTaskCheckbox(line, skipSpacesAndTabs(line, digitEnd + 1));
+        continue;
+      }
+      break;
+    }
+    break;
+  }
+  return line.slice(i);
+}
+
+export function isMarkdownContainerPrefixOnly(prefix: string): boolean {
+  return stripMarkdownContainerPrefix(prefix).length === 0;
+}
+
+function updateFenceLineState(
+  openFence: OpenCodeFence | null,
+  rawLine: string,
+): OpenCodeFence | null {
   const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
-  if (openFenceTicks === 0) {
-    const openMatch = line.match(CODE_FENCE_OPEN_RE);
-    return openMatch ? openMatch[1].length : 0;
+  const stripped = stripMarkdownContainerPrefix(line);
+  if (openFence === null) {
+    const backtickMatch = stripped.match(BACKTICK_FENCE_OPEN_RE);
+    if (backtickMatch) {
+      return { char: "`", length: backtickMatch[1].length };
+    }
+    const tildeMatch = stripped.match(TILDE_FENCE_OPEN_RE);
+    if (tildeMatch) {
+      return { char: "~", length: tildeMatch[1].length };
+    }
+    return null;
   }
-  const closeMatch = line.match(CODE_FENCE_CLOSE_RE);
-  if (closeMatch && closeMatch[1].length >= openFenceTicks) {
-    return 0;
+  const closePattern = openFence.char === "`" ? BACKTICK_FENCE_CLOSE_RE : TILDE_FENCE_CLOSE_RE;
+  const closeMatch = stripped.match(closePattern);
+  if (closeMatch && closeMatch[1].length >= openFence.length) {
+    return null;
   }
-  return openFenceTicks;
+  return openFence;
 }
 
 function isOffsetInsideInlineBacktickSpan(line: string, offsetInLine: number): boolean {
+  const stripped = stripMarkdownContainerPrefix(line);
+  if (stripped.startsWith("~~~")) {
+    let tildeEnd = 0;
+    while (tildeEnd < stripped.length && stripped[tildeEnd] === "~") {
+      tildeEnd += 1;
+    }
+    const fenceEndInLine = line.length - stripped.length + tildeEnd;
+    if (offsetInLine >= fenceEndInLine) {
+      return true;
+    }
+  }
+
   let inSingle = false;
   let inDouble = false;
   let i = 0;
@@ -605,7 +713,12 @@ function isOffsetInsideInlineBacktickSpan(line: string, offsetInLine: number): b
         i = closeIdx + runLen;
         continue;
       }
-      if (runLen >= 3 && /^[ \t]*$/.test(line.slice(0, i))) {
+      if (
+        runLen >= 3 &&
+        offsetInLine >= runEnd &&
+        isMarkdownContainerPrefixOnly(line.slice(0, i)) &&
+        !line.slice(runEnd).includes("`")
+      ) {
         return true;
       }
       i = runEnd;
@@ -619,11 +732,11 @@ function isOffsetInsideInlineBacktickSpan(line: string, offsetInLine: number): b
 function isPositionInsideCodeFence(fullText: string, position: number): boolean {
   const prefix = fullText.slice(0, position);
   const lines = prefix.split("\n");
-  let openFenceTicks = 0;
+  let openFence: OpenCodeFence | null = null;
   for (let idx = 0; idx < lines.length - 1; idx += 1) {
-    openFenceTicks = updateFenceLineState(openFenceTicks, lines[idx]);
+    openFence = updateFenceLineState(openFence, lines[idx]);
   }
-  if (openFenceTicks > 0) {
+  if (openFence !== null) {
     return true;
   }
   const lastLinePrefix = lines[lines.length - 1];
@@ -640,7 +753,7 @@ function isPositionInsideCodeFence(fullText: string, position: number): boolean 
  * earlier chunk then still protects tool-call examples in later chunks.
  */
 export class TextParseContext {
-  private openFenceTicks = 0;
+  private openFence: OpenCodeFence | null = null;
   private lineTail = "";
 
   append(text: string): void {
@@ -656,23 +769,30 @@ export class TextParseContext {
       this.lineTail = combined;
     }
     if (this.lineTail.length > MAX_CONTEXT_LINE_CHARS) {
-      // Keep backtick runs whole and preserve non-whitespace line prefix state.
-      let cut = this.lineTail.length - KEPT_CONTEXT_LINE_CHARS;
-      while (cut > 0 && this.lineTail[cut - 1] === "`") {
-        cut -= 1;
+      const rest = stripMarkdownContainerPrefix(this.lineTail);
+      if (rest.length <= KEPT_CONTEXT_LINE_CHARS) {
+        this.lineTail = rest;
+      } else {
+        // Keep backtick/tilde runs whole and mark non-container prose so truncation cannot open a fence.
+        let cut = rest.length - KEPT_CONTEXT_LINE_CHARS;
+        while (cut > 0 && (rest[cut - 1] === "`" || rest[cut - 1] === "~")) {
+          cut -= 1;
+        }
+        this.lineTail = `x ${rest.slice(cut)}`;
       }
-      const hadNonWhitespacePrefix = !/^[ \t]*$/.test(this.lineTail.slice(0, cut));
-      this.lineTail = (hadNonWhitespacePrefix ? "x" : "") + this.lineTail.slice(cut);
     }
   }
 
   prefix(): string {
-    return (this.openFenceTicks > 0 ? `${"`".repeat(this.openFenceTicks)}\n` : "") + this.lineTail;
+    return (
+      (this.openFence ? `${this.openFence.char.repeat(this.openFence.length)}\n` : "") +
+      this.lineTail
+    );
   }
 
   private settleLines(linesText: string): void {
     for (const line of linesText.split("\n")) {
-      this.openFenceTicks = updateFenceLineState(this.openFenceTicks, line);
+      this.openFence = updateFenceLineState(this.openFence, line);
     }
   }
 }

@@ -474,7 +474,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
       }
 
       chainState.chainRestarts += 1;
-      chainState.depth = 0;
+      chainState.depth = nextTriedModelIds.length;
       chainState.triedModelIds = nextTriedModelIds;
       currentModel = nextModel;
       fetchBudget.ensureMinimum(MAX_FETCH_ATTEMPTS_PER_STREAM);
