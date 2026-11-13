@@ -1039,6 +1039,16 @@ describe("tool argument parsing and validation", () => {
             required: ["command"],
           },
         },
+        {
+          name: "mcp_database_apply",
+          inputSchema: {
+            type: "object",
+            properties: {
+              migration: { type: "string" },
+            },
+            required: ["migration"],
+          },
+        },
       ],
     });
     const readA = { filePath: "/tmp/a.ts", startLine: 1, endLine: 40 };
@@ -1186,6 +1196,85 @@ describe("tool argument parsing and validation", () => {
       const termRes = streamCall(afterTerminal, "read_file", readA);
       expect(termRes.emitted).toHaveLength(1);
       expect(termRes.loop).toBeUndefined();
+    });
+
+    it("resets read counts when interleaved with VS Code/Copilot mutating or unknown MCP tools", () => {
+      const mutators: Array<[string, Record<string, unknown>]> = [
+        ["vscode_renameSymbol", { symbol: "foo", newName: "bar" }],
+        ["edit", { filePath: "/tmp/a.ts", oldText: "a", newText: "b" }],
+        ["run_notebook_cell", { cellId: "cell-1" }],
+        ["mcp_database_apply", { migration: "001_init.sql" }],
+      ];
+
+      for (const [mutatorName, mutatorArgs] of mutators) {
+        const history = [
+          userText("Fix the bug"),
+          ...rounds(
+            ["read_file", readA],
+            [mutatorName, mutatorArgs],
+            ["read_file", readA],
+            [mutatorName, mutatorArgs],
+            ["read_file", readA],
+            [mutatorName, mutatorArgs],
+            ["read_file", readA],
+            [mutatorName, mutatorArgs],
+          ),
+        ];
+
+        const { emitted, loop } = streamCall(history, "read_file", readA);
+        expect(emitted).toHaveLength(1);
+        expect(loop).toBeUndefined();
+      }
+    });
+
+    it("accumulates read counts across inspection tools (get_errors, vscode_listCodeUsages) and still trips consecutive unknown tools", () => {
+      const inspectionTools: Array<[string, Record<string, unknown>]> = [
+        ["get_errors", { filePaths: ["/tmp/a.ts"] }],
+        ["vscode_listCodeUsages", { symbol: "foo" }],
+      ];
+
+      for (const [inspectName, inspectArgs] of inspectionTools) {
+        const history = [
+          userText("Fix the bug"),
+          ...rounds(
+            ["read_file", readA],
+            [inspectName, inspectArgs],
+            ["read_file", readA],
+            [inspectName, inspectArgs],
+            ["read_file", readA],
+            [inspectName, inspectArgs],
+            ["read_file", readA],
+            [inspectName, inspectArgs],
+          ),
+        ];
+
+        const { emitted, loop } = streamCall(history, "read_file", readA);
+        expect(emitted).toEqual([]);
+        expect(loop).toEqual({
+          key: expect.stringContaining('"filePath":"/tmp/a.ts"'),
+          name: "read_file",
+          count: 5,
+        });
+      }
+
+      const mcpArgs = { migration: "001_init.sql" };
+      const consecutiveUnknown = [
+        userText("Apply migration"),
+        ...rounds(
+          ["mcp_database_apply", mcpArgs],
+          ["mcp_database_apply", mcpArgs],
+          ["mcp_database_apply", mcpArgs],
+          ["mcp_database_apply", mcpArgs],
+        ),
+      ];
+
+      const unknownRes = streamCall(consecutiveUnknown, "mcp_database_apply", mcpArgs);
+      expect(unknownRes.emitted).toEqual([]);
+      expect(unknownRes.loop).toEqual({
+        key: expect.stringContaining('"migration":"001_init.sql"'),
+        name: "mcp_database_apply",
+        count: 5,
+      });
     });
 
     it("resets the count when the user sends a new message", () => {

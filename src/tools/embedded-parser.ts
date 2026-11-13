@@ -378,11 +378,13 @@ export function parseTextEmbeddedToolCalls(
     }
 
     if (nextTokenMatch.kind === "json") {
+      const hasLeadingText = textContextPrefix().trim().length > 0;
       const scanned = scanJsonToolConstruct(
         remaining,
         toolSchemas,
         isValidToolIdentifier,
         atStreamEnd,
+        { hasLeadingText },
       );
       if (scanned.status === "incomplete") {
         incompleteText = remaining;

@@ -1,7 +1,7 @@
 import { LanguageModelChatMessageRole } from "vscode";
 import { buildToolCallCanonicalKey } from "./canonical-key";
 import { tryParseJsonValue } from "./json-args";
-import { isEditTool, isTerminalTool } from "./tool-kinds";
+import { isInspectionTool } from "./tool-kinds";
 
 interface HistoryMessage {
   readonly role: unknown;
@@ -14,38 +14,48 @@ export interface TrackedToolCall {
   readonly count: number;
 }
 
-function isMutatingTool(name: string): boolean {
-  return isEditTool(name) || isTerminalTool(name);
-}
-
 /**
  * Counts identical tool calls (same name and canonical arguments) across the
- * current task. Non-mutating calls accumulate per `(name, key)` even when the
+ * current task. Inspection calls accumulate per `(name, key)` even when the
  * model alternates between two inspection tools (`read_file` <-> `grep_search`),
- * while mutating tools (edits and terminal commands) clear prior counts for
- * other calls so legitimate `read -> edit/terminal -> read` workflows proceed.
+ * while mutating or unknown tools clear prior counts for other tools so
+ * legitimate `read -> mutate -> read` workflows proceed and only consecutive
+ * identical calls to the same non-inspection tool trip the limit.
  */
 export class IdenticalToolCallTracker {
+  private lastToolName: string | undefined;
   private readonly counts = new Map<string, number>();
 
   private toCompositeKey(name: string, key: string): string {
     return `${name}\u0000${key}`;
   }
 
-  /** Calls already recorded for `(name, key)` since the last mutating reset. */
+  private staysInCurrentGroup(name: string): boolean {
+    if (this.lastToolName === undefined) {
+      return true;
+    }
+    return isInspectionTool(name)
+      ? isInspectionTool(this.lastToolName)
+      : this.lastToolName === name;
+  }
+
+  /** Calls already recorded for `(name, key)` within the current uninterrupted group. */
   public countOf(name: string, key: string): number {
+    if (!this.staysInCurrentGroup(name)) {
+      return 0;
+    }
     return this.counts.get(this.toCompositeKey(name, key)) ?? 0;
   }
 
   /** Records an executed call and returns its updated count. */
   public record(name: string, key: string): number {
-    const compositeKey = this.toCompositeKey(name, key);
-    const prev = this.counts.get(compositeKey) ?? 0;
-    if (isMutatingTool(name)) {
+    if (!this.staysInCurrentGroup(name)) {
       this.counts.clear();
     }
-    const count = prev + 1;
+    const compositeKey = this.toCompositeKey(name, key);
+    const count = (this.counts.get(compositeKey) ?? 0) + 1;
     this.counts.set(compositeKey, count);
+    this.lastToolName = name;
     return count;
   }
 }
