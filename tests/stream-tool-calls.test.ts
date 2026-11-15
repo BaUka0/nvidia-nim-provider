@@ -524,6 +524,104 @@ describe("streamed JSON tool fallback", () => {
     });
   });
 
+  it("recovers single-key fenced JSON after a preamble when nothing follows the block", async () => {
+    const singleKeyOptions = makeChatOptions({
+      tools: [
+        {
+          name: "run_in_terminal",
+          inputSchema: {
+            type: "object",
+            properties: { command: { type: "string" } },
+            required: ["command"],
+          },
+        },
+      ],
+    });
+    const singleKeySchemas = getToolSchemaMap(singleKeyOptions);
+    const preamble = "Running the tests now.\n";
+    const fencedCmd = '```json\n{"command": "npm test"}\n```';
+
+    const mid = parseTextEmbeddedToolCalls(`${preamble}${fencedCmd}`, singleKeySchemas);
+    expect(mid).toEqual({
+      segments: [{ type: "text", text: preamble }],
+      incompleteText: fencedCmd,
+      extractedParams: {},
+    });
+    expect(
+      parseTextEmbeddedToolCalls(mid.incompleteText, singleKeySchemas, {
+        atStreamEnd: true,
+        contextPrefix: preamble,
+      }),
+    ).toEqual({
+      segments: [
+        { type: "toolCall", toolCall: { name: "run_in_terminal", args: { command: "npm test" } } },
+      ],
+      incompleteText: "",
+      extractedParams: {},
+    });
+
+    const example = `Example usage:\n${fencedCmd}\nThis runs the test suite.`;
+    expect(
+      parseTextEmbeddedToolCalls(example, singleKeySchemas, { atStreamEnd: true }).segments,
+    ).toEqual([{ type: "text", text: example }]);
+
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock).mockReturnValueOnce(
+      (async function* () {
+        yield { choices: [{ delta: { content: preamble } }] };
+        yield { choices: [{ delta: { content: '```json\n{"command": ' } }] };
+        yield { choices: [{ delta: { content: '"npm test"}\n```' }, finish_reason: "stop" }] };
+      })(),
+    );
+
+    const progress = { report: jest.fn() };
+    const attemptResult = await runStreamAttempt({
+      apiKey: "test-key",
+      requestBody: {
+        model: "deepseek-ai/deepseek-v4-flash-0731",
+        messages: [{ role: "user", content: "Run the tests" }],
+        stream: true,
+      },
+      signal: new AbortController().signal,
+      userAgent: "test-ua",
+      token: makeToken(),
+      progress,
+      model: makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: false },
+      }),
+      options: singleKeyOptions,
+      messages: makeUserMessages("Run the tests"),
+      reasoningIsolationExpected: false,
+      maxFetchAttempts: 1,
+      toolsConfig: DEFAULT_TOOLS_CONFIG,
+      hasRetriedRepetitionLoop: false,
+      maxRepeatedLines: 3,
+      maxLoopContinues: 0,
+    });
+
+    const reported = progress.report.mock.calls.map((call) => call[0]);
+    const emittedToolCalls = reported.filter(
+      (part): part is vscode.LanguageModelToolCallPart => "callId" in part,
+    );
+    expect(attemptResult.emittedToolCall).toBe(true);
+    expect(emittedToolCalls).toHaveLength(1);
+    expect(emittedToolCalls[0]).toMatchObject({
+      name: "run_in_terminal",
+      input: { command: "npm test" },
+    });
+    const visibleText = reported
+      .filter(
+        (part): part is vscode.LanguageModelTextPart =>
+          part instanceof vscode.LanguageModelTextPart,
+      )
+      .map((part) => part.value)
+      .join("");
+    expect(visibleText).not.toContain("```");
+  });
+
   it("emits zero tool calls for container-fenced multi-key and zero-required-arg JSON blocks", () => {
     const containerSchemas = getToolSchemaMap(
       makeChatOptions({

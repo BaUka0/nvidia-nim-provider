@@ -435,7 +435,7 @@ function extractSingleToolCall(
   toolSchemas: ReadonlyMap<string, ToolSchema> | undefined,
   isValidName: (name: string) => boolean,
   isFenced = false,
-  hasSurroundingText = false,
+  hasTrailingText = false,
 ): SingleToolCallExtraction {
   if (!toolSchemas || toolSchemas.size === 0) {
     return { kind: "none" };
@@ -502,8 +502,12 @@ function extractSingleToolCall(
     return { kind: "none" };
   }
 
+  // A single-key unnamed fenced payload is ambiguous: a call ends the reply
+  // (optionally after a short preamble such as "Let me read the file."), while
+  // a prose example is followed by explanation. Commit only when nothing but
+  // whitespace follows the block, which is known for sure at stream end.
   if (isFenced && operationalPayloadKeys && operationalPayloadKeys.length === 1) {
-    if (hasSurroundingText) {
+    if (hasTrailingText) {
       return { kind: "none" };
     }
     return { kind: "matched", toolCall: matched, deferred: true };
@@ -517,7 +521,6 @@ export function scanJsonToolConstruct(
   toolSchemas: ReadonlyMap<string, ToolSchema> | undefined,
   isValidName: (name: string) => boolean,
   atStreamEnd = false,
-  options?: { hasLeadingText?: boolean },
 ): JsonScanResult {
   let jsonStartIndex = 0;
   let isFenced = false;
@@ -588,7 +591,6 @@ export function scanJsonToolConstruct(
   }
 
   const hasTrailingText = text.slice(consumed).trim().length > 0;
-  const hasSurroundingText = Boolean(options?.hasLeadingText) || hasTrailingText;
 
   if (Array.isArray(parsed)) {
     const toolCalls: JsonScannedToolCall[] = [];
@@ -599,7 +601,7 @@ export function scanJsonToolConstruct(
           toolSchemas,
           isValidName,
           isFenced,
-          hasSurroundingText,
+          hasTrailingText,
         );
         if (extracted.kind === "matched") {
           if (extracted.deferred && !atStreamEnd) {
@@ -641,13 +643,7 @@ export function scanJsonToolConstruct(
     }
   }
 
-  const single = extractSingleToolCall(
-    record,
-    toolSchemas,
-    isValidName,
-    isFenced,
-    hasSurroundingText,
-  );
+  const single = extractSingleToolCall(record, toolSchemas, isValidName, isFenced, hasTrailingText);
   if (single.kind === "matched") {
     if (single.deferred && !atStreamEnd) {
       return { status: "incomplete" };
