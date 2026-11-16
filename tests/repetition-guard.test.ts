@@ -522,6 +522,137 @@ describe("RepetitionGuard.add", () => {
   });
 });
 
+describe("RepetitionGuard.consume", () => {
+  it("preserves clean prefix lines before a lineCounter repetition loop", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 3 });
+    const result = guard.consume(
+      "The result is 42.\nSame line here\nSame line here\nSame line here\n",
+    );
+    expect(result).toEqual({ crossedThreshold: true, safeText: "The result is 42.\n" });
+    expect(guard.tripped).toBe(true);
+    expect(guard.trippedDetector).toBe("lineCounter");
+    expect(guard.consume("more text\n")).toEqual({ crossedThreshold: false, safeText: "" });
+  });
+
+  it("returns empty safeText when the entire chunk consists of repeating lines", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 3 });
+    const result = guard.consume(
+      "Repeating degenerate line\nRepeating degenerate line\nRepeating degenerate line\n",
+    );
+    expect(result).toEqual({ crossedThreshold: true, safeText: "" });
+    expect(guard.tripped).toBe(true);
+  });
+
+  it("evaluates an unterminated final repeated line when flush is true", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 3 });
+    const result = guard.consume(
+      "The result is 42.\nSame line here\nSame line here\nSame line here",
+      { flush: true },
+    );
+    expect(result).toEqual({ crossedThreshold: true, safeText: "The result is 42.\n" });
+    expect(guard.tripped).toBe(true);
+    expect(guard.trippedDetector).toBe("lineCounter");
+  });
+
+  it("preserves clean prefix across chunk-split partial lines", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 3 });
+    expect(guard.consume("The result ")).toEqual({
+      crossedThreshold: false,
+      safeText: "The result ",
+    });
+    expect(guard.consume("is 42.\nSame line here\nSame line here\nSame line here\n")).toEqual({
+      crossedThreshold: true,
+      safeText: "is 42.\n",
+    });
+  });
+
+  it("skips blank lines in lineCounter walkback only when an earlier matching line exists", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 3 });
+    const result = guard.consume(
+      "Keep me.\n\nRepeating label\n\nRepeating label\n\nRepeating label\n",
+    );
+    expect(result).toEqual({ crossedThreshold: true, safeText: "Keep me.\n\n" });
+  });
+
+  it("does not walk back past code fences when computing lineCounter safeText", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 3 });
+    const result = guard.consume(
+      "```\nSame line here\n```\nSame line here\nSame line here\nSame line here\n",
+    );
+    expect(result).toEqual({ crossedThreshold: true, safeText: "```\nSame line here\n```\n" });
+  });
+
+  it("preserves clean prefix before a phrase cycle on the same line or across lines", () => {
+    const sameLineGuard = new RepetitionGuard({ maxRepeatedLines: 4 });
+    const sameLineResult = sameLineGuard.consume(
+      `The result is 42. ${ISSUE_7_SUPER_CYCLE.repeat(3)}`,
+    );
+    expect(sameLineResult).toEqual({
+      crossedThreshold: true,
+      safeText: "The result is 42. ",
+    });
+    expect(sameLineGuard.trippedDetector).toBe("phrase");
+
+    const multiLineGuard = new RepetitionGuard({ maxRepeatedLines: 4 });
+    const multiLineResult = multiLineGuard.consume(
+      [
+        "The result is 42.",
+        "Probably it is done let us inspect subfolder one now.",
+        "Probably it is done let us inspect subfolder two now.",
+        "Probably it is done let us inspect subfolder three now.",
+        "",
+      ].join("\n"),
+    );
+    expect(multiLineResult).toEqual({
+      crossedThreshold: true,
+      safeText: "The result is 42.\n",
+    });
+    expect(multiLineGuard.trippedDetector).toBe("phrase");
+  });
+
+  it("preserves clean prefix before runaway character and periodic cycles", () => {
+    const charGuard = new RepetitionGuard({ maxRepeatedLines: 4 });
+    expect(charGuard.consume(`Answer: --- ${"!".repeat(30)}`)).toEqual({
+      crossedThreshold: true,
+      safeText: "Answer: --- ",
+    });
+    expect(charGuard.trippedDetector).toBe("runaway");
+
+    const periodicGuard = new RepetitionGuard({ maxRepeatedLines: 4 });
+    expect(periodicGuard.consume(`Answer: ${"!?".repeat(25)}`)).toEqual({
+      crossedThreshold: true,
+      safeText: "Answer: ",
+    });
+    expect(periodicGuard.trippedDetector).toBe("runaway");
+  });
+
+  it("preserves preceding lines when paragraph echo trips at the third echoing paragraph", () => {
+    const guard = new RepetitionGuard({
+      maxRepeatedLines: 4,
+      ...REASONING_REPETITION_OPTIONS,
+    });
+    const intro =
+      "First inspect package manifest scripts, compiler pipeline, eslint configuration, diagnostic loggers, tokenizers, adapter tables, catalog limits, retry budgets, fallback selectors, and runtime snapshots.";
+    const copies = [
+      "The edit should go through replace_string_in_file because the function body in stream pump still checks the previous repetition threshold before emitting the tool call and the old string is the current guard invocation.",
+      "The change ought to go through replace_string_in_file because the method body in stream pump still verifies the previous repetition threshold before sending the tool call and the prior string is the current guard invocation.",
+      "The patch needs to go through replace_string_in_file because the routine body in stream pump still tests the previous repetition threshold before dispatching the tool call and the former string is the current guard invocation.",
+    ];
+    const result = guard.consume(`${intro}\n\n${copies.join("\n\n")}\n\n`);
+    expect(result).toEqual({
+      crossedThreshold: true,
+      safeText: `${intro}\n\n${copies[0]}\n\n${copies[1]}\n\n`,
+    });
+    expect(guard.trippedDetector).toBe("paragraph");
+  });
+
+  it("returns original text unchanged when maxRepeatedLines is 0", () => {
+    const guard = new RepetitionGuard({ maxRepeatedLines: 0 });
+    expect(guard.consume("A\nA\nA\n")).toEqual({ crossedThreshold: false, safeText: "A\nA\nA\n" });
+    expect(guard.consume("")).toEqual({ crossedThreshold: false, safeText: "" });
+  });
+});
+
 describe("RepetitionGuard.detectHistoryLoop", () => {
   const assistant = (text: string) => ({ role: 2, content: [{ value: text }] });
 
@@ -605,6 +736,17 @@ describe("RepetitionGuard.detectHistoryLoop", () => {
     expect(content).toContain('preamble "давайте я"');
     expect(content).not.toContain("Let me fix");
     expect(content).not.toContain("Let me run");
+  });
+
+  it("skips thinking parts ending in colons during detectHistoryLoop", () => {
+    const messages = Array.from({ length: 4 }, () => ({
+      role: 2,
+      content: [
+        { type: "thinking", value: "Let me plan the next edit:" },
+        { value: "Done updating the module." },
+      ],
+    }));
+    expect(detectHistoryLoop(messages)).toBeUndefined();
   });
 });
 

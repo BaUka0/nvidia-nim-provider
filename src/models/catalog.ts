@@ -239,7 +239,7 @@ export function normalizeNvidiaModels(models: NvidiaModelSummary[]): NormalizedN
   const normalizedModels: NormalizedNvidiaModel[] = [];
 
   for (const model of models) {
-    if (seenIds.has(model.id) || !(model.id in MODEL_LIST)) {
+    if (seenIds.has(model.id) || !Object.hasOwn(MODEL_LIST, model.id)) {
       continue;
     }
     seenIds.add(model.id);

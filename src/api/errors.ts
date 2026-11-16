@@ -335,6 +335,13 @@ function buildClassifiedMessage(
       : "The NVIDIA NIM model has reached end of life and is no longer available.";
   } else if (kind === "model_unavailable" && context.model) {
     cause = `NVIDIA NIM model "${context.model}" is not available for this API key or endpoint.`;
+  } else if (kind === "invalid_request" && context.status === 413) {
+    cause = "NVIDIA NIM rejected the request: request payload too large for the endpoint.";
+  } else if (kind === "invalid_request" && context.status === 415) {
+    cause = "NVIDIA NIM rejected the request: unsupported media format in request.";
+  } else if (kind === "invalid_request" && context.status === 422) {
+    cause =
+      "NVIDIA NIM rejected the request: unprocessable request content or media rejected by endpoint validation.";
   } else if (kind === "server_error") {
     cause = "Server error. The NVIDIA NIM service may be experiencing issues.";
   } else if (kind === "timeout" && context.operation === "stream") {
@@ -371,10 +378,14 @@ export function classifyApiError(error: unknown, context: ApiErrorContext = {}):
 
   const status = getErrorStatus(error, context);
   let kind = classifyKind(error, status);
-  // Refine HTTP 400: only classify as context_overflow when the detail
+  // Refine HTTP 400/413/422: only classify as context_overflow when the detail
   // text matches known context-limit patterns; otherwise keep invalid_request.
   const detail = context.detail;
-  if (kind === "invalid_request" && status === 400 && isContextOverflowError(detail)) {
+  if (
+    kind === "invalid_request" &&
+    (status === 400 || status === 413 || status === 422) &&
+    isContextOverflowError(detail)
+  ) {
     kind = "context_overflow";
   }
   if (kind === "server_error" && isModelCapacityDetail(detail)) {

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import packageJson from "../package.json";
 import { FALLBACK_MODEL_ID, FALLBACK_VISION_MODEL_ID } from "../src/models/catalog";
 import {
   ConfigManager,
@@ -272,6 +273,22 @@ describe("ConfigManager", () => {
 
       mockStore["generation.maxOutputTokens"] = 4096;
       expect(ConfigManager.getGenerationConfig().maxOutputTokens).toBe(4096);
+    });
+
+    it("accepts generation.maxOutputTokens up to 262144 and clamps values above 262144", () => {
+      const schema =
+        packageJson.contributes.configuration.properties["nvidia-nim.generation.maxOutputTokens"];
+      expect(schema.minimum).toBe(128);
+      expect(schema.maximum).toBe(262144);
+
+      mockStore["generation.maxOutputTokens"] = 131072;
+      expect(ConfigManager.getGenerationConfig().maxOutputTokens).toBe(131072);
+
+      mockStore["generation.maxOutputTokens"] = 262144;
+      expect(ConfigManager.getGenerationConfig().maxOutputTokens).toBe(262144);
+
+      mockStore["generation.maxOutputTokens"] = 300000;
+      expect(ConfigManager.getGenerationConfig().maxOutputTokens).toBe(262144);
     });
 
     it("clamps generation.maxRepeatedLines into the 0..50 range", () => {

@@ -300,7 +300,7 @@
           ],
           "default": null,
           "minimum": 128,
-          "maximum": 131072,
+          "maximum": 262144,
           "description": "Override maximum output tokens limit per response (null uses model maximum)."
         },
         "nvidia-nim.generation.maxRepeatedLines": {
@@ -380,9 +380,11 @@
     "watch": "tsc -w -p ./",
     "test": "jest",
     "test:watch": "jest --watch",
-    "lint": "eslint src/ tests/ scripts/",
-    "lint:fix": "eslint src/ tests/ scripts/ --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.mjs\"",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
+    "lint": "eslint src/ tests/ scripts/ __mocks__/",
+    "lint:fix": "eslint src/ tests/ scripts/ __mocks__/ --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.mjs\" \"__mocks__/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.mjs\" \"__mocks__/**/*.ts\"",
     "check:deprecations": "node scripts/check-deprecations.mjs",
     "probe:models": "node scripts/nim-models-probe.mjs",
     "probe:context:262k": "node scripts/probe-context-262k.mjs",

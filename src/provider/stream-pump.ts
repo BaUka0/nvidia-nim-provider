@@ -62,6 +62,7 @@ export interface StreamAttemptInput {
   idleTimeoutMs?: number;
   /** When false, skip DSML/XML embedded tool recovery (native-only adapters). */
   parseEmbeddedToolText?: boolean;
+  onRetryAttempt?: () => boolean;
   onContentReported?: () => void;
   onVisibleContentReported?: () => void;
 }
@@ -89,6 +90,8 @@ export interface StreamAttemptResult {
   lastReasoningText: string;
   skippedToolCalls: SkippedToolCall[];
   repetitionTripped: boolean;
+  /** True only when reasoning tripped and the visible-answer guard did not. */
+  reasoningRepetitionTripped?: boolean;
   trippedLine?: string;
   trippedDetector?: RepetitionDetector;
   toolCallLoopTripped: boolean;
@@ -186,52 +189,61 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     }
   };
 
-  const reportPart = (part: LanguageModelResponsePart): void => {
-    if (part instanceof vscode.LanguageModelTextPart && repetitionGuard.tripped) {
+  const reportPart = (part: LanguageModelResponsePart, flushGuard = false): void => {
+    if (part instanceof vscode.LanguageModelTextPart) {
+      if (repetitionGuard.tripped) {
+        return;
+      }
+      const { crossedThreshold, safeText } = repetitionGuard.consume(part.value, {
+        flush: flushGuard,
+      });
+      if (safeText.length > 0) {
+        lastVisibleText += safeText;
+        if (lastVisibleText.length > MAX_TRACKED_VISIBLE_CHARS) {
+          lastVisibleText = lastVisibleText.slice(-MAX_TRACKED_VISIBLE_CHARS);
+        }
+        const safePart =
+          safeText === part.value ? part : new vscode.LanguageModelTextPart(safeText);
+        input.progress.report(safePart);
+        reportedContent = true;
+        input.onContentReported?.();
+        if (safeText.trim().length > 0) {
+          reportedVisibleContent = true;
+          input.onVisibleContentReported?.();
+        }
+      }
+      if (crossedThreshold) {
+        const willAutoContinue = input.maxLoopContinues > 0 && !input.hasRetriedRepetitionLoop;
+        debugLog("repetitionGuard", {
+          model: input.model.id,
+          trippedLine: repetitionGuard.trippedLine,
+          detector: repetitionGuard.trippedDetector,
+          action: willAutoContinue ? "autoContinue" : "stopWithoutChatNotice",
+        });
+        if (!willAutoContinue) {
+          outputLog(
+            "repetitionGuard",
+            `Stopped degenerate repeat loop (${repetitionGuard.trippedDetector}) on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
+          );
+        }
+      }
       return;
     }
-    let crossedThreshold = false;
-    if (part instanceof vscode.LanguageModelTextPart) {
-      crossedThreshold = repetitionGuard.add(part.value);
-    }
-    if (part instanceof vscode.LanguageModelTextPart && part.value.length > 0) {
-      lastVisibleText += part.value;
-      if (lastVisibleText.length > MAX_TRACKED_VISIBLE_CHARS) {
-        lastVisibleText = lastVisibleText.slice(-MAX_TRACKED_VISIBLE_CHARS);
-      }
-    }
+
     input.progress.report(part);
     reportedContent = true;
     input.onContentReported?.();
-    if (
-      (part instanceof vscode.LanguageModelTextPart && part.value.trim().length > 0) ||
-      part instanceof vscode.LanguageModelToolCallPart
-    ) {
+    if (part instanceof vscode.LanguageModelToolCallPart) {
       reportedVisibleContent = true;
       input.onVisibleContentReported?.();
     }
-    if (crossedThreshold) {
-      const willAutoContinue = input.maxLoopContinues > 0 && !input.hasRetriedRepetitionLoop;
-      debugLog("repetitionGuard", {
-        model: input.model.id,
-        trippedLine: repetitionGuard.trippedLine,
-        detector: repetitionGuard.trippedDetector,
-        action: willAutoContinue ? "autoContinue" : "stopWithoutChatNotice",
-      });
-      if (!willAutoContinue) {
-        outputLog(
-          "repetitionGuard",
-          `Stopped degenerate repeat loop (${repetitionGuard.trippedDetector}) on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
-        );
-      }
-    }
   };
 
-  const flushPendingText = (): void => {
+  const flushPendingText = (flushGuard = false): void => {
     if (!pendingText) {
       return;
     }
-    reportPart(new vscode.LanguageModelTextPart(pendingText));
+    reportPart(new vscode.LanguageModelTextPart(pendingText), flushGuard);
     pendingText = "";
   };
 
@@ -340,9 +352,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
 
       if (segment.type === "invalidToolCall") {
         sawToolCall = true;
-        if (!isThinking) {
-          getToolAggregator().recordInvalidToolCall(segment.name);
-        }
+        getToolAggregator().recordInvalidToolCall(segment.name);
         continue;
       }
 
@@ -390,9 +400,13 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     if (!heldAnswer) {
       return;
     }
+    if (repetitionGuard.tripped) {
+      heldAnswer = "";
+      return;
+    }
     const text = heldAnswer;
     heldAnswer = "";
-    showAnswerText(text);
+    processFilteredText(text, false);
   };
 
   const acceptAnswerText = (text: string): void => {
@@ -431,6 +445,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
         maxFetchAttempts: input.maxFetchAttempts,
         firstTokenTimeoutMs: input.firstTokenTimeoutMs,
         idleTimeoutMs: input.idleTimeoutMs,
+        onRetryAttempt: input.onRetryAttempt,
       },
     )) {
       if (input.token.isCancellationRequested) {
@@ -550,35 +565,6 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     }
   }
 
-  if (!repetitionGuard.tripped && repetitionGuard.flush()) {
-    const willAutoContinue = input.maxLoopContinues > 0 && !input.hasRetriedRepetitionLoop;
-    debugLog("repetitionGuard", {
-      model: input.model.id,
-      trippedLine: repetitionGuard.trippedLine,
-      detector: repetitionGuard.trippedDetector,
-      action: willAutoContinue ? "flushTrippedAutoContinue" : "flushTrippedStopWithoutChatNotice",
-    });
-    if (!willAutoContinue) {
-      outputLog(
-        "repetitionGuard",
-        `Stopped degenerate repeat loop (${repetitionGuard.trippedDetector}) on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
-      );
-    }
-  }
-
-  if (!reasoningGuard.tripped && reasoningGuard.flush()) {
-    debugLog("repetitionGuard", {
-      model: input.model.id,
-      trippedLine: reasoningGuard.trippedLine,
-      detector: reasoningGuard.trippedDetector,
-      source: "reasoningFlush",
-    });
-    outputLog(
-      "repetitionGuard",
-      `Stopped degenerate repeat loop in reasoning (${reasoningGuard.trippedDetector}) on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
-    );
-  }
-
   router.flush();
 
   if (heldAnswer) {
@@ -594,6 +580,53 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       foldHeldAnswerIntoThinking();
     } else {
       releaseHeldAnswer();
+    }
+  }
+
+  if (pendingThinkingEmbeddedContent) {
+    const parsed = parseTextEmbeddedToolCalls(pendingThinkingEmbeddedContent, getToolSchemas(), {
+      atStreamEnd: true,
+      contextPrefix: thinkingParseContext.prefix(),
+    });
+    pendingThinkingEmbeddedContent = "";
+    recordExtractedParams(parsed.extractedParams, parsed.segments);
+    for (const segment of parsed.segments) {
+      if (segment.type === "text") {
+        emitThinking(segment.text);
+        continue;
+      }
+      if (segment.type === "invalidToolCall") {
+        sawToolCall = true;
+        getToolAggregator().recordInvalidToolCall(segment.name);
+        continue;
+      }
+      if (segment.type === "toolCall") {
+        sawToolCall = true;
+        getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args, undefined, {
+          isThinking: true,
+        });
+      }
+    }
+    if (parsed.incompleteText) {
+      emitThinking(parsed.incompleteText);
+    }
+    toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
+  }
+
+  if (!reasoningGuard.tripped && reasoningGuard.flush()) {
+    const willAutoContinue = input.maxLoopContinues > 0 && !input.hasRetriedRepetitionLoop;
+    debugLog("repetitionGuard", {
+      model: input.model.id,
+      trippedLine: reasoningGuard.trippedLine,
+      detector: reasoningGuard.trippedDetector,
+      source: "reasoning",
+      action: willAutoContinue ? "flushTrippedAutoContinue" : "flushTrippedStopWithoutChatNotice",
+    });
+    if (!willAutoContinue) {
+      outputLog(
+        "repetitionGuard",
+        `Stopped degenerate repeat loop in reasoning (${reasoningGuard.trippedDetector}) on ${input.model.id}: "${reasoningGuard.trippedLine}"`,
+      );
     }
   }
 
@@ -631,31 +664,6 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       });
       debugLog("Skipped truncated text tool call", { name: incompleteTextToolName });
     }
-  }
-
-  if (pendingThinkingEmbeddedContent) {
-    const parsed = parseTextEmbeddedToolCalls(pendingThinkingEmbeddedContent, getToolSchemas(), {
-      atStreamEnd: true,
-      contextPrefix: thinkingParseContext.prefix(),
-    });
-    pendingThinkingEmbeddedContent = "";
-    recordExtractedParams(parsed.extractedParams, parsed.segments);
-    for (const segment of parsed.segments) {
-      if (segment.type === "text") {
-        emitThinking(segment.text);
-        continue;
-      }
-      if (segment.type === "toolCall") {
-        sawToolCall = true;
-        getToolAggregator().tryEmitText(segment.toolCall.name, segment.toolCall.args, undefined, {
-          isThinking: true,
-        });
-      }
-    }
-    if (parsed.incompleteText) {
-      emitThinking(parsed.incompleteText);
-    }
-    toolCallLoopKey ??= toolAggregator?.getToolCallLoop()?.key;
   }
 
   if (toolAggregator) {
@@ -706,20 +714,23 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   }
 
   if (pendingText) {
-    flushPendingText();
+    flushPendingText(true);
   }
 
   if (!repetitionGuard.tripped && repetitionGuard.flush()) {
+    const willAutoContinue = input.maxLoopContinues > 0 && !input.hasRetriedRepetitionLoop;
     debugLog("repetitionGuard", {
       model: input.model.id,
       trippedLine: repetitionGuard.trippedLine,
       detector: repetitionGuard.trippedDetector,
-      source: "textFlush",
+      action: willAutoContinue ? "flushTrippedAutoContinue" : "flushTrippedStopWithoutChatNotice",
     });
-    outputLog(
-      "repetitionGuard",
-      `Stopped degenerate repeat loop (${repetitionGuard.trippedDetector}) on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
-    );
+    if (!willAutoContinue) {
+      outputLog(
+        "repetitionGuard",
+        `Stopped degenerate repeat loop (${repetitionGuard.trippedDetector}) on ${input.model.id}: "${repetitionGuard.trippedLine}"`,
+      );
+    }
   }
 
   const toolCallLoopName = toolCallLoopKey ? toolAggregator?.getToolCallLoop()?.name : undefined;
@@ -737,6 +748,7 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
     lastReasoningText,
     skippedToolCalls,
     repetitionTripped: repetitionGuard.tripped || reasoningGuard.tripped,
+    reasoningRepetitionTripped: reasoningGuard.tripped && !repetitionGuard.tripped,
     trippedLine: repetitionGuard.trippedLine ?? reasoningGuard.trippedLine,
     trippedDetector: repetitionGuard.tripped
       ? repetitionGuard.trippedDetector

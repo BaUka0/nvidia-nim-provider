@@ -1,13 +1,14 @@
-interface RuntimeLimitEntry {
-  limit: number;
-  keyFingerprint: string;
-  updatedAt: number;
-}
-
+import { BoundedMap } from "../shared/bounded-map";
 import { MIN_REPORTED_CONTEXT_LIMIT } from "../shared/constants";
 
+const MAX_CONTEXT_LIMIT_ENTRIES = 256;
+
+function makeStoreKey(modelId: string, keyFingerprint: string): string {
+  return `${keyFingerprint}\u0000${modelId}`;
+}
+
 export class ContextLimitStore {
-  private readonly entries = new Map<string, RuntimeLimitEntry>();
+  private readonly entries = new BoundedMap<string, number>(MAX_CONTEXT_LIMIT_ENTRIES);
 
   set(modelId: string, limit: number, keyFingerprint: string, catalogWindow?: number): void {
     if (!Number.isFinite(limit) || limit < MIN_REPORTED_CONTEXT_LIMIT) {
@@ -21,19 +22,11 @@ export class ContextLimitStore {
         return;
       }
     }
-    this.entries.set(modelId, { limit, keyFingerprint, updatedAt: Date.now() });
+    this.entries.set(makeStoreKey(modelId, keyFingerprint), limit);
   }
 
   get(modelId: string, keyFingerprint: string): number | undefined {
-    const entry = this.entries.get(modelId);
-    if (!entry) {
-      return undefined;
-    }
-    if (entry.keyFingerprint !== keyFingerprint) {
-      this.entries.delete(modelId);
-      return undefined;
-    }
-    return entry.limit;
+    return this.entries.get(makeStoreKey(modelId, keyFingerprint));
   }
 
   clear(): void {

@@ -9,11 +9,29 @@ import {
 } from "../shared/constants";
 import { MODEL_LIST, isNormalizedNvidiaModel, NormalizedNvidiaModel } from "../models/catalog";
 import { sniffNimImageMimeType } from "../messages/parts";
-import { withReasoningOff } from "../models/adapters";
+import {
+  getModelAdapter,
+  isReasoningIsolationExpected,
+  resolveReasoningMode,
+  withReasoningOff,
+} from "../models/adapters";
 import { NvidiaApiKeyResolver } from "../api/key-resolver";
 import { ConfigManager } from "../shared/config";
 import { createAbortError } from "../shared/cancellation";
 import { httpAttemptsFromConfig } from "../shared/fetch-attempt-budget";
+
+const VISION_MAX_TOKENS = 2000;
+const ALWAYS_REASONING_VISION_MAX_TOKENS = 8192;
+
+function modelAlwaysReasons(modelId: string): boolean {
+  const adapter = getModelAdapter(modelId);
+  const offMode = resolveReasoningMode("none", adapter.supportedReasoningModes);
+  return (
+    isReasoningIsolationExpected(adapter, "none") ||
+    isReasoningIsolationExpected(adapter, offMode) ||
+    adapter === getModelAdapter("stepfun-ai/step-5-preview")
+  );
+}
 
 /**
  * Validate that image_data is a base64 image data URL and return its decoded
@@ -110,6 +128,9 @@ export class NimVisionClient {
       throw new Error(`${PROVIDER_DISPLAY_NAME} API key not found`);
     }
     const model = this.getVisionModelId();
+    const maxTokens = modelAlwaysReasons(model)
+      ? ALWAYS_REASONING_VISION_MAX_TOKENS
+      : VISION_MAX_TOKENS;
     const ua = `nvidia-nim-provider/${EXTENSION_VERSION} VSCode/${vscode.version}`;
     const content = await chatCompletion(
       apiKey,
@@ -124,7 +145,7 @@ export class NimVisionClient {
             ],
           },
         ],
-        max_tokens: 2000,
+        max_tokens: maxTokens,
       }),
       signal,
       ua,

@@ -364,6 +364,120 @@ describe("injectHistoryLoopBreaker", () => {
     expect(value.trippedLine).toBe("let me fix the formatting issue");
     expect(value.escalate).toBe(true);
   });
+
+  it("ignores thinking parts ending in colons when detecting preambles or keying tasks", () => {
+    const history = [
+      {
+        role: 2,
+        content: [
+          { type: "thinking", value: "Let me inspect the codebase first:" },
+          { value: "Completed the inspection cleanly." },
+        ],
+      },
+      {
+        role: 2,
+        content: [
+          { type: "thinking", value: "Let me inspect the codebase first:" },
+          { value: "Applied the configuration fix." },
+        ],
+      },
+      {
+        role: 2,
+        content: [
+          { type: "thinking", value: "Let me inspect the codebase first:" },
+          { value: "Verified all checks pass." },
+        ],
+      },
+    ];
+
+    const result = injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: history,
+      modelId: "test-model",
+      applyBudget: (body) => body,
+    });
+    expect(result).toBe(requestBody);
+  });
+
+  it("isolates loop-breaker budgets across failover models and chats sharing a long prefix", () => {
+    const sharedPrefix = `<context>${"workspace metadata ".repeat(20)}</context>\n`;
+    const chatA = [
+      { role: 1, content: [{ value: `${sharedPrefix}Fix src/alpha.ts` }] },
+      ...Array.from({ length: 3 }, () => ({
+        role: 2,
+        content: [{ value: "Let me fix the formatting issue:" }],
+      })),
+    ];
+    const chatB = [
+      { role: 1, content: [{ value: `${sharedPrefix}Fix src/beta.ts` }] },
+      ...Array.from({ length: 3 }, () => ({
+        role: 2,
+        content: [{ value: "Let me fix the formatting issue:" }],
+      })),
+    ];
+
+    // Exhaust standard breaker on model-a in chatA
+    const firstModelA = injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: chatA,
+      modelId: "model-a",
+      applyBudget: (body) => body,
+    });
+    expect(firstModelA.messages.at(-1)?.content).toEqual(expect.stringContaining("repeated"));
+    expect(firstModelA.messages.at(-1)?.content).not.toEqual(
+      expect.stringContaining("still going"),
+    );
+
+    // Failover to model-b on the same chatA gets a fresh standard breaker (not immediate escalation)
+    const failoverModelB = injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: chatA,
+      modelId: "model-b",
+      applyBudget: (body) => body,
+    });
+    expect(failoverModelB.messages.at(-1)?.content).toEqual(expect.stringContaining("repeated"));
+    expect(failoverModelB.messages.at(-1)?.content).not.toEqual(
+      expect.stringContaining("still going"),
+    );
+
+    // Separate chatB on model-a sharing >200 chars of prefix also gets a fresh standard breaker
+    const separateChatB = injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: chatB,
+      modelId: "model-a",
+      applyBudget: (body) => body,
+    });
+    expect(separateChatB.messages.at(-1)?.content).toEqual(expect.stringContaining("repeated"));
+    expect(separateChatB.messages.at(-1)?.content).not.toEqual(
+      expect.stringContaining("still going"),
+    );
+  });
+
+  it("scans history messages once per injectHistoryLoopBreaker call", () => {
+    let partReads = 0;
+    const part = {
+      get value(): string {
+        partReads += 1;
+        return "Let me fix the formatting issue:";
+      },
+    };
+    const history = [
+      { role: 2, content: [part] },
+      { role: 2, content: [part] },
+      { role: 2, content: [part] },
+    ];
+
+    injectHistoryLoopBreaker({
+      requestBody,
+      historyMessages: history,
+      modelId: "test-model",
+      applyBudget: (body) => body,
+    });
+
+    // Single-pass scan: 3 reads in detectHistoryLoop + 3 reads in detectToolCallHistoryLoop + 1 read in buildTaskFingerprint = 7
+    // (previously >= 13 when buildHistoryLoopBreakerContent re-ran both detectors a second time)
+    expect(partReads).toBeLessThanOrEqual(7);
+  });
 });
 
 describe("buildLoopBreakerNudge", () => {

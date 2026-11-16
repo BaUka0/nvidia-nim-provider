@@ -315,7 +315,7 @@ export async function fetchWithRetry(
   init: RequestInit,
   retries?: number,
   errorContext: { operation?: string; model?: string } = {},
-  options: { attemptTimeoutMs?: number } = {},
+  options: { attemptTimeoutMs?: number; onRetryAttempt?: () => boolean } = {},
 ): Promise<Response> {
   const maxRetries = httpAttemptsFromConfig(retries ?? DEFAULT_NETWORK_CONFIG.maxHttpRetries);
   let lastError: Error | undefined;
@@ -352,6 +352,9 @@ export async function fetchWithRetry(
         throw await classifyResponseError(response, classificationContext, peekedDetail);
       }
       if (i < maxRetries - 1) {
+        if (options.onRetryAttempt && !options.onRetryAttempt()) {
+          throw await classifyResponseError(response, classificationContext, peekedDetail);
+        }
         lastError = new Error(`HTTP ${response.status} ${response.statusText}`);
         await discardResponseBody(response);
         const retryAfter = getRetryAfterMs(response);
@@ -379,6 +382,9 @@ export async function fetchWithRetry(
         throw lastError;
       }
       if (i < maxRetries - 1) {
+        if (options.onRetryAttempt && !options.onRetryAttempt()) {
+          throw classifyApiError(lastError, classificationContext);
+        }
         const delay = calculateRetryDelay(i);
         debugLog(
           "fetchWithRetry",
@@ -547,6 +553,7 @@ export interface StreamChatCompletionOptions {
   maxFetchAttempts?: number;
   idleTimeoutMs?: number;
   firstTokenTimeoutMs?: number;
+  onRetryAttempt?: () => boolean;
 }
 
 export async function* streamChatCompletion(
@@ -589,7 +596,10 @@ export async function* streamChatCompletion(
       },
       Math.max(1, fetchAttempts),
       { operation: "stream", model: requestBody.model },
-      { attemptTimeoutMs: initialConnectionTimeoutMs },
+      {
+        attemptTimeoutMs: initialConnectionTimeoutMs,
+        onRetryAttempt: options?.onRetryAttempt,
+      },
     );
   } catch (error) {
     if (signal?.aborted && !isTimeoutAbortReason(signal.reason)) {

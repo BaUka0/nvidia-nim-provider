@@ -73,6 +73,47 @@ describe("scanXmlToolConstruct", () => {
       });
     }
   });
+
+  it("ignores forbidden prototype-polluting parameter keys in XML tags and Qwen JSON", () => {
+    const xmlText =
+      "<tool_call>\n<function=read_file>\n<parameter=__proto__>polluted</parameter>\n<parameter=prototype>polluted</parameter>\n<parameter=constructor>polluted</parameter>\n<parameter=filePath>/tmp/safe.ts</parameter>\n</function>\n</tool_call>";
+    const xmlResult = scanXmlToolConstruct(xmlText, parseValue, isValidName);
+    expect(xmlResult.status).toBe("complete");
+    if (xmlResult.status === "complete") {
+      expect(xmlResult.toolCall?.args).toEqual({ filePath: "/tmp/safe.ts" });
+      expect(Object.prototype.hasOwnProperty.call(xmlResult.toolCall?.args, "__proto__")).toBe(
+        false,
+      );
+      expect(Object.prototype.hasOwnProperty.call(xmlResult.toolCall?.args, "prototype")).toBe(
+        false,
+      );
+      expect(Object.prototype.hasOwnProperty.call(xmlResult.toolCall?.args, "constructor")).toBe(
+        false,
+      );
+    }
+
+    const qwenNested =
+      '<tool_call>{"name":"read_file","arguments":{"filePath":"/tmp/qwen.ts","__proto__":{"polluted":true},"prototype":"bad","constructor":"bad"}}</tool_call>';
+    const qwenNestedResult = scanXmlToolConstruct(qwenNested, parseValue, isValidName);
+    expect(qwenNestedResult.status).toBe("complete");
+    if (qwenNestedResult.status === "complete") {
+      expect(qwenNestedResult.toolCall?.args).toEqual({ filePath: "/tmp/qwen.ts" });
+      expect(
+        Object.prototype.hasOwnProperty.call(qwenNestedResult.toolCall?.args, "constructor"),
+      ).toBe(false);
+    }
+
+    const qwenFlat =
+      '<tool_call>{"name":"read_file","filePath":"/tmp/flat.ts","__proto__":{"polluted":true},"prototype":"bad","constructor":"bad"}</tool_call>';
+    const qwenFlatResult = scanXmlToolConstruct(qwenFlat, parseValue, isValidName);
+    expect(qwenFlatResult.status).toBe("complete");
+    if (qwenFlatResult.status === "complete") {
+      expect(qwenFlatResult.toolCall?.args).toEqual({ filePath: "/tmp/flat.ts" });
+      expect(
+        Object.prototype.hasOwnProperty.call(qwenFlatResult.toolCall?.args, "constructor"),
+      ).toBe(false);
+    }
+  });
 });
 
 describe("extractStandaloneXmlParameters", () => {
@@ -137,5 +178,14 @@ describe("extractStandaloneXmlParameters", () => {
       consumed: '<parameter name="mode">sync\n\n'.length,
       extractedParams: { mode: "sync" },
     });
+  });
+
+  it("ignores forbidden prototype-polluting keys in standalone XML parameters", () => {
+    const { extractedParams } = extractStandaloneXmlParameters(
+      "<parameter=__proto__>bad</parameter><parameter=constructor>bad</parameter><parameter=prototype>bad</parameter><parameter=filePath>/tmp/ok.ts</parameter>",
+      (raw) => raw.trim(),
+    );
+    expect(extractedParams).toEqual({ filePath: "/tmp/ok.ts" });
+    expect(Object.prototype.hasOwnProperty.call(extractedParams, "constructor")).toBe(false);
   });
 });

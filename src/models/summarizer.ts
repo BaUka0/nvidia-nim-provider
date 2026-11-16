@@ -3,7 +3,12 @@ import { debugLog } from "../shared/logging";
 import { NimChatMessage } from "../types";
 import { findToolCallOwnerIndex } from "../messages/tool-call-pairing";
 import { FALLBACK_MODEL_ID } from "./catalog";
-import { withReasoningOff } from "./adapters";
+import {
+  getModelAdapter,
+  isReasoningIsolationExpected,
+  resolveReasoningMode,
+  withReasoningOff,
+} from "./adapters";
 import { estimateNimMessagesTokens, truncateMessagesForContext } from "../messages/converter";
 import { DEFAULT_NETWORK_CONFIG } from "../shared/config";
 import { COMPACTION_RECENT_FRACTION } from "../shared/constants";
@@ -32,6 +37,18 @@ Return only the summary, no meta-commentary.`;
 const MAX_SUMMARIZATION_INPUT_CHARS = 48000;
 const SUMMARIZATION_TRUNCATION_NOTICE = "[Earlier content clipped before summarization.]\n\n";
 const LINE_SEPARATOR = "\n\n";
+const SUMMARIZATION_MAX_TOKENS = 4096;
+const ALWAYS_REASONING_SUMMARIZATION_MAX_TOKENS = 16384;
+
+function modelAlwaysReasons(modelId: string): boolean {
+  const adapter = getModelAdapter(modelId);
+  const offMode = resolveReasoningMode("none", adapter.supportedReasoningModes);
+  return (
+    isReasoningIsolationExpected(adapter, "none") ||
+    isReasoningIsolationExpected(adapter, offMode) ||
+    adapter === getModelAdapter("stepfun-ai/step-5-preview")
+  );
+}
 
 /** Last `maxChars` UTF-16 units of `text`, never starting on a lone low surrogate. */
 function takeTailPreservingSurrogates(text: string, maxChars: number): string {
@@ -149,6 +166,9 @@ export async function summarizeOldMessages(
     if (attempts <= 0) {
       throw new SummarizationError("Fetch attempt budget exhausted before summarization");
     }
+    const maxTokens = modelAlwaysReasons(targetModel)
+      ? ALWAYS_REASONING_SUMMARIZATION_MAX_TOKENS
+      : SUMMARIZATION_MAX_TOKENS;
     const summary = await chatCompletion(
       apiKey,
       withReasoningOff({
@@ -157,7 +177,7 @@ export async function summarizeOldMessages(
           { role: "system", content: SUMMARIZATION_PROMPT },
           { role: "user", content: conversationText },
         ],
-        max_tokens: 4096,
+        max_tokens: maxTokens,
         temperature: 0,
       }),
       signal,

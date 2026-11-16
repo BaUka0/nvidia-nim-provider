@@ -12,9 +12,13 @@
  */
 import {
   CYCLE_SCAN_CHARS,
+  MIN_CHAR_RUNAWAY_REPEATS,
+  MIN_DIVIDER_RUNAWAY_REPEATS,
+  RUNAWAY_DIVIDER_CHARS,
   detectParagraphEcho,
   detectPhraseCycle,
   detectRunawayCycle,
+  isDividerPattern,
   normalizeForCycle,
 } from "../shared/cycle-detection";
 
@@ -63,6 +67,140 @@ const MAX_KEY_LENGTH = 200;
 const MAX_FENCE_SKIPPED_LINES = 5000;
 /** Bound the number of distinct lines tracked to keep memory predictable. */
 const MAX_TRACKED_LINES = 4096;
+const PERIODIC_CYCLE_MAX_PERIOD = 32;
+
+export interface RepetitionConsumeResult {
+  readonly crossedThreshold: boolean;
+  readonly safeText: string;
+}
+
+interface LineRecord {
+  readonly rawLine: string;
+  readonly start: number;
+  readonly endAfterNewline: number;
+  inFenceBefore: boolean;
+}
+
+function splitLinesWithOffsets(text: string): {
+  lines: LineRecord[];
+  tail: string;
+  tailStart: number;
+} {
+  const lines: LineRecord[] = [];
+  const newlineRe = /\r?\n/g;
+  let pos = 0;
+  let match: RegExpExecArray | null;
+  while ((match = newlineRe.exec(text)) !== null) {
+    lines.push({
+      rawLine: text.slice(pos, match.index),
+      start: pos,
+      endAfterNewline: match.index + match[0].length,
+      inFenceBefore: false,
+    });
+    pos = match.index + match[0].length;
+  }
+  return {
+    lines,
+    tail: text.slice(pos),
+    tailStart: pos,
+  };
+}
+
+function findPhraseCutOffset(lineText: string, phrase: string): number | undefined {
+  const gramWords = phrase.split(/\s+/).filter((word) => word.length > 0);
+  if (gramWords.length === 0) {
+    return undefined;
+  }
+  const tokens: Array<{ word: string; startOffset: number }> = [];
+  const tokenRe = /[\p{L}\p{N}]+/gu;
+  let match: RegExpExecArray | null;
+  while ((match = tokenRe.exec(lineText)) !== null) {
+    const normalized = normalizeForCycle(match[0]);
+    if (!normalized) {
+      continue;
+    }
+    for (const part of normalized.split(/\s+/)) {
+      if (part) {
+        tokens.push({ word: part, startOffset: match.index });
+      }
+    }
+  }
+  if (tokens.length < gramWords.length) {
+    return undefined;
+  }
+  outer: for (let i = 0; i <= tokens.length - gramWords.length; i += 1) {
+    for (let j = 0; j < gramWords.length; j += 1) {
+      if (tokens[i + j].word !== gramWords[j]) {
+        continue outer;
+      }
+    }
+    return tokens[i].startOffset;
+  }
+  return undefined;
+}
+
+function findRunawayCutOffset(lineText: string): number | undefined {
+  if (lineText.length >= MIN_CHAR_RUNAWAY_REPEATS) {
+    const regex = /([^\s])\1{29,}/gu;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(lineText)) !== null) {
+      const char = match[1];
+      const len = match[0].length;
+      if (RUNAWAY_DIVIDER_CHARS.has(char) && len < MIN_DIVIDER_RUNAWAY_REPEATS) {
+        continue;
+      }
+      return match.index;
+    }
+  }
+
+  const trimmed = lineText.trimEnd();
+  if (trimmed.length < MIN_CHAR_RUNAWAY_REPEATS) {
+    return undefined;
+  }
+  const window = trimmed.length > 500 ? trimmed.slice(-500) : trimmed;
+  for (let period = 1; period <= PERIODIC_CYCLE_MAX_PERIOD; period += 1) {
+    if (window.length < period * 3) {
+      break;
+    }
+    const pattern = window.slice(-period);
+    if (/^\s+$/.test(pattern)) {
+      continue;
+    }
+    if (period >= 2 && (pattern + pattern).indexOf(pattern, 1) < pattern.length) {
+      continue;
+    }
+    let count = 0;
+    let idx = window.length;
+    while (idx >= period && window.slice(idx - period, idx) === pattern) {
+      count += 1;
+      idx -= period;
+    }
+    const isDivider = isDividerPattern(pattern);
+    const totalChars = period * count;
+    let matched = false;
+    if (period === 1) {
+      matched = isDivider
+        ? count >= MIN_DIVIDER_RUNAWAY_REPEATS
+        : count >= MIN_CHAR_RUNAWAY_REPEATS;
+    } else if (isDivider) {
+      matched = totalChars >= MIN_DIVIDER_RUNAWAY_REPEATS;
+    } else if (period <= 4) {
+      matched = totalChars >= 40 && count >= 5;
+    } else if (period <= 16) {
+      matched = count >= 5 && totalChars >= 50;
+    } else {
+      matched = count >= 4 && totalChars >= 80;
+    }
+    if (matched) {
+      let cutOffset = Math.max(0, trimmed.length - count * period);
+      while (cutOffset >= period && trimmed.slice(cutOffset - period, cutOffset) === pattern) {
+        cutOffset -= period;
+      }
+      return cutOffset;
+    }
+  }
+  return undefined;
+}
 
 export function normalizeLineForRepetition(line: string): string {
   return normalizeForCycle(line).slice(0, MAX_KEY_LENGTH);
@@ -176,6 +314,143 @@ export class RepetitionGuard {
   }
 
   /**
+   * Feeds streamed answer text into the counter. Returns whether this call
+   * crossed the repetition limit along with any clean prefix (`safeText`) that
+   * precedes the tripped repetition so useful output is preserved.
+   */
+  consume(text: string, options?: { flush?: boolean }): RepetitionConsumeResult {
+    if (this.trippedLineValue !== undefined) {
+      return { crossedThreshold: false, safeText: "" };
+    }
+    const threshold = this.threshold;
+    if (threshold <= 0 || !text) {
+      return { crossedThreshold: false, safeText: text };
+    }
+    const priorPendingLength = this.pendingLine.length;
+    const combined = this.pendingLine + text;
+    const { lines, tail, tailStart } = splitLinesWithOffsets(combined);
+    this.pendingLine = "";
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      line.inFenceBefore = this.inCodeFence;
+      if (this.observeLine(line.rawLine, threshold)) {
+        const keptEnd = this.computeKeptEnd(lines, i);
+        return {
+          crossedThreshold: true,
+          safeText: keptEnd > priorPendingLength ? combined.slice(priorPendingLength, keptEnd) : "",
+        };
+      }
+    }
+
+    if (options?.flush === true && tail.length > 0) {
+      const tailRecord: LineRecord = {
+        rawLine: tail,
+        start: tailStart,
+        endAfterNewline: combined.length,
+        inFenceBefore: this.inCodeFence,
+      };
+      const allLines = [...lines, tailRecord];
+      const trippedTail =
+        (!this.inCodeFence && this.tripFromRunaway(tail)) || this.observeLine(tail, threshold);
+      if (trippedTail) {
+        const keptEnd = this.computeKeptEnd(allLines, allLines.length - 1);
+        return {
+          crossedThreshold: true,
+          safeText: keptEnd > priorPendingLength ? combined.slice(priorPendingLength, keptEnd) : "",
+        };
+      }
+      return { crossedThreshold: false, safeText: text };
+    }
+
+    this.pendingLine = tail;
+    if (this.scanPendingCycle()) {
+      const tailRecord: LineRecord = {
+        rawLine: tail,
+        start: tailStart,
+        endAfterNewline: combined.length,
+        inFenceBefore: this.inCodeFence,
+      };
+      const allLines = [...lines, tailRecord];
+      const keptEnd = this.computeKeptEnd(allLines, allLines.length - 1);
+      return {
+        crossedThreshold: true,
+        safeText: keptEnd > priorPendingLength ? combined.slice(priorPendingLength, keptEnd) : "",
+      };
+    }
+
+    return { crossedThreshold: false, safeText: text };
+  }
+
+  private computeKeptEnd(lines: readonly LineRecord[], tripIndex: number): number {
+    const detector = this.trippedDetectorValue;
+    const trippedValue = this.trippedLineValue ?? "";
+    const trippingLine = lines[tripIndex];
+
+    if (detector === "lineCounter") {
+      let cutLineIndex = tripIndex;
+      for (let j = tripIndex - 1; j >= 0; j -= 1) {
+        if (lines[j].inFenceBefore || isCodeFenceMarker(lines[j].rawLine)) {
+          break;
+        }
+        if (normalizeLineForRepetition(lines[j].rawLine) === trippedValue) {
+          cutLineIndex = j;
+          continue;
+        }
+        if (lines[j].rawLine.trim().length === 0) {
+          let hasEarlierMatch = false;
+          for (let k = j - 1; k >= 0; k -= 1) {
+            if (lines[k].inFenceBefore || isCodeFenceMarker(lines[k].rawLine)) {
+              break;
+            }
+            if (lines[k].rawLine.trim().length === 0) {
+              continue;
+            }
+            hasEarlierMatch = normalizeLineForRepetition(lines[k].rawLine) === trippedValue;
+            break;
+          }
+          if (hasEarlierMatch) {
+            continue;
+          }
+        }
+        break;
+      }
+      return lines[cutLineIndex].start;
+    }
+
+    if (detector === "phrase") {
+      let cutLineIndex = tripIndex;
+      for (let j = tripIndex - 1; j >= 0; j -= 1) {
+        if (lines[j].inFenceBefore || isCodeFenceMarker(lines[j].rawLine)) {
+          break;
+        }
+        if (normalizeForCycle(lines[j].rawLine).includes(trippedValue)) {
+          cutLineIndex = j;
+          continue;
+        }
+        break;
+      }
+      if (cutLineIndex === tripIndex) {
+        const offset = findPhraseCutOffset(trippingLine.rawLine, trippedValue);
+        if (offset !== undefined) {
+          return trippingLine.start + offset;
+        }
+      }
+      return lines[cutLineIndex].start;
+    }
+
+    if (detector === "runaway") {
+      const offset = findRunawayCutOffset(trippingLine.rawLine);
+      if (offset !== undefined) {
+        return trippingLine.start + offset;
+      }
+      return trippingLine.start;
+    }
+
+    return trippingLine.start;
+  }
+
+  /**
    * Feeds streamed answer text into the counter. Returns true exactly when
    * this call crossed the configured repetition limit. Text may be split at
    * arbitrary points; completed lines are counted on newline, and a trailing
@@ -183,21 +458,7 @@ export class RepetitionGuard {
    * repeating 6-word grams so planning loops with newlines still trip.
    */
   add(text: string): boolean {
-    const threshold = this.threshold;
-    if (threshold <= 0 || this.trippedLineValue !== undefined || !text) {
-      return false;
-    }
-    const combined = this.pendingLine + text;
-    const parts = combined.split(/\r?\n/);
-    // The last element is either "" (text ended with a newline) or an
-    // unterminated fragment that must wait for more chunks.
-    this.pendingLine = parts.pop() ?? "";
-    for (const rawLine of parts) {
-      if (this.observeLine(rawLine, threshold)) {
-        return true;
-      }
-    }
-    return this.scanPendingCycle();
+    return this.consume(text).crossedThreshold;
   }
 
   /**

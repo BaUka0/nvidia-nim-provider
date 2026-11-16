@@ -13,7 +13,11 @@ export class EventEmitter<T> {
   private listeners: Array<(value: T) => void> = [];
   event = (listener: (value: T) => void): { dispose: () => void } => {
     this.listeners.push(listener);
-    return { dispose: () => { this.listeners = this.listeners.filter((l) => l !== listener); } };
+    return {
+      dispose: () => {
+        this.listeners = this.listeners.filter((l) => l !== listener);
+      },
+    };
   };
   fire(value: T): void {
     for (const listener of this.listeners) {
@@ -42,7 +46,13 @@ export class Disposable {
 
 export const LanguageModelChatMessageRole = { User: 1, Assistant: 2, System: 3 };
 
+export const LanguageModelChatToolMode = { Auto: 1, Required: 2 };
+
 export class LanguageModelTextPart {
+  constructor(public value: string) {}
+}
+
+export class LanguageModelThinkingPart {
   constructor(public value: string) {}
 }
 
@@ -55,11 +65,17 @@ export class LanguageModelToolCallPart {
 }
 
 export class LanguageModelToolResultPart {
-  constructor(public callId: string, public content: unknown[]) {}
+  constructor(
+    public callId: string,
+    public content: unknown[],
+  ) {}
 }
 
 export class LanguageModelDataPart {
-  constructor(public data: Uint8Array, public mimeType: string) {}
+  constructor(
+    public data: Uint8Array,
+    public mimeType: string,
+  ) {}
 }
 
 export class LanguageModelChatMessage {
@@ -67,6 +83,51 @@ export class LanguageModelChatMessage {
     public role: number,
     public content: unknown[],
   ) {}
+}
+
+export class LanguageModelError extends Error {
+  readonly code: string;
+
+  constructor(message?: string, code = "Unknown") {
+    super(message);
+    this.name = "LanguageModelError";
+    this.code = code;
+  }
+
+  static NoPermissions(message?: string): LanguageModelError {
+    return new LanguageModelError(message, "NoPermissions");
+  }
+
+  static Blocked(message?: string): LanguageModelError {
+    return new LanguageModelError(message, "Blocked");
+  }
+
+  static NotFound(message?: string): LanguageModelError {
+    return new LanguageModelError(message, "NotFound");
+  }
+}
+
+export class Uri {
+  constructor(
+    public readonly scheme: string,
+    public readonly fsPath: string,
+    public readonly path: string = fsPath,
+  ) {}
+
+  static file(filePath: string): Uri {
+    return new Uri("file", filePath, filePath.replace(/\\/g, "/"));
+  }
+
+  static parse(value: string): Uri {
+    const match = /^([a-zA-Z][a-zA-Z0-9+.-]*):(.*)$/.exec(value);
+    const scheme = match ? match[1] : "file";
+    const uriPath = match ? match[2] : value;
+    return new Uri(scheme, uriPath, uriPath);
+  }
+
+  toString(): string {
+    return `${this.scheme}://${this.path}`;
+  }
 }
 
 export class MarkdownString {
@@ -134,5 +195,4 @@ export const workspace = {
   })),
 };
 
-export const version = "1.104.0";
-
+export const version = "1.125.0";

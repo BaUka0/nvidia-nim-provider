@@ -302,8 +302,14 @@ export function getToolResultImages(part: unknown): Array<{ mimeType: string; da
       if (img) {
         images.push(img);
       }
-    } catch {
+    } catch (error) {
       // Over the chat image limit: keep the placeholder only.
+      const innerMimeType = asObjectRecord(inner)?.mimeType;
+      debugLog("vision", {
+        skippedToolResultImage: true,
+        ...(typeof innerMimeType === "string" ? { mimeType: innerMimeType } : {}),
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
   return images;

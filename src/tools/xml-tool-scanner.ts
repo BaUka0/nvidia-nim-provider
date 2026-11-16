@@ -1,4 +1,5 @@
 import { tryParseJsonObjectOrRepair } from "../shared/json-repair";
+import { FORBIDDEN_TOOL_IDENTIFIERS } from "./tool-schema";
 
 export type XmlToolKind =
   | "tool_calls"
@@ -400,14 +401,24 @@ function mergeQwenJson(
   if (typeof inner === "object" && inner !== null && !Array.isArray(inner)) {
     if (inner === parsed) {
       for (const [key, value] of Object.entries(parsed)) {
-        if (key === "name" || key === "tool" || key === "function") {
+        if (
+          key === "name" ||
+          key === "tool" ||
+          key === "function" ||
+          FORBIDDEN_TOOL_IDENTIFIERS.has(key)
+        ) {
           continue;
         }
         args[key] = value;
       }
       return;
     }
-    Object.assign(args, inner);
+    for (const [key, value] of Object.entries(inner as Record<string, unknown>)) {
+      if (FORBIDDEN_TOOL_IDENTIFIERS.has(key)) {
+        continue;
+      }
+      args[key] = value;
+    }
   }
 }
 
@@ -458,7 +469,7 @@ function scanParameterValue(
     return { status: "incomplete" };
   }
   const extractedParams: Record<string, unknown> = {};
-  if (key && !/^__proto__$|^prototype$|^constructor$/.test(key)) {
+  if (key && !FORBIDDEN_TOOL_IDENTIFIERS.has(key)) {
     extractedParams[key] = parseValue(text.slice(startIndex, close.index));
   }
   return {
@@ -487,7 +498,7 @@ function scanToolRegion(
       if (!close) {
         return { status: "incomplete" };
       }
-      if (top.paramKey) {
+      if (top.paramKey && !FORBIDDEN_TOOL_IDENTIFIERS.has(top.paramKey)) {
         args[top.paramKey] = parseValue(text.slice(cursor, close.index));
       }
       cursor = close.index + close.length;

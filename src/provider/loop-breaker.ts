@@ -8,6 +8,7 @@ import { cloneNimChatRequest } from "./request-snapshot";
 import { BoundedMap } from "../shared/bounded-map";
 import { DEFAULT_TOOLS_CONFIG } from "../shared/config";
 import { stripFallbackNotices } from "../messages/converter";
+import { getThinkingPartValue } from "../messages/parts";
 import { extractPrefixGram } from "../shared/cycle-detection";
 
 const MAX_INJECTED_LOOPS_TRACKED = 128;
@@ -57,6 +58,7 @@ function extractHangingPreamble(content: unknown): string | undefined {
     const parts: string[] = [];
     for (const part of content) {
       if (part == null || typeof part !== "object") continue;
+      if (getThinkingPartValue(part) !== undefined) continue;
       const p = part as Record<string, unknown>;
       if (typeof p.name === "string") {
         return undefined;
@@ -84,22 +86,46 @@ function messageText(content: unknown): string {
   if (!Array.isArray(content)) {
     return "";
   }
-  return content
-    .map((part) =>
-      part !== null &&
-      typeof part === "object" &&
-      typeof (part as { value?: unknown }).value === "string"
-        ? (part as { value: string }).value
-        : "",
-    )
-    .join("");
+  const texts: string[] = [];
+  for (const part of content) {
+    if (part === null || typeof part !== "object") continue;
+    if (getThinkingPartValue(part) !== undefined) continue;
+    const value = (part as { value?: unknown }).value;
+    if (typeof value === "string") {
+      texts.push(value);
+    }
+  }
+  return texts.join("");
 }
 
-/** Identifies the current task: the typed user message that started it. */
-function taskKey(messages: readonly { role: unknown; content: unknown }[]): string {
+function hashText(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/** Identifies the current conversation task across turns without cross-chat collisions. */
+function buildTaskFingerprint(messages: readonly { role: unknown; content: unknown }[]): {
+  startIndex: number;
+  fingerprint: string;
+} {
   const startIndex = findTaskStartIndex(messages);
+  const firstMessage = messages.length > 0 ? messageText(messages[0].content) : "";
   const opener = startIndex > 0 ? messageText(messages[startIndex - 1].content) : "";
-  return `${startIndex}:${opener.slice(0, 200)}`;
+  let preTaskDigest = `${firstMessage.length}:${hashText(firstMessage)}`;
+  for (let i = 1; i < startIndex; i += 1) {
+    const text = messageText(messages[i].content);
+    preTaskDigest += `|${String(messages[i].role)}:${text.length}:${hashText(text)}`;
+  }
+  const openerHead = opener.slice(0, 100);
+  const openerTail = opener.length > 100 ? opener.slice(-100) : "";
+  return {
+    startIndex,
+    fingerprint: `${preTaskDigest}:${opener.length}:${hashText(opener)}:${openerHead}:${openerTail}`,
+  };
 }
 
 /**
@@ -308,9 +334,19 @@ export function buildToolCallLoopNotice(toolName: string | undefined, limit: num
 export function buildHistoryLoopBreakerContent(
   messages: readonly { role: unknown; content: unknown }[],
   maxIdenticalToolCalls?: number,
+  precomputed?: {
+    historyLoopPreamble?: string;
+    historyLoopTool?: string;
+  },
 ): string | undefined {
-  const historyLoopPreamble = detectHistoryLoop(messages);
-  const historyLoopTool = detectToolCallHistoryLoop(messages, { limit: maxIdenticalToolCalls });
+  const historyLoopPreamble =
+    precomputed && "historyLoopPreamble" in precomputed
+      ? precomputed.historyLoopPreamble
+      : detectHistoryLoop(messages);
+  const historyLoopTool =
+    precomputed && "historyLoopTool" in precomputed
+      ? precomputed.historyLoopTool
+      : detectToolCallHistoryLoop(messages, { limit: maxIdenticalToolCalls });
   const breakerNotices: string[] = [];
   if (historyLoopPreamble) {
     breakerNotices.push(
@@ -350,12 +386,20 @@ export function injectHistoryLoopBreaker(options: {
   const loopContent = buildHistoryLoopBreakerContent(
     options.historyMessages,
     options.maxIdenticalToolCalls,
+    { historyLoopPreamble, historyLoopTool },
   );
   if (!loopContent) {
     return options.requestBody;
   }
 
-  const loopKey = `${taskKey(options.historyMessages)}\u0000${historyLoopTool ?? historyLoopPreamble ?? loopContent}`;
+  const { startIndex, fingerprint } = buildTaskFingerprint(options.historyMessages);
+  const loopKey = [
+    options.modelId,
+    String(startIndex),
+    fingerprint,
+    historyLoopPreamble ?? "",
+    historyLoopTool ?? "",
+  ].join("\u0000");
   const previousInjections = recentInjectedLoops.get(loopKey) ?? 0;
   if (previousInjections >= 2) {
     return options.requestBody;
