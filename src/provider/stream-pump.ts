@@ -16,6 +16,7 @@ import { ToolsConfig } from "../shared/config";
 import { MAX_EMBEDDED_TOOL_TEXT_CHARS } from "../shared/constants";
 import { debugEnabled, debugLog, outputLog } from "../shared/logging";
 import { NimChatRequest } from "../types";
+import { StreamActivitySink } from "../shared/live-status";
 import {
   countLeakedTemplateTokens,
   findBestMatchingTool,
@@ -65,6 +66,8 @@ export interface StreamAttemptInput {
   onRetryAttempt?: () => boolean;
   onContentReported?: () => void;
   onVisibleContentReported?: () => void;
+  /** Live status sink; receives routed reasoning, answer, and tool-call deltas. */
+  activity?: StreamActivitySink;
 }
 
 export interface EmittedToolCall {
@@ -424,9 +427,11 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
   const router = new ReasoningStreamRouter({
     reasoningIsolationExpected: input.reasoningIsolationExpected,
     onThinking: (text) => {
+      input.activity?.reasoning(text);
       absorbThinking(text);
     },
     onText: (text) => {
+      input.activity?.answer(text);
       acceptAnswerText(text);
     },
     onFirstResponse: () => {
@@ -496,6 +501,11 @@ export async function runStreamAttempt(input: StreamAttemptInput): Promise<Strea
       }
 
       if (streamedToolCalls.length > 0) {
+        for (const toolCall of streamedToolCalls) {
+          input.activity?.toolCall(
+            `${toolCall.function?.name ?? ""}${toolCall.function?.arguments ?? ""}`,
+          );
+        }
         markFirstResponse();
         sawToolCall = true;
         foldHeldAnswerIntoThinking();

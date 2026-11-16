@@ -524,6 +524,84 @@ describe("streamed JSON tool fallback", () => {
     });
   });
 
+  it("feeds routed reasoning, answer, and tool-call deltas to the live status sink", async () => {
+    const options = makeChatOptions({
+      tools: [
+        {
+          name: "read_file",
+          inputSchema: {
+            type: "object",
+            properties: { filePath: { type: "string" } },
+            required: ["filePath"],
+          },
+        },
+      ],
+    });
+    (streamChatCompletion as jest.Mock).mockReset();
+    (streamChatCompletion as jest.Mock).mockReturnValueOnce(
+      (async function* () {
+        yield { choices: [{ delta: { reasoning_content: "Need the file. " } }] };
+        yield { choices: [{ delta: { content: "Reading it." } }] };
+        yield {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_1",
+                    type: "function",
+                    function: { name: "read_file", arguments: '{"filePath":"a.ts"}' },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+        };
+      })(),
+    );
+    const activity = {
+      attemptStarted: jest.fn(),
+      reasoning: jest.fn(),
+      answer: jest.fn(),
+      toolCall: jest.fn(),
+    };
+
+    await runStreamAttempt({
+      apiKey: "test-key",
+      requestBody: {
+        model: "deepseek-ai/deepseek-v4-flash-0731",
+        messages: [{ role: "user", content: "Read a.ts" }],
+        stream: true,
+      },
+      signal: new AbortController().signal,
+      userAgent: "test-ua",
+      token: makeToken(),
+      progress: { report: jest.fn() },
+      model: makeModel({
+        id: "deepseek-ai/deepseek-v4-flash-0731",
+        maxInputTokens: 100000,
+        maxOutputTokens: 65536,
+        capabilities: { toolCalling: 128, imageInput: false },
+      }),
+      options,
+      messages: makeUserMessages("Read a.ts"),
+      reasoningIsolationExpected: true,
+      maxFetchAttempts: 1,
+      toolsConfig: DEFAULT_TOOLS_CONFIG,
+      hasRetriedRepetitionLoop: false,
+      maxRepeatedLines: 3,
+      maxLoopContinues: 0,
+      activity,
+    });
+
+    expect(activity.reasoning).toHaveBeenCalledWith("Need the file. ");
+    expect(activity.answer).toHaveBeenCalledWith("Reading it.");
+    expect(activity.toolCall).toHaveBeenCalledWith('read_file{"filePath":"a.ts"}');
+    expect(activity.attemptStarted).not.toHaveBeenCalled();
+  });
+
   it("recovers single-key fenced JSON after a preamble when nothing follows the block", async () => {
     const singleKeyOptions = makeChatOptions({
       tools: [
