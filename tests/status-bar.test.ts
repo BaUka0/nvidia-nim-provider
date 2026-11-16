@@ -367,6 +367,35 @@ describe("StatusBarManager", () => {
       manager.dispose();
     });
 
+    it("keeps the live tooltip object while only ticking values change", async () => {
+      const { StatusBarManager } = await import("../src/shared/status-bar");
+      const manager = new StatusBarManager();
+      const item = mockCreateStatusBarItem.mock.results[0].value;
+      const activity = manager.beginActivity("Kimi K3");
+      activity.attemptStarted();
+      const waitingTooltip = item.tooltip;
+      jest.advanceTimersByTime(3000);
+      expect(label(item.text)).toBe("$(loading~spin) Kimi K3: waiting 3s");
+      expect(item.tooltip).toBe(waitingTooltip);
+
+      activity.answer("Hello");
+      jest.advanceTimersByTime(250);
+      const writingTooltip = item.tooltip as { value: string };
+      expect(writingTooltip).not.toBe(waitingTooltip);
+      expect(writingTooltip.value).toContain("| Phase | Writing the answer |");
+      expect(writingTooltip.value).toContain("| Time to first token | 3.0s |");
+      expect(writingTooltip.value).toContain("| Started |");
+      expect(writingTooltip.value).not.toContain("tok/s");
+
+      for (let i = 0; i < 8; i += 1) {
+        activity.answer(" more words streaming in");
+        jest.advanceTimersByTime(250);
+      }
+      expect(label(item.text)).toMatch(/writing · ~\d+ tok\/s$/u);
+      expect(item.tooltip).toBe(writingTooltip);
+      activity.end();
+    });
+
     it("restores the summary with time to first token and speed when the call finishes", async () => {
       const { StatusBarManager } = await import("../src/shared/status-bar");
       const manager = new StatusBarManager();

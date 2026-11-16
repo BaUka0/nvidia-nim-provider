@@ -155,7 +155,8 @@ export class StatusBarManager {
   /** Running provider calls; the newest one owns the item. */
   private readonly activities: StatusBarActivity[] = [];
   private liveTimer: ReturnType<typeof setInterval> | undefined;
-  private lastLiveKey = "";
+  private lastLiveText = "";
+  private lastLiveTooltipKey = "";
   /** Renders the last static state; deferred while a provider call is running. */
   private renderIdle: (() => void) | undefined;
 
@@ -322,7 +323,7 @@ export class StatusBarManager {
     );
     this.activities.push(activity);
     this.liveTimer ??= setInterval(() => this.renderLive(), LIVE_REFRESH_MS);
-    this.lastLiveKey = "";
+    this.resetLiveFrame();
     this.renderLive();
     this.refreshVisibility();
     return activity;
@@ -334,7 +335,7 @@ export class StatusBarManager {
       this.activities.splice(index, 1);
     }
     if (this.activities.length > 0) {
-      this.lastLiveKey = "";
+      this.resetLiveFrame();
       this.renderLive();
       return;
     }
@@ -377,19 +378,34 @@ export class StatusBarManager {
         break;
     }
     const text = `$(loading~spin) ${escapeStatusText(fitToWidth(label, LIVE_LABEL_WIDTH_EM))}`;
+    if (text !== this.lastLiveText) {
+      this.lastLiveText = text;
+      this.item.text = text;
+    }
+    this.renderLiveTooltip(activity);
+  }
 
+  /**
+   * VS Code re-creates an open hover, with its fade-in, whenever the tooltip
+   * changes. The live tooltip therefore holds only values that change a few
+   * times per call (phase, time to first token, attempt) and is reassigned
+   * only when one of them does; the ticking values live in the item text.
+   */
+  private renderLiveTooltip(activity: StatusBarActivity): void {
+    const { tracker } = activity;
     const ttft = tracker.ttftMs();
     const key = [
-      text,
+      activity.modelName,
+      tracker.startedAtMs,
       tracker.phase,
       ttft ?? "",
-      rate === undefined ? "" : formatRate(rate),
-      Math.floor(tracker.elapsedMs() / 1000),
+      // Only a retry is shown, so the first attempt starting is not a change.
+      Math.max(1, tracker.attemptCount),
     ].join("\u0000");
-    if (key === this.lastLiveKey) {
+    if (key === this.lastLiveTooltipKey) {
       return;
     }
-    this.lastLiveKey = key;
+    this.lastLiveTooltipKey = key;
 
     const md = new vscode.MarkdownString();
     md.isTrusted = false;
@@ -399,22 +415,26 @@ export class StatusBarManager {
     );
     md.appendMarkdown(`| Request | |\n|---|---|\n`);
     md.appendMarkdown(`| Phase | ${PHASE_LABELS[tracker.phase]} |\n`);
-    md.appendMarkdown(`| Elapsed | ${formatDuration(tracker.elapsedMs())} |\n`);
+    md.appendMarkdown(
+      `| Started | ${new Date(tracker.startedAtMs).toLocaleTimeString(undefined, { hour12: false })} |\n`,
+    );
     md.appendMarkdown(
       `| Time to first token | ${ttft === undefined ? "Waiting" : formatDuration(ttft)} |\n`,
     );
-    if (rate !== undefined) {
-      md.appendMarkdown(`| Speed (estimated) | ${formatRate(rate)} tok/s |\n`);
-    }
     if (tracker.attemptCount > 1) {
       md.appendMarkdown(`| Attempt | ${tracker.attemptCount} |\n`);
     }
 
-    this.item.text = text;
     this.item.tooltip = md;
     this.item.command = REFRESH_MODELS_COMMAND_ID;
     this.item.backgroundColor = undefined;
     this.item.color = undefined;
+  }
+
+  /** Forces the next live render to redraw text and tooltip (owner changed). */
+  private resetLiveFrame(): void {
+    this.lastLiveText = "";
+    this.lastLiveTooltipKey = "";
   }
 
   dispose(): void {

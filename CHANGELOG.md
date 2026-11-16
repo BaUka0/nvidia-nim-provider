@@ -6,7 +6,7 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ### Added
 
-- The NVIDIA NIM status bar item now shows what the model is doing while a reply is generated: how long it has been waiting for the first token, the latest reasoning sentence while it thinks, and the output speed while it writes. The item keeps a steady width while it updates, so it does not shift the rest of the status bar. This is the only live feedback in Copilot sessions, where the chat shows the reply only after the model finishes. When the reply ends, the status bar adds the time to first token and the generation speed in tokens per second next to the context usage, with details in the hover.
+- The NVIDIA NIM status bar item now shows what the model is doing while a reply is generated: how long it has been waiting for the first token, the latest reasoning sentence while it thinks, and the output speed while it writes. The item keeps a steady width while it updates, so it does not shift the rest of the status bar, and its hover stays still instead of flickering on every update. This is the only live feedback in Copilot sessions, where the chat shows the reply only after the model finishes. When the reply ends, the status bar adds the time to first token and the generation speed in tokens per second next to the context usage, with details in the hover.
 
 ### Changed
 

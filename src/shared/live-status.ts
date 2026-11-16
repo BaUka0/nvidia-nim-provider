@@ -272,8 +272,9 @@ export class StreamActivityTracker implements StreamActivitySink {
     return this.attempts;
   }
 
-  public elapsedMs(): number {
-    return this.now() - this.requestStartedAtMs;
+  /** When the provider call started (epoch ms). */
+  public get startedAtMs(): number {
+    return this.requestStartedAtMs;
   }
 
   /** Time the current attempt has been waiting for its first delta. */
