@@ -117,6 +117,26 @@ function executor(): ModelTurnExecutor {
   return new ModelTurnExecutor("test-ua", new ContextLimitStore());
 }
 
+function makeStatusBar() {
+  const activity = {
+    attemptStarted: jest.fn(),
+    reasoning: jest.fn(),
+    answer: jest.fn(),
+    toolCall: jest.fn(),
+    finish: jest.fn((completionTokens?: number) => ({
+      ttftMs: 400,
+      outputTokens: completionTokens,
+      outputTokensActual: completionTokens !== undefined,
+    })),
+    end: jest.fn(),
+  };
+  return {
+    activity,
+    beginActivity: jest.fn(() => activity),
+    showTokenBreakdown: jest.fn(),
+  };
+}
+
 describe("ModelTurnExecutor.executeTurn", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -374,7 +394,7 @@ describe("ModelTurnExecutor.executeTurn", () => {
       }),
     );
 
-    const statusBar = { showTokenBreakdown: jest.fn() };
+    const statusBar = makeStatusBar();
     const execWithStatus = new ModelTurnExecutor(
       "test-ua",
       new ContextLimitStore(),
@@ -385,6 +405,7 @@ describe("ModelTurnExecutor.executeTurn", () => {
     expect(runStreamAttemptMock).toHaveBeenCalledTimes(1);
     expect(statusBar.showTokenBreakdown).toHaveBeenCalledWith(
       expect.objectContaining({ actualPromptTokens: 120, actualCompletionTokens: 45 }),
+      expect.objectContaining({ outputTokens: 45, outputTokensActual: true }),
     );
   });
 
@@ -400,7 +421,7 @@ describe("ModelTurnExecutor.executeTurn", () => {
       }),
     );
 
-    const statusBar = { showTokenBreakdown: jest.fn() };
+    const statusBar = makeStatusBar();
     const execWithStatus = new ModelTurnExecutor(
       "test-ua",
       new ContextLimitStore(),
@@ -413,6 +434,7 @@ describe("ModelTurnExecutor.executeTurn", () => {
     expect(runStreamAttemptMock).toHaveBeenCalledTimes(1);
     expect(statusBar.showTokenBreakdown).toHaveBeenCalledWith(
       expect.objectContaining({ actualPromptTokens: 95, actualCompletionTokens: 40 }),
+      expect.objectContaining({ outputTokens: 40, outputTokensActual: true }),
     );
   });
 
@@ -457,7 +479,7 @@ describe("ModelTurnExecutor.executeTurn", () => {
         }),
       );
 
-    const statusBar = { showTokenBreakdown: jest.fn() };
+    const statusBar = makeStatusBar();
     const execWithStatus = new ModelTurnExecutor(
       "test-ua",
       new ContextLimitStore(),
@@ -470,6 +492,39 @@ describe("ModelTurnExecutor.executeTurn", () => {
     expect(runStreamAttemptMock).toHaveBeenCalledTimes(2);
     expect(statusBar.showTokenBreakdown).toHaveBeenCalledWith(
       expect.objectContaining({ actualPromptTokens: 80, actualCompletionTokens: 30 }),
+      expect.objectContaining({ outputTokens: 30, outputTokensActual: true }),
     );
+  });
+  it("drives one live status activity per turn and ends it on failure", async () => {
+    runStreamAttemptMock.mockResolvedValueOnce(
+      makeResult({
+        reportedVisibleContent: true,
+        lastVisibleText: "Done",
+        lastUsage: { prompt_tokens: 50, completion_tokens: 12, total_tokens: 62 },
+      }),
+    );
+    const statusBar = makeStatusBar();
+    const execWithStatus = new ModelTurnExecutor(
+      "test-ua",
+      new ContextLimitStore(),
+      statusBar as never,
+    );
+    await expect(execWithStatus.executeTurn(makeInput(makeConfig()))).resolves.toBeUndefined();
+
+    expect(statusBar.beginActivity).toHaveBeenCalledTimes(1);
+    expect(statusBar.activity.attemptStarted).toHaveBeenCalledTimes(1);
+    expect(runStreamAttemptMock).toHaveBeenCalledWith(
+      expect.objectContaining({ activity: statusBar.activity }),
+    );
+    expect(statusBar.activity.finish).toHaveBeenCalledWith(12);
+    expect(statusBar.activity.end).toHaveBeenCalled();
+
+    const failing = makeStatusBar();
+    runStreamAttemptMock.mockRejectedValueOnce(new Error("boom"));
+    const execFailing = new ModelTurnExecutor("test-ua", new ContextLimitStore(), failing as never);
+    await expect(execFailing.executeTurn(makeInput(makeConfig()))).rejects.toThrow();
+    expect(failing.activity.finish).not.toHaveBeenCalled();
+    expect(failing.activity.end).toHaveBeenCalledTimes(1);
+    expect(failing.showTokenBreakdown).not.toHaveBeenCalled();
   });
 });

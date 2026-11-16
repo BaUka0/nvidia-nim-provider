@@ -261,6 +261,8 @@ export class ModelTurnExecutor {
     let totalAttempts = 0;
     const generationConfig = nimConfig.generation;
     const parseEmbeddedToolText = getModelAdapter(model.id).toolCallProtocol !== "native-only";
+    const shortModelName = model.name ?? model.id.split("/").at(-1) ?? model.id;
+    const activity = this.statusBar?.beginActivity(shortModelName);
 
     const markReported = (result: StreamAttemptResult): void => {
       if (result.reportedContent) {
@@ -356,12 +358,11 @@ export class ModelTurnExecutor {
           progress.report(usagePart);
         }
         if (this.statusBar) {
-          const shortName = model.name ?? model.id.split("/").at(-1) ?? model.id;
           const sentTools = body.tools ?? tools;
           const categoryBreakdown = estimateNimMessagesTokensByCategory(body.messages);
           const toolsTokens = sentTools ? estimateToolsTokens(sentTools) : 0;
           const breakdown: TokenBreakdown = {
-            modelName: shortName,
+            modelName: shortModelName,
             systemPrompt: categoryBreakdown.system,
             tools: toolsTokens,
             userMessages: categoryBreakdown.user,
@@ -374,7 +375,7 @@ export class ModelTurnExecutor {
             output: usage?.completion_tokens,
             contextWindow,
           };
-          this.statusBar.showTokenBreakdown(breakdown);
+          this.statusBar.showTokenBreakdown(breakdown, activity?.finish(usage?.completion_tokens));
         }
       };
 
@@ -447,6 +448,7 @@ export class ModelTurnExecutor {
           totalAttempts += 1;
           finalUsage = undefined;
           activeRequestBody = attemptBody;
+          activity?.attemptStarted();
 
           let result: StreamAttemptResult;
           let thisAttemptReportedContent = false;
@@ -478,6 +480,7 @@ export class ModelTurnExecutor {
               onVisibleContentReported: () => {
                 thisAttemptReportedVisibleContent = true;
               },
+              activity,
             });
           } catch (streamErr) {
             const outcome = await this.handleStreamFailure({
@@ -664,6 +667,8 @@ export class ModelTurnExecutor {
       }
 
       throw err;
+    } finally {
+      activity?.end();
     }
   }
 
