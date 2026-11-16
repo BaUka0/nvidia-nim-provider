@@ -2,7 +2,14 @@ import * as vscode from "vscode";
 import { FALLBACK_MODEL_ID, FALLBACK_VISION_MODEL_ID, MODEL_LIST } from "../models/catalog";
 import { warnLog } from "./logging";
 
+/** Settings are read on every request; each distinct warning is logged once. */
+const warnedConfigMessages = new Set<string>();
+
 function warnUnknownConfig(message: string): void {
+  if (warnedConfigMessages.has(message)) {
+    return;
+  }
+  warnedConfigMessages.add(message);
   warnLog("config", message);
 }
 

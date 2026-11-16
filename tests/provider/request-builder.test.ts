@@ -72,6 +72,26 @@ describe("NimRequestBuilder context accounting", () => {
     expect(prepared.requestBody.max_tokens).toBeLessThanOrEqual(1000);
   });
 
+  it("sends a long dialogue that still fits unchanged, leaving compaction to VS Code", async () => {
+    const prepared = await NimRequestBuilder.prepareRequest({
+      model: createModel(10_000),
+      messages: createMessages(26),
+      options: makeChatOptions(),
+      contextWindow: 20_000,
+      supportsTools: false,
+      supportsVision: false,
+      apiKey: "test-key",
+      userAgent: "test-agent",
+      config: ConfigManager.getNimConfig(),
+    });
+
+    // Above the old 85% preflight threshold, below the 10K input limit.
+    expect(prepared.inputTokenCount).toBeGreaterThan(8_500);
+    expect(prepared.inputTokenCount).toBeLessThanOrEqual(10_000);
+    expect(chatCompletion).not.toHaveBeenCalled();
+    expect(prepared.requestBody.messages).toHaveLength(26);
+  });
+
   it("returns a structured token-limit error when compression cannot fit the payload", async () => {
     (chatCompletion as jest.Mock).mockResolvedValueOnce("z".repeat(100000));
 

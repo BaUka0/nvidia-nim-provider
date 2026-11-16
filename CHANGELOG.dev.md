@@ -2,6 +2,13 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Fixed
+
+- **Removed per-request 85% preflight compaction (`src/provider/request-builder.ts`, `tests/provider/request-builder.test.ts`).** `NimRequestBuilder.prepareRequest` compacted whenever the prepared payload passed `PREFLIGHT_COMPACT_THRESHOLD` (0.85 of `effectiveMaxInputTokens`). VS Code sends the full history on every request and keeps none of our compaction, so past that point every request re-ran `compactAndFit`: a session export on Step 5 Preview with a 256K picker size showed 27 consecutive summarizer calls (1.3–44 s each, ~284 s total), prompt cache hits dropping from 96% to 54% because each new summary changed the prefix, and Copilot's own background compaction request also arriving pre-compacted. Copilot compacts the chat itself near the advertised `maxInputTokens` and persists the summary, so the constant is gone and compaction runs only when the payload exceeds `effectiveMaxInputTokens` (always with truncation allowed). Overflow retry in `overflow-compactor.ts` is unchanged.
+- **Unknown model id warnings logged once (`src/shared/config.ts`, `tests/config.test.ts`).** `warnUnknownConfig` dedupes by message; `ConfigManager` re-reads settings on every request, so a retired `context.summarizationModel` (`nvidia/nemotron-3-super-120b-a12b`) produced 148 identical warnings in one session.
+
 ## [1.12.0] - 2026-11-16
 
 ### Added

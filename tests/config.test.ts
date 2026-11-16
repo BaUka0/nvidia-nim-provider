@@ -12,6 +12,7 @@ import {
   DEFAULT_TOOLS_CONFIG,
   DEFAULT_UI_CONFIG,
 } from "../src/shared/config";
+import * as logging from "../src/shared/logging";
 
 describe("ConfigManager", () => {
   let mockStore: Record<string, unknown> = {};
@@ -360,6 +361,23 @@ describe("ConfigManager", () => {
       const config = ConfigManager.getContextConfig();
       expect(config.summarizationModel).toBe("meta/muse-glimmer-30b");
       expect(config.safetyMarginPercent).toBe(10.0);
+    });
+
+    it("falls back from a retired summarization model and warns only once", () => {
+      const warn = jest.spyOn(logging, "warnLog").mockImplementation(() => undefined);
+      mockStore["context.summarizationModel"] = "retired/summarizer-model";
+
+      for (let i = 0; i < 3; i += 1) {
+        expect(ConfigManager.getContextConfig().summarizationModel).toBe(
+          DEFAULT_CONTEXT_CONFIG.summarizationModel,
+        );
+      }
+      expect(
+        warn.mock.calls.filter(([, message]) =>
+          String(message).includes("retired/summarizer-model"),
+        ),
+      ).toHaveLength(1);
+      warn.mockRestore();
     });
   });
 

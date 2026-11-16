@@ -2,6 +2,13 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Fixed
+
+- Long conversations no longer slow down on every turn once the history gets large. The extension used to summarize the older turns again before each request when the conversation passed 85% of the context size, which added several seconds to every turn and made responses slower because the model could not reuse the start of the previous request. It now leaves this to Copilot Chat, which compacts the conversation once and keeps the summary, and only compacts by itself when a request would not fit at all.
+- A summarization model that is no longer in the catalog is reported once in the NVIDIA NIM output log instead of on every request. Pick a current model in the VS Code Settings UI or `settings.json` to clear the warning.
+
 ## [1.12.0] - 2026-11-16
 
 ### Added
