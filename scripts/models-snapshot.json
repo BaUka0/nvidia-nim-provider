@@ -25,16 +25,6 @@
     "created": 735790403
   },
   {
-    "id": "meta/llama-3.2-90b-vision-instruct",
-    "owned_by": "meta",
-    "created": 735790403
-  },
-  {
-    "id": "meta/llama-guard-4-12b",
-    "owned_by": "meta",
-    "created": 735790403
-  },
-  {
     "id": "meta/muse-glimmer-30b",
     "owned_by": "meta",
     "created": 735790403
@@ -70,11 +60,6 @@
     "created": 735790403
   },
   {
-    "id": "nvidia/llama-3.1-nemoguard-8b-content-safety",
-    "owned_by": "nvidia",
-    "created": 735790403
-  },
-  {
     "id": "nvidia/llama-3.1-nemoguard-8b-topic-control",
     "owned_by": "nvidia",
     "created": 735790403
@@ -91,11 +76,6 @@
   },
   {
     "id": "nvidia/llama-3.2-nv-embedqa-1b-v1",
-    "owned_by": "nvidia",
-    "created": 735790403
-  },
-  {
-    "id": "nvidia/llama-nemotron-embed-vl-1b-v2",
     "owned_by": "nvidia",
     "created": 735790403
   },
@@ -141,16 +121,6 @@
   },
   {
     "id": "nvidia/nemotron-3.5-super-vl-120b-a12b",
-    "owned_by": "nvidia",
-    "created": 735790403
-  },
-  {
-    "id": "nvidia/nemotron-parse",
-    "owned_by": "nvidia",
-    "created": 735790403
-  },
-  {
-    "id": "nvidia/nemotron-parse-2.0",
     "owned_by": "nvidia",
     "created": 735790403
   },
