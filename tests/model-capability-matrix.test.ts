@@ -59,17 +59,6 @@ const deepSeekReasoningCases: ReasoningModeCase[] = [
 
 const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
   {
-    modelId: "deepseek-ai/deepseek-v4.1-flash",
-    reasoningModes: ["none", "low", "high", "max"],
-    reasoningCases: deepSeekReasoningCases,
-    reasoningParameterFormat: "chat_template_kwargs",
-    toolCallProtocol: "native-and-text",
-    reasoningRouting: "isolated",
-    contentOnlyMode: "none",
-    contentOnlyRouting: "text",
-    thinkTag: "think",
-  },
-  {
     modelId: "nvidia/nemotron-3-ultra-550b-a55b",
     reasoningModes: ["none", "medium", "high"],
     reasoningCases: [
@@ -285,6 +274,28 @@ describe("curated model capability matrix", () => {
       const request: NimChatRequest = { model: modelId, messages: [] };
       getModelAdapter(modelId).applyReasoningMode!(request, reasoningCase.mode);
       expect(getReasoningFields(request)).toEqual(reasoningCase.expectedFields);
+    },
+  );
+
+  // No DeepSeek model is curated right now; the family regex still routes a
+  // DeepSeek successor ID to DeepSeekAdapter and its reasoning format.
+  it("routes an uncatalogued DeepSeek ID to the DeepSeek adapter contract", () => {
+    const modelId = "deepseek-ai/deepseek-v4-flash";
+    expect(MODEL_LIST[modelId]).toBeUndefined();
+    expect(getModelCapabilityContract(modelId)).toEqual({
+      reasoningModes: ["none", "low", "high", "max"],
+      reasoningParameterFormat: "chat_template_kwargs",
+      toolCallProtocol: "native-and-text",
+      reasoningRouting: "isolated",
+    });
+  });
+
+  it.each(deepSeekReasoningCases)(
+    "uncatalogued DeepSeek ID sends exact reasoning fields for $mode",
+    ({ mode, expectedFields }) => {
+      const request: NimChatRequest = { model: "deepseek-ai/deepseek-v4-flash", messages: [] };
+      getModelAdapter(request.model).applyReasoningMode!(request, mode);
+      expect(getReasoningFields(request)).toEqual(expectedFields);
     },
   );
 

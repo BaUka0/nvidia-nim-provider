@@ -67,7 +67,7 @@ These settings control automatic re-routing when an NVIDIA NIM endpoint returns 
 
 ### Reasoning & Thinking (`nvidia-nim.reasoning.*`)
 
-Controls the thinking process for reasoning models (like DeepSeek V4, Nemotron 3.5 Super VL, and GLM 5.3 Flash).
+Controls the thinking process for reasoning models (like Nemotron 3.5 Super VL, GLM 5.3 Flash, and MiniMax M3.1 Flash).
 
 | Setting | Default | Options | What it does |
 | :--- | :--- | :--- | :--- |
