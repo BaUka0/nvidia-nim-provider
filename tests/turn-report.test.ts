@@ -104,14 +104,14 @@ describe("turn-report", () => {
     ).toBe("xhigh");
     expect(
       inferReasoningModeFromRequest({
-        model: "deepseek-ai/deepseek-v4.1-flash",
+        model: "deepseek-ai/deepseek-v4-flash",
         messages: [],
         chat_template_kwargs: { thinking: true, reasoning_effort: "max" },
       }),
     ).toBe("max");
     expect(
       inferReasoningModeFromRequest({
-        model: "deepseek-ai/deepseek-v4.1-flash",
+        model: "deepseek-ai/deepseek-v4-flash",
         messages: [],
         chat_template_kwargs: { thinking: false },
       }),
@@ -121,9 +121,9 @@ describe("turn-report", () => {
   it("preserves chat_template_kwargs.reasoning_effort in recorded turn reports", () => {
     const report = recordTurnReport({
       outcome: "ok",
-      modelId: "deepseek-ai/deepseek-v4.1-flash",
+      modelId: "deepseek-ai/deepseek-v4-flash",
       requestBody: {
-        model: "deepseek-ai/deepseek-v4.1-flash",
+        model: "deepseek-ai/deepseek-v4-flash",
         messages: [],
         chat_template_kwargs: { thinking: true, reasoning_effort: "high" },
       },

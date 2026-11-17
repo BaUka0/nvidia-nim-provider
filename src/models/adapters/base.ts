@@ -48,7 +48,7 @@ export const DEFAULT_TEMPERATURE = 1.0;
 export const DEFAULT_TOP_P = 0.95;
 /**
  * Every published NIM API reference for the curated models caps temperature
- * at 1 (DeepSeek V4.1 Flash has no reference page; its card recommends 1.0).
+ * at 1.
  */
 export const DEFAULT_MAX_TEMPERATURE = 1.0;
 

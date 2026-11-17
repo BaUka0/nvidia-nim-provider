@@ -363,7 +363,7 @@ describe("model cache key ownership and refresh", () => {
     expect(outputLog).toHaveBeenCalledWith(
       "models",
       expect.stringContaining(
-        "Curated NVIDIA NIM models missing from the current API response: deepseek-ai/deepseek-v4.1-flash",
+        "Curated NVIDIA NIM models missing from the current API response: nvidia/nemotron-3-ultra-550b-a55b",
       ),
     );
   });

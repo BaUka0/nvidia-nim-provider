@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Removed
+
+- DeepSeek V4.1 Flash is removed from the model list. NVIDIA retired it on November 16, 2026, and it is no longer available. No DeepSeek model is in the list right now. If it was set as your backup or summarization model, the default model is used instead; pick another one in the Settings UI or `settings.json` if you prefer.
+
 ## [1.12.0] - 2026-11-16
 
 ### Added

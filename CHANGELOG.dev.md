@@ -2,6 +2,12 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Removed
+
+- **DeepSeek V4.1 Flash end of life (`src/models/catalog.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`, `src/models/adapters/base.ts`, `README.md`, docs, `.github/ISSUE_TEMPLATE/bug_report.yml`, `tests/*`).** NVIDIA listed a retirement date of 2026-11-16 for `deepseek-ai/deepseek-v4.1-flash` that the catalog never carried (#70); the `track-models` scan of 2026-11-17 found it gone from `/v1/models` (snapshot commit `6154433`, #69). Removed from `MODEL_LIST`; `sync:manifest` dropped it from the settings enums and `CURATED_MODEL_IDS` and bumped `MODELS_CACHE_VERSION` to 35. A leftover `fallback.*` / `summarizationModel` value fails the catalog check in `sanitizeKnownModelId` and resolves to the default. `DeepSeekAdapter` and the `deepseek` `CatalogAdapterId` stay for a DeepSeek successor, as `KimiAdapter` did after Kimi left the catalog; the capability matrix row moved to a family-fallback test on uncatalogued `deepseek-ai/deepseek-v4-flash` that pins the adapter contract and the `chat_template_kwargs` `thinking` / `reasoning_effort` fields. The 262,144 `max_tokens` compliance test now uses Mistral Large 4; `model-refresh` and `turn-report` tests no longer name the retired ID. Resolves #69, resolves #70.
+
 ## [1.12.0] - 2026-11-16
 
 ### Added

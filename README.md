@@ -19,7 +19,7 @@ Direct access to NVIDIA NIM reasoning models inside GitHub Copilot Chat. No prox
 
 </div>
 
-NVIDIA provides free API on [build.nvidia.com](https://build.nvidia.com/models). You can run DeepSeek V4, Nemotron, and GLM directly inside Copilot without any monthly provider subscription.
+NVIDIA provides free API on [build.nvidia.com](https://build.nvidia.com/models). You can run Nemotron, GLM, Mistral, and MiniMax directly inside Copilot without any monthly provider subscription.
 
 ---
 
@@ -51,7 +51,6 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 
 | Model | Intelligence Index | Context Window | Reasoning Modes | Tools | Vision | Notes |
 | :--- | :---: | :---: | :--- | :---: | :---: | :--- |
-| **DeepSeek V4.1 Flash** | **33** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, agentic coding, architecture |
 | **MiniMax M3.1 Flash** | **29** | 262K | `Low` to `Max` | Yes | Yes | Fast multimodal MoE for agentic coding and visual input |
 | **Step 5 Preview** | **29** | 1M | Always on | Yes | Yes | StepFun preview; reasoning cannot be turned off |
 | **GLM 5.3 Flash** | **28** | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
