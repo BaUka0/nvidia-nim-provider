@@ -71,7 +71,7 @@ describe("default reasoning mode", () => {
 
   it("maps an explicit none onto the lowest effort for models that always think", () => {
     expect(
-      resolveDefaultReasoningMode(getModelAdapter("moonshotai/kimi-k3"), {
+      resolveDefaultReasoningMode(getModelAdapter("z-ai/glm-5.3-flash"), {
         mode: "none",
         explicit: true,
       }),
@@ -189,9 +189,12 @@ describe("internal single-shot calls", () => {
     expect(withReasoningOff({ model: ULTRA, messages: [] }).chat_template_kwargs).toEqual({
       enable_thinking: false,
     });
-    expect(withReasoningOff({ model: "moonshotai/kimi-k3", messages: [] }).reasoning_effort).toBe(
+    expect(withReasoningOff({ model: "z-ai/glm-5.3-flash", messages: [] }).reasoning_effort).toBe(
       "low",
     );
+    expect(
+      withReasoningOff({ model: "moonshotai/kimi-k3.1-pro", messages: [] }).reasoning_effort,
+    ).toBe("none");
     expect(withReasoningOff({ model: "unknown/model", messages: [] })).toEqual({
       model: "unknown/model",
       messages: [],

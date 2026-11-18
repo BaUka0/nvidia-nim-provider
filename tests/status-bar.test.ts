@@ -50,6 +50,22 @@ jest.mock("vscode", () => ({
   },
 }));
 
+describe("formatTokenCount", () => {
+  it.each([
+    [512, "512"],
+    [18_300, "18.3k"],
+    [128_000, "128k"],
+    [262_144, "262.1k"],
+    [999_949, "999.9k"],
+    [999_950, "1M"],
+    [1_048_576, "1M"],
+    [1_250_000, "1.3M"],
+  ])("formats %i as %s", async (tokens, expected) => {
+    const { formatTokenCount } = await import("../src/shared/status-bar");
+    expect(formatTokenCount(tokens)).toBe(expected);
+  });
+});
+
 describe("StatusBarManager", () => {
   beforeEach(() => {
     jest.resetModules();

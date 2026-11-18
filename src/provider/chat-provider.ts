@@ -427,6 +427,10 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
     const originalModel = model;
     let currentModel = model;
     const chainState = { depth: 0, triedModelIds: [] as string[], chainRestarts: 0 };
+    const failoverRequiresVision = NimRequestBuilder.failoverRequiresVision(
+      messages,
+      originalModel.capabilities?.imageInput === true,
+    );
     const reportState: ModelTurnReportState = {
       hasReportedContent: false,
       hasReportedVisibleContent: false,
@@ -458,7 +462,7 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           {
             configuredFallbackModelId: fallbackConfig.model,
             configuredVisionFallbackModelId: fallbackConfig.visionModel,
-            requiresVision: NimRequestBuilder.hasImageInput(messages),
+            requiresVision: failoverRequiresVision,
             priorityList: fallbackConfig.priorityList,
             triedModelIds: [],
           },
@@ -584,14 +588,13 @@ export class NimChatModelProvider implements LanguageModelChatProvider {
           }
 
           const modelApiKey = (await this.apiKeyResolver.resolveForModel(currentModel))?.value;
-          const hasImages = NimRequestBuilder.hasImageInput(messages);
           const fallbackModel = getFallbackModel(
             currentModel.id,
             this.withoutRetiredModels(await this.discoveryService.getAvailableModels(modelApiKey)),
             {
               configuredFallbackModelId: fallbackConfig.model,
               configuredVisionFallbackModelId: fallbackConfig.visionModel,
-              requiresVision: hasImages,
+              requiresVision: failoverRequiresVision,
               priorityList: fallbackConfig.priorityList,
               triedModelIds: chainState.triedModelIds,
             },

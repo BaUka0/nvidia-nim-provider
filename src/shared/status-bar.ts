@@ -29,12 +29,19 @@ const PHASE_LABELS: Record<ActivityPhase, string> = {
   tool: "Calling a tool",
 };
 
-function formatTokenCount(tokens: number): string {
-  if (tokens >= 1000000) {
-    return `${(tokens / 1000000).toFixed(1)}M`;
+/** One decimal, dropped when it is zero: `18.3k`, `128k`, `1M`. */
+function formatScaled(value: number, unit: string): string {
+  const fixed = value.toFixed(1);
+  return `${fixed.endsWith(".0") ? fixed.slice(0, -2) : fixed}${unit}`;
+}
+
+export function formatTokenCount(tokens: number): string {
+  // 999,950 rounds to 1000.0k, so it reads as 1M instead.
+  if (tokens >= 999_950) {
+    return formatScaled(tokens / 1_000_000, "M");
   }
   if (tokens >= 1000) {
-    return `${(tokens / 1000).toFixed(1)}k`;
+    return formatScaled(tokens / 1000, "k");
   }
   return String(tokens);
 }

@@ -9,8 +9,10 @@ export class KimiAdapter extends ReasoningEffortAdapter {
   override readonly topPSupported = false;
 
   constructor() {
-    // Thinking is always on; the endpoint accepts only low, high, or max.
-    super(/(^|[\/_-])kimi([\/_-]|$)/i, ["low", "high", "max"]);
+    // Moonshot documents low, high, and max. A hosted probe of Kimi K3.1 Pro
+    // (2026-11-18) showed "none" turns thinking off (0 reasoning tokens);
+    // medium is accepted but undocumented, and xhigh is rejected with 400.
+    super(/(^|[\/_-])kimi([\/_-]|$)/i, ["none", "low", "high", "max"]);
   }
 
   applyMessagesWorkaround(messages: NimChatMessage[]): NimChatMessage[] {

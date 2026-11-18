@@ -235,6 +235,42 @@ export class NimRequestBuilder {
     return false;
   }
 
+  /** True when any tool result carries an image part (`view_image` and similar). */
+  public static hasToolResultImage(messages: readonly vscode.LanguageModelChatMessage[]): boolean {
+    for (const msg of messages) {
+      for (const part of msg.content) {
+        const toolResult = part as { callId?: unknown; content?: unknown };
+        if (typeof toolResult.callId !== "string" || !Array.isArray(toolResult.content)) {
+          continue;
+        }
+        for (const inner of toolResult.content) {
+          const mimeType = (inner as { mimeType?: unknown } | null)?.mimeType;
+          if (typeof mimeType === "string" && mimeType.startsWith("image/")) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Whether failover must stay on vision models. Attached images always count.
+   * Tool-result images count only when the user's model reads images: a
+   * text-only model drops them and keeps the tool text, so a text fallback
+   * loses nothing. The hard text-only check in the turn executor stays on
+   * attached images alone for the same reason.
+   */
+  public static failoverRequiresVision(
+    messages: readonly vscode.LanguageModelChatMessage[],
+    selectedModelReadsImages: boolean,
+  ): boolean {
+    return (
+      this.hasImageInput(messages) ||
+      (selectedModelReadsImages && this.hasToolResultImage(messages))
+    );
+  }
+
   public static async prepareRequest(options: {
     model: vscode.LanguageModelChatInformation;
     messages: readonly vscode.LanguageModelChatMessage[];

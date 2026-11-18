@@ -67,20 +67,20 @@ describe("applyReasoningMode", () => {
   });
 
   it("exposes Kimi reasoning effort modes and sends the selected mode", () => {
-    const adapter = getModelAdapter("moonshotai/kimi-k3");
+    const adapter = getModelAdapter("moonshotai/kimi-k3.1-pro");
     const request: NimChatRequest = {
-      model: "moonshotai/kimi-k3",
+      model: "moonshotai/kimi-k3.1-pro",
       messages: [],
     };
 
-    // Thinking is always on; the NIM reference accepts only low, high, or max.
-    expect(adapter.supportedReasoningModes).toEqual(["low", "high", "max"]);
+    expect(adapter.supportedReasoningModes).toEqual(["none", "low", "high", "max"]);
 
     adapter.applyReasoningMode!(request, "high");
     expect(request.reasoning_effort).toBe("high");
 
+    // The hosted endpoint turns thinking off for "none".
     adapter.applyReasoningMode!(request, "none");
-    expect(request.reasoning_effort).toBe("low");
+    expect(request.reasoning_effort).toBe("none");
   });
 
   it("exposes Muse Glimmer reasoning effort modes and sends the selected mode", () => {
