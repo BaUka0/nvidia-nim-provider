@@ -34,6 +34,8 @@ export interface PreparedRequest {
   temperatureVal: number;
   toolsEnabled: boolean;
   tools?: NimTool[];
+  /** Context size picked in the model picker, when one is set. */
+  contextSizeLimit?: number;
 }
 
 /** Clamp a sampling parameter into the API-allowed inclusive range. */
@@ -483,6 +485,7 @@ export class NimRequestBuilder {
       temperatureVal,
       toolsEnabled,
       tools: toolConfig.tools,
+      contextSizeLimit,
     };
   }
 }

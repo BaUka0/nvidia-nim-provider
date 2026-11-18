@@ -300,6 +300,7 @@ export class ModelTurnExecutor {
       const requestedMaxTokens = prepared.requestedMaxTokens;
       const temperatureVal = prepared.temperatureVal;
       const toolsEnabled = prepared.toolsEnabled;
+      const pickerContextSize = prepared.contextSizeLimit;
 
       const applyBudget = (body: NimChatRequest): NimChatRequest =>
         NimRequestBuilder.applyRequestBudget(body, {
@@ -373,7 +374,12 @@ export class ModelTurnExecutor {
             actualPromptTokens: usage?.prompt_tokens,
             actualCompletionTokens: usage?.completion_tokens,
             output: usage?.completion_tokens,
-            contextWindow,
+            // The limit this turn ran under: the picker's context size when
+            // one is set, never above the window learned from overflows.
+            contextWindow:
+              pickerContextSize !== undefined
+                ? Math.min(pickerContextSize, effectiveContextWindow)
+                : effectiveContextWindow,
           };
           this.statusBar.showTokenBreakdown(breakdown, activity?.finish(usage?.completion_tokens));
         }

@@ -4,12 +4,17 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Added
+
+- Kimi K3.1 Pro from Moonshot AI is in the model picker: 1M context, up to 65,536 output tokens, tool calling, and image input. It always reasons, with `Low`, `High`, or `Max` effort. NVIDIA accepts up to 10 images per conversation for it, so older images past that are replaced with a short note instead of failing the request. It can also be picked as a backup, vision backup, or summarization model.
+
 ### Removed
 
 - DeepSeek V4.1 Flash is removed from the model list. NVIDIA retired it on November 16, 2026, and it is no longer available. No DeepSeek model is in the list right now. If it was set as your backup or summarization model, the default model is used instead; pick another one in the Settings UI or `settings.json` if you prefer.
 
 ### Fixed
 
+- The status bar now shows how much of the context size picked in the model picker a chat uses. With 128K picked on a 1M model it read `18.3k/1.0M` instead of `18.3k/128K`.
 - Long conversations no longer slow down on every turn once the history gets large. The extension used to summarize the older turns again before each request when the conversation passed 85% of the context size, which added several seconds to every turn and made responses slower because the model could not reuse the start of the previous request. It now leaves this to Copilot Chat, which compacts the conversation once and keeps the summary, and only compacts by itself when a request would not fit at all.
 - A summarization model that is no longer in the catalog is reported once in the NVIDIA NIM output log instead of on every request. Pick a current model in the VS Code Settings UI or `settings.json` to clear the warning.
 

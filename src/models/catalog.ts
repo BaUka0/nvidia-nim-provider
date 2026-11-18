@@ -102,6 +102,17 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     adapter: "mistral",
     maxImagesPerRequest: 8,
   },
+  "moonshotai/kimi-k3.1-pro": {
+    displayName: "Kimi K3.1 Pro",
+    contextWindow: 1048576,
+    maxOutputTokens: 65536,
+    supportsTools: true,
+    supportsVision: true,
+    adapter: "kimi",
+    // Hosted probe 2026-11-18: 10 images pass, an 11th anywhere in the
+    // history returns 422 "input rejected by content safety screening".
+    maxImagesPerRequest: 10,
+  },
   "z-ai/glm-5.3-flash": {
     displayName: "GLM 5.3 Flash",
     contextWindow: 1048576,

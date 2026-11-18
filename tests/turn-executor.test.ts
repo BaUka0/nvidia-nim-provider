@@ -1,4 +1,5 @@
 import { createStructuredError, NvidiaApiError } from "../src/api/errors";
+import { getApiKeyFingerprint } from "../src/api/key-resolver";
 import { ContextLimitStore } from "../src/provider/context-limit-store";
 import { buildLoopBreakerNudge, injectHistoryLoopBreaker } from "../src/provider/loop-breaker";
 import { buildOverflowRetryRequest } from "../src/provider/overflow-compactor";
@@ -407,6 +408,42 @@ describe("ModelTurnExecutor.executeTurn", () => {
       expect.objectContaining({ actualPromptTokens: 120, actualCompletionTokens: 45 }),
       expect.objectContaining({ outputTokens: 45, outputTokensActual: true }),
     );
+  });
+
+  describe("status bar context limit", () => {
+    async function shownContextWindow(
+      contextSizeLimit: number | undefined,
+      store = new ContextLimitStore(),
+    ): Promise<number> {
+      prepareRequestMock.mockResolvedValue({ ...makePrepared(), contextSizeLimit });
+      runStreamAttemptMock.mockResolvedValueOnce(
+        makeResult({
+          reportedVisibleContent: true,
+          lastVisibleText: "Done",
+          lastUsage: { prompt_tokens: 50, completion_tokens: 12, total_tokens: 62 },
+        }),
+      );
+      const statusBar = makeStatusBar();
+      await new ModelTurnExecutor("test-ua", store, statusBar as never).executeTurn(
+        makeInput(makeConfig()),
+      );
+      return statusBar.showTokenBreakdown.mock.calls[0][0].contextWindow;
+    }
+
+    it("shows the full context window when no size is picked", async () => {
+      await expect(shownContextWindow(undefined)).resolves.toBe(100000);
+    });
+
+    it("shows the size picked in the model picker", async () => {
+      await expect(shownContextWindow(32000)).resolves.toBe(32000);
+    });
+
+    it("never shows more than the window learned from an overflow", async () => {
+      const store = new ContextLimitStore();
+      store.set("moonshotai/kimi-k3", 20000, getApiKeyFingerprint("nvapi-test"));
+
+      await expect(shownContextWindow(32000, store)).resolves.toBe(20000);
+    });
   });
 
   it("preserves finalUsage and totalAttempts when a post-output retry aborts on exhausted fetchBudget", async () => {

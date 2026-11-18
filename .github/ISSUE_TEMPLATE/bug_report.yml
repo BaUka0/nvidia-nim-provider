@@ -20,6 +20,7 @@ body:
       label: Active Model
       description: Which model was selected when the issue occurred?
       options:
+        - "moonshotai/kimi-k3.1-pro"
         - "z-ai/glm-5.3-flash"
         - "stepfun-ai/step-5-preview"
         - "minimaxai/minimax-m3.1-flash"
