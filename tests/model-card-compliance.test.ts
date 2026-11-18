@@ -53,8 +53,8 @@ describe("NVIDIA model card compliance", () => {
     expect(MODEL_LIST["nvidia/nemotron-3.5-lightning-30b-a3b"].maxOutputTokens).toBe(32768);
   });
 
-  it("uses NVIDIA's default 262144 max_tokens for DeepSeek V4.1 Flash", async () => {
-    const id = "deepseek-ai/deepseek-v4.1-flash";
+  it("sends the full 262144 max_tokens for Mistral Large 4", async () => {
+    const id = "mistralai/mistral-large-4-1t-a52b";
     expect(MODEL_LIST[id].maxOutputTokens).toBe(262144);
 
     const discovery = new NvidiaModelDiscoveryService(makeSecrets(), "test-ua");
@@ -66,7 +66,7 @@ describe("NVIDIA model card compliance", () => {
     const prepared = await NimRequestBuilder.prepareRequest({
       model: makeModel({
         id,
-        name: "DeepSeek V4.1 Flash",
+        name: "Mistral Large 4",
         maxInputTokens: info.maxInputTokens,
         maxOutputTokens: info.maxOutputTokens,
       }),
