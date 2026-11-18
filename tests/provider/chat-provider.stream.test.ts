@@ -3178,6 +3178,98 @@ describe("NimChatModelProvider", () => {
     );
   });
 
+  it.each([
+    [true, "meta/muse-glimmer-30b"],
+    [false, "nvidia/nemotron-3.5-lightning-30b-a3b"],
+  ] as const)(
+    "with a tool-result image and imageInput %s, fails over to %s",
+    async (imageInput, expectedFallback) => {
+      (secrets.get as jest.Mock).mockResolvedValue("test-key");
+      const customGlobalState = makeMemento((key) =>
+        key === "nvidia-nim.models"
+          ? [
+              {
+                id: "z-ai/glm-5.3-flash",
+                displayName: "GLM 5.3 Flash",
+                contextWindow: 1048576,
+                maxOutputTokens: 65536,
+                supportsTools: true,
+                supportsVision: true,
+              },
+              {
+                id: "nvidia/nemotron-3.5-lightning-30b-a3b",
+                displayName: "Nemotron 3.5 Lightning",
+                contextWindow: 1000000,
+                maxOutputTokens: 65536,
+                supportsTools: true,
+                supportsVision: false,
+              },
+              {
+                id: "meta/muse-glimmer-30b",
+                displayName: "Muse Glimmer",
+                contextWindow: 131072,
+                maxOutputTokens: 32768,
+                supportsTools: true,
+                supportsVision: true,
+              },
+            ]
+          : key === MODELS_CACHE_VERSION_STATE_KEY
+            ? MODELS_CACHE_VERSION
+            : key === MODELS_CACHE_KEY_FINGERPRINT_STATE_KEY
+              ? getApiKeyFingerprint("test-key")
+              : undefined,
+      );
+      const customProvider = new NimChatModelProvider(secrets, "test-ua", customGlobalState);
+
+      const failingStream = async function* () {
+        throw new NvidiaApiError("model_unavailable", "[MODEL_UNAVAILABLE] Function not found.", {
+          status: 404,
+        });
+      };
+      const fallbackStream = async function* () {
+        yield { choices: [{ delta: { content: "fallback response" } }] };
+      };
+      (streamChatCompletion as jest.Mock)
+        .mockImplementationOnce(() => failingStream())
+        .mockImplementationOnce(() => fallbackStream());
+
+      // A view_image-style tool result: the image sits inside the result,
+      // not in the user's message.
+      const messages = [
+        { role: 1, content: [new vscode.LanguageModelTextPart("Check the screenshot")] },
+        { role: 2, content: [{ callId: "call_img", name: "view_image", input: {} }] },
+        {
+          role: 1,
+          content: [
+            {
+              callId: "call_img",
+              content: [{ mimeType: "image/png", data: new Uint8Array([137, 80, 78, 71]) }],
+            },
+          ],
+        },
+      ] as unknown as vscode.LanguageModelChatMessage[];
+
+      await customProvider.provideLanguageModelChatResponse(
+        {
+          ...makeModel({
+            id: "z-ai/glm-5.3-flash",
+            name: "GLM 5.3 Flash",
+            maxInputTokens: 200000,
+            maxOutputTokens: 65536,
+          }),
+          capabilities: { imageInput },
+        } as vscode.LanguageModelChatInformation,
+        messages,
+        makeChatOptions(),
+        { report: jest.fn() },
+        makeToken(),
+      );
+
+      expect(streamChatCompletion).toHaveBeenCalledTimes(2);
+      expect((streamChatCompletion as jest.Mock).mock.calls[1][1].model).toBe(expectedFallback);
+    },
+  );
+
   it("does not fallback when fallback.enabled is set to false", async () => {
     (secrets.get as jest.Mock).mockResolvedValue("test-key");
     const customGlobalState = makeMemento((key) =>

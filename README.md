@@ -51,7 +51,7 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 
 | Model | Intelligence Index | Context Window | Reasoning Modes | Tools | Vision | Notes |
 | :--- | :---: | :---: | :--- | :---: | :---: | :--- |
-| **Kimi K3.1 Pro** | **46** | 1M | `Low`, `High`, `Max` | Yes | Yes | Long-context agentic coding and repo-scale reasoning |
+| **Kimi K3.1 Pro** | **46** | 1M | `None`, `Low`, `High`, `Max` | Yes | Yes | Long-context agentic coding and repo-scale reasoning |
 | **MiniMax M3.1 Flash** | **29** | 262K | `Low` to `Max` | Yes | Yes | Fast multimodal MoE for agentic coding and visual input |
 | **Step 5 Preview** | **29** | 1M | Always on | Yes | Yes | StepFun preview; reasoning cannot be turned off |
 | **GLM 5.3 Flash** | **28** | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |

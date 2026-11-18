@@ -29,7 +29,7 @@ flowchart TD
 
 ## Text vs. Vision Failover
 
-If the request is text-only, failover uses `nvidia-nim.fallback.model` (default `Nemotron 3.5 Lightning`). If it contains images, text-only models would reject it, so the extension routes to `nvidia-nim.fallback.visionModel` (default `Muse Glimmer`).
+If the request is text-only, failover uses `nvidia-nim.fallback.model` (default `Nemotron 3.5 Lightning`). If it contains images, text-only models would reject it, so the extension routes to `nvidia-nim.fallback.visionModel` (default `Muse Glimmer`). Images a tool returned (for example a screenshot from `view_image`) count too when your model reads images; on a text-only model those images were never sent, so a text backup is used as usual.
 
 ---
 

@@ -308,6 +308,34 @@ describe("NimRequestBuilder.convertMessagesWithProfile", () => {
     expect(result[0].role).toBe("user");
   });
 
+  describe("failoverRequiresVision", () => {
+    const png = { mimeType: "image/png", data: new Uint8Array([137, 80, 78, 71]) };
+    const attached = makeChatMessages({ role: 1, content: [png] });
+    const fromTool = makeChatMessages(
+      { role: 2, content: [{ callId: "call_img", name: "view_image", input: {} }] },
+      { role: 1, content: [{ callId: "call_img", content: [png] }] },
+    );
+    const textOnly = makeChatMessages({
+      role: 1,
+      content: [new vscode.LanguageModelTextPart("hi")],
+    });
+
+    it.each([
+      ["an attached image, vision model", attached, true, true],
+      ["an attached image, text-only model", attached, false, true],
+      ["a tool-result image, vision model", fromTool, true, true],
+      ["a tool-result image, text-only model", fromTool, false, false],
+      ["text only", textOnly, true, false],
+    ] as const)("%s → %s", (_label, messages, readsImages, expected) => {
+      expect(NimRequestBuilder.failoverRequiresVision(messages, readsImages)).toBe(expected);
+    });
+
+    it("keeps the hard image check on attached images only", () => {
+      expect(NimRequestBuilder.hasImageInput(fromTool)).toBe(false);
+      expect(NimRequestBuilder.hasToolResultImage(fromTool)).toBe(true);
+    });
+  });
+
   it("applies the catalog image cap across the whole history", () => {
     const image = (byte: number) => ({
       mimeType: "image/png",
