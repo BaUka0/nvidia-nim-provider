@@ -19,7 +19,7 @@ Direct access to NVIDIA NIM reasoning models inside GitHub Copilot Chat. No prox
 
 </div>
 
-NVIDIA provides free API on [build.nvidia.com](https://build.nvidia.com/models). You can run Nemotron, GLM, Mistral, and MiniMax directly inside Copilot without any monthly provider subscription.
+NVIDIA provides free API on [build.nvidia.com](https://build.nvidia.com/models). You can run Kimi, Nemotron, GLM, Mistral, and MiniMax directly inside Copilot without any monthly provider subscription.
 
 ---
 
@@ -51,6 +51,7 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 
 | Model | Intelligence Index | Context Window | Reasoning Modes | Tools | Vision | Notes |
 | :--- | :---: | :---: | :--- | :---: | :---: | :--- |
+| **Kimi K3.1 Pro** | **46** | 1M | `Low`, `High`, `Max` | Yes | Yes | Long-context agentic coding and repo-scale reasoning |
 | **MiniMax M3.1 Flash** | **29** | 262K | `Low` to `Max` | Yes | Yes | Fast multimodal MoE for agentic coding and visual input |
 | **Step 5 Preview** | **29** | 1M | Always on | Yes | Yes | StepFun preview; reasoning cannot be turned off |
 | **GLM 5.3 Flash** | **28** | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
@@ -121,7 +122,7 @@ If NVIDIA NIM models are missing from the model picker in the Agents window, all
 
 Recommended settings for heavy agent sessions:
 
-* **Recommended Models:** `z-ai/glm-5.3-flash` for multi-step reasoning and deep codebase context.
+* **Recommended Models:** `moonshotai/kimi-k3.1-pro` or `z-ai/glm-5.3-flash` for multi-step reasoning and deep codebase context.
 * **TTFT Timeout:** Set `"nvidia-nim.fallback.firstTokenTimeoutSeconds": 120` (or `180`) to allow NVIDIA NIM time for KV-cache prefill on large prompts with multiple MCP tools.
 * **Idle Watchdog:** `"nvidia-nim.network.streamIdleTimeout": 120` (or `180`) ensures stalled streams are cleanly aborted and failed over.
 * **Failover Restarts:** `"nvidia-nim.fallback.maxChainRestarts": 2` automatically retries the model chain with backoff if upstream endpoints hit transient 503/529 overload.

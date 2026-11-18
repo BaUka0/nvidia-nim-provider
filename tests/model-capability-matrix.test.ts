@@ -184,6 +184,23 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "think",
   },
   {
+    modelId: "moonshotai/kimi-k3.1-pro",
+    // Moonshot documents low, high, and max; a "none" request maps onto low.
+    reasoningModes: ["low", "high", "max"],
+    reasoningCases: [
+      { mode: "none", expectedFields: { reasoning_effort: "low" } },
+      { mode: "low", expectedFields: { reasoning_effort: "low" } },
+      { mode: "high", expectedFields: { reasoning_effort: "high" } },
+      { mode: "max", expectedFields: { reasoning_effort: "max" } },
+    ],
+    reasoningParameterFormat: "reasoning_effort",
+    toolCallProtocol: "native-and-text",
+    reasoningRouting: "isolated",
+    contentOnlyMode: "low",
+    contentOnlyRouting: "text",
+    thinkTag: "think",
+  },
+  {
     modelId: "z-ai/glm-5.3-flash",
     reasoningModes: ["low", "high", "max"],
     reasoningCases: [

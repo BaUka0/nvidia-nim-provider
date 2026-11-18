@@ -8,6 +8,7 @@ Overview of curated NVIDIA NIM models, capability matrix, model characteristics,
 
 | Model | Picker Name | Intelligence Index | Context Limit | Max Output | Reasoning Modes | Vision | Notes |
 | :--- | :--- | :---: | :---: | :---: | :--- | :---: | :--- |
+| **Kimi K3.1 Pro** | `Kimi K3.1 Pro` | **46** | 1,048,576 | 65,536 | `Low`, `High`, `Max` | Yes | Long-context agentic coding, repo-scale reasoning, image input |
 | **MiniMax M3.1 Flash** | `MiniMax M3.1 Flash` | **29** | 262,144 | 65,536 | `Low` to `Max` | Yes | Fast multimodal MoE for agentic coding and visual input |
 | **Step 5 Preview** | `Step 5 Preview` | **29** | 1,048,576 | 262,144 | Always on | Yes | StepFun preview with tools and image input |
 | **GLM 5.3 Flash** | `GLM 5.3 Flash` | **28** | 1,048,576 | 131,072 | `Low`, `High`, `Max` | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
@@ -22,6 +23,8 @@ Intelligence Index values are from the Artificial Analysis Intelligence Index v5
 ---
 
 ## Per-Model Notes
+
+**Kimi K3.1 Pro.** Moonshot AI's successor to Kimi K3: a 2.8T/104B-active MoE with 1M context, tool calling, and image input. The extension caps output at 65,536 tokens. It always reasons, and the reasoning shows in the Thinking block. Reasoning: `Low`, `High`, `Max`; `None` uses `Low`. NVIDIA accepts up to 10 images per conversation, so older images past that are replaced with a short note.
 
 **GLM 5.3 Flash.** Fast multimodal reasoning model with 1M context and up to 131,072 output tokens. Reasoning: `Low` (instant answer), `High`, `Max`.
 

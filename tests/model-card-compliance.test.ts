@@ -82,8 +82,10 @@ describe("NVIDIA model card compliance", () => {
     expect(prepared.requestBody.max_tokens).toBe(262144);
   });
 
-  it("never sends top_p to Kimi K3, even when a caller sets it", async () => {
-    const prepared = await prepare("moonshotai/kimi-k3", { topP: 0.5 });
+  // Hosted NIM fixes top_p at 0.95 for Kimi K3.1 Pro and answers any other
+  // value with HTTP 400.
+  it("never sends top_p to Kimi K3.1 Pro, even when a caller sets it", async () => {
+    const prepared = await prepare("moonshotai/kimi-k3.1-pro", { topP: 0.5 });
 
     expect(prepared.requestBody).not.toHaveProperty("top_p");
     expect(prepared.requestBody.reasoning_effort).toBe("high");

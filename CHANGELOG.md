@@ -4,6 +4,10 @@ What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md
 
 ## [Unreleased]
 
+### Added
+
+- Kimi K3.1 Pro from Moonshot AI is in the model picker: 1M context, up to 65,536 output tokens, tool calling, and image input. It always reasons, with `Low`, `High`, or `Max` effort. NVIDIA accepts up to 10 images per conversation for it, so older images past that are replaced with a short note instead of failing the request. It can also be picked as a backup, vision backup, or summarization model.
+
 ### Removed
 
 - DeepSeek V4.1 Flash is removed from the model list. NVIDIA retired it on November 16, 2026, and it is no longer available. No DeepSeek model is in the list right now. If it was set as your backup or summarization model, the default model is used instead; pick another one in the Settings UI or `settings.json` if you prefer.
