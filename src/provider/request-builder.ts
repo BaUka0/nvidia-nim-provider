@@ -36,14 +36,6 @@ export interface PreparedRequest {
   tools?: NimTool[];
 }
 
-/**
- * When the prepared payload exceeds this fraction of the effective input budget,
- * proactively compact older turns before the hard limit is reached.  This
- * avoids the server rejecting the request outright and gives the user a
- * smoother experience in long conversations.
- */
-const PREFLIGHT_COMPACT_THRESHOLD = 0.85;
-
 /** Clamp a sampling parameter into the API-allowed inclusive range. */
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -347,29 +339,29 @@ export class NimRequestBuilder {
       maxHttpRetries: config.network.maxHttpRetries,
     };
 
-    const compactThreshold = Math.floor(effectiveMaxInputTokens * PREFLIGHT_COMPACT_THRESHOLD);
-    if (payloadInputTokenCount > compactThreshold) {
-      const overHardLimit = payloadInputTokenCount > effectiveMaxInputTokens;
+    // Only a payload that cannot fit is compacted here. VS Code compacts the
+    // chat itself as it nears the advertised input limit and keeps that summary
+    // in the history; compacting earlier, per request, would summarize the same
+    // turns again on every turn and change the prompt prefix the backend caches.
+    if (payloadInputTokenCount > effectiveMaxInputTokens) {
       debugLog(
         "contextCompression",
-        overHardLimit
-          ? `Prepared payload ${payloadInputTokenCount} tokens > ${effectiveMaxInputTokens} max. Compressing...`
-          : `Preflight: ${payloadInputTokenCount} tokens >= ${compactThreshold} threshold (${(PREFLIGHT_COMPACT_THRESHOLD * 100).toFixed(0)}%). Compacting proactively...`,
+        `Prepared payload ${payloadInputTokenCount} tokens > ${effectiveMaxInputTokens} max. Compressing...`,
       );
       const result = await compactAndFit({
         messages: apiMessages,
         effectiveMaxInputTokens,
         toolDefinitionTokens,
-        allowTruncation: overHardLimit,
+        allowTruncation: true,
         summarizationOptions: summarizerOptions,
       });
       apiMessages = result.messages;
       payloadInputTokenCount = result.tokenCount;
       debugLog(
         "contextCompression",
-        `${overHardLimit ? "Hard-limit" : "Preflight"} compaction: ${result.tokenCount} tokens. Truncated: ${result.truncated}`,
+        `Hard-limit compaction: ${result.tokenCount} tokens. Truncated: ${result.truncated}`,
       );
-      if (overHardLimit && !result.fits) {
+      if (!result.fits) {
         throw createStructuredError(
           "token_limit",
           `Even after compression and truncation: ${payloadInputTokenCount} tokens, max: ${effectiveMaxInputTokens}`,
