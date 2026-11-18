@@ -2,7 +2,7 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
-## [Unreleased]
+## [1.13.0] - 2026-11-18
 
 ### Added
 
