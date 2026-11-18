@@ -125,6 +125,13 @@ describe("NimRequestBuilder with a picked context size", () => {
 
     expect(chatCompletion).not.toHaveBeenCalled();
     expect(prepared.requestBody.messages).toHaveLength(10);
+    expect(prepared.contextSizeLimit).toBeUndefined();
+  });
+
+  it("returns the picked size for the status bar", async () => {
+    const prepared = await prepare(128_000);
+
+    expect(prepared.contextSizeLimit).toBe(128_000);
   });
 
   it("compacts history to fit a picked size below the model's input budget", async () => {
