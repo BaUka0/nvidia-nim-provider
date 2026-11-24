@@ -64,7 +64,7 @@ describe("NimVisionClient", () => {
     const modelStorage = {
       get: jest.fn(() => [
         {
-          id: "meta/muse-glimmer-30b",
+          id: "nvidia/nemotron-3.5-super-vl-120b-a12b",
           displayName: "NVIDIA Vision Model",
           vendor: "nvidia",
           family: "vision",
@@ -87,7 +87,7 @@ describe("NimVisionClient", () => {
     expect(fetch).toHaveBeenCalledWith(
       "https://integrate.api.nvidia.com/v1/chat/completions",
       expect.objectContaining({
-        body: expect.stringContaining('"model":"meta/muse-glimmer-30b"'),
+        body: expect.stringContaining('"model":"nvidia/nemotron-3.5-super-vl-120b-a12b"'),
       }),
     );
   });
@@ -97,7 +97,7 @@ describe("NimVisionClient", () => {
     const resolver = new NvidiaApiKeyResolver(secrets);
     resolver.rememberRuntimeKey("provider-group-key", "NVIDIA NIM");
     const modelA = {
-      id: "meta/muse-glimmer-30b",
+      id: "nvidia/nemotron-3.5-super-vl-120b-a12b",
       displayName: "Vision Model A",
       contextWindow: 1000000,
       maxOutputTokens: 100000,
@@ -159,7 +159,7 @@ describe("NimVisionClient", () => {
     const modelStorage = {
       get: jest.fn(() => [
         {
-          id: "meta/muse-glimmer-30b",
+          id: "nvidia/nemotron-3.5-super-vl-120b-a12b",
           displayName: "NVIDIA Vision Model",
           contextWindow: 100000,
           maxOutputTokens: 8192,
@@ -189,7 +189,7 @@ describe("NimVisionClient", () => {
     const modelStorage = {
       get: jest.fn(() => [
         {
-          id: "meta/muse-glimmer-30b",
+          id: "nvidia/nemotron-3.5-super-vl-120b-a12b",
           displayName: "NVIDIA Vision Model",
           contextWindow: 100000,
           maxOutputTokens: 8192,
@@ -225,7 +225,7 @@ describe("NimVisionClient", () => {
     const modelStorage = {
       get: jest.fn(() => [
         {
-          id: "meta/muse-glimmer-30b",
+          id: "nvidia/nemotron-3.5-super-vl-120b-a12b",
           displayName: "NVIDIA Vision Model",
           contextWindow: 100000,
           maxOutputTokens: 8192,
@@ -287,7 +287,7 @@ describe("NimVisionClient", () => {
     const modelStorage = {
       get: jest.fn(() => [
         {
-          id: "meta/muse-glimmer-30b",
+          id: "nvidia/nemotron-3.5-super-vl-120b-a12b",
           displayName: "NVIDIA Vision Model",
           contextWindow: 100000,
           maxOutputTokens: 8192,
@@ -326,7 +326,7 @@ describe("NimVisionClient", () => {
           ? getApiKeyFingerprint("key-a")
           : [
               {
-                id: "meta/muse-glimmer-30b",
+                id: "nvidia/nemotron-3.5-super-vl-120b-a12b",
                 displayName: "NVIDIA Vision Model",
                 contextWindow: 100000,
                 maxOutputTokens: 8192,

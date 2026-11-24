@@ -1,6 +1,5 @@
 const DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1";
 const CURATED_MODEL_IDS = new Set([
-  "meta/muse-glimmer-30b",
   "minimaxai/minimax-m3.1-flash",
   "mistralai/mistral-large-4-1t-a52b",
   "moonshotai/kimi-k3.1-pro",

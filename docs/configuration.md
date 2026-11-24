@@ -25,7 +25,7 @@ Automatically switches to backup models during outages or rate limits, auto-repa
 {
   "nvidia-nim.fallback.enabled": true,
   "nvidia-nim.fallback.model": "nvidia/nemotron-3.5-lightning-30b-a3b",
-  "nvidia-nim.fallback.visionModel": "meta/muse-glimmer-30b",
+  "nvidia-nim.fallback.visionModel": "nvidia/nemotron-3.5-super-vl-120b-a12b",
   "nvidia-nim.network.streamIdleTimeout": 120,
   "nvidia-nim.ui.showStatusBarItem": true
 }
@@ -54,7 +54,7 @@ These settings control automatic re-routing when an NVIDIA NIM endpoint returns 
 | :--- | :--- | :--- |
 | `nvidia-nim.fallback.enabled` | `true` | When enabled, automatically re-routes your request to a backup model if the selected model encounters an error, so your chat is not interrupted. |
 | `nvidia-nim.fallback.model` | `nvidia/nemotron-3.5-lightning-30b-a3b` | The backup model used for standard text prompts if your primary model fails. |
-| `nvidia-nim.fallback.visionModel` | `meta/muse-glimmer-30b` | The backup model used when your prompt contains images or screenshots. |
+| `nvidia-nim.fallback.visionModel` | `nvidia/nemotron-3.5-super-vl-120b-a12b` | The backup model used when your prompt contains images or screenshots. |
 | `nvidia-nim.fallback.priorityList` | `[]` | An optional list of specific models to try in order before falling back to the default backup model. |
 | `nvidia-nim.fallback.onTimeout` | `true` | Automatically switch to backup if a model stops responding mid-stream. |
 | `nvidia-nim.fallback.onFirstTokenTimeout` | `true` | Automatically switch to backup when the initial response / first token times out (long TTFT). If set to `false`, TTFT timeouts will not trigger failover. |

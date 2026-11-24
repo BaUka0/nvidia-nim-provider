@@ -375,11 +375,11 @@ describe("summarizeOldMessages", () => {
       "test-key",
       "test-agent",
       undefined,
-      "meta/muse-glimmer-30b",
+      "nvidia/nemotron-3.5-super-vl-120b-a12b",
     );
 
     const request = completionMock.mock.calls.at(-1)?.[1];
-    expect(request.model).toBe("meta/muse-glimmer-30b");
+    expect(request.model).toBe("nvidia/nemotron-3.5-super-vl-120b-a12b");
     expect(request.max_tokens).toBe(4096);
   });
 

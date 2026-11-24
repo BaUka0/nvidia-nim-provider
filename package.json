@@ -150,7 +150,6 @@
         "nvidia-nim.fallback.model": {
           "type": "string",
           "enum": [
-            "meta/muse-glimmer-30b",
             "minimaxai/minimax-m3.1-flash",
             "mistralai/mistral-large-4-1t-a52b",
             "moonshotai/kimi-k3.1-pro",
@@ -166,7 +165,6 @@
         "nvidia-nim.fallback.visionModel": {
           "type": "string",
           "enum": [
-            "meta/muse-glimmer-30b",
             "minimaxai/minimax-m3.1-flash",
             "mistralai/mistral-large-4-1t-a52b",
             "moonshotai/kimi-k3.1-pro",
@@ -174,7 +172,7 @@
             "stepfun-ai/step-5-preview",
             "z-ai/glm-5.3-flash"
           ],
-          "default": "meta/muse-glimmer-30b",
+          "default": "nvidia/nemotron-3.5-super-vl-120b-a12b",
           "description": "Model to switch to when a request containing image inputs encounters a fatal error or rate limit and fallback.model is text-only."
         },
         "nvidia-nim.fallback.priorityList": {
@@ -182,7 +180,6 @@
           "items": {
             "type": "string",
             "enum": [
-              "meta/muse-glimmer-30b",
               "minimaxai/minimax-m3.1-flash",
               "mistralai/mistral-large-4-1t-a52b",
               "moonshotai/kimi-k3.1-pro",
@@ -327,7 +324,6 @@
         "nvidia-nim.context.summarizationModel": {
           "type": "string",
           "enum": [
-            "meta/muse-glimmer-30b",
             "minimaxai/minimax-m3.1-flash",
             "mistralai/mistral-large-4-1t-a52b",
             "moonshotai/kimi-k3.1-pro",

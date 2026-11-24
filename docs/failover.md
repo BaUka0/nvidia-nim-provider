@@ -18,7 +18,7 @@ flowchart TD
     A[User sends prompt in Copilot Chat] --> B{Primary Model Call}
     B -- Success 200 OK --> C[Stream Response to User]
     B -- Failure 429 / 503 / 404 / Timeout --> D{Request Type}
-    D -- Contains Images --> E[Route turn to Vision Backup: Muse Glimmer]
+    D -- Contains Images --> E[Route turn to Vision Backup: Nemotron 3.5 Super VL]
     D -- Text Only --> F[Route turn to Text Backup: Nemotron 3.5 Lightning]
     E --> G[Stream Response with Fallback Banner]
     F --> G
@@ -29,7 +29,7 @@ flowchart TD
 
 ## Text vs. Vision Failover
 
-If the request is text-only, failover uses `nvidia-nim.fallback.model` (default `Nemotron 3.5 Lightning`). If it contains images, text-only models would reject it, so the extension routes to `nvidia-nim.fallback.visionModel` (default `Muse Glimmer`). Images a tool returned (for example a screenshot from `view_image`) count too when your model reads images; on a text-only model those images were never sent, so a text backup is used as usual.
+If the request is text-only, failover uses `nvidia-nim.fallback.model` (default `Nemotron 3.5 Lightning`). If it contains images, text-only models would reject it, so the extension routes to `nvidia-nim.fallback.visionModel` (default `Nemotron 3.5 Super VL`). Images a tool returned (for example a screenshot from `view_image`) count too when your model reads images; on a text-only model those images were never sent, so a text backup is used as usual.
 
 ---
 
@@ -37,7 +37,7 @@ If the request is text-only, failover uses `nvidia-nim.fallback.model` (default 
 
 Set `nvidia-nim.fallback.priorityList` to an ordered list of model IDs to try before the single text/vision fallbacks. On each failover step, the next healthy candidate is picked; unknown, unavailable, and already-tried models are skipped.
 
-**Example:** `["z-ai/glm-5.3-flash", "meta/muse-glimmer-30b"]` tries GLM 5.3 Flash first, then Muse Glimmer, and only then the regular fallbacks. If every candidate fails, the error message lists the full tried chain with the last underlying error.
+**Example:** `["z-ai/glm-5.3-flash", "nvidia/nemotron-3.5-super-vl-120b-a12b"]` tries GLM 5.3 Flash first, then Nemotron 3.5 Super VL, and only then the regular fallbacks. If every candidate fails, the error message lists the full tried chain with the last underlying error.
 
 If every candidate **times out** with no visible answer, `nvidia-nim.fallback.maxChainRestarts` (default `2`) starts the same chain again from the original model. Set it to `0` to keep the old one-pass behavior. Mid-stream stalls after text or thinking already went to Copilot are not hopped to another model; those abort the HTTP stream and nudge the same model to keep going (`nvidia-nim.generation.maxLoopContinues`).
 
@@ -45,7 +45,7 @@ If every candidate **times out** with no visible answer, `nvidia-nim.fallback.ma
 
 ## Collision Protection
 
-If you are already on the backup model (e.g. `Muse Glimmer`) and *it* hits a rate limit, the extension detects the conflict and routes to the next healthy vision-capable model in the catalog (such as `GLM 5.3 Flash`).
+If you are already on the backup model (e.g. `Nemotron 3.5 Super VL`) and *it* hits a rate limit, the extension detects the conflict and routes to the next healthy vision-capable model in the catalog (such as `GLM 5.3 Flash`).
 
 ---
 

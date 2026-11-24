@@ -33,7 +33,7 @@ The extension routes Copilot Chat to NVIDIA NIM models with automatic failover, 
 
 **Reasoning controls.** Collapsible thinking blocks via VS Code's `LanguageModelThinkingPart`, plus per-turn effort control from `None` to `Max` in the Copilot model dropdown.
 
-**Failover.** When the active model returns 429, 404, 410, an empty stream, or a timeout, the same prompt is rerouted to a backup. A configurable `fallback.priorityList` is tried first; text requests fall back to Nemotron 3.5 Lightning and image requests to Muse Glimmer by default. The next turn retries the original model, unless NVIDIA has retired it (HTTP 410): a retired model is skipped and hidden from the picker for the rest of the session.
+**Failover.** When the active model returns 429, 404, 410, an empty stream, or a timeout, the same prompt is rerouted to a backup. A configurable `fallback.priorityList` is tried first; text requests fall back to Nemotron 3.5 Lightning and image requests to Nemotron 3.5 Super VL by default. The next turn retries the original model, unless NVIDIA has retired it (HTTP 410): a retired model is skipped and hidden from the picker for the rest of the session.
 
 **Repetition guard.** Detects degenerate "Let me fix..." output loops mid-stream and ends the turn cleanly instead of spinning forever.
 
@@ -56,9 +56,8 @@ The extension connects to official NVIDIA NIM endpoints (`https://integrate.api.
 | **Step 5 Preview** | **29** | 1M | Always on | Yes | Yes | StepFun preview; reasoning cannot be turned off |
 | **GLM 5.3 Flash** | **28** | 1M | `Low`, `High`, `Max` | Yes | Yes | Fast multimodal reasoning, code generation, instant response in `Low` |
 | **Mistral Large 4** | **26** | 1M | `Low`, `Medium`, `High` | Yes | Yes | Large multimodal MoE for agentic coding and document analysis |
-| **Nemotron 3.5 Super VL** | **14** | 1M | `None`, `Low`, `High` | Yes | Yes | Coding, tools, and image input in one model |
+| **Nemotron 3.5 Super VL** | **14** | 1M | `None`, `Low`, `High` | Yes | Yes | Coding, tools, and image input; default vision fallback |
 | **Nemotron 3 Ultra** | **12** | 1M | `None`, `Medium`, `High` | Yes | No | Heavy multi-step reasoning, technical docs |
-| **Muse Glimmer** | **6** | 131K | `None` to `Max` | Yes | Yes | Visual UX/UI work; default vision fallback |
 | **Nemotron 3.5 Lightning** | **6** | 1M | `None`, `Medium`, `High`, `XHigh` | Yes | No | Fast agentic turns; default text fallback and summarizer |
 
 Intelligence Index values are from the Artificial Analysis Intelligence Index v5.0.1 (checked 2026-11-07).

@@ -69,15 +69,15 @@ describe("normalizeNvidiaModels", () => {
   it("prefers the override display name over the API name", () => {
     const raw: NvidiaModelSummary[] = [
       {
-        id: "meta/muse-glimmer-30b",
-        name: "API Supplied Muse",
+        id: "nvidia/nemotron-3.5-super-vl-120b-a12b",
+        name: "API Supplied Super VL",
       },
     ];
 
     expect(normalizeNvidiaModels(raw)).toEqual([
       expect.objectContaining({
-        id: "meta/muse-glimmer-30b",
-        displayName: "Muse Glimmer",
+        id: "nvidia/nemotron-3.5-super-vl-120b-a12b",
+        displayName: "Nemotron 3.5 Super VL",
       }),
     ]);
   });
@@ -156,11 +156,11 @@ describe("getFallbackModel", () => {
     supportsTools: true,
     supportsVision: true,
   };
-  const glimmer = {
+  const superVl = {
     id: FALLBACK_VISION_MODEL_ID,
-    displayName: "Muse Glimmer",
-    contextWindow: 131072,
-    maxOutputTokens: 32768,
+    displayName: "Nemotron 3.5 Super VL",
+    contextWindow: 1048576,
+    maxOutputTokens: 131072,
     supportsTools: true,
     supportsVision: true,
   };
@@ -187,7 +187,7 @@ describe("getFallbackModel", () => {
       expect(
         getFallbackModel(kimi.id, [kimi, glm, lightning], {
           configuredFallbackModelId: FALLBACK_MODEL_ID,
-          priorityList: ["z-ai/glm-5.3-flash", "meta/muse-glimmer-30b"],
+          priorityList: ["z-ai/glm-5.3-flash", "nvidia/nemotron-3.5-super-vl-120b-a12b"],
         }),
       ).toEqual(glm);
     });
@@ -236,18 +236,18 @@ describe("getFallbackModel", () => {
   });
 
   describe("Vision-aware fallback (requiresVision: true)", () => {
-    it("selects Muse Glimmer by default when requiresVision is true", () => {
-      expect(FALLBACK_VISION_MODEL_ID).toBe("meta/muse-glimmer-30b");
+    it("selects Nemotron 3.5 Super VL by default when requiresVision is true", () => {
+      expect(FALLBACK_VISION_MODEL_ID).toBe("nvidia/nemotron-3.5-super-vl-120b-a12b");
       expect(
-        getFallbackModel(kimi.id, [kimi, lightning, glimmer], {
+        getFallbackModel(kimi.id, [kimi, lightning, superVl], {
           requiresVision: true,
         }),
-      ).toEqual(glimmer);
+      ).toEqual(superVl);
     });
 
     it("uses configured fallback.model if it already supports vision", () => {
       expect(
-        getFallbackModel(lightning.id, [kimi, lightning, glimmer], {
+        getFallbackModel(lightning.id, [kimi, lightning, superVl], {
           configuredFallbackModelId: "moonshotai/kimi-k3",
           requiresVision: true,
         }),
@@ -256,17 +256,17 @@ describe("getFallbackModel", () => {
 
     it("uses configured visionModel when fallback.model is text-only", () => {
       expect(
-        getFallbackModel(kimi.id, [kimi, lightning, glimmer], {
+        getFallbackModel(kimi.id, [kimi, lightning, superVl], {
           configuredFallbackModelId: "nvidia/nemotron-3.5-lightning-30b-a3b",
-          configuredVisionFallbackModelId: "meta/muse-glimmer-30b",
+          configuredVisionFallbackModelId: "nvidia/nemotron-3.5-super-vl-120b-a12b",
           requiresVision: true,
         }),
-      ).toEqual(glimmer);
+      ).toEqual(superVl);
     });
 
     it("selects alternative vision model when the failing model is the vision fallback model", () => {
       expect(
-        getFallbackModel(glimmer.id, [kimi, lightning, glimmer], {
+        getFallbackModel(superVl.id, [kimi, lightning, superVl], {
           requiresVision: true,
         }),
       ).toEqual(kimi);

@@ -43,7 +43,6 @@ export type CatalogAdapterId =
   | "nemotron"
   | "nemotron-super-vl"
   | "nemotron-lightning"
-  | "muse-glimmer"
   | "minimax"
   | "mistral"
   | "glm"
@@ -74,15 +73,6 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
     supportsVision: true,
     adapter: "nemotron-super-vl",
     maxImagesPerRequest: 13,
-  },
-  "meta/muse-glimmer-30b": {
-    displayName: "Muse Glimmer",
-    contextWindow: 131072,
-    maxOutputTokens: 32768,
-    supportsTools: true,
-    supportsVision: true,
-    adapter: "muse-glimmer",
-    maxImagesPerRequest: 8,
   },
   "minimaxai/minimax-m3.1-flash": {
     displayName: "MiniMax M3.1 Flash",
@@ -133,7 +123,7 @@ export const MODEL_LIST: Record<string, NvidiaModelCatalogEntry> = {
 };
 
 export const FALLBACK_MODEL_ID = "nvidia/nemotron-3.5-lightning-30b-a3b";
-export const FALLBACK_VISION_MODEL_ID = "meta/muse-glimmer-30b";
+export const FALLBACK_VISION_MODEL_ID = "nvidia/nemotron-3.5-super-vl-120b-a12b";
 
 /**
  * Stable digest of the curated catalog: sorted ids plus every curated field.

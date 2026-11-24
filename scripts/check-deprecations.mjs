@@ -23,8 +23,9 @@ const compiledCatalogPath = path.join(projectRoot, "out", "models", "catalog.js"
 const BUILD_URL = "https://build.nvidia.com";
 
 /**
- * Page slugs that neither the model id nor its dots-to-dashes form resolves.
- * Most ids work as they are; GLM 5.3 (`z-ai/glm-5-3`) is found by the dashed form.
+ * Page slugs that neither the model id nor its dots-to-dashes / dots-to-underscores
+ * forms resolve. Most ids work as they are; GLM 5.3 (`z-ai/glm-5-3`) uses dashes
+ * and Kimi K3.1 Pro (`moonshotai/kimi-k3_1-pro`) uses an underscore.
  */
 const SLUG_OVERRIDES = {};
 
@@ -67,7 +68,9 @@ function loadModelList() {
 }
 
 function candidateSlugs(id) {
-  const slugs = [SLUG_OVERRIDES[id], id, id.replace(/\./g, "-")].filter(Boolean);
+  const slugs = [SLUG_OVERRIDES[id], id, id.replace(/\./g, "-"), id.replace(/\./g, "_")].filter(
+    Boolean,
+  );
   return [...new Set(slugs)];
 }
 

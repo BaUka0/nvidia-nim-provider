@@ -2,6 +2,16 @@
 
 Technical notes for contributors. User-facing notes live in `CHANGELOG.md`. Issue references belong here.
 
+## [Unreleased]
+
+### Removed
+
+- **Muse Glimmer end of life (`src/models/catalog.ts`, `src/models/adapters/muse-glimmer.ts`, `src/models/adapters/index.ts`, `package.json`, `scripts/nim-models-probe.mjs`, `src/shared/constants.ts`, `README.md`, `docs/*`, `.github/ISSUE_TEMPLATE/bug_report.yml`, `tests/*`).** NVIDIA retired `meta/muse-glimmer-30b` on 2026-11-23 (#79) and removed it from `/v1/models` on 2026-11-24 (#78). Removed from `MODEL_LIST` along with `MuseGlimmerAdapter` and the `muse-glimmer` `CatalogAdapterId`. `FALLBACK_VISION_MODEL_ID` moved to `nvidia/nemotron-3.5-super-vl-120b-a12b`. `sync:manifest` dropped the retired ID from settings enums and `CURATED_MODEL_IDS`, updated the `fallback.visionModel` default, and bumped `MODELS_CACHE_VERSION` to 37. Leftover `fallback.*` / `summarizationModel` settings referencing the removed ID resolve to the defaults via `sanitizeKnownModelId`. Resolves #78, resolves #79.
+
+### Fixed
+
+- **Underscore model page slugs in deprecation check (`scripts/check-deprecations.mjs`).** `candidateSlugs` now also tries dots-to-underscores (`id.replace(/\./g, "_")`) after exact and dashed forms, so `moonshotai/kimi-k3.1-pro` resolves to `https://build.nvidia.com/moonshotai/kimi-k3_1-pro` instead of being skipped as unreachable. Addresses #79.
+
 ## [1.13.0] - 2026-11-18
 
 ### Added

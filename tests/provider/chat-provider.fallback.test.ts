@@ -485,7 +485,10 @@ describe("NimChatModelProvider failover chain restart with retired models", () =
       get: jest.fn((key: string, defaultValue: unknown) => {
         if (key === "fallback.enabled") return true;
         if (key === "fallback.priorityList") {
-          return ["meta/muse-glimmer-30b", "nvidia/nemotron-3.5-lightning-30b-a3b"];
+          return [
+            "nvidia/nemotron-3.5-super-vl-120b-a12b",
+            "nvidia/nemotron-3.5-lightning-30b-a3b",
+          ];
         }
         if (key === "fallback.maxChainRestarts") return 2;
         return defaultValue;
@@ -504,9 +507,9 @@ describe("NimChatModelProvider failover chain restart with retired models", () =
             supportsVision: true,
           },
           {
-            id: "meta/muse-glimmer-30b",
-            displayName: "Muse Glimmer",
-            contextWindow: 131072,
+            id: "nvidia/nemotron-3.5-super-vl-120b-a12b",
+            displayName: "Nemotron 3.5 Super VL",
+            contextWindow: 1048576,
             maxOutputTokens: 65536,
             supportsTools: true,
             supportsVision: true,
@@ -567,11 +570,11 @@ describe("NimChatModelProvider failover chain restart with retired models", () =
     );
     expect(requestedModels).toEqual([
       "z-ai/glm-5.3-flash",
-      "meta/muse-glimmer-30b",
+      "nvidia/nemotron-3.5-super-vl-120b-a12b",
       "nvidia/nemotron-3.5-lightning-30b-a3b",
-      "meta/muse-glimmer-30b",
+      "nvidia/nemotron-3.5-super-vl-120b-a12b",
       "nvidia/nemotron-3.5-lightning-30b-a3b",
-      "meta/muse-glimmer-30b",
+      "nvidia/nemotron-3.5-super-vl-120b-a12b",
       "nvidia/nemotron-3.5-lightning-30b-a3b",
     ]);
     expect(backoffSpy).toHaveBeenCalledTimes(2);

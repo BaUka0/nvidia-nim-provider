@@ -118,7 +118,7 @@ describe("NimVisionClient.analyzeImage max_tokens budget", () => {
   });
 
   it.each([
-    ["meta/muse-glimmer-30b", 2000],
+    ["nvidia/nemotron-3.5-super-vl-120b-a12b", 2000],
     ["mistralai/mistral-large-4-1t-a52b", 8192],
     ["stepfun-ai/step-5-preview", 8192],
   ])("uses max_tokens %i when analyzing with %s", async (modelId, expectedMaxTokens) => {

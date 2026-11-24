@@ -110,12 +110,12 @@ describe("ConfigManager", () => {
         "",
         42,
         null,
-        "meta/muse-glimmer-30b",
+        "nvidia/nemotron-3.5-super-vl-120b-a12b",
       ];
       const config = ConfigManager.getFallbackConfig();
       expect(config.priorityList).toEqual([
         "nvidia/nemotron-3-ultra-550b-a55b",
-        "meta/muse-glimmer-30b",
+        "nvidia/nemotron-3.5-super-vl-120b-a12b",
       ]);
 
       mockStore["fallback.priorityList"] = "not-an-array";
@@ -355,11 +355,11 @@ describe("ConfigManager", () => {
     });
 
     it("reads custom context settings and clamps safety margin", () => {
-      mockStore["context.summarizationModel"] = "meta/muse-glimmer-30b";
+      mockStore["context.summarizationModel"] = "nvidia/nemotron-3.5-super-vl-120b-a12b";
       mockStore["context.safetyMarginPercent"] = 15; // clamped to 10
 
       const config = ConfigManager.getContextConfig();
-      expect(config.summarizationModel).toBe("meta/muse-glimmer-30b");
+      expect(config.summarizationModel).toBe("nvidia/nemotron-3.5-super-vl-120b-a12b");
       expect(config.safetyMarginPercent).toBe(10.0);
     });
 

@@ -50,7 +50,14 @@ describe("Context Size picker option", () => {
   });
 
   it("omits the option when no tier is smaller than the model's input budget", () => {
-    const info = mapModel("meta/muse-glimmer-30b");
+    const discovery = new NvidiaModelDiscoveryService(makeSecrets(), "test-ua");
+    const info = discovery.mapToChatInformation([
+      {
+        ...normalized("z-ai/glm-5.3-flash"),
+        contextWindow: 131_072,
+        maxOutputTokens: 32_768,
+      },
+    ])[0];
 
     expect(info.maxInputTokens).toBeLessThan(128_000);
     expect(info.configurationSchema?.properties.contextSize).toBeUndefined();

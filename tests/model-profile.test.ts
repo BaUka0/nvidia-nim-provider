@@ -83,34 +83,6 @@ describe("applyReasoningMode", () => {
     expect(request.reasoning_effort).toBe("none");
   });
 
-  it("exposes Muse Glimmer reasoning effort modes and sends the selected mode", () => {
-    const adapter = getModelAdapter("meta/muse-glimmer-30b");
-    const request: NimChatRequest = {
-      model: "meta/muse-glimmer-30b",
-      messages: [],
-    };
-
-    expect(adapter.supportedReasoningModes).toEqual([
-      "none",
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "max",
-    ]);
-    expect(adapter.getProfile({ toolsEnabled: true }).defaultTemperature).toBe(1);
-
-    adapter.applyReasoningMode!(request, "high");
-    expect(request.reasoning_effort).toBe("high");
-
-    adapter.applyReasoningMode!(request, "none");
-    expect(request.reasoning_effort).toBe("none");
-
-    // A saved xhigh setting maps onto the NIM enum's top value.
-    adapter.applyReasoningMode!(request, "xhigh");
-    expect(request.reasoning_effort).toBe("max");
-  });
-
   it("exposes MiniMax M3.1 Flash reasoning effort modes in chat_template_kwargs", () => {
     const adapter = getModelAdapter("minimaxai/minimax-m3.1-flash");
     const request: NimChatRequest = {

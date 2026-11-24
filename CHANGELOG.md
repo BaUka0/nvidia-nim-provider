@@ -2,6 +2,12 @@
 
 What changed for Copilot Chat users. Contributor notes live in `CHANGELOG.dev.md`.
 
+## [Unreleased]
+
+### Removed
+
+- Muse Glimmer is removed from the model list. NVIDIA retired it on November 23, 2026, and it is no longer available. Nemotron 3.5 Super VL is now the default vision backup model. If Muse Glimmer was set as your backup or summarization model, the default model is used instead; pick another one in the Settings UI or `settings.json` if you prefer.
+
 ## [1.13.0] - 2026-11-18
 
 ### Added

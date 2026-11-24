@@ -131,24 +131,6 @@ const CAPABILITY_MATRIX: CapabilityMatrixCase[] = [
     thinkTag: "think",
   },
   {
-    modelId: "meta/muse-glimmer-30b",
-    reasoningModes: ["none", "minimal", "low", "medium", "high", "max"],
-    reasoningCases: [
-      ...["none", "minimal", "low", "medium", "high", "max"].map((mode) => ({
-        mode,
-        expectedFields: { reasoning_effort: mode },
-      })),
-      // xhigh is not in the NIM enum; the model card's xhigh maps to max.
-      { mode: "xhigh", expectedFields: { reasoning_effort: "max" } },
-    ],
-    reasoningParameterFormat: "reasoning_effort",
-    toolCallProtocol: "native-and-text",
-    reasoningRouting: "direct-content",
-    contentOnlyMode: "medium",
-    contentOnlyRouting: "text",
-    thinkTag: "think",
-  },
-  {
     modelId: "minimaxai/minimax-m3.1-flash",
     reasoningModes: ["low", "medium", "high", "xhigh", "max"],
     reasoningCases: [
